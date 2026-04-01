@@ -97,6 +97,15 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 .faq-cat{font-size:10px;color:var(--text-dim);font-family:var(--mono);margin-top:2px;}
 .faq-loading{padding:20px;text-align:center;color:var(--text-dim);font-size:12px;}
 .faq-spinner{width:24px;height:24px;border-radius:50%;border:2px solid var(--surface3);border-top-color:var(--p1);animation:spin 0.8s linear infinite;margin:0 auto 8px;}
+.faq-search{display:flex;align-items:center;gap:7px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:6px 10px;margin:10px 10px 4px;transition:border-color 0.2s;}
+.faq-search:focus-within{border-color:var(--p1);}
+.faq-search svg{width:12px;height:12px;color:var(--text-dim);flex-shrink:0;}
+.faq-search input{background:none;border:none;color:var(--text);font-family:var(--font);font-size:12px;outline:none;width:100%;}
+.faq-search input::placeholder{color:var(--text-dim);}
+.faq-cats{display:flex;gap:5px;flex-wrap:wrap;padding:4px 10px 6px;}
+.faq-cat-pill{background:var(--surface3);border:1px solid var(--border);color:var(--text-dim);padding:3px 9px;border-radius:100px;font-size:10px;font-weight:600;cursor:pointer;transition:all 0.18s;font-family:var(--font);white-space:nowrap;}
+.faq-cat-pill:hover{border-color:var(--p1);color:var(--text);}
+.faq-cat-pill.active{background:var(--grad);border-color:transparent;color:white;}
 @keyframes spin{to{transform:rotate(360deg)}}
 
 /* Chat main */
@@ -303,6 +312,11 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
       <div class="faq-title">Consultas frecuentes</div>
       <div class="faq-sub" id="faq-count">Cargando...</div>
     </div>
+    <div class="faq-search">
+      <svg viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="8" stroke="currentColor" stroke-width="2"/><path d="m21 21-4.35-4.35" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <input type="text" id="faq-search-inp" placeholder="Buscar pregunta..." oninput="filterFAQs()"/>
+    </div>
+    <div class="faq-cats" id="faq-cats"></div>
     <div class="faq-list" id="faq-list">
       <div class="faq-loading">
         <div class="faq-spinner"></div>
@@ -474,32 +488,39 @@ function csvToText(csv){
 }
 
 // Load FAQs
+let allFAQs=[];let activeFAQCat='Todos';
 async function loadFAQs(){
   const list=document.getElementById('faq-list');
   const count=document.getElementById('faq-count');
   try{
     const csv=await fetchSheetByName('FAQ');
     const lines=csv.trim().split('\n').slice(1);
-    const faqs=lines.map(l=>{const c=parseCSV(l);return{q:c[0]?.trim()||'',cat:c[1]?.trim()||''};}).filter(f=>f.q);
-    count.textContent=faqs.length+' preguntas';
-    if(!faqs.length){
-      list.innerHTML='<div style="padding:16px;font-size:11px;color:var(--text-dim);text-align:center;">Agrega preguntas en la hoja FAQ del Sheet</div>';
-      return;
-    }
-    list.innerHTML=faqs.map((f,i)=>`
-      <div class="faq-item" onclick="sendFAQ('${esc(f.q)}')">
-        <div class="faq-num">${i+1}</div>
-        <div>
-          <div class="faq-text">${esc(f.q)}</div>
-          ${f.cat?`<div class="faq-cat">${esc(f.cat)}</div>`:''}
-        </div>
-      </div>`).join('');
+    allFAQs=lines.map(l=>{const c=parseCSV(l);return{q:c[0]?.trim()||'',cat:c[1]?.trim()||'General'};}).filter(f=>f.q);
+    count.textContent=allFAQs.length+' preguntas';
+    if(!allFAQs.length){list.innerHTML='<div style="padding:16px;font-size:11px;color:var(--text-dim);text-align:center;">Agrega preguntas en la hoja FAQ</div>';return;}
+    renderFAQCats();renderFAQs(allFAQs);
   }catch{
     count.textContent='Sin conectar';
-    list.innerHTML='<div style="padding:16px;font-size:11px;color:var(--text-dim);text-align:center;">Agrega la URL de la hoja FAQ en ⚙ Configurar</div>';
+    list.innerHTML='<div style="padding:16px;font-size:11px;color:var(--text-dim);text-align:center;">Agrega la URL FAQ en ⚙ Configurar</div>';
   }
 }
-
+function renderFAQCats(){
+  const cats=['Todos',...new Set(allFAQs.map(f=>f.cat).filter(Boolean))];
+  const wrap=document.getElementById('faq-cats');
+  if(cats.length<=2){wrap.innerHTML='';return;}
+  wrap.innerHTML=cats.map(c=>`<button class="faq-cat-pill${c===activeFAQCat?' active':''}" onclick="setFAQCat('${c}')">${c}</button>`).join('');
+}
+function setFAQCat(c){activeFAQCat=c;renderFAQCats();filterFAQs();}
+function filterFAQs(){
+  const q=(document.getElementById('faq-search-inp')?.value||'').toLowerCase();
+  const filtered=allFAQs.filter(f=>(activeFAQCat==='Todos'||f.cat===activeFAQCat)&&(!q||f.q.toLowerCase().includes(q)));
+  renderFAQs(filtered);
+}
+function renderFAQs(faqs){
+  const list=document.getElementById('faq-list');
+  if(!faqs.length){list.innerHTML='<div style="padding:16px;font-size:11px;color:var(--text-dim);text-align:center;">Sin resultados</div>';return;}
+  list.innerHTML=faqs.map((f,i)=>`<div class="faq-item" onclick="sendFAQ('${esc(f.q)}')"><div class="faq-num">${i+1}</div><div><div class="faq-text">${esc(f.q)}</div>${f.cat?`<div class="faq-cat">${esc(f.cat)}</div>`:''}</div></div>`).join('');
+}
 function sendFAQ(q){
   document.getElementById('user-input').value=q;
   sendMessage();
