@@ -3,997 +3,579 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>OpsBot — Manual en Vivo</title>
-<link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,400;0,500;1,400&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet"/>
+<title>Pi GOps — Pibox Operaciones</title>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
 <style>
 :root {
-  --bg: #f5f2eb;
-  --surface: #ffffff;
-  --surface2: #ede9e0;
-  --border: #d8d2c4;
-  --accent: #1a1a1a;
-  --accent2: #c84b2f;
-  --accent-light: rgba(200,75,47,0.08);
-  --text: #1a1a1a;
-  --text-muted: #7a7060;
-  --text-dim: #b0a898;
-  --user-bg: #1a1a1a;
-  --user-text: #f5f2eb;
-  --bot-bg: #ffffff;
-  --green: #2d7a4f;
-  --green-bg: rgba(45,122,79,0.08);
-  --radius: 14px;
-  --font-display: 'Syne', sans-serif;
-  --font-mono: 'DM Mono', monospace;
-  --shadow: 0 2px 12px rgba(0,0,0,0.08);
+  --p1: #7B2FFF;
+  --p2: #C83FE8;
+  --p3: #FF4ECD;
+  --grad: linear-gradient(135deg, var(--p1) 0%, var(--p2) 50%, var(--p3) 100%);
+  --bg: #0D0B14;
+  --surface: #151221;
+  --surface2: #1E1A2E;
+  --surface3: #261F3A;
+  --border: rgba(255,255,255,0.08);
+  --border-p: rgba(123,47,255,0.35);
+  --text: #F0EDF8;
+  --text-muted: #9B94B8;
+  --text-dim: #5A5270;
+  --font: 'Plus Jakarta Sans', sans-serif;
+  --mono: 'DM Mono', monospace;
+  --glow: 0 0 40px rgba(123,47,255,0.2);
+  --shadow: 0 4px 24px rgba(0,0,0,0.4);
 }
-
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
 body {
-  background: var(--bg);
-  color: var(--text);
-  font-family: var(--font-mono);
-  font-size: 14px;
-  height: 100dvh;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
+  background: var(--bg); color: var(--text);
+  font-family: var(--font); font-size: 14px;
+  height: 100dvh; display: flex; flex-direction: column; overflow: hidden;
 }
-
-/* Subtle dot pattern */
 body::before {
-  content: '';
-  position: fixed;
-  inset: 0;
-  background-image: radial-gradient(circle, rgba(0,0,0,0.06) 1px, transparent 1px);
-  background-size: 24px 24px;
-  pointer-events: none;
-  z-index: 0;
+  content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 0;
+  background:
+    radial-gradient(ellipse 60% 50% at 15% 15%, rgba(123,47,255,0.15) 0%, transparent 60%),
+    radial-gradient(ellipse 50% 40% at 85% 85%, rgba(200,63,232,0.1) 0%, transparent 60%),
+    radial-gradient(ellipse 40% 60% at 65% 5%, rgba(255,78,205,0.06) 0%, transparent 50%);
 }
 
-/* ── Header ── */
+/* Header */
 header {
-  position: relative;
-  z-index: 10;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 14px 24px;
-  border-bottom: 1.5px solid var(--border);
-  background: var(--bg);
-  gap: 12px;
-  flex-shrink: 0;
-}
-
-.header-left { display: flex; align-items: center; gap: 14px; }
-
-.logo-mark {
-  width: 38px; height: 38px;
-  background: var(--accent);
-  border-radius: 10px;
-  display: grid; place-items: center;
-  flex-shrink: 0;
-}
-.logo-mark svg { width: 20px; height: 20px; }
-
-.header-title {
-  font-family: var(--font-display);
-  font-weight: 800;
-  font-size: 18px;
-  letter-spacing: -0.5px;
-}
-.header-title span { color: var(--accent2); }
-
-.sheet-status {
-  display: flex; align-items: center; gap: 7px;
-  font-size: 11px;
-  color: var(--text-muted);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  padding: 5px 12px;
-  border-radius: 100px;
-  box-shadow: var(--shadow);
-  cursor: pointer;
-  transition: all 0.2s;
-}
-.sheet-status:hover { border-color: var(--accent); }
-
-.sheet-dot {
-  width: 7px; height: 7px;
-  border-radius: 50%;
-  background: var(--text-dim);
-  transition: background 0.3s;
-  flex-shrink: 0;
-}
-.sheet-dot.connected { background: var(--green); animation: blink 3s ease-in-out infinite; }
-.sheet-dot.loading { background: #e8a030; animation: blink 0.6s ease-in-out infinite; }
-.sheet-dot.error { background: var(--accent2); }
-
-@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.4} }
-
-.header-actions { display: flex; gap: 8px; }
-
-.btn-sm {
-  background: var(--surface);
-  border: 1.5px solid var(--border);
-  color: var(--text-muted);
-  padding: 6px 14px;
-  border-radius: 8px;
-  cursor: pointer;
-  font-family: var(--font-mono);
-  font-size: 12px;
-  transition: all 0.2s;
-  white-space: nowrap;
-}
-.btn-sm:hover { border-color: var(--accent); color: var(--accent); }
-
-/* ── Modal ── */
-.modal-overlay {
-  position: fixed; inset: 0;
-  background: rgba(245,242,235,0.85);
-  backdrop-filter: blur(6px);
-  z-index: 200;
-  display: flex; align-items: center; justify-content: center;
-  opacity: 0; pointer-events: none;
-  transition: opacity 0.25s;
-}
-.modal-overlay.open { opacity: 1; pointer-events: all; }
-
-.modal {
-  background: var(--surface);
-  border: 1.5px solid var(--border);
-  border-radius: 18px;
-  padding: 30px;
-  width: min(560px, 94vw);
-  box-shadow: 0 20px 60px rgba(0,0,0,0.15);
-  transform: translateY(14px);
-  transition: transform 0.25s;
-  max-height: 92dvh;
-  overflow-y: auto;
-}
-.modal-overlay.open .modal { transform: translateY(0); }
-
-.modal h2 {
-  font-family: var(--font-display);
-  font-size: 20px; font-weight: 800;
-  margin-bottom: 6px;
-}
-.modal-desc {
-  color: var(--text-muted);
-  font-size: 12px;
-  line-height: 1.7;
-  margin-bottom: 22px;
-}
-
-.field-group { margin-bottom: 18px; }
-
-.field-group label {
-  display: block;
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--text-muted);
-  margin-bottom: 7px;
-  font-weight: 500;
-}
-
-input[type="password"], input[type="text"], textarea {
-  width: 100%;
-  background: var(--surface2);
-  border: 1.5px solid var(--border);
-  border-radius: 10px;
-  color: var(--text);
-  font-family: var(--font-mono);
-  font-size: 13px;
-  padding: 10px 14px;
-  outline: none;
-  transition: border-color 0.2s, box-shadow 0.2s;
-}
-input:focus, textarea:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(26,26,26,0.08);
-}
-textarea { min-height: 100px; resize: vertical; line-height: 1.6; }
-
-.hint-box {
-  background: var(--accent-light);
-  border: 1px solid rgba(200,75,47,0.2);
-  border-radius: 10px;
-  padding: 12px 14px;
-  font-size: 12px;
-  color: var(--accent2);
-  line-height: 1.65;
-  margin-top: 8px;
-}
-.hint-box strong { font-weight: 600; }
-.hint-box a { color: var(--accent2); }
-
-.step-list {
-  list-style: none;
-  counter-reset: steps;
-  margin-top: 6px;
-}
-.step-list li {
-  counter-increment: steps;
-  display: flex; gap: 10px;
-  font-size: 12px;
-  color: var(--text-muted);
-  line-height: 1.6;
-  margin-bottom: 6px;
-}
-.step-list li::before {
-  content: counter(steps);
-  background: var(--accent);
-  color: var(--bg);
-  width: 18px; height: 18px;
-  border-radius: 50%;
-  display: grid; place-items: center;
-  font-size: 10px; font-weight: 700;
-  flex-shrink: 0; margin-top: 2px;
-}
-
-.modal-actions {
-  display: flex; gap: 10px; justify-content: flex-end;
-  margin-top: 22px;
-}
-.btn-cancel {
-  background: none; border: 1.5px solid var(--border);
-  color: var(--text-muted); padding: 9px 22px;
-  border-radius: 10px; cursor: pointer;
-  font-family: var(--font-mono); font-size: 13px;
-  transition: all 0.2s;
-}
-.btn-cancel:hover { border-color: var(--text-muted); color: var(--text); }
-.btn-primary {
-  background: var(--accent); border: none; color: var(--bg);
-  padding: 9px 24px; border-radius: 10px; cursor: pointer;
-  font-family: var(--font-display); font-weight: 700; font-size: 13px;
-  transition: all 0.2s;
-}
-.btn-primary:hover { background: #333; transform: translateY(-1px); }
-
-/* ── Sheet preview panel ── */
-.sheet-preview {
-  display: none;
-  background: var(--surface);
-  border-bottom: 1.5px solid var(--border);
-  padding: 10px 24px;
-  flex-shrink: 0;
-  position: relative; z-index: 9;
-  animation: slideDown 0.25s ease;
-}
-.sheet-preview.visible { display: block; }
-@keyframes slideDown { from{opacity:0;transform:translateY(-8px)} to{opacity:1;transform:translateY(0)} }
-
-.preview-inner {
-  max-width: 760px; margin: 0 auto;
-  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
-}
-
-.preview-badge {
-  display: flex; align-items: center; gap: 6px;
-  background: var(--green-bg);
-  border: 1px solid rgba(45,122,79,0.2);
-  color: var(--green);
-  padding: 4px 10px; border-radius: 100px; font-size: 11px;
-}
-
-.preview-tags {
-  display: flex; gap: 6px; flex-wrap: wrap; flex: 1;
-}
-
-.preview-tag {
-  background: var(--surface2);
-  border: 1px solid var(--border);
-  color: var(--text-muted);
-  padding: 3px 9px; border-radius: 6px; font-size: 11px;
-}
-
-.preview-count {
-  font-size: 11px; color: var(--text-dim); margin-left: auto;
-}
-
-/* ── Chat ── */
-.chat-wrapper {
-  flex: 1; overflow: hidden; display: flex; flex-direction: column;
-  position: relative; z-index: 1;
-}
-
-#chat-container {
-  flex: 1; overflow-y: auto; padding: 24px 0; scroll-behavior: smooth;
-}
-#chat-container::-webkit-scrollbar { width: 4px; }
-#chat-container::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
-
-.messages-inner {
-  max-width: 760px; margin: 0 auto;
-  padding: 0 20px; display: flex; flex-direction: column; gap: 18px;
-}
-
-/* Empty state */
-.empty-state {
-  display: flex; flex-direction: column; align-items: center;
-  justify-content: center; gap: 10px; padding: 48px 20px; text-align: center;
-}
-.empty-icon {
-  width: 64px; height: 64px;
-  background: var(--surface);
-  border: 1.5px solid var(--border);
-  border-radius: 16px;
-  display: grid; place-items: center;
-  font-size: 28px; margin-bottom: 6px;
-  box-shadow: var(--shadow);
-}
-.empty-state h3 {
-  font-family: var(--font-display);
-  font-size: 22px; font-weight: 800; color: var(--text);
-}
-.empty-state p { font-size: 13px; color: var(--text-muted); max-width: 380px; line-height: 1.65; }
-
-.chips { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 6px; }
-.chip {
-  background: var(--surface);
-  border: 1.5px solid var(--border);
-  color: var(--text-muted); padding: 7px 16px;
-  border-radius: 100px; font-size: 12px; cursor: pointer;
-  transition: all 0.2s; font-family: var(--font-mono);
-  box-shadow: var(--shadow);
-}
-.chip:hover { border-color: var(--accent); color: var(--accent); background: var(--surface2); }
-
-/* Messages */
-.msg {
-  display: flex; gap: 10px; align-items: flex-start;
-  animation: msgIn 0.28s ease both;
-}
-@keyframes msgIn { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
-
-.msg.user { flex-direction: row-reverse; }
-
-.avatar {
-  width: 30px; height: 30px; border-radius: 8px;
-  display: grid; place-items: center;
-  font-size: 13px; flex-shrink: 0; margin-top: 2px;
-}
-.avatar.bot {
-  background: var(--accent); color: var(--bg);
-  font-family: var(--font-display); font-weight: 800; font-size: 11px;
-}
-.avatar.user {
-  background: var(--surface2); border: 1.5px solid var(--border); font-size: 14px;
-}
-
-.bubble-wrap { display: flex; flex-direction: column; gap: 3px; max-width: 80%; }
-.msg.user .bubble-wrap { align-items: flex-end; }
-
-.bubble {
-  padding: 12px 16px; border-radius: 14px;
-  line-height: 1.65; font-size: 14px;
-}
-.msg.bot .bubble {
-  background: var(--bot-bg);
-  border: 1.5px solid var(--border);
-  border-top-left-radius: 4px;
-  box-shadow: var(--shadow);
-}
-.msg.user .bubble {
-  background: var(--user-bg); color: var(--user-text);
-  border-top-right-radius: 4px;
-}
-.bubble p { margin-bottom: 8px; }
-.bubble p:last-child { margin-bottom: 0; }
-.bubble strong { color: var(--accent2); }
-.bubble code {
-  background: var(--surface2); border: 1px solid var(--border);
-  padding: 1px 5px; border-radius: 4px;
-  font-family: var(--font-mono); font-size: 12px;
-}
-.msg.user .bubble code { background: rgba(255,255,255,0.15); border-color: rgba(255,255,255,0.2); color: #fff; }
-.bubble ul, .bubble ol { padding-left: 18px; margin: 6px 0; }
-.bubble li { margin-bottom: 4px; }
-
-.msg-meta { font-size: 10px; color: var(--text-dim); padding: 0 4px; }
-
-/* Source badge */
-.source-badge {
-  display: inline-flex; align-items: center; gap: 5px;
-  background: var(--green-bg); border: 1px solid rgba(45,122,79,0.2);
-  color: var(--green); padding: 3px 9px; border-radius: 6px;
-  font-size: 10px; margin-top: 5px;
-}
-
-/* Typing */
-.typing-indicator { display: flex; gap: 5px; padding: 14px 4px; align-items: center; }
-.typing-indicator span {
-  width: 6px; height: 6px; background: var(--text-dim);
-  border-radius: 50%; animation: typing 1.2s ease-in-out infinite;
-}
-.typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
-.typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
-@keyframes typing { 0%,100%{transform:translateY(0);opacity:0.4} 50%{transform:translateY(-4px);opacity:1} }
-
-.error-msg {
-  display: flex; align-items: flex-start; gap: 8px;
-  padding: 11px 14px;
-  background: rgba(200,75,47,0.07); border: 1px solid rgba(200,75,47,0.2);
-  border-radius: 10px; color: var(--accent2); font-size: 13px;
-  max-width: 80%; line-height: 1.5;
-}
-
-/* ── Input bar ── */
-.input-bar {
   position: relative; z-index: 10;
-  padding: 14px 20px 16px;
-  border-top: 1.5px solid var(--border);
-  background: var(--bg); flex-shrink: 0;
-}
-
-.input-inner {
-  max-width: 760px; margin: 0 auto;
-  display: flex; gap: 10px; align-items: flex-end;
-}
-
-.input-wrap {
-  flex: 1; position: relative;
-  background: var(--surface);
-  border: 1.5px solid var(--border);
-  border-radius: 12px;
-  transition: border-color 0.2s, box-shadow 0.2s;
-  box-shadow: var(--shadow);
-}
-.input-wrap:focus-within {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(26,26,26,0.07);
-}
-
-#user-input {
-  width: 100%; background: none; border: none;
-  color: var(--text); font-family: var(--font-mono); font-size: 14px;
-  padding: 12px 16px; outline: none; resize: none; max-height: 140px; line-height: 1.5;
-}
-#user-input::placeholder { color: var(--text-dim); }
-
-.send-btn {
-  width: 44px; height: 44px; background: var(--accent);
-  border: none; border-radius: 10px; cursor: pointer;
-  display: grid; place-items: center; transition: all 0.2s; flex-shrink: 0;
-}
-.send-btn:hover { background: #333; transform: scale(1.05); }
-.send-btn:disabled { background: var(--text-dim); cursor: not-allowed; transform: none; }
-.send-btn svg { width: 17px; height: 17px; }
-
-.input-footer {
-  max-width: 760px; margin: 6px auto 0;
   display: flex; align-items: center; justify-content: space-between;
-  font-size: 10px; color: var(--text-dim);
+  padding: 12px 24px; border-bottom: 1px solid var(--border);
+  background: rgba(13,11,20,0.85); backdrop-filter: blur(20px);
+  gap: 12px; flex-shrink: 0; flex-wrap: wrap;
 }
+.brand { display: flex; align-items: center; gap: 12px; }
+.logo {
+  width: 38px; height: 38px; background: var(--grad);
+  border-radius: 11px; display: grid; place-items: center;
+  flex-shrink: 0; box-shadow: 0 4px 16px rgba(123,47,255,0.4);
+  position: relative; overflow: hidden;
+}
+.logo::after { content:''; position:absolute; inset:0; background:linear-gradient(135deg,rgba(255,255,255,0.18) 0%,transparent 60%); }
+.logo svg { width:20px; height:20px; position:relative; z-index:1; }
+.brand-name {
+  font-size: 17px; font-weight: 800; letter-spacing: -0.3px;
+  background: var(--grad); -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent; background-clip: text; line-height:1;
+}
+.brand-sub { font-size: 10px; color: var(--text-dim); font-family: var(--mono); margin-top:2px; }
 
-/* Setup banner */
-.setup-banner {
-  background: rgba(200,75,47,0.07);
-  border: 1px solid rgba(200,75,47,0.2);
-  border-radius: 10px; padding: 11px 16px;
-  display: flex; align-items: center; gap: 10px;
-  font-size: 12px; color: var(--accent2);
-  max-width: 760px; margin: 0 auto 10px;
+/* Tabs */
+.tabs {
+  display: flex; align-items: center; gap: 4px;
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 10px; padding: 3px;
 }
-.setup-banner button {
-  margin-left: auto; background: var(--accent2); border: none;
-  color: #fff; padding: 5px 13px; border-radius: 7px; cursor: pointer;
-  font-family: var(--font-display); font-weight: 700; font-size: 11px; white-space: nowrap;
+.tab {
+  display: flex; align-items: center; gap: 6px;
+  padding: 7px 16px; border-radius: 8px; cursor: pointer;
+  font-size: 13px; font-weight: 600; color: var(--text-muted);
+  border: none; background: none; transition: all 0.2s; font-family: var(--font);
 }
+.tab:hover { color: var(--text); }
+.tab.active { background: var(--grad); color: white; box-shadow: 0 2px 12px rgba(123,47,255,0.4); }
+.tab svg { width:14px; height:14px; }
 
-/* Toast */
-.toast {
-  position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%);
-  background: var(--accent); color: var(--bg);
-  padding: 9px 22px; border-radius: 10px;
-  font-family: var(--font-display); font-weight: 700; font-size: 13px;
-  z-index: 999; box-shadow: 0 4px 20px rgba(0,0,0,0.15);
-  animation: msgIn 0.3s ease both;
+.header-right { display:flex; align-items:center; gap:8px; }
+.status-pill {
+  display:flex; align-items:center; gap:6px;
+  background: var(--surface2); border: 1px solid var(--border);
+  padding: 5px 12px; border-radius:100px;
+  font-size:11px; color:var(--text-muted); font-family:var(--mono);
+  cursor:pointer; transition:all 0.2s; white-space:nowrap;
 }
+.status-pill:hover { border-color:var(--border-p); }
+.sdot { width:6px; height:6px; border-radius:50%; background:var(--text-dim); flex-shrink:0; transition:background 0.3s; }
+.sdot.on  { background:#4ade80; animation:pulse 2.5s ease-in-out infinite; }
+.sdot.loading { background:#fb923c; animation:pulse 0.6s ease-in-out infinite; }
+.sdot.error { background:#f87171; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.35} }
+.btn-cfg {
+  display:flex; align-items:center; gap:6px;
+  background:var(--surface2); border:1px solid var(--border);
+  color:var(--text-muted); padding:7px 14px; border-radius:10px;
+  cursor:pointer; font-family:var(--font); font-size:12px; font-weight:600; transition:all 0.2s;
+}
+.btn-cfg:hover { border-color:var(--border-p); color:var(--text); background:var(--surface3); }
+
+/* Modal */
+.overlay {
+  position:fixed; inset:0; background:rgba(13,11,20,0.88);
+  backdrop-filter:blur(8px); z-index:200;
+  display:flex; align-items:center; justify-content:center;
+  opacity:0; pointer-events:none; transition:opacity 0.25s;
+}
+.overlay.open { opacity:1; pointer-events:all; }
+.modal {
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:20px; padding:30px; width:min(560px,94vw);
+  box-shadow:var(--shadow),var(--glow);
+  transform:translateY(14px) scale(0.98); transition:transform 0.25s;
+  max-height:92dvh; overflow-y:auto; position:relative;
+}
+.modal::before { content:''; position:absolute; top:0; left:20px; right:20px; height:1px; background:var(--grad); border-radius:100px; }
+.overlay.open .modal { transform:translateY(0) scale(1); }
+.modal-title { font-size:20px; font-weight:800; margin-bottom:4px; }
+.modal-desc { color:var(--text-muted); font-size:12px; line-height:1.7; margin-bottom:22px; }
+.msec { font-size:13px; font-weight:700; color:var(--text-muted); margin-bottom:14px; }
+.field { margin-bottom:17px; }
+.field label { display:block; font-size:11px; text-transform:uppercase; letter-spacing:0.08em; color:var(--text-dim); margin-bottom:7px; font-weight:600; }
+input[type="password"], input[type="text"], textarea {
+  width:100%; background:var(--surface2); border:1px solid var(--border);
+  border-radius:10px; color:var(--text); font-family:var(--mono);
+  font-size:13px; padding:11px 14px; outline:none; transition:border-color 0.2s, box-shadow 0.2s;
+}
+input:focus, textarea:focus { border-color:var(--p1); box-shadow:0 0 0 3px rgba(123,47,255,0.15); }
+textarea { min-height:100px; resize:vertical; line-height:1.6; }
+.hint {
+  background:rgba(123,47,255,0.07); border:1px solid rgba(123,47,255,0.18);
+  border-radius:10px; padding:12px 14px; margin-top:8px;
+}
+.hint p { font-size:11px; color:var(--p2); font-weight:600; margin-bottom:7px; }
+.hint ol { list-style:none; counter-reset:s; display:flex; flex-direction:column; gap:5px; }
+.hint li { counter-increment:s; display:flex; gap:8px; font-size:11px; color:var(--text-muted); line-height:1.5; }
+.hint li::before { content:counter(s); background:var(--grad); color:white; width:16px; height:16px; border-radius:50%; display:grid; place-items:center; font-size:9px; font-weight:700; flex-shrink:0; margin-top:1px; }
+hr { border:none; border-top:1px solid var(--border); margin:20px 0; }
+.modal-actions { display:flex; gap:10px; justify-content:flex-end; margin-top:20px; }
+.btn-cancel { background:none; border:1px solid var(--border); color:var(--text-muted); padding:9px 22px; border-radius:10px; cursor:pointer; font-family:var(--font); font-size:13px; font-weight:600; transition:all 0.2s; }
+.btn-cancel:hover { border-color:var(--text-muted); color:var(--text); }
+.btn-save { background:var(--grad); border:none; color:white; padding:9px 26px; border-radius:10px; cursor:pointer; font-family:var(--font); font-weight:700; font-size:13px; transition:all 0.2s; box-shadow:0 4px 16px rgba(123,47,255,0.35); }
+.btn-save:hover { transform:translateY(-1px); box-shadow:0 6px 22px rgba(123,47,255,0.5); }
+
+/* Views */
+.view { display:none; flex:1; overflow:hidden; flex-direction:column; position:relative; z-index:1; }
+.view.active { display:flex; }
+
+/* Chat */
+#chat-container { flex:1; overflow-y:auto; padding:24px 0; scroll-behavior:smooth; }
+#chat-container::-webkit-scrollbar { width:4px; }
+#chat-container::-webkit-scrollbar-thumb { background:var(--surface3); border-radius:4px; }
+.messages-inner { max-width:780px; margin:0 auto; padding:0 20px; display:flex; flex-direction:column; gap:18px; }
+
+.empty-state { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; padding:48px 20px; text-align:center; animation:fadeUp 0.5s ease both; }
+@keyframes fadeUp { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:translateY(0)} }
+.empty-icon { width:72px; height:72px; background:var(--grad); border-radius:20px; display:grid; place-items:center; font-size:32px; margin-bottom:6px; box-shadow:0 8px 32px rgba(123,47,255,0.4); position:relative; }
+.empty-icon::after { content:''; position:absolute; inset:-1px; border-radius:21px; background:var(--grad); z-index:-1; filter:blur(12px); opacity:0.45; }
+.empty-state h2 { font-size:24px; font-weight:800; background:var(--grad); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
+.empty-state p { font-size:14px; color:var(--text-muted); max-width:420px; line-height:1.65; }
+.chips { display:flex; flex-wrap:wrap; gap:8px; justify-content:center; margin-top:8px; }
+.chip { background:var(--surface2); border:1px solid var(--border); color:var(--text-muted); padding:8px 16px; border-radius:100px; font-size:12px; font-weight:500; cursor:pointer; transition:all 0.2s; text-align:left; }
+.chip:hover { border-color:var(--p1); color:var(--text); background:rgba(123,47,255,0.1); transform:translateY(-1px); }
+
+.msg { display:flex; gap:10px; align-items:flex-start; animation:msgIn 0.3s ease both; }
+@keyframes msgIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+.msg.user { flex-direction:row-reverse; }
+.avatar { width:32px; height:32px; border-radius:10px; display:grid; place-items:center; font-size:14px; flex-shrink:0; margin-top:2px; }
+.avatar.bot { background:var(--grad); box-shadow:0 4px 12px rgba(123,47,255,0.35); font-size:11px; font-weight:800; color:white; font-family:var(--font); }
+.avatar.user { background:var(--surface3); border:1px solid var(--border); font-size:15px; }
+.bwrap { display:flex; flex-direction:column; gap:4px; max-width:78%; }
+.msg.user .bwrap { align-items:flex-end; }
+.bubble { padding:13px 17px; border-radius:16px; line-height:1.7; font-size:14px; }
+.msg.bot .bubble { background:var(--surface); border:1px solid var(--border); border-top-left-radius:4px; }
+.msg.user .bubble { background:var(--grad); border-top-right-radius:4px; color:white; box-shadow:0 4px 20px rgba(123,47,255,0.3); }
+.bubble p { margin-bottom:8px; } .bubble p:last-child { margin-bottom:0; }
+.bubble strong { color:var(--p3); font-weight:700; }
+.msg.user .bubble strong { color:rgba(255,255,255,0.9); }
+.bubble code { background:rgba(123,47,255,0.15); border:1px solid rgba(123,47,255,0.25); padding:1px 6px; border-radius:5px; font-family:var(--mono); font-size:12px; color:var(--p3); }
+.bubble ul, .bubble ol { padding-left:18px; margin:6px 0; }
+.bubble li { margin-bottom:5px; line-height:1.6; }
+.msg-meta { font-size:10px; color:var(--text-dim); font-family:var(--mono); padding:0 4px; }
+.src-tag { display:inline-flex; align-items:center; gap:5px; background:rgba(123,47,255,0.1); border:1px solid rgba(123,47,255,0.2); color:var(--p2); padding:3px 9px; border-radius:6px; font-size:10px; font-family:var(--mono); }
+.typing-dots { display:flex; gap:5px; padding:13px 4px; align-items:center; }
+.typing-dots span { width:7px; height:7px; border-radius:50%; background:var(--p1); opacity:0.5; animation:dot 1.3s ease-in-out infinite; }
+.typing-dots span:nth-child(2){animation-delay:0.2s} .typing-dots span:nth-child(3){animation-delay:0.4s}
+@keyframes dot { 0%,100%{transform:scale(0.7);opacity:0.3} 50%{transform:scale(1);opacity:1} }
+.error-bub { display:flex; align-items:flex-start; gap:8px; padding:12px 15px; background:rgba(248,113,113,0.07); border:1px solid rgba(248,113,113,0.2); border-radius:12px; color:#f87171; font-size:13px; max-width:78%; line-height:1.55; }
+
+.input-bar { position:relative; z-index:10; padding:14px 20px 16px; border-top:1px solid var(--border); background:rgba(13,11,20,0.9); backdrop-filter:blur(20px); flex-shrink:0; }
+.setup-banner { background:rgba(123,47,255,0.08); border:1px solid rgba(123,47,255,0.2); border-radius:12px; padding:11px 16px; display:flex; align-items:center; gap:10px; font-size:12px; color:var(--p2); font-weight:500; max-width:780px; margin:0 auto 12px; }
+.setup-banner button { margin-left:auto; background:var(--grad); border:none; color:white; padding:5px 14px; border-radius:8px; cursor:pointer; font-family:var(--font); font-weight:700; font-size:11px; white-space:nowrap; }
+.input-inner { max-width:780px; margin:0 auto; display:flex; gap:10px; align-items:flex-end; }
+.input-wrap { flex:1; background:var(--surface); border:1px solid var(--border); border-radius:14px; transition:border-color 0.2s, box-shadow 0.2s; }
+.input-wrap:focus-within { border-color:var(--p1); box-shadow:0 0 0 3px rgba(123,47,255,0.15); }
+#user-input { width:100%; background:none; border:none; color:var(--text); font-family:var(--font); font-size:14px; padding:13px 16px; outline:none; resize:none; max-height:140px; line-height:1.5; }
+#user-input::placeholder { color:var(--text-dim); }
+.send-btn { width:46px; height:46px; background:var(--grad); border:none; border-radius:12px; cursor:pointer; display:grid; place-items:center; transition:all 0.2s; flex-shrink:0; box-shadow:0 4px 16px rgba(123,47,255,0.4); }
+.send-btn:hover { transform:scale(1.06); box-shadow:0 6px 22px rgba(123,47,255,0.55); }
+.send-btn:disabled { background:var(--surface3); cursor:not-allowed; transform:none; box-shadow:none; }
+.send-btn svg { width:18px; height:18px; }
+.input-footer { max-width:780px; margin:6px auto 0; display:flex; justify-content:space-between; font-size:10px; color:var(--text-dim); font-family:var(--mono); }
+
+/* Library */
+#library-view { overflow-y:auto; padding:28px 20px; }
+#library-view::-webkit-scrollbar { width:4px; }
+#library-view::-webkit-scrollbar-thumb { background:var(--surface3); border-radius:4px; }
+.library-inner { max-width:1000px; margin:0 auto; }
+.library-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:22px; flex-wrap:wrap; gap:12px; }
+.library-title { font-size:20px; font-weight:800; }
+.library-title span { background:var(--grad); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
+.search-bar { display:flex; align-items:center; gap:10px; background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:8px 14px; transition:border-color 0.2s, box-shadow 0.2s; flex:1; max-width:320px; }
+.search-bar:focus-within { border-color:var(--p1); box-shadow:0 0 0 3px rgba(123,47,255,0.12); }
+.search-bar svg { width:14px; height:14px; color:var(--text-dim); flex-shrink:0; }
+.search-bar input { background:none; border:none; color:var(--text); font-family:var(--font); font-size:13px; outline:none; width:100%; }
+.search-bar input::placeholder { color:var(--text-dim); }
+.cat-filters { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:20px; }
+.cat-pill { background:var(--surface2); border:1px solid var(--border); color:var(--text-muted); padding:5px 14px; border-radius:100px; font-size:12px; font-weight:500; cursor:pointer; transition:all 0.2s; font-family:var(--font); }
+.cat-pill:hover { border-color:var(--p1); color:var(--text); }
+.cat-pill.active { background:var(--grad); border-color:transparent; color:white; box-shadow:0 2px 10px rgba(123,47,255,0.35); }
+.video-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(280px,1fr)); gap:16px; }
+.video-card { background:var(--surface); border:1px solid var(--border); border-radius:16px; overflow:hidden; cursor:pointer; transition:all 0.25s; display:flex; flex-direction:column; text-decoration:none; }
+.video-card:hover { border-color:var(--p1); transform:translateY(-3px); box-shadow:0 8px 32px rgba(123,47,255,0.25); }
+.video-thumb { width:100%; aspect-ratio:16/9; background:var(--surface2); display:grid; place-items:center; position:relative; overflow:hidden; }
+.video-thumb img { width:100%; height:100%; object-fit:cover; }
+.no-thumb { display:flex; flex-direction:column; align-items:center; gap:8px; color:var(--text-dim); }
+.no-thumb svg { width:36px; height:36px; }
+.no-thumb span { font-size:11px; font-family:var(--mono); }
+.play-overlay { position:absolute; inset:0; background:rgba(123,47,255,0.0); display:grid; place-items:center; transition:background 0.2s; }
+.video-card:hover .play-overlay { background:rgba(123,47,255,0.3); }
+.play-btn { width:44px; height:44px; background:rgba(255,255,255,0.92); border-radius:50%; display:grid; place-items:center; opacity:0; transform:scale(0.8); transition:all 0.2s; box-shadow:0 4px 16px rgba(0,0,0,0.3); }
+.video-card:hover .play-btn { opacity:1; transform:scale(1); }
+.play-btn svg { width:18px; height:18px; margin-left:2px; }
+.video-info { padding:14px 16px 16px; flex:1; display:flex; flex-direction:column; gap:5px; }
+.video-cat { font-size:10px; text-transform:uppercase; letter-spacing:0.08em; font-family:var(--mono); font-weight:500; background:var(--grad); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; }
+.video-title { font-size:14px; font-weight:700; color:var(--text); line-height:1.4; }
+.video-desc { font-size:12px; color:var(--text-muted); line-height:1.55; flex:1; }
+.open-link { display:inline-flex; align-items:center; gap:5px; font-size:11px; color:var(--p2); font-weight:600; text-decoration:none; margin-top:8px; }
+.open-link svg { width:11px; height:11px; }
+.lib-empty { display:flex; flex-direction:column; align-items:center; gap:12px; padding:60px 20px; text-align:center; color:var(--text-dim); }
+.lib-empty svg { width:48px; height:48px; opacity:0.3; }
+.lib-empty h3 { font-size:18px; font-weight:700; color:var(--text-muted); }
+.lib-empty p { font-size:13px; max-width:360px; line-height:1.6; }
+.lib-loading { display:flex; flex-direction:column; align-items:center; gap:16px; padding:60px 20px; text-align:center; }
+.spinner { width:36px; height:36px; border-radius:50%; border:3px solid var(--surface3); border-top-color:var(--p1); animation:spin 0.8s linear infinite; }
+@keyframes spin { to{transform:rotate(360deg)} }
+.format-hint { background:rgba(123,47,255,0.06); border:1px solid rgba(123,47,255,0.15); border-radius:12px; padding:16px 18px; margin-bottom:22px; }
+.format-hint h4 { font-size:13px; font-weight:700; color:var(--p2); margin-bottom:8px; }
+.format-hint p { font-size:12px; color:var(--text-muted); line-height:1.6; }
+.format-hint code { background:rgba(123,47,255,0.15); border:1px solid rgba(123,47,255,0.2); padding:1px 6px; border-radius:4px; font-family:var(--mono); font-size:11px; color:var(--p3); }
+.toast { position:fixed; bottom:84px; left:50%; transform:translateX(-50%); background:var(--grad); color:white; padding:9px 22px; border-radius:100px; font-weight:700; font-size:13px; z-index:999; box-shadow:0 4px 24px rgba(123,47,255,0.5); animation:msgIn 0.3s ease both; }
 </style>
 </head>
 <body>
 
-<!-- ── Header ── -->
 <header>
-  <div class="header-left">
-    <div class="logo-mark">
-      <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <rect x="2" y="2" width="7" height="7" rx="1.5" fill="white"/>
-        <rect x="11" y="2" width="7" height="7" rx="1.5" fill="white" opacity="0.6"/>
-        <rect x="2" y="11" width="7" height="7" rx="1.5" fill="white" opacity="0.6"/>
-        <rect x="11" y="11" width="7" height="7" rx="1.5" fill="white"/>
+  <div class="brand">
+    <div class="logo">
+      <svg viewBox="0 0 24 24" fill="none">
+        <path d="M20 7H4C2.9 7 2 7.9 2 9V19C2 20.1 2.9 21 4 21H20C21.1 21 22 20.1 22 19V9C22 7.9 21.1 7 20 7Z" stroke="white" stroke-width="1.8" stroke-linecap="round"/>
+        <path d="M16 7V5C16 3.9 15.1 3 14 3H10C8.9 3 8 3.9 8 5V7" stroke="white" stroke-width="1.8" stroke-linecap="round"/>
+        <path d="M12 12V16M10 14H14" stroke="white" stroke-width="1.8" stroke-linecap="round"/>
       </svg>
     </div>
-    <div class="header-title">OPS<span>BOT</span> <span style="font-size:12px;font-weight:400;color:var(--text-muted);font-family:var(--font-mono)">+ Sheets</span></div>
-  </div>
-  <div style="display:flex;align-items:center;gap:8px;">
-    <div class="sheet-status" id="sheet-status" onclick="openSheetPanel()" title="Ver estado del Sheet">
-      <div class="sheet-dot" id="sheet-dot"></div>
-      <span id="sheet-status-text">Sin conectar</span>
+    <div>
+      <div class="brand-name">Pi GOps</div>
+      <div class="brand-sub">by Pibox · Operaciones</div>
     </div>
-    <button class="btn-sm" onclick="openConfig()">⚙ Configurar</button>
+  </div>
+
+  <div class="tabs">
+    <button class="tab active" id="tab-chat" onclick="switchTab('chat')">
+      <svg viewBox="0 0 24 24" fill="none"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      Asistente
+    </button>
+    <button class="tab" id="tab-lib" onclick="switchTab('library')">
+      <svg viewBox="0 0 24 24" fill="none"><path d="M15 10l4.553-2.069A1 1 0 0121 8.87v6.26a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h10a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      Tutoriales
+    </button>
+  </div>
+
+  <div class="header-right">
+    <div class="status-pill" onclick="openConfig()">
+      <div class="sdot" id="sdot"></div>
+      <span id="stext">Sin conectar</span>
+    </div>
+    <button class="btn-cfg" onclick="openConfig()">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M12 15a3 3 0 100-6 3 3 0 000 6z" stroke="currentColor" stroke-width="2"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" stroke="currentColor" stroke-width="2"/></svg>
+      Configurar
+    </button>
   </div>
 </header>
 
-<!-- ── Sheet preview bar ── -->
-<div class="sheet-preview" id="sheet-preview">
-  <div class="preview-inner">
-    <div class="preview-badge">
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M9 12l2 2 4-4M21 12a9 9 0 11-18 0 9 9 0 0118 0z" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-      Manual activo
-    </div>
-    <div class="preview-tags" id="preview-tags"></div>
-    <div class="preview-count" id="preview-count"></div>
-  </div>
-</div>
-
-<!-- ── Config Modal ── -->
-<div class="modal-overlay" id="modal-overlay">
+<!-- Modal -->
+<div class="overlay" id="overlay">
   <div class="modal">
-    <h2>Conectar Google Sheets</h2>
-    <p class="modal-desc">Configura el asistente con tu API Key y la URL de tu Google Sheet. El bot leerá el manual en cada consulta para tener siempre la información más reciente.</p>
+    <div class="modal-title">Configurar Pi GOps</div>
+    <p class="modal-desc">Conecta tu API Key y los Google Sheets del manual y la biblioteca de videos.</p>
 
-    <div class="field-group">
+    <div class="field">
       <label>API Key de Anthropic</label>
-      <input type="password" id="inp-apikey" placeholder="sk-ant-..." autocomplete="off"/>
+      <input type="password" id="inp-key" placeholder="sk-ant-..." autocomplete="off"/>
     </div>
 
-    <div class="field-group">
-      <label>URL del Google Sheet (CSV público)</label>
-      <input type="text" id="inp-sheeturl" placeholder="https://docs.google.com/spreadsheets/d/.../export?format=csv"/>
-      <div class="hint-box" style="margin-top:8px;">
-        <strong>Cómo obtener la URL:</strong>
-        <ol class="step-list" style="margin-top:8px;">
-          <li>Abre tu Google Sheet y ve a <strong>Archivo → Compartir → Publicar en la web</strong></li>
-          <li>Selecciona la hoja y elige formato <strong>CSV</strong>, luego clic en <strong>Publicar</strong></li>
-          <li>Copia la URL que aparece y pégala aquí</li>
+    <hr/>
+    <div class="msec">📋 Manual de Operaciones</div>
+    <div class="field">
+      <label>Google Sheet — Manual (CSV público)</label>
+      <input type="text" id="inp-url" placeholder="https://docs.google.com/spreadsheets/d/.../export?format=csv"/>
+      <div class="hint">
+        <p>¿Cómo publicar como CSV?</p>
+        <ol>
+          <li>Archivo → Compartir → <strong>Publicar en la web</strong></li>
+          <li>Selecciona la hoja → formato <strong>CSV</strong> → Publicar</li>
+          <li>Copia la URL y pégala aquí</li>
+        </ol>
+      </div>
+    </div>
+    <div class="field">
+      <label>Instrucción base (opcional)</label>
+      <textarea id="inp-sys" placeholder="Eres Pi GOps, el asistente de operaciones de Pibox. Responde únicamente con base en el manual adjunto. Si no encuentras la respuesta, indícalo y sugiere a quién escalar."></textarea>
+    </div>
+
+    <hr/>
+    <div class="msec">🎬 Biblioteca de Tutoriales</div>
+    <div class="field">
+      <label>Google Sheet — Videos (CSV público)</label>
+      <input type="text" id="inp-vid" placeholder="https://docs.google.com/spreadsheets/d/.../export?format=csv&gid=..."/>
+      <div class="hint">
+        <p>Columnas requeridas en el Sheet de Videos:</p>
+        <ol>
+          <li><strong>Título</strong> del video</li>
+          <li><strong>Categoría</strong> (ej: Asignación, Incidentes, App)</li>
+          <li><strong>Descripción</strong> corta</li>
+          <li><strong>Link</strong> de Google Drive (compartido como "Cualquiera con el enlace")</li>
+          <li><strong>Thumbnail</strong> — URL de imagen (opcional, puedes dejar vacío)</li>
         </ol>
       </div>
     </div>
 
-    <div class="field-group">
-      <label>Instrucción base del asistente (opcional)</label>
-      <textarea id="inp-systemprompt" placeholder="Eres el asistente de operaciones. Usa SOLO la información del manual adjunto para responder. Si no encuentras la respuesta, dilo claramente y sugiere a quién consultar."></textarea>
-    </div>
-
-    <div class="field-group">
-      <label>Nombre del asistente</label>
-      <input type="text" id="inp-botname" placeholder="OpsBot"/>
-    </div>
-
     <div class="modal-actions">
       <button class="btn-cancel" onclick="closeConfig()">Cancelar</button>
-      <button class="btn-primary" onclick="saveConfig()">Guardar y conectar</button>
+      <button class="btn-save" onclick="saveConfig()">Guardar y conectar</button>
     </div>
   </div>
 </div>
 
-<!-- ── Chat ── -->
-<div class="chat-wrapper">
+<!-- Chat View -->
+<div class="view active" id="chat-view">
   <div id="chat-container">
     <div class="messages-inner" id="messages">
       <div class="empty-state" id="empty-state">
-        <div class="empty-icon">📋</div>
-        <h3>Manual siempre actualizado</h3>
-        <p>Este asistente consulta tu Google Sheet en cada pregunta. Actualiza la hoja y el bot lo sabe al instante.</p>
+        <div class="empty-icon">📦</div>
+        <h2>Pi GOps</h2>
+        <p>Resuelve dudas operativas al instante y ejecuta mejor cada decisión en campo. Menos dependencia, más velocidad.</p>
         <div class="chips">
-          <button class="chip" onclick="sendChip(this)">¿Cuál es el procedimiento de apertura?</button>
-          <button class="chip" onclick="sendChip(this)">¿Cómo proceso una devolución?</button>
-          <button class="chip" onclick="sendChip(this)">¿Qué hago ante un faltante en inventario?</button>
-          <button class="chip" onclick="sendChip(this)">¿Cuál es el protocolo de escalamiento?</button>
+          <button class="chip" onclick="sendChip(this)">¿Cuál es el flujo para asignar un servicio de forma efectiva?</button>
+          <button class="chip" onclick="sendChip(this)">¿Qué hago si un piloto asignado no responde?</button>
+          <button class="chip" onclick="sendChip(this)">¿Qué hago si un cliente reporta el hurto de su paquete?</button>
+          <button class="chip" onclick="sendChip(this)">¿Qué hago si reportan fallas con el App o la Web?</button>
         </div>
       </div>
     </div>
   </div>
+  <div class="input-bar">
+    <div id="setup-banner" class="setup-banner" style="display:none;">
+      ⚡ Configura tu API Key y Google Sheet para comenzar.
+      <button onclick="openConfig()">Configurar</button>
+    </div>
+    <div class="input-inner">
+      <div class="input-wrap">
+        <textarea id="user-input" rows="1" placeholder="Escribe tu consulta de operaciones..." maxlength="2000"></textarea>
+      </div>
+      <button class="send-btn" id="send-btn" onclick="sendMessage()">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M22 2L11 13M22 2L15 22L11 13M22 2L2 9L11 13" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+    </div>
+    <div class="input-footer">
+      <span>Enter para enviar · Shift+Enter nueva línea</span>
+      <span id="fetch-info"></span>
+    </div>
+  </div>
 </div>
 
-<!-- ── Input ── -->
-<div class="input-bar">
-  <div id="setup-banner" class="setup-banner" style="display:none;">
-    ⚠ Configura tu API Key y Google Sheet para comenzar.
-    <button onclick="openConfig()">Configurar ahora</button>
-  </div>
-  <div class="input-inner">
-    <div class="input-wrap">
-      <textarea id="user-input" rows="1" placeholder="Escribe tu consulta sobre operaciones..." maxlength="2000"></textarea>
+<!-- Library View -->
+<div class="view" id="library-view">
+  <div class="library-inner">
+    <div class="library-header">
+      <div>
+        <div class="library-title">Tutoriales <span>Pibox</span></div>
+        <div style="font-size:12px;color:var(--text-dim);margin-top:3px;font-family:var(--mono)" id="vid-count"></div>
+      </div>
+      <div class="search-bar">
+        <svg viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="8" stroke="currentColor" stroke-width="2"/><path d="m21 21-4.35-4.35" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <input type="text" id="search-input" placeholder="Buscar tutorial..." oninput="filterVideos()"/>
+      </div>
     </div>
-    <button class="send-btn" id="send-btn" onclick="sendMessage()">
-      <svg viewBox="0 0 24 24" fill="none"><path d="M22 2L11 13M22 2L15 22L11 13M22 2L2 9L11 13" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-    </button>
-  </div>
-  <div class="input-footer">
-    <span>Enter para enviar · Shift+Enter nueva línea</span>
-    <span id="sheet-fetch-info"></span>
+    <div class="format-hint" id="format-hint">
+      <h4>¿Cómo agregar videos a la biblioteca?</h4>
+      <p>En tu Google Sheet de Videos crea columnas: <code>Título</code>, <code>Categoría</code>, <code>Descripción</code>, <code>Link</code>, <code>Thumbnail</code> (opcional). Comparte cada video de Drive como <strong>"Cualquiera con el enlace puede ver"</strong>. Luego conecta el Sheet en ⚙ Configurar.</p>
+    </div>
+    <div class="cat-filters" id="cat-filters"></div>
+    <div id="video-grid-wrap"></div>
   </div>
 </div>
 
 <script>
-// ── Config state ──
-let apiKey     = localStorage.getItem('ob_key')    || '';
-let sheetUrl   = localStorage.getItem('ob_sheet')  || '';
-let sysPrompt  = localStorage.getItem('ob_prompt') || 'Eres el asistente de operaciones. Usa SOLO la información del manual adjunto para responder. Si no encuentras la respuesta en el manual, dilo claramente.';
-let botName    = localStorage.getItem('ob_name')   || 'OpsBot';
-let history    = [];
-let isStreaming = false;
-let sheetContent = '';
-let sheetSections = [];
+let apiKey='',sheetUrl='',vidUrl='',sysBase='',history=[],streaming=false,sheetData='',allVideos=[],activeCat='Todos';
 
-// ── Init ──
-window.onload = () => {
-  if (apiKey) {
-    document.getElementById('inp-apikey').value    = apiKey;
-    document.getElementById('inp-sheeturl').value  = sheetUrl;
-    document.getElementById('inp-systemprompt').value = sysPrompt;
-    document.getElementById('inp-botname').value   = botName;
-  } else {
-    document.getElementById('setup-banner').style.display = 'flex';
-  }
-  if (sheetUrl) fetchSheet(true);
+window.onload=()=>{
+  apiKey=localStorage.getItem('pg_key')||'';
+  sheetUrl=localStorage.getItem('pg_sheet')||'';
+  vidUrl=localStorage.getItem('pg_vid')||'';
+  sysBase=localStorage.getItem('pg_sys')||'Eres Pi GOps, el asistente de operaciones de Pibox. Responde únicamente con base en el manual adjunto. Si no encuentras la respuesta, indícalo claramente y sugiere a quién escalar.';
+  if(apiKey){
+    document.getElementById('inp-key').value=apiKey;
+    document.getElementById('inp-url').value=sheetUrl;
+    document.getElementById('inp-vid').value=vidUrl;
+    document.getElementById('inp-sys').value=sysBase;
+  } else { document.getElementById('setup-banner').style.display='flex'; }
+  if(sheetUrl) fetchSheet();
+  if(vidUrl) loadVideos();
   autoResize();
 };
 
-// ── Config modal ──
-function openConfig() {
-  document.getElementById('modal-overlay').classList.add('open');
-}
-function closeConfig() {
-  document.getElementById('modal-overlay').classList.remove('open');
-}
-function openSheetPanel() {
-  if (!sheetUrl) { openConfig(); return; }
-  fetchSheet(true);
+function switchTab(t){
+  ['chat','library'].forEach(v=>{
+    document.getElementById(v+'-view').classList.toggle('active',v===t);
+    document.getElementById('tab-'+(v==='library'?'lib':v)).classList.toggle('active',v===t);
+  });
+  if(t==='library'&&allVideos.length===0&&vidUrl) loadVideos();
 }
 
-async function saveConfig() {
-  const key   = document.getElementById('inp-apikey').value.trim();
-  const url   = document.getElementById('inp-sheeturl').value.trim();
-  const sys   = document.getElementById('inp-systemprompt').value.trim();
-  const name  = document.getElementById('inp-botname').value.trim() || 'OpsBot';
+function openConfig(){document.getElementById('overlay').classList.add('open');}
+function closeConfig(){document.getElementById('overlay').classList.remove('open');}
 
-  if (!key) { alert('Ingresa tu API Key de Anthropic.'); return; }
-  if (!url) { alert('Ingresa la URL del Google Sheet.'); return; }
-
-  apiKey = key; sheetUrl = url;
-  sysPrompt = sys || sysPrompt;
-  botName = name;
-
-  localStorage.setItem('ob_key',    key);
-  localStorage.setItem('ob_sheet',  url);
-  localStorage.setItem('ob_prompt', sysPrompt);
-  localStorage.setItem('ob_name',   name);
-
-  document.getElementById('setup-banner').style.display = 'none';
-  closeConfig();
-  await fetchSheet(true);
-  showToast('Configuración guardada ✓');
+async function saveConfig(){
+  const k=document.getElementById('inp-key').value.trim();
+  const u=document.getElementById('inp-url').value.trim();
+  const vu=document.getElementById('inp-vid').value.trim();
+  const s=document.getElementById('inp-sys').value.trim();
+  if(!k){alert('Ingresa tu API Key.');return;}
+  if(!u){alert('Ingresa la URL del Sheet del manual.');return;}
+  apiKey=k;sheetUrl=u;vidUrl=vu;if(s)sysBase=s;
+  localStorage.setItem('pg_key',k);localStorage.setItem('pg_sheet',u);
+  localStorage.setItem('pg_vid',vu);localStorage.setItem('pg_sys',sysBase);
+  document.getElementById('setup-banner').style.display='none';
+  closeConfig(); fetchSheet(); if(vu){allVideos=[];loadVideos();}
+  toast('Configuración guardada ✓');
 }
 
-// ── Fetch Sheet ──
-async function fetchSheet(showPreview = false) {
-  setSheetStatus('loading', 'Cargando...');
-  try {
-    // Use a CORS proxy to fetch the public sheet CSV
-    const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(sheetUrl)}`;
-    const res = await fetch(proxyUrl);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const csv = await res.text();
-    sheetContent = csvToManual(csv);
-    sheetSections = extractSections(csv);
-    setSheetStatus('connected', 'Manual actualizado');
-    document.getElementById('sheet-fetch-info').textContent = `Leído: ${new Date().toLocaleTimeString('es-CO', {hour:'2-digit',minute:'2-digit'})}`;
-    if (showPreview) renderPreview();
-    return sheetContent;
-  } catch (e) {
-    setSheetStatus('error', 'Error al cargar');
-    console.error('Sheet fetch error:', e);
-    return null;
+async function fetchSheet(){
+  setStatus('loading','Cargando manual...');
+  try{
+    const r=await fetch('https://corsproxy.io/?'+encodeURIComponent(sheetUrl));
+    if(!r.ok) throw new Error();
+    const csv=await r.text(); sheetData=csvToText(csv);
+    setStatus('on','Manual activo');
+    document.getElementById('fetch-info').textContent='Leído: '+now();
+    return sheetData;
+  }catch{setStatus('error','Error al cargar');return null;}
+}
+
+function csvToText(csv){
+  const lines=csv.trim().split('\n');
+  let out='=== MANUAL DE OPERACIONES PIBOX ===\n\n';
+  for(const line of lines.slice(1)){
+    if(!line.trim()) continue;
+    const [a,b,c]=parseCSV(line);
+    if(!a) continue;
+    if(a&&!b&&!c){out+='\n## '+a+'\n';continue;}
+    out+='\n**'+a+'**\n';
+    if(b) out+=b+'\n';
+    if(c) out+='_Nota: '+c+'_\n';
+  }
+  return out;
+}
+
+async function loadVideos(){
+  const wrap=document.getElementById('video-grid-wrap');
+  wrap.innerHTML='<div class="lib-loading"><div class="spinner"></div><p style="color:var(--text-dim);font-size:13px;margin-top:4px">Cargando tutoriales...</p></div>';
+  document.getElementById('cat-filters').innerHTML='';
+  document.getElementById('format-hint').style.display='none';
+  try{
+    const r=await fetch('https://corsproxy.io/?'+encodeURIComponent(vidUrl));
+    if(!r.ok) throw new Error();
+    const csv=await r.text();
+    allVideos=csv.trim().split('\n').slice(1).map(l=>{
+      const c=parseCSV(l);
+      return{title:c[0]?.trim()||'',category:c[1]?.trim()||'General',desc:c[2]?.trim()||'',link:c[3]?.trim()||'',thumb:c[4]?.trim()||''};
+    }).filter(v=>v.title&&v.link);
+    document.getElementById('vid-count').textContent=allVideos.length+' tutorial'+(allVideos.length!==1?'es':'')+' disponibles';
+    renderCats(); renderVideos(allVideos);
+  }catch{
+    wrap.innerHTML='<div class="lib-empty"><svg viewBox="0 0 24 24" fill="none"><path d="M15 10l4.553-2.069A1 1 0 0121 8.87v6.26a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h10a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z" stroke="currentColor" stroke-width="2"/></svg><h3>No se pudo cargar</h3><p>Verifica la URL del Sheet de videos en ⚙ Configurar.</p></div>';
+    document.getElementById('format-hint').style.display='block';
   }
 }
 
-function csvToManual(csv) {
-  const lines = csv.trim().split('\n');
-  if (lines.length === 0) return '';
+function renderCats(){
+  const cats=['Todos',...new Set(allVideos.map(v=>v.category))];
+  document.getElementById('cat-filters').innerHTML=cats.map(c=>`<button class="cat-pill${c===activeCat?' active':''}" onclick="setCat('${c}')">${c}</button>`).join('');
+}
+function setCat(c){activeCat=c;renderCats();filterVideos();}
+function filterVideos(){
+  const q=document.getElementById('search-input').value.toLowerCase();
+  renderVideos(allVideos.filter(v=>(activeCat==='Todos'||v.category===activeCat)&&(!q||v.title.toLowerCase().includes(q)||v.desc.toLowerCase().includes(q)||v.category.toLowerCase().includes(q))));
+}
+function renderVideos(vids){
+  const wrap=document.getElementById('video-grid-wrap');
+  if(!vids.length){wrap.innerHTML='<div class="lib-empty"><svg viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="8" stroke="currentColor" stroke-width="2"/><path d="m21 21-4.35-4.35" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><h3>Sin resultados</h3><p>Intenta con otra categoría o búsqueda.</p></div>';return;}
+  wrap.innerHTML='<div class="video-grid">'+vids.map(v=>`
+    <a class="video-card" href="${esc(v.link)}" target="_blank" rel="noopener">
+      <div class="video-thumb">
+        ${v.thumb?`<img src="${esc(v.thumb)}" alt="${esc(v.title)}" onerror="this.parentElement.innerHTML='<div class=no-thumb><svg viewBox=\\'0 0 24 24\\' fill=\\'none\\'><path d=\\'M15 10l4.553-2.069A1 1 0 0121 8.87v6.26a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h10a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z\\' stroke=\\'currentColor\\' stroke-width=\\'2\\'/></svg><span>Video</span></div>'"/>`:'<div class="no-thumb"><svg viewBox="0 0 24 24" fill="none"><path d="M15 10l4.553-2.069A1 1 0 0121 8.87v6.26a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h10a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z" stroke="currentColor" stroke-width="2"/></svg><span>Video tutorial</span></div>'}
+        <div class="play-overlay"><div class="play-btn"><svg viewBox="0 0 24 24" fill="none"><path d="M5 3l14 9-14 9V3z" fill="#7B2FFF"/></svg></div></div>
+      </div>
+      <div class="video-info">
+        <div class="video-cat">${esc(v.category)}</div>
+        <div class="video-title">${esc(v.title)}</div>
+        ${v.desc?`<div class="video-desc">${esc(v.desc)}</div>`:''}
+        <a class="open-link" href="${esc(v.link)}" target="_blank" rel="noopener">Ver en Drive <svg viewBox="0 0 24 24" fill="none"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6M15 3h6v6M10 14L21 3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+      </div>
+    </a>`).join('')+'</div>';
+}
 
-  const headers = parseCSVLine(lines[0]);
-  const rows = lines.slice(1);
-  let manual = '=== MANUAL DE OPERACIONES ===\n\n';
-
-  let currentSection = '';
-  for (const line of rows) {
-    if (!line.trim()) continue;
-    const cols = parseCSVLine(line);
-    if (!cols[0]?.trim()) continue;
-
-    // Detect section header (e.g. col[0] starts with #, or col[1] is empty)
-    const firstCol = cols[0]?.trim() || '';
-    const secondCol = cols[1]?.trim() || '';
-    const thirdCol = cols[2]?.trim() || '';
-
-    // If it's a section title (only first column filled)
-    if (firstCol && !secondCol && !thirdCol) {
-      currentSection = firstCol;
-      manual += `\n## ${firstCol}\n`;
-      continue;
-    }
-
-    // Build based on available columns
-    if (headers.length >= 2) {
-      // Assume: col0=Pregunta/Tema, col1=Respuesta/Contenido, col2=Notas (optional)
-      if (firstCol) {
-        manual += `\n**${firstCol}**\n`;
-        if (secondCol) manual += `${secondCol}\n`;
-        if (thirdCol) manual += `_Nota: ${thirdCol}_\n`;
-      }
-    } else {
-      manual += `${firstCol}\n`;
-    }
+async function sendMessage(retries=0){
+  if(!apiKey){document.getElementById('setup-banner').style.display='flex';return;}
+  const inp=document.getElementById('user-input');
+  const text=inp.value.trim();
+  if(!text||streaming) return;
+  inp.value='';autoResize();streaming=true;
+  document.getElementById('send-btn').disabled=true;
+  removeEmpty();addUserMsg(text);history.push({role:'user',content:text});
+  setStatus('loading','Leyendo manual...');
+  const fresh=await fetchSheet();
+  const manual=fresh||sheetData||'(Manual no disponible)';
+  const system=sysBase+'\n\n'+manual+'\n\n---\nResponde siempre en español. Sé claro, práctico y directo.';
+  const msgs=document.getElementById('messages');
+  const div=document.createElement('div');div.className='msg bot';div.id='smsg';
+  div.innerHTML='<div class="avatar bot">PG</div><div class="bwrap"><div class="bubble" id="sbubble"><span style="color:var(--p1)">▋</span></div></div>';
+  msgs.appendChild(div);scrollDown();
+  const bubble=document.getElementById('sbubble');let full='';
+  try{
+    const res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:1024,stream:true,system,messages:history})});
+    if(!res.ok){const e=await res.json().catch(()=>({}));throw new Error(e.error?.message||'Error '+res.status);}
+    const reader=res.body.getReader();const dec=new TextDecoder();
+    while(true){const{done,value}=await reader.read();if(done)break;for(const line of dec.decode(value).split('\n')){if(!line.startsWith('data: '))continue;const d=line.slice(6).trim();if(d==='[DONE]')continue;try{const p=JSON.parse(d);if(p.type==='content_block_delta'&&p.delta?.text){full+=p.delta.text;bubble.innerHTML=fmtMd(full)+'<span style="color:var(--p1)">▋</span>';scrollDown();}}catch{}}}
+    div.id='';bubble.innerHTML=fmtMd(full);
+    div.querySelector('.bwrap').innerHTML+='<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:2px;"><span class="src-tag">📋 Google Sheets</span><span class="msg-meta">Pi GOps · '+now()+'</span></div>';
+    history.push({role:'assistant',content:full});
+  }catch(err){
+    div.remove();
+    if((err.message?.includes('529')||err.message?.includes('overloaded'))&&retries<2){streaming=false;document.getElementById('send-btn').disabled=false;history.pop();await sleep(2000*(retries+1));history.push({role:'user',content:text});await sendMessage(retries+1);return;}
+    addError(err.message||'No se pudo obtener respuesta.');
   }
-  return manual;
+  streaming=false;setStatus('on','Manual activo');document.getElementById('send-btn').disabled=false;
 }
 
-function parseCSVLine(line) {
-  const result = [];
-  let current = '';
-  let inQuotes = false;
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
-    if (ch === '"') {
-      inQuotes = !inQuotes;
-    } else if (ch === ',' && !inQuotes) {
-      result.push(current.trim());
-      current = '';
-    } else {
-      current += ch;
-    }
-  }
-  result.push(current.trim());
-  return result;
-}
-
-function extractSections(csv) {
-  const lines = csv.trim().split('\n').slice(1);
-  const sections = new Set();
-  for (const line of lines) {
-    const cols = parseCSVLine(line);
-    const first = cols[0]?.trim();
-    const second = cols[1]?.trim();
-    const third = cols[2]?.trim();
-    if (first && !second && !third) sections.add(first);
-  }
-  return [...sections].slice(0, 6);
-}
-
-function renderPreview() {
-  const preview = document.getElementById('sheet-preview');
-  const tags = document.getElementById('preview-tags');
-  const count = document.getElementById('preview-count');
-
-  tags.innerHTML = sheetSections.map(s =>
-    `<span class="preview-tag">${escHtml(s)}</span>`
-  ).join('');
-
-  const rows = sheetContent.split('\n').filter(l => l.startsWith('**')).length;
-  count.textContent = `${rows} entradas`;
-  preview.classList.add('visible');
-  setTimeout(() => preview.classList.remove('visible'), 8000);
-}
-
-function setSheetStatus(state, text) {
-  const dot = document.getElementById('sheet-dot');
-  const label = document.getElementById('sheet-status-text');
-  dot.className = `sheet-dot ${state}`;
-  label.textContent = text;
-}
-
-// ── Send message ──
-async function sendMessage(retries = 0) {
-  if (!apiKey) {
-    document.getElementById('setup-banner').style.display = 'flex';
-    return;
-  }
-  const input = document.getElementById('user-input');
-  const text = input.value.trim();
-  if (!text || isStreaming) return;
-
-  input.value = '';
-  autoResize();
-  isStreaming = true;
-  document.getElementById('send-btn').disabled = true;
-  removeEmptyState();
-
-  addUserMsg(text);
-  history.push({ role: 'user', content: text });
-
-  // Fetch fresh sheet content
-  setSheetStatus('loading', 'Leyendo manual...');
-  const freshContent = await fetchSheet(false);
-  const manualToUse = freshContent || sheetContent || '(No se pudo cargar el manual)';
-
-  const fullSystemPrompt = `${sysPrompt}
-
-${manualToUse}
-
----
-Responde siempre en español. Sé claro, directo y usa el manual como única fuente. Si la respuesta no está en el manual, dilo explícitamente.`;
-
-  // Add streaming message
-  removeEmptyState();
-  const msgs = document.getElementById('messages');
-  const msgDiv = document.createElement('div');
-  msgDiv.className = 'msg bot'; msgDiv.id = 'streaming-msg';
-  msgDiv.innerHTML = `
-    <div class="avatar bot">OP</div>
-    <div class="bubble-wrap">
-      <div class="bubble" id="streaming-bubble"><span style="color:var(--text-dim)">▋</span></div>
-    </div>`;
-  msgs.appendChild(msgDiv);
-  scrollBottom();
-
-  const bubble = document.getElementById('streaming-bubble');
-  let fullText = '';
-
-  try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true'
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 1024,
-        stream: true,
-        system: fullSystemPrompt,
-        messages: history
-      })
-    });
-
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error?.message || `Error ${res.status}`);
-    }
-
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      const chunk = decoder.decode(value);
-      for (const line of chunk.split('\n')) {
-        if (!line.startsWith('data: ')) continue;
-        const data = line.slice(6).trim();
-        if (data === '[DONE]') continue;
-        try {
-          const p = JSON.parse(data);
-          if (p.type === 'content_block_delta' && p.delta?.text) {
-            fullText += p.delta.text;
-            bubble.innerHTML = formatMd(fullText) + '<span style="color:var(--text-dim)">▋</span>';
-            scrollBottom();
-          }
-        } catch {}
-      }
-    }
-
-    // Finalize
-    msgDiv.id = '';
-    bubble.innerHTML = formatMd(fullText);
-    // Add source badge
-    const bw = msgDiv.querySelector('.bubble-wrap');
-    bw.innerHTML += `
-      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-        <span class="source-badge">
-          <svg width="10" height="10" viewBox="0 0 24 24" fill="none"><path d="M9 12h6M9 16h6M9 8h6M5 3h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2z" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-          Desde Google Sheets
-        </span>
-        <span class="msg-meta">${botName} · ${getTime()}</span>
-      </div>`;
-    history.push({ role: 'assistant', content: fullText });
-
-  } catch (err) {
-    msgDiv.remove();
-    const overloaded = err.message?.includes('529') || err.message?.includes('overloaded');
-    if (overloaded && retries < 2) {
-      isStreaming = false;
-      document.getElementById('send-btn').disabled = false;
-      history.pop();
-      await sleep(2000 * (retries + 1));
-      history.push({ role: 'user', content: text });
-      await sendMessage(retries + 1);
-      return;
-    }
-    addError(err.message || 'No se pudo obtener respuesta.');
-  }
-
-  isStreaming = false;
-  setSheetStatus('connected', 'Manual actualizado');
-  document.getElementById('send-btn').disabled = false;
-}
-
-function sendChip(el) {
-  document.getElementById('user-input').value = el.textContent;
-  sendMessage();
-}
-
-// ── Helpers ──
-function addUserMsg(text) {
-  removeEmptyState();
-  const msgs = document.getElementById('messages');
-  const d = document.createElement('div');
-  d.className = 'msg user';
-  d.innerHTML = `
-    <div class="bubble-wrap">
-      <div class="bubble">${escHtml(text).replace(/\n/g,'<br>')}</div>
-      <div class="msg-meta">${getTime()}</div>
-    </div>
-    <div class="avatar user">👤</div>`;
-  msgs.appendChild(d);
-  scrollBottom();
-}
-
-function addError(msg) {
-  const msgs = document.getElementById('messages');
-  const d = document.createElement('div');
-  d.className = 'msg bot';
-  d.innerHTML = `
-    <div class="avatar bot">OP</div>
-    <div class="error-msg">⚠ ${escHtml(msg)}</div>`;
-  msgs.appendChild(d);
-  scrollBottom();
-}
-
-function removeEmptyState() {
-  const es = document.getElementById('empty-state');
-  if (es) es.remove();
-}
-
-function formatMd(text) {
-  let h = escHtml(text);
-  h = h.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-  h = h.replace(/`([^`]+)`/g, '<code>$1</code>');
-  h = h.replace(/^### (.+)$/gm, '<strong style="display:block;margin:8px 0 4px;font-size:13px;">$1</strong>');
-  h = h.replace(/^## (.+)$/gm, '<strong style="display:block;margin:10px 0 5px;color:var(--accent2);">$1</strong>');
-  h = h.replace(/^[\-\*] (.+)$/gm, '<li>$1</li>');
-  h = h.replace(/^\d+\. (.+)$/gm, '<li>$1</li>');
-  h = h.replace(/(<li>[\s\S]*?<\/li>)/g, '<ul>$1</ul>');
-  h = h.replace(/\n\n/g, '</p><p>').replace(/\n/g, '<br>');
-  return `<p>${h}</p>`;
-}
-
-function escHtml(s) {
-  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-}
-function getTime() {
-  return new Date().toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'});
-}
-function scrollBottom() {
-  const c = document.getElementById('chat-container');
-  c.scrollTop = c.scrollHeight;
-}
-function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
-function showToast(msg) {
-  const t = document.createElement('div');
-  t.className = 'toast'; t.textContent = msg;
-  document.body.appendChild(t);
-  setTimeout(() => t.remove(), 2500);
-}
-
-// Auto-resize textarea
-const inputEl = document.getElementById('user-input');
-function autoResize() {
-  inputEl.style.height = 'auto';
-  inputEl.style.height = Math.min(inputEl.scrollHeight, 140) + 'px';
-}
-inputEl.addEventListener('input', autoResize);
-inputEl.addEventListener('keydown', e => {
-  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
-});
+function sendChip(el){document.getElementById('user-input').value=el.textContent.trim();sendMessage();}
+function addUserMsg(text){const msgs=document.getElementById('messages');const d=document.createElement('div');d.className='msg user';d.innerHTML='<div class="bwrap"><div class="bubble">'+esc(text).replace(/\n/g,'<br>')+'</div><div class="msg-meta">'+now()+'</div></div><div class="avatar user">👤</div>';msgs.appendChild(d);scrollDown();}
+function addError(msg){const msgs=document.getElementById('messages');const d=document.createElement('div');d.className='msg bot';d.innerHTML='<div class="avatar bot">PG</div><div class="error-bub">⚠ '+esc(msg)+'</div>';msgs.appendChild(d);scrollDown();}
+function removeEmpty(){const e=document.getElementById('empty-state');if(e)e.remove();}
+function fmtMd(t){let h=esc(t);h=h.replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>');h=h.replace(/`([^`]+)`/g,'<code>$1</code>');h=h.replace(/^### (.+)$/gm,'<strong style="display:block;margin:8px 0 4px;font-size:13px;color:var(--p3)">$1</strong>');h=h.replace(/^## (.+)$/gm,'<strong style="display:block;margin:10px 0 5px;color:var(--p2)">$1</strong>');h=h.replace(/^[\-\*] (.+)$/gm,'<li>$1</li>');h=h.replace(/^\d+\. (.+)$/gm,'<li>$1</li>');h=h.replace(/(<li>[\s\S]*?<\/li>)/g,'<ul>$1</ul>');h=h.replace(/\n\n/g,'</p><p>').replace(/\n/g,'<br>');return '<p>'+h+'</p>';}
+function parseCSV(line){const r=[];let cur='',q=false;for(const ch of line){if(ch==='"'){q=!q;}else if(ch===','&&!q){r.push(cur.trim());cur='';}else cur+=ch;}r.push(cur.trim());return r;}
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function now(){return new Date().toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'});}
+function scrollDown(){const c=document.getElementById('chat-container');c.scrollTop=c.scrollHeight;}
+function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
+function setStatus(state,text){document.getElementById('sdot').className='sdot '+state;document.getElementById('stext').textContent=text;}
+function toast(msg){const t=document.createElement('div');t.className='toast';t.textContent=msg;document.body.appendChild(t);setTimeout(()=>t.remove(),2500);}
+const inp=document.getElementById('user-input');
+function autoResize(){inp.style.height='auto';inp.style.height=Math.min(inp.scrollHeight,140)+'px';}
+inp.addEventListener('input',autoResize);
+inp.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMessage();}});
 </script>
 </body>
 </html>
