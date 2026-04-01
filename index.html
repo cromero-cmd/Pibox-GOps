@@ -410,6 +410,15 @@ hr { border:none; border-top:1px solid var(--border); margin:20px 0; }
 <script>
 let apiKey='',sheetUrl='',vidUrl='',sysBase='',history=[],streaming=false,sheetData='',allVideos=[],activeCat='Todos';
 
+const SCRIPT_URL='https://script.google.com/macros/s/AKfycbyam6j2MG1NH11120KjvAfxU1f_z9BYh4uamQw8QgNeGsjpwoo394IeqzbDSPXSO9e5/exec';
+async function fetchSheetByName(name){
+  const r=await fetch(SCRIPT_URL+'?sheet='+encodeURIComponent(name),{signal:AbortSignal.timeout(10000)});
+  if(!r.ok) throw new Error('Error '+r.status);
+  const t=await r.text();
+  if(!t||t.length<5) throw new Error('Sin datos');
+  return t;
+}
+
 window.onload=()=>{
   apiKey=localStorage.getItem('pg_key')||'';
   sheetUrl=localStorage.getItem('pg_sheet')||'';
@@ -455,9 +464,8 @@ async function saveConfig(){
 async function fetchSheet(){
   setStatus('loading','Cargando manual...');
   try{
-    const r=await fetch('https://api.allorigins.win/raw?url='+encodeURIComponent(sheetUrl));
-    if(!r.ok) throw new Error();
-    const csv=await r.text(); sheetData=csvToText(csv);
+    const csv=await fetchSheetByName('Manual del asistente');
+    sheetData=csvToText(csv);
     setStatus('on','Manual activo');
     document.getElementById('fetch-info').textContent='Leído: '+now();
     return sheetData;
@@ -485,9 +493,7 @@ async function loadVideos(){
   document.getElementById('cat-filters').innerHTML='';
   document.getElementById('format-hint').style.display='none';
   try{
-    const r=await fetch('https://api.allorigins.win/raw?url='+encodeURIComponent(vidUrl));
-    if(!r.ok) throw new Error();
-    const csv=await r.text();
+    const csv=await fetchSheetByName('Tutoriales');
     allVideos=csv.trim().split('\n').slice(1).map(l=>{
       const c=parseCSV(l);
       return{title:c[0]?.trim()||'',category:c[1]?.trim()||'General',desc:c[2]?.trim()||'',link:c[3]?.trim()||'',thumb:c[4]?.trim()||''};
