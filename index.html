@@ -455,7 +455,7 @@ async function saveConfig(){
 async function fetchSheet(){
   setStatus('loading','Cargando manual...');
   try{
-    const r=await fetch('https://corsproxy.io/?'+encodeURIComponent(sheetUrl));
+    const r=await fetch('https://api.allorigins.win/raw?url='+encodeURIComponent(sheetUrl));
     if(!r.ok) throw new Error();
     const csv=await r.text(); sheetData=csvToText(csv);
     setStatus('on','Manual activo');
@@ -485,7 +485,7 @@ async function loadVideos(){
   document.getElementById('cat-filters').innerHTML='';
   document.getElementById('format-hint').style.display='none';
   try{
-    const r=await fetch('https://corsproxy.io/?'+encodeURIComponent(vidUrl));
+    const r=await fetch('https://api.allorigins.win/raw?url='+encodeURIComponent(vidUrl));
     if(!r.ok) throw new Error();
     const csv=await r.text();
     allVideos=csv.trim().split('\n').slice(1).map(l=>{
