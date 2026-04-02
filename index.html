@@ -899,7 +899,7 @@ function clearFile() {
 
 const inp=document.getElementById('user-input');
   const text=inp.value.trim();
-  if(!text||streaming) return;
+  if((!text&&!attachedFileData)||streaming) return;
   inp.value='';autoResize();streaming=true;
   document.getElementById('send-btn').disabled=true;
   const fileDataToSend = attachedFileData;
