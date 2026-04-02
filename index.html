@@ -1015,6 +1015,32 @@ const inp=document.getElementById('user-input');
 function autoResize(){inp.style.height='auto';inp.style.height=Math.min(inp.scrollHeight,120)+'px';}
 inp.addEventListener('input',autoResize);
 inp.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMessage();}});
+
+// Paste image from clipboard
+inp.addEventListener('paste', e => {
+  const items = e.clipboardData?.items;
+  if (!items) return;
+  for (const item of items) {
+    if (item.type.startsWith('image/')) {
+      e.preventDefault();
+      const file = item.getAsFile();
+      if (!file) continue;
+      attachedFile = file;
+      attachedFileType = file.type;
+      document.getElementById('file-preview-icon').textContent = '🖼️';
+      document.getElementById('file-preview-name').textContent = 'Imagen pegada';
+      document.getElementById('file-preview-size').textContent = (file.size/1024).toFixed(1) + ' KB';
+      document.getElementById('file-preview-wrap').style.display = 'flex';
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        attachedFileData = ev.target.result.split(',')[1];
+      };
+      reader.readAsDataURL(file);
+      toast('Imagen pegada ✓ — presiona Enter para enviar');
+      break;
+    }
+  }
+});
 </script>
 </body>
 </html>
