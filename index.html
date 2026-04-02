@@ -899,7 +899,9 @@ function clearFile() {
 
 const inp=document.getElementById('user-input');
   const text=inp.value.trim();
-  if((!text&&!attachedFileData)||streaming) return;
+  if(streaming) return;
+  if(!text && !attachedFile) return;
+  if(attachedFile && !attachedFileData){ toast('Espera un momento, cargando imagen...'); return; }
   inp.value='';autoResize();streaming=true;
   document.getElementById('send-btn').disabled=true;
   const fileDataToSend = attachedFileData;
@@ -1027,6 +1029,7 @@ inp.addEventListener('paste', e => {
       if (!file) continue;
       attachedFile = file;
       attachedFileType = file.type;
+      attachedFileData = null; // reset while loading
       document.getElementById('file-preview-icon').textContent = '🖼️';
       document.getElementById('file-preview-name').textContent = 'Imagen pegada';
       document.getElementById('file-preview-size').textContent = (file.size/1024).toFixed(1) + ' KB';
@@ -1034,9 +1037,9 @@ inp.addEventListener('paste', e => {
       const reader = new FileReader();
       reader.onload = (ev) => {
         attachedFileData = ev.target.result.split(',')[1];
+        toast('Imagen lista ✓ — escribe tu pregunta o presiona Enter');
       };
       reader.readAsDataURL(file);
-      toast('Imagen pegada ✓ — presiona Enter para enviar');
       break;
     }
   }
