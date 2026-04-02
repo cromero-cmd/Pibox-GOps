@@ -679,6 +679,30 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 
 <script>
 let apiKey='',sheetUrl='',vidUrl='',faqUrl='',sysBase='',history=[],streaming=false,sheetData='',allVideos=[],activeCat='Todos',allFAQs=[],activeFAQCat='Todos';
+let attachedFile=null,attachedFileData=null,attachedFileType=null;
+
+function handleFile(input){
+  const file=input.files[0];
+  if(!file) return;
+  if(file.size>10*1024*1024){toast('Archivo demasiado grande. Máximo 10MB');input.value='';return;}
+  const isImage=file.type.startsWith('image/');
+  const isPDF=file.type==='application/pdf';
+  if(!isImage&&!isPDF){toast('Solo se permiten imágenes y PDFs');input.value='';return;}
+  attachedFile=file;attachedFileType=file.type;attachedFileData=null;
+  document.getElementById('file-preview-icon').textContent=isImage?'🖼️':'📄';
+  document.getElementById('file-preview-name').textContent=file.name;
+  document.getElementById('file-preview-size').textContent=(file.size/1024).toFixed(1)+' KB';
+  document.getElementById('file-preview-wrap').style.display='flex';
+  const reader=new FileReader();
+  reader.onload=(e)=>{attachedFileData=e.target.result.split(',')[1];toast('Archivo listo ✓');};
+  reader.readAsDataURL(file);
+}
+
+function clearFile(){
+  attachedFile=null;attachedFileData=null;attachedFileType=null;
+  document.getElementById('file-input').value='';
+  document.getElementById('file-preview-wrap').style.display='none';
+}
 
 const SCRIPT_URL='https://script.google.com/macros/s/AKfycbyam6j2MG1NH11120KjvAfxU1f_z9BYh4uamQw8QgNeGsjpwoo394IeqzbDSPXSO9e5/exec';
 
@@ -865,39 +889,7 @@ function renderVideos(vids){
 
 async function sendMessage(retries=0){
   if(!apiKey){document.getElementById('setup-banner').style.display='flex';return;}
-  // File handling
-let attachedFile = null;
-let attachedFileData = null;
-let attachedFileType = null;
-
-function handleFile(input) {
-  const file = input.files[0];
-  if (!file) return;
-  const maxSize = 10 * 1024 * 1024; // 10MB
-  if (file.size > maxSize) { toast('Archivo demasiado grande. Máximo 10MB'); input.value=''; return; }
-  attachedFile = file;
-  const isImage = file.type.startsWith('image/');
-  const isPDF = file.type === 'application/pdf';
-  if (!isImage && !isPDF) { toast('Solo se permiten imágenes y PDFs'); input.value=''; return; }
-  document.getElementById('file-preview-icon').textContent = isImage ? '🖼️' : '📄';
-  document.getElementById('file-preview-name').textContent = file.name;
-  document.getElementById('file-preview-size').textContent = (file.size/1024).toFixed(1) + ' KB';
-  document.getElementById('file-preview-wrap').style.display = 'flex';
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    attachedFileData = e.target.result.split(',')[1];
-    attachedFileType = file.type;
-  };
-  reader.readAsDataURL(file);
-}
-
-function clearFile() {
-  attachedFile = null; attachedFileData = null; attachedFileType = null;
-  document.getElementById('file-input').value = '';
-  document.getElementById('file-preview-wrap').style.display = 'none';
-}
-
-const inp=document.getElementById('user-input');
+  const inp=document.getElementById('user-input');
   const text=inp.value.trim();
   if(streaming) return;
   if(!text && !attachedFile) return;
@@ -981,38 +973,6 @@ function scrollDown(){const c=document.getElementById('chat-container');c.scroll
 function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
 function setStatus(state,text){document.getElementById('sdot').className='sdot '+state;document.getElementById('stext').textContent=text;}
 function toast(msg){const t=document.createElement('div');t.className='toast';t.textContent=msg;document.body.appendChild(t);setTimeout(()=>t.remove(),2500);}
-// File handling
-let attachedFile = null;
-let attachedFileData = null;
-let attachedFileType = null;
-
-function handleFile(input) {
-  const file = input.files[0];
-  if (!file) return;
-  const maxSize = 10 * 1024 * 1024; // 10MB
-  if (file.size > maxSize) { toast('Archivo demasiado grande. Máximo 10MB'); input.value=''; return; }
-  attachedFile = file;
-  const isImage = file.type.startsWith('image/');
-  const isPDF = file.type === 'application/pdf';
-  if (!isImage && !isPDF) { toast('Solo se permiten imágenes y PDFs'); input.value=''; return; }
-  document.getElementById('file-preview-icon').textContent = isImage ? '🖼️' : '📄';
-  document.getElementById('file-preview-name').textContent = file.name;
-  document.getElementById('file-preview-size').textContent = (file.size/1024).toFixed(1) + ' KB';
-  document.getElementById('file-preview-wrap').style.display = 'flex';
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    attachedFileData = e.target.result.split(',')[1];
-    attachedFileType = file.type;
-  };
-  reader.readAsDataURL(file);
-}
-
-function clearFile() {
-  attachedFile = null; attachedFileData = null; attachedFileType = null;
-  document.getElementById('file-input').value = '';
-  document.getElementById('file-preview-wrap').style.display = 'none';
-}
-
 const inp=document.getElementById('user-input');
 function autoResize(){inp.style.height='auto';inp.style.height=Math.min(inp.scrollHeight,120)+'px';}
 inp.addEventListener('input',autoResize);
