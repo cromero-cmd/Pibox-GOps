@@ -107,9 +107,11 @@ function renderAnalytics(events) {
   const sYes = surveyEvents.filter(e => e.resolved === 'yes').length;
   const sPartial = surveyEvents.filter(e => e.resolved === 'partial').length;
   const sNo = surveyEvents.filter(e => e.resolved === 'no').length;
+  const sSkipped = surveyEvents.filter(e => e.resolved === 'skipped').length;
   const pYes = sTotal ? Math.round((sYes/sTotal)*100) : 0;
   const pPartial = sTotal ? Math.round((sPartial/sTotal)*100) : 0;
   const pNo = sTotal ? Math.round((sNo/sTotal)*100) : 0;
+  const pSkipped = sTotal ? Math.round((sSkipped/sTotal)*100) : 0;
 
   // Top questions
   const qCount = {};
@@ -171,6 +173,11 @@ function renderAnalytics(events) {
             <div style="font-size:26px;font-weight:800;color:#f87171;">${sNo}</div>
             <div style="font-size:11px;color:#f87171;margin-top:2px;font-family:var(--mono);">No resueltas · ${pNo}%</div>
             <div style="background:rgba(248,113,113,0.2);border-radius:4px;height:4px;margin-top:8px;"><div style="background:#f87171;border-radius:4px;height:4px;width:${pNo}%;"></div></div>
+          </div>
+          <div style="background:rgba(90,82,112,0.15);border:1px solid rgba(90,82,112,0.3);border-radius:12px;padding:14px 16px;text-align:center;grid-column:1/-1;">
+            <div style="font-size:26px;font-weight:800;color:var(--text-muted);">${sSkipped}</div>
+            <div style="font-size:11px;color:var(--text-muted);margin-top:2px;font-family:var(--mono);">Sin respuesta · ${pSkipped}%</div>
+            <div style="background:rgba(90,82,112,0.2);border-radius:4px;height:4px;margin-top:8px;"><div style="background:var(--text-dim);border-radius:4px;height:4px;width:${pSkipped}%;"></div></div>
           </div>
         </div>`}
     </div>
@@ -750,7 +757,7 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
     <textarea id="survey-feedback" placeholder="¿Qué te faltó? (opcional)"></textarea>
   </div>
   <div class="survey-actions">
-    <button class="survey-skip" onclick="closeSurvey()">Omitir</button>
+    <button class="survey-skip" onclick="closeSurvey(true)">Omitir</button>
     <button class="survey-submit" id="survey-submit" onclick="submitSurvey()" style="display:none;">Enviar</button>
   </div>
 </div>
@@ -842,7 +849,7 @@ async function saveConfig(){
   toast('Configuración guardada ✓');
 }
 
-function newChat(){closeSurvey();if(surveyTimer)clearTimeout(surveyTimer);
+function newChat(){closeSurvey(true);if(surveyTimer)clearTimeout(surveyTimer);
   history=[];
   document.getElementById('messages').innerHTML=`<div class="empty-state" id="empty-state">
     <div class="empty-icon">📦</div>
@@ -993,7 +1000,10 @@ function showSurvey(){
   document.querySelectorAll('.survey-btn').forEach(b=>b.classList.remove('sel'));
 }
 
-function closeSurvey(){
+function closeSurvey(track=false){
+  if(track && surveyAnswer===null){
+    window.trackEvent&&window.trackEvent('survey',{resolved:'skipped',feedback:null,conversationLength:history.length});
+  }
   document.getElementById('survey-card').style.display='none';
   if(surveyTimer) clearTimeout(surveyTimer);
 }
@@ -1164,7 +1174,10 @@ function showSurvey(){
   document.querySelectorAll('.survey-btn').forEach(b=>b.classList.remove('sel'));
 }
 
-function closeSurvey(){
+function closeSurvey(track=false){
+  if(track && surveyAnswer===null){
+    window.trackEvent&&window.trackEvent('survey',{resolved:'skipped',feedback:null,conversationLength:history.length});
+  }
   document.getElementById('survey-card').style.display='none';
   if(surveyTimer) clearTimeout(surveyTimer);
 }
