@@ -339,7 +339,11 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 #chat-view{flex-direction:row;}
 
 /* FAQ Sidebar */
-.faq-sidebar{width:220px;flex-shrink:0;border-right:1px solid var(--border);background:rgba(21,18,33,0.6);display:flex;flex-direction:column;overflow:hidden;}
+.faq-sidebar{width:220px;min-width:160px;max-width:400px;flex-shrink:0;background:rgba(21,18,33,0.6);display:flex;flex-direction:column;overflow:hidden;position:relative;}
+.faq-resizer{width:5px;background:transparent;cursor:col-resize;flex-shrink:0;border-right:1px solid var(--border);transition:background 0.2s;position:relative;z-index:5;}
+.faq-resizer:hover,.faq-resizer.dragging{background:var(--p1);}
+.faq-resizer::after{content:'';position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:3px;height:32px;border-radius:3px;background:var(--border);transition:background 0.2s;}
+.faq-resizer:hover::after,.faq-resizer.dragging::after{background:var(--p1);}
 .faq-header{padding:16px 16px 12px;border-bottom:1px solid var(--border);flex-shrink:0;}
 .faq-title{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-dim);margin-bottom:2px;}
 .faq-sub{font-size:10px;color:var(--text-dim);font-family:var(--mono);}
@@ -655,6 +659,7 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
         </div>
       </div>
     </div>
+    <div class="faq-resizer" id="faq-resizer"></div>
     <div class="chat-main">
       <div id="chat-container">
         <div class="messages-inner" id="messages">
@@ -1037,6 +1042,45 @@ async function submitSurvey(){
   toast(surveyAnswer==='yes'?'¡Gracias por tu respuesta! 🎉':'Gracias, usaremos esto para mejorar 💪');
 }
 
+// Drag-to-resize FAQ sidebar
+(function(){
+  const resizer = document.getElementById('faq-resizer');
+  const sidebar = document.querySelector('.faq-sidebar');
+  if(!resizer || !sidebar) return;
+  let startX, startW;
+  resizer.addEventListener('mousedown', e => {
+    startX = e.clientX;
+    startW = sidebar.offsetWidth;
+    resizer.classList.add('dragging');
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    function onMove(e){
+      const diff = e.clientX - startX;
+      const newW = Math.min(400, Math.max(160, startW + diff));
+      sidebar.style.width = newW + 'px';
+    }
+    function onUp(){
+      resizer.classList.remove('dragging');
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    }
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
+  // Touch support
+  resizer.addEventListener('touchstart', e => {
+    startX = e.touches[0].clientX;
+    startW = sidebar.offsetWidth;
+    resizer.classList.add('dragging');
+    function onMove(e){ const diff=e.touches[0].clientX-startX; sidebar.style.width=Math.min(400,Math.max(160,startW+diff))+'px'; }
+    function onUp(){ resizer.classList.remove('dragging'); document.removeEventListener('touchmove',onMove); document.removeEventListener('touchend',onUp); }
+    document.addEventListener('touchmove', onMove);
+    document.addEventListener('touchend', onUp);
+  });
+})();
+
 const inp=document.getElementById('user-input');
   const text=inp.value.trim();
   if(streaming) return;
@@ -1210,6 +1254,45 @@ async function submitSurvey(){
   closeSurvey();
   toast(surveyAnswer==='yes'?'¡Gracias por tu respuesta! 🎉':'Gracias, usaremos esto para mejorar 💪');
 }
+
+// Drag-to-resize FAQ sidebar
+(function(){
+  const resizer = document.getElementById('faq-resizer');
+  const sidebar = document.querySelector('.faq-sidebar');
+  if(!resizer || !sidebar) return;
+  let startX, startW;
+  resizer.addEventListener('mousedown', e => {
+    startX = e.clientX;
+    startW = sidebar.offsetWidth;
+    resizer.classList.add('dragging');
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    function onMove(e){
+      const diff = e.clientX - startX;
+      const newW = Math.min(400, Math.max(160, startW + diff));
+      sidebar.style.width = newW + 'px';
+    }
+    function onUp(){
+      resizer.classList.remove('dragging');
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    }
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
+  // Touch support
+  resizer.addEventListener('touchstart', e => {
+    startX = e.touches[0].clientX;
+    startW = sidebar.offsetWidth;
+    resizer.classList.add('dragging');
+    function onMove(e){ const diff=e.touches[0].clientX-startX; sidebar.style.width=Math.min(400,Math.max(160,startW+diff))+'px'; }
+    function onUp(){ resizer.classList.remove('dragging'); document.removeEventListener('touchmove',onMove); document.removeEventListener('touchend',onUp); }
+    document.addEventListener('touchmove', onMove);
+    document.addEventListener('touchend', onUp);
+  });
+})();
 
 const inp=document.getElementById('user-input');
 function autoResize(){inp.style.height='auto';inp.style.height=Math.min(inp.scrollHeight,120)+'px';}
