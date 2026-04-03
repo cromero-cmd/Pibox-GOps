@@ -100,6 +100,9 @@ function renderAnalytics(events) {
   const chatEvents = events.filter(e => e.type === 'chat');
   const faqEvents = events.filter(e => e.type === 'faq');
   const tutorialEvents = events.filter(e => e.type === 'tutorial');
+  const surveyEvents = events.filter(e => e.type === 'survey');
+  const resolved = surveyEvents.filter(e => e.resolved === 'yes').length;
+  const resolutionRate = surveyEvents.length ? Math.round((resolved/surveyEvents.length)*100) : null;
 
   // Top questions
   const qCount = {};
@@ -185,6 +188,19 @@ function renderAnalytics(events) {
             <div class="an-row-text">${esc(t)}</div>
             <div class="an-badge">${c}x</div>
           </div>`).join('') : '<div class="an-empty">Sin datos aún</div>'}
+      </div>
+
+      <!-- Survey feedback -->
+      <div class="an-section" style="grid-column:1/-1;">
+        <div class="an-section-title">💬 Feedback de consultas no resueltas</div>
+        ${surveyEvents.filter(e=>e.feedback).length ?
+          surveyEvents.filter(e=>e.feedback).slice(0,8).map((e,i)=>`
+            <div class="an-row">
+              <div class="an-rank">${i+1}</div>
+              <div class="an-row-text">${esc(e.feedback)}</div>
+              <div class="an-badge" style="background:rgba(251,146,60,0.15);border-color:rgba(251,146,60,0.3);color:#fb923c;">${e.resolved==='partial'?'Parcial':'No resuelto'}</div>
+            </div>`).join('')
+          : '<div class="an-empty">Aparecerá cuando usuarios reporten consultas no resueltas</div>'}
       </div>
     </div>`;
 }
