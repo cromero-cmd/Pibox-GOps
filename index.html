@@ -308,7 +308,7 @@ header{position:relative;z-index:10;display:flex;align-items:center;justify-cont
 .user-pill-email{font-size:10px;color:var(--text-dim);font-family:var(--mono);}
 
 /* Modal */
-.overlay{position:fixed;inset:0;background:rgba(13,11,20,0.88);backdrop-filter:blur(8px);z-index:200;display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity 0.25s;}
+.overlay{position:fixed;inset:0;background:rgba(13,11,20,0.88);backdrop-filter:blur(8px);z-index:600;display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity 0.25s;}
 .overlay.open{opacity:1;pointer-events:all;}
 .modal{background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:28px;width:min(560px,94vw);box-shadow:var(--shadow),var(--glow);transform:translateY(14px) scale(0.98);transition:transform 0.25s;max-height:92dvh;overflow-y:auto;position:relative;}
 .modal::before{content:'';position:absolute;top:0;left:20px;right:20px;height:1px;background:var(--grad);border-radius:100px;}
@@ -511,7 +511,7 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 .an-loading{display:flex;flex-direction:column;align-items:center;gap:14px;padding:60px 20px;text-align:center;}
 
 .toast{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:var(--grad);color:white;padding:8px 20px;border-radius:100px;font-weight:700;font-size:13px;z-index:999;box-shadow:0 4px 20px rgba(123,47,255,0.5);animation:msgIn 0.3s ease both;}
-.update-banner{position:fixed;top:0;left:0;right:0;z-index:500;background:linear-gradient(135deg,#1a0a3a,#2d1060);border-bottom:1px solid var(--p1);padding:10px 20px;display:flex;align-items:center;justify-content:center;gap:14px;animation:slideDown 0.4s ease both;}
+.update-banner{position:fixed;top:0;left:0;right:0;z-index:400;background:linear-gradient(135deg,#1a0a3a,#2d1060);border-bottom:1px solid var(--p1);padding:10px 20px;display:flex;align-items:center;justify-content:center;gap:14px;animation:slideDown 0.4s ease both;}
 @keyframes slideDown{from{transform:translateY(-100%)}to{transform:translateY(0)}}
 .update-banner-text{font-size:13px;font-weight:600;color:var(--text);display:flex;align-items:center;gap:8px;}
 .update-banner-text span{font-size:16px;}
