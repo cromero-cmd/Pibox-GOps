@@ -137,8 +137,8 @@ function renderAnalytics(events) {
         <div class="an-label">Consultas al asistente</div>
       </div>
       <div class="an-card">
-        <div class="an-num">${faqEvents.length}</div>
-        <div class="an-label">FAQs consultadas</div>
+        <div class="an-num">${resolutionRate !== null ? resolutionRate+'%' : '—'}</div>
+        <div class="an-label">Tasa de resolución</div>
       </div>
     </div>
 
@@ -447,6 +447,23 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 .an-loading{display:flex;flex-direction:column;align-items:center;gap:14px;padding:60px 20px;text-align:center;}
 
 .toast{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:var(--grad);color:white;padding:8px 20px;border-radius:100px;font-weight:700;font-size:13px;z-index:999;box-shadow:0 4px 20px rgba(123,47,255,0.5);animation:msgIn 0.3s ease both;}
+.survey-card{position:fixed;bottom:100px;left:50%;transform:translateX(-50%);background:var(--surface);border:1px solid var(--border-p);border-radius:16px;padding:18px 22px;width:min(420px,92vw);box-shadow:var(--shadow),var(--glow);z-index:998;animation:fadeUp 0.35s ease both;}
+.survey-card::before{content:'';position:absolute;top:0;left:20px;right:20px;height:1px;background:var(--grad);border-radius:100px;}
+.survey-q{font-size:14px;font-weight:700;color:var(--text);margin-bottom:14px;text-align:center;}
+.survey-btns{display:flex;gap:8px;justify-content:center;margin-bottom:0;}
+.survey-btn{flex:1;padding:9px 10px;border-radius:10px;border:1.5px solid var(--border);background:var(--surface2);color:var(--text-muted);font-family:var(--font);font-size:13px;font-weight:600;cursor:pointer;transition:all 0.2s;text-align:center;}
+.survey-btn:hover{transform:translateY(-1px);}
+.survey-btn.yes:hover,.survey-btn.yes.sel{border-color:#4ade80;background:rgba(74,222,128,0.1);color:#4ade80;}
+.survey-btn.partial:hover,.survey-btn.partial.sel{border-color:#fb923c;background:rgba(251,146,60,0.1);color:#fb923c;}
+.survey-btn.no:hover,.survey-btn.no.sel{border-color:#f87171;background:rgba(248,113,113,0.1);color:#f87171;}
+.survey-followup{margin-top:12px;display:none;}
+.survey-followup textarea{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:9px;color:var(--text);font-family:var(--font);font-size:12px;padding:9px 12px;outline:none;resize:none;height:70px;line-height:1.5;}
+.survey-followup textarea:focus{border-color:var(--p1);}
+.survey-actions{display:flex;gap:8px;margin-top:10px;justify-content:flex-end;}
+.survey-skip{background:none;border:none;color:var(--text-dim);font-family:var(--font);font-size:12px;cursor:pointer;padding:4px 8px;}
+.survey-skip:hover{color:var(--text-muted);}
+.survey-submit{background:var(--grad);border:none;color:white;padding:7px 18px;border-radius:8px;font-family:var(--font);font-weight:700;font-size:12px;cursor:pointer;transition:all 0.2s;}
+.survey-submit:hover{transform:translateY(-1px);}
 @media(max-width:640px){.faq-sidebar{display:none;}}
 </style>
 </head>
@@ -675,6 +692,22 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
       </div>
     </div>
   </div>
+<!-- Survey -->
+<div class="survey-card" id="survey-card" style="display:none;">
+  <div class="survey-q">¿Se resolvió tu consulta? 🎯</div>
+  <div class="survey-btns">
+    <button class="survey-btn yes" onclick="selectSurvey('yes',this)">✅ Sí</button>
+    <button class="survey-btn partial" onclick="selectSurvey('partial',this)">🤔 Parcialmente</button>
+    <button class="survey-btn no" onclick="selectSurvey('no',this)">❌ No</button>
+  </div>
+  <div class="survey-followup" id="survey-followup">
+    <textarea id="survey-feedback" placeholder="¿Qué te faltó? (opcional)"></textarea>
+  </div>
+  <div class="survey-actions">
+    <button class="survey-skip" onclick="closeSurvey()">Omitir</button>
+    <button class="survey-submit" id="survey-submit" onclick="submitSurvey()" style="display:none;">Enviar</button>
+  </div>
+</div>
 </div>
 
 <script>
@@ -763,7 +796,7 @@ async function saveConfig(){
   toast('Configuración guardada ✓');
 }
 
-function newChat(){
+function newChat(){closeSurvey();if(surveyTimer)clearTimeout(surveyTimer);
   history=[];
   document.getElementById('messages').innerHTML=`<div class="empty-state" id="empty-state">
     <div class="empty-icon">📦</div>
@@ -889,7 +922,61 @@ function renderVideos(vids){
 
 async function sendMessage(retries=0){
   if(!apiKey){document.getElementById('setup-banner').style.display='flex';return;}
-  const inp=document.getElementById('user-input');
+  // Survey logic
+let surveyTimer=null;
+let surveyAnswer=null;
+let lastChatTimestamp=null;
+
+function scheduleSurvey(){
+  if(surveyTimer) clearTimeout(surveyTimer);
+  lastChatTimestamp=Date.now();
+  surveyTimer=setTimeout(()=>{
+    // Only show if user hasn't started a new message
+    if(document.getElementById('user-input').value.trim()===''){
+      showSurvey();
+    }
+  }, 3*60*1000); // 3 minutes
+}
+
+function showSurvey(){
+  surveyAnswer=null;
+  document.getElementById('survey-card').style.display='block';
+  document.getElementById('survey-followup').style.display='none';
+  document.getElementById('survey-submit').style.display='none';
+  document.getElementById('survey-feedback').value='';
+  document.querySelectorAll('.survey-btn').forEach(b=>b.classList.remove('sel'));
+}
+
+function closeSurvey(){
+  document.getElementById('survey-card').style.display='none';
+  if(surveyTimer) clearTimeout(surveyTimer);
+}
+
+function selectSurvey(answer, btn){
+  surveyAnswer=answer;
+  document.querySelectorAll('.survey-btn').forEach(b=>b.classList.remove('sel'));
+  btn.classList.add('sel');
+  if(answer==='no'||answer==='partial'){
+    document.getElementById('survey-followup').style.display='block';
+  } else {
+    document.getElementById('survey-followup').style.display='none';
+  }
+  document.getElementById('survey-submit').style.display='block';
+}
+
+async function submitSurvey(){
+  if(!surveyAnswer) return;
+  const feedback=document.getElementById('survey-feedback').value.trim();
+  await window.trackEvent('survey',{
+    resolved: surveyAnswer,
+    feedback: feedback||null,
+    conversationLength: history.length
+  });
+  closeSurvey();
+  toast(surveyAnswer==='yes'?'¡Gracias por tu respuesta! 🎉':'Gracias, usaremos esto para mejorar 💪');
+}
+
+const inp=document.getElementById('user-input');
   const text=inp.value.trim();
   if(streaming) return;
   if(!text && !attachedFile) return;
@@ -946,6 +1033,7 @@ async function sendMessage(retries=0){
     addError(err.message||'No se pudo obtener respuesta.');
   }
   streaming=false;setStatus('on','Manual activo');document.getElementById('send-btn').disabled=false;
+  scheduleSurvey();
 }
 
 function addUserMsg(text, fileData, fileType, fileName){
@@ -965,7 +1053,34 @@ function addUserMsg(text, fileData, fileType, fileName){
 }
 function addError(msg){const msgs=document.getElementById('messages');const d=document.createElement('div');d.className='msg bot';d.innerHTML='<div class="avatar bot">PG</div><div class="error-bub">⚠ '+esc(msg)+'</div>';msgs.appendChild(d);scrollDown();}
 function removeEmpty(){const e=document.getElementById('empty-state');if(e)e.remove();}
-function fmtMd(t){let h=esc(t);h=h.replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>');h=h.replace(/`([^`]+)`/g,'<code>$1</code>');h=h.replace(/^### (.+)$/gm,'<strong style="display:block;margin:8px 0 4px;font-size:13px;color:var(--p3)">$1</strong>');h=h.replace(/^## (.+)$/gm,'<strong style="display:block;margin:10px 0 5px;color:var(--p2)">$1</strong>');h=h.replace(/^[\-\*] (.+)$/gm,'<li>$1</li>');h=h.replace(/^\d+\. (.+)$/gm,'<li>$1</li>');h=h.replace(/(<li>[\s\S]*?<\/li>)/g,'<ul>$1</ul>');h=h.replace(/\n\n/g,'</p><p>').replace(/\n/g,'<br>');return '<p>'+h+'</p>';}
+function fmtMd(t){
+  let h=esc(t);
+  // Bold and code
+  h=h.replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>');
+  h=h.replace(/`([^`]+)`/g,'<code>$1</code>');
+  // Headers
+  h=h.replace(/^### (.+)$/gm,'<strong style="display:block;margin:6px 0 2px;font-size:13px;color:var(--p3)">$1</strong>');
+  h=h.replace(/^## (.+)$/gm,'<strong style="display:block;margin:8px 0 3px;color:var(--p2)">$1</strong>');
+  // Lists — collect consecutive list items into a single ul/ol
+  h=h.replace(/(^[\-\*] .+$\n?)+/gm, m=>{
+    const items=m.trim().split('\n').map(l=>`<li>${l.replace(/^[\-\*] /,'')}</li>`).join('');
+    return `<ul>${items}</ul>`;
+  });
+  h=h.replace(/(^\d+\. .+$\n?)+/gm, m=>{
+    const items=m.trim().split('\n').map(l=>`<li>${l.replace(/^\d+\. /,'')}</li>`).join('');
+    return `<ol>${items}</ol>`;
+  });
+  // Remove excessive blank lines (3+ newlines -> 2)
+  h=h.replace(/\n{3,}/g,'\n\n');
+  // Paragraphs
+  h=h.replace(/\n\n/g,'</p><p>');
+  h=h.replace(/\n/g,'<br>');
+  // Clean up empty paragraphs
+  h=h.replace(/<p><\/p>/g,'');
+  h=h.replace(/<p>(<br>)+<\/p>/g,'');
+  h=h.replace(/(<br>){2,}/g,'<br>');
+  return '<p>'+h+'</p>';
+}
 function parseCSV(line){const r=[];let cur='',q=false;for(const ch of line){if(ch==='"'){q=!q;}else if(ch===','&&!q){r.push(cur.trim());cur='';}else cur+=ch;}r.push(cur.trim());return r;}
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 function now(){return new Date().toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'});}
@@ -973,9 +1088,64 @@ function scrollDown(){const c=document.getElementById('chat-container');c.scroll
 function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
 function setStatus(state,text){document.getElementById('sdot').className='sdot '+state;document.getElementById('stext').textContent=text;}
 function toast(msg){const t=document.createElement('div');t.className='toast';t.textContent=msg;document.body.appendChild(t);setTimeout(()=>t.remove(),2500);}
+// Survey logic
+let surveyTimer=null;
+let surveyAnswer=null;
+let lastChatTimestamp=null;
+
+function scheduleSurvey(){
+  if(surveyTimer) clearTimeout(surveyTimer);
+  lastChatTimestamp=Date.now();
+  surveyTimer=setTimeout(()=>{
+    // Only show if user hasn't started a new message
+    if(document.getElementById('user-input').value.trim()===''){
+      showSurvey();
+    }
+  }, 3*60*1000); // 3 minutes
+}
+
+function showSurvey(){
+  surveyAnswer=null;
+  document.getElementById('survey-card').style.display='block';
+  document.getElementById('survey-followup').style.display='none';
+  document.getElementById('survey-submit').style.display='none';
+  document.getElementById('survey-feedback').value='';
+  document.querySelectorAll('.survey-btn').forEach(b=>b.classList.remove('sel'));
+}
+
+function closeSurvey(){
+  document.getElementById('survey-card').style.display='none';
+  if(surveyTimer) clearTimeout(surveyTimer);
+}
+
+function selectSurvey(answer, btn){
+  surveyAnswer=answer;
+  document.querySelectorAll('.survey-btn').forEach(b=>b.classList.remove('sel'));
+  btn.classList.add('sel');
+  if(answer==='no'||answer==='partial'){
+    document.getElementById('survey-followup').style.display='block';
+  } else {
+    document.getElementById('survey-followup').style.display='none';
+  }
+  document.getElementById('survey-submit').style.display='block';
+}
+
+async function submitSurvey(){
+  if(!surveyAnswer) return;
+  const feedback=document.getElementById('survey-feedback').value.trim();
+  await window.trackEvent('survey',{
+    resolved: surveyAnswer,
+    feedback: feedback||null,
+    conversationLength: history.length
+  });
+  closeSurvey();
+  toast(surveyAnswer==='yes'?'¡Gracias por tu respuesta! 🎉':'Gracias, usaremos esto para mejorar 💪');
+}
+
 const inp=document.getElementById('user-input');
 function autoResize(){inp.style.height='auto';inp.style.height=Math.min(inp.scrollHeight,120)+'px';}
 inp.addEventListener('input',autoResize);
+inp.addEventListener('input',()=>{if(surveyTimer&&document.getElementById('user-input').value.trim()){closeSurvey();}});
 inp.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMessage();}});
 
 // Paste image from clipboard
