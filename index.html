@@ -835,6 +835,7 @@ async function fetchSheetByName(name){
 }
 
 window.onload=()=>{
+  if(surveyTimer){clearTimeout(surveyTimer);surveyTimer=null;}
   // Version check
   const savedVersion = localStorage.getItem('pg_version');
   if(savedVersion && savedVersion !== APP_VERSION){
@@ -893,7 +894,7 @@ async function saveConfig(){
   toast('Configuración guardada ✓');
 }
 
-function newChat(){closeSurvey(true);if(surveyTimer)clearTimeout(surveyTimer);
+function newChat(){closeSurvey(true);if(surveyTimer)clearTimeout(surveyTimer);hasConversation=false;
   history=[];
   document.getElementById('messages').innerHTML=`<div class="empty-state" id="empty-state">
     <div class="empty-icon">📦</div>
@@ -1023,13 +1024,15 @@ async function sendMessage(retries=0){
 let surveyTimer=null;
 let surveyAnswer=null;
 let lastChatTimestamp=null;
+let hasConversation=false;
 
 function scheduleSurvey(){
   if(surveyTimer) clearTimeout(surveyTimer);
   lastChatTimestamp=Date.now();
+  hasConversation=true;
   surveyTimer=setTimeout(()=>{
-    // Only show if user hasn't started a new message
-    if(document.getElementById('user-input').value.trim()===''){
+    // Only show if there was real conversation and user isn't typing
+    if(hasConversation && document.getElementById('user-input').value.trim()===''){
       showSurvey();
     }
   }, 3*60*1000); // 3 minutes
@@ -1302,13 +1305,15 @@ function toast(msg){const t=document.createElement('div');t.className='toast';t.
 let surveyTimer=null;
 let surveyAnswer=null;
 let lastChatTimestamp=null;
+let hasConversation=false;
 
 function scheduleSurvey(){
   if(surveyTimer) clearTimeout(surveyTimer);
   lastChatTimestamp=Date.now();
+  hasConversation=true;
   surveyTimer=setTimeout(()=>{
-    // Only show if user hasn't started a new message
-    if(document.getElementById('user-input').value.trim()===''){
+    // Only show if there was real conversation and user isn't typing
+    if(hasConversation && document.getElementById('user-input').value.trim()===''){
       showSurvey();
     }
   }, 3*60*1000); // 3 minutes
