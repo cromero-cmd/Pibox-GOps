@@ -790,8 +790,8 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 
 <script>
 // Version control — increment this on every update
-const APP_VERSION = '1.4';
-const APP_CHANGELOG = 'Botón Nueva Consulta ahora solo visible en el Asistente.';
+const APP_VERSION = '1.6';
+const APP_CHANGELOG = 'Encuesta aparece tras 5 minutos de inactividad.';
 
 function softReload(){
   // Add timestamp param to force fresh load without clearing localStorage
@@ -1038,7 +1038,7 @@ function scheduleSurvey(){
     if(hasConversation && document.getElementById('user-input').value.trim()===''){
       showSurvey();
     }
-  }, 3*60*1000); // 3 minutes
+  }, 5*60*1000); // 5 minutes
 }
 
 function showSurvey(){
@@ -1197,6 +1197,7 @@ const inp=document.getElementById('user-input');
   if(streaming) return;
   if(!text && !attachedFile) return;
   if(attachedFile && !attachedFileData){ toast('Espera un momento, cargando imagen...'); return; }
+  if(surveyTimer){clearTimeout(surveyTimer);surveyTimer=null;}
   inp.value='';autoResize();streaming=true;
   document.getElementById('send-btn').disabled=true;
   const fileDataToSend = attachedFileData;
@@ -1319,7 +1320,7 @@ function scheduleSurvey(){
     if(hasConversation && document.getElementById('user-input').value.trim()===''){
       showSurvey();
     }
-  }, 3*60*1000); // 3 minutes
+  }, 5*60*1000); // 5 minutes
 }
 
 function showSurvey(){
@@ -1476,7 +1477,7 @@ function stopMic(){
 const inp=document.getElementById('user-input');
 function autoResize(){inp.style.height='auto';inp.style.height=Math.min(inp.scrollHeight,120)+'px';}
 inp.addEventListener('input',autoResize);
-inp.addEventListener('input',()=>{if(surveyTimer&&document.getElementById('user-input').value.trim()){closeSurvey();}});
+inp.addEventListener('input',()=>{if(surveyTimer){clearTimeout(surveyTimer);surveyTimer=null;}});
 inp.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMessage();}});
 
 // Paste image from clipboard
