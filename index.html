@@ -504,6 +504,15 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 .an-loading{display:flex;flex-direction:column;align-items:center;gap:14px;padding:60px 20px;text-align:center;}
 
 .toast{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:var(--grad);color:white;padding:8px 20px;border-radius:100px;font-weight:700;font-size:13px;z-index:999;box-shadow:0 4px 20px rgba(123,47,255,0.5);animation:msgIn 0.3s ease both;}
+.update-banner{position:fixed;top:0;left:0;right:0;z-index:500;background:linear-gradient(135deg,#1a0a3a,#2d1060);border-bottom:1px solid var(--p1);padding:10px 20px;display:flex;align-items:center;justify-content:center;gap:14px;animation:slideDown 0.4s ease both;}
+@keyframes slideDown{from{transform:translateY(-100%)}to{transform:translateY(0)}}
+.update-banner-text{font-size:13px;font-weight:600;color:var(--text);display:flex;align-items:center;gap:8px;}
+.update-banner-text span{font-size:16px;}
+.update-kbd{background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.2);border-radius:5px;padding:2px 8px;font-family:var(--mono);font-size:11px;color:white;}
+.update-btn{background:var(--grad);border:none;color:white;padding:6px 16px;border-radius:8px;cursor:pointer;font-family:var(--font);font-weight:700;font-size:12px;transition:all 0.2s;box-shadow:0 2px 10px rgba(123,47,255,0.4);}
+.update-btn:hover{transform:translateY(-1px);}
+.update-dismiss{background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:18px;padding:0 4px;margin-left:4px;}
+.update-dismiss:hover{color:var(--text);}
 .survey-card{position:fixed;bottom:100px;left:50%;transform:translateX(-50%);background:var(--surface);border:1px solid var(--border-p);border-radius:16px;padding:18px 22px;width:min(420px,92vw);box-shadow:var(--shadow),var(--glow);z-index:998;animation:fadeUp 0.35s ease both;}
 .survey-card::before{content:'';position:absolute;top:0;left:20px;right:20px;height:1px;background:var(--grad);border-radius:100px;}
 .survey-q{font-size:14px;font-weight:700;color:var(--text);margin-bottom:14px;text-align:center;}
@@ -769,6 +778,18 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 </div>
 
 <script>
+// Version control — increment this on every update
+const APP_VERSION = '1.0';
+const APP_CHANGELOG = 'Banner de actualizaciones con descripción de cambios.';
+(function checkVersion(){
+  const saved = localStorage.getItem('pg_version');
+  if(saved && saved !== APP_VERSION){
+    document.getElementById('update-banner').style.display='flex';
+    document.getElementById('update-changelog').textContent = '✦ ' + APP_CHANGELOG;
+  }
+  localStorage.setItem('pg_version', APP_VERSION);
+})();
+
 let apiKey='',sheetUrl='',vidUrl='',faqUrl='',sysBase='',history=[],streaming=false,sheetData='',allVideos=[],activeCat='Todos',allFAQs=[],activeFAQCat='Todos';
 let attachedFile=null,attachedFileData=null,attachedFileType=null;
 
