@@ -791,14 +791,6 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 // Version control — increment this on every update
 const APP_VERSION = '1.1';
 const APP_CHANGELOG = 'Transcripción por voz: toca el micrófono y habla tu consulta.';
-(function checkVersion(){
-  const saved = localStorage.getItem('pg_version');
-  if(saved && saved !== APP_VERSION){
-    document.getElementById('update-banner').style.display='flex';
-    document.getElementById('update-changelog').textContent = '✦ ' + APP_CHANGELOG;
-  }
-  localStorage.setItem('pg_version', APP_VERSION);
-})();
 
 let apiKey='',sheetUrl='',vidUrl='',faqUrl='',sysBase='',history=[],streaming=false,sheetData='',allVideos=[],activeCat='Todos',allFAQs=[],activeFAQCat='Todos';
 let attachedFile=null,attachedFileData=null,attachedFileType=null;
@@ -837,6 +829,16 @@ async function fetchSheetByName(name){
 }
 
 window.onload=()=>{
+  // Version check
+  const savedVersion = localStorage.getItem('pg_version');
+  if(savedVersion && savedVersion !== APP_VERSION){
+    const banner = document.getElementById('update-banner');
+    const changelog = document.getElementById('update-changelog');
+    if(banner) banner.style.display='flex';
+    if(changelog) changelog.textContent = '✦ ' + APP_CHANGELOG;
+  }
+  localStorage.setItem('pg_version', APP_VERSION);
+
   apiKey=localStorage.getItem('pg_key')||'';
   sheetUrl=localStorage.getItem('pg_sheet')||'';
   vidUrl=localStorage.getItem('pg_vid')||'';
