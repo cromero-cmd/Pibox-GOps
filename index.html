@@ -792,6 +792,12 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 const APP_VERSION = '1.1';
 const APP_CHANGELOG = 'Transcripción por voz: toca el micrófono y habla tu consulta.';
 
+function softReload(){
+  // Add timestamp param to force fresh load without clearing localStorage
+  const url = window.location.pathname + '?r=' + Date.now();
+  window.location.href = url;
+}
+
 let apiKey='',sheetUrl='',vidUrl='',faqUrl='',sysBase='',history=[],streaming=false,sheetData='',allVideos=[],activeCat='Todos',allFAQs=[],activeFAQCat='Todos';
 let attachedFile=null,attachedFileData=null,attachedFileType=null;
 
