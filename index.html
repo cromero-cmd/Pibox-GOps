@@ -101,8 +101,15 @@ function renderAnalytics(events) {
   const faqEvents = events.filter(e => e.type === 'faq');
   const tutorialEvents = events.filter(e => e.type === 'tutorial');
   const surveyEvents = events.filter(e => e.type === 'survey');
-  const resolved = surveyEvents.filter(e => e.resolved === 'yes').length;
-  const resolutionRate = surveyEvents.length ? Math.round((resolved/surveyEvents.length)*100) : null;
+
+  // Survey breakdown
+  const sTotal = surveyEvents.length;
+  const sYes = surveyEvents.filter(e => e.resolved === 'yes').length;
+  const sPartial = surveyEvents.filter(e => e.resolved === 'partial').length;
+  const sNo = surveyEvents.filter(e => e.resolved === 'no').length;
+  const pYes = sTotal ? Math.round((sYes/sTotal)*100) : 0;
+  const pPartial = sTotal ? Math.round((sPartial/sTotal)*100) : 0;
+  const pNo = sTotal ? Math.round((sNo/sTotal)*100) : 0;
 
   // Top questions
   const qCount = {};
@@ -140,9 +147,32 @@ function renderAnalytics(events) {
         <div class="an-label">Consultas al asistente</div>
       </div>
       <div class="an-card">
-        <div class="an-num">${resolutionRate !== null ? resolutionRate+'%' : '—'}</div>
+        <div class="an-num">${sTotal ? pYes+'%' : '—'}</div>
         <div class="an-label">Tasa de resolución</div>
       </div>
+    </div>
+
+    <!-- Resolution breakdown -->
+    <div class="an-section" style="margin-bottom:16px;">
+      <div class="an-section-title">🎯 Tasa de resolución — ${sTotal} encuestas respondidas</div>
+      ${sTotal === 0 ? '<div class="an-empty">Sin encuestas respondidas aún</div>' : `
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:4px;">
+          <div style="background:rgba(74,222,128,0.08);border:1px solid rgba(74,222,128,0.2);border-radius:12px;padding:14px 16px;text-align:center;">
+            <div style="font-size:26px;font-weight:800;color:#4ade80;">${sYes}</div>
+            <div style="font-size:11px;color:#4ade80;margin-top:2px;font-family:var(--mono);">Resueltas · ${pYes}%</div>
+            <div style="background:rgba(74,222,128,0.2);border-radius:4px;height:4px;margin-top:8px;"><div style="background:#4ade80;border-radius:4px;height:4px;width:${pYes}%;"></div></div>
+          </div>
+          <div style="background:rgba(251,146,60,0.08);border:1px solid rgba(251,146,60,0.2);border-radius:12px;padding:14px 16px;text-align:center;">
+            <div style="font-size:26px;font-weight:800;color:#fb923c;">${sPartial}</div>
+            <div style="font-size:11px;color:#fb923c;margin-top:2px;font-family:var(--mono);">Parcialmente · ${pPartial}%</div>
+            <div style="background:rgba(251,146,60,0.2);border-radius:4px;height:4px;margin-top:8px;"><div style="background:#fb923c;border-radius:4px;height:4px;width:${pPartial}%;"></div></div>
+          </div>
+          <div style="background:rgba(248,113,113,0.08);border:1px solid rgba(248,113,113,0.2);border-radius:12px;padding:14px 16px;text-align:center;">
+            <div style="font-size:26px;font-weight:800;color:#f87171;">${sNo}</div>
+            <div style="font-size:11px;color:#f87171;margin-top:2px;font-family:var(--mono);">No resueltas · ${pNo}%</div>
+            <div style="background:rgba(248,113,113,0.2);border-radius:4px;height:4px;margin-top:8px;"><div style="background:#f87171;border-radius:4px;height:4px;width:${pNo}%;"></div></div>
+          </div>
+        </div>`}
     </div>
 
     <div class="an-grid">
@@ -968,16 +998,21 @@ function closeSurvey(){
   if(surveyTimer) clearTimeout(surveyTimer);
 }
 
-function selectSurvey(answer, btn){
+async function selectSurvey(answer, btn){
   surveyAnswer=answer;
   document.querySelectorAll('.survey-btn').forEach(b=>b.classList.remove('sel'));
   btn.classList.add('sel');
-  if(answer==='no'||answer==='partial'){
-    document.getElementById('survey-followup').style.display='block';
+  if(answer==='yes'){
+    // Auto-submit immediately
+    await window.trackEvent('survey',{resolved:'yes',feedback:null,conversationLength:history.length});
+    closeSurvey();
+    toast('¡Gracias por tu respuesta! 🎉');
   } else {
-    document.getElementById('survey-followup').style.display='none';
+    // Show feedback field for partial/no
+    document.getElementById('survey-followup').style.display='block';
+    document.getElementById('survey-submit').style.display='block';
+    document.getElementById('survey-feedback').focus();
   }
-  document.getElementById('survey-submit').style.display='block';
 }
 
 async function submitSurvey(){
@@ -1134,16 +1169,21 @@ function closeSurvey(){
   if(surveyTimer) clearTimeout(surveyTimer);
 }
 
-function selectSurvey(answer, btn){
+async function selectSurvey(answer, btn){
   surveyAnswer=answer;
   document.querySelectorAll('.survey-btn').forEach(b=>b.classList.remove('sel'));
   btn.classList.add('sel');
-  if(answer==='no'||answer==='partial'){
-    document.getElementById('survey-followup').style.display='block';
+  if(answer==='yes'){
+    // Auto-submit immediately
+    await window.trackEvent('survey',{resolved:'yes',feedback:null,conversationLength:history.length});
+    closeSurvey();
+    toast('¡Gracias por tu respuesta! 🎉');
   } else {
-    document.getElementById('survey-followup').style.display='none';
+    // Show feedback field for partial/no
+    document.getElementById('survey-followup').style.display='block';
+    document.getElementById('survey-submit').style.display='block';
+    document.getElementById('survey-feedback').focus();
   }
-  document.getElementById('survey-submit').style.display='block';
 }
 
 async function submitSurvey(){
