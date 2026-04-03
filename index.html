@@ -778,6 +778,9 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
     <button class="survey-btn partial" onclick="selectSurvey('partial',this)">🤔 Parcialmente</button>
     <button class="survey-btn no" onclick="selectSurvey('no',this)">❌ No</button>
   </div>
+  <div style="margin-top:10px;text-align:center;">
+    <button class="survey-skip" onclick="continueSurvey()" style="color:var(--p2);font-size:12px;">↩ Seguir consultando</button>
+  </div>
   <div class="survey-followup" id="survey-followup">
     <textarea id="survey-feedback" placeholder="¿Qué te faltó? (opcional)"></textarea>
   </div>
@@ -790,8 +793,8 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 
 <script>
 // Version control — increment this on every update
-const APP_VERSION = '1.6';
-const APP_CHANGELOG = 'Encuesta aparece tras 5 minutos de inactividad.';
+const APP_VERSION = '1.7';
+const APP_CHANGELOG = 'Encuesta: nueva opción Seguir consultando para continuar el chat.';
 
 function softReload(){
   // Add timestamp param to force fresh load without clearing localStorage
@@ -1048,6 +1051,20 @@ function showSurvey(){
   document.getElementById('survey-submit').style.display='none';
   document.getElementById('survey-feedback').value='';
   document.querySelectorAll('.survey-btn').forEach(b=>b.classList.remove('sel'));
+}
+
+function continueSurvey(){
+  // Close survey and restart timer — user wants to keep chatting
+  document.getElementById('survey-card').style.display='none';
+  surveyAnswer=null;
+  // Restart timer for another 5 min cycle
+  if(hasConversation){
+    surveyTimer=setTimeout(()=>{
+      if(hasConversation && document.getElementById('user-input').value.trim()===''){
+        showSurvey();
+      }
+    }, 5*60*1000);
+  }
 }
 
 function closeSurvey(track=false){
@@ -1330,6 +1347,20 @@ function showSurvey(){
   document.getElementById('survey-submit').style.display='none';
   document.getElementById('survey-feedback').value='';
   document.querySelectorAll('.survey-btn').forEach(b=>b.classList.remove('sel'));
+}
+
+function continueSurvey(){
+  // Close survey and restart timer — user wants to keep chatting
+  document.getElementById('survey-card').style.display='none';
+  surveyAnswer=null;
+  // Restart timer for another 5 min cycle
+  if(hasConversation){
+    surveyTimer=setTimeout(()=>{
+      if(hasConversation && document.getElementById('user-input').value.trim()===''){
+        showSurvey();
+      }
+    }, 5*60*1000);
+  }
 }
 
 function closeSurvey(track=false){
