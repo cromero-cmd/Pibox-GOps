@@ -1327,52 +1327,7 @@ function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
 function setStatus(state,text){document.getElementById('sdot').className='sdot '+state;document.getElementById('stext').textContent=text;}
 function toast(msg){const t=document.createElement('div');t.className='toast';t.textContent=msg;document.body.appendChild(t);setTimeout(()=>t.remove(),2500);}
 // Survey logic
-let surveyTimer=null;
-let surveyAnswer=null;
-let lastChatTimestamp=null;
-let hasConversation=false;
 
-function scheduleSurvey(){
-  if(surveyTimer) clearTimeout(surveyTimer);
-  lastChatTimestamp=Date.now();
-  hasConversation=true;
-  surveyTimer=setTimeout(()=>{
-    // Only show if there was real conversation and user isn't typing
-    if(hasConversation && document.getElementById('user-input').value.trim()===''){
-      showSurvey();
-    }
-  }, 5*60*1000); // 5 minutes
-}
-
-function showSurvey(){
-  surveyAnswer=null;
-  document.getElementById('survey-card').style.display='block';
-  document.getElementById('survey-followup').style.display='none';
-  document.getElementById('survey-submit').style.display='none';
-  document.getElementById('survey-feedback').value='';
-  document.querySelectorAll('.survey-btn').forEach(b=>b.classList.remove('sel'));
-}
-
-function continueSurvey(){
-  // Close survey without tracking — user wants to keep chatting
-  document.getElementById('survey-card').style.display='none';
-  surveyAnswer=null;
-  // Clear any existing timer and schedule a fresh one
-  if(surveyTimer) clearTimeout(surveyTimer);
-  surveyTimer=setTimeout(()=>{
-    if(hasConversation && document.getElementById('user-input').value.trim()===''){
-      showSurvey();
-    }
-  }, 5*60*1000);
-}
-
-function closeSurvey(track=false){
-  if(track && surveyAnswer===null){
-    window.trackEvent&&window.trackEvent('survey',{resolved:'skipped',feedback:null,conversationLength:history.length});
-  }
-  document.getElementById('survey-card').style.display='none';
-  if(surveyTimer) clearTimeout(surveyTimer);
-}
 
 async function selectSurvey(answer, btn){
   surveyAnswer=answer;
