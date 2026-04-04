@@ -981,8 +981,8 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 
 <script>
 // Version control — increment this on every update
-const APP_VERSION = '2.5';
-const APP_CHANGELOG = 'Nuevo módulo de Turno — registra inicio y fin de jornada.';
+const APP_VERSION = '2.6';
+const APP_CHANGELOG = 'Historial de turno se actualiza automáticamente al finalizar.';
 const ADMINS = ['cromero@pibox.app'];
 
 function softReload(){
@@ -1521,6 +1521,9 @@ async function endTurno(status='ended'){
   if(status==='ended'){
     setTurnoInactive();
     toast('👋 Turno finalizado — duración: '+formatDuration(elapsed));
+    // Refresh history if visible
+    const userEmail=document.getElementById('user-email').textContent;
+    if(ADMINS.includes(userEmail)) loadTurnoHistory();
   }
 }
 
@@ -1965,6 +1968,9 @@ async function endTurno(status='ended'){
   if(status==='ended'){
     setTurnoInactive();
     toast('👋 Turno finalizado — duración: '+formatDuration(elapsed));
+    // Refresh history if visible
+    const userEmail=document.getElementById('user-email').textContent;
+    if(ADMINS.includes(userEmail)) loadTurnoHistory();
   }
 }
 
