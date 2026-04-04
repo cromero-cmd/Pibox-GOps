@@ -774,6 +774,8 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 .cumpl-status.novedad{background:rgba(123,47,255,0.1);color:var(--p2);}
 .cumpl-novedad-tag{display:inline-flex;background:rgba(123,47,255,0.1);border:1px solid rgba(123,47,255,0.2);color:var(--p2);padding:2px 7px;border-radius:4px;font-size:10px;font-family:var(--mono);}
 .cumpl-empty{padding:40px;text-align:center;color:var(--text-dim);font-size:13px;}
+.cumpl-cell{font-family:var(--mono);font-size:11px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:default;}
+.cumpl-cell[title]:hover{color:var(--text);}
 .cumpl-user-select{background:var(--surface2);border:1px solid var(--border);color:var(--text-muted);padding:5px 10px;border-radius:8px;font-size:12px;font-family:var(--mono);outline:none;min-width:160px;}
 .cumpl-user-select:focus{border-color:var(--p1);}
 
@@ -1302,8 +1304,8 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 
 <script>
 // Version control — increment this on every update
-const APP_VERSION = '3.9';
-const APP_CHANGELOG = 'Cumplimiento: tabla más amplia y legible, sin valores cortados.';
+const APP_VERSION = '4.0';
+const APP_CHANGELOG = 'Cumplimiento: filtros por estado, ordenar por fecha y tooltip en valores.';
 const ADMINS = ['cromero@pibox.app'];
 
 function softReload(){
@@ -2052,6 +2054,9 @@ window.addEventListener('beforeunload', ()=>{
 const MALLA_SCRIPT='https://script.google.com/macros/s/AKfycbyxBZWba6M1eXcwQUdBBUTqTrgGd8zwHiM6wwecXI3mUYOUP-RT9LnxSwqeXRy9prCm/exec';
 const TOLERANCE_MINS=5;
 let cumplFilter='today';
+let cumplSortAsc=true;
+let cumplStatusFilter=null;
+let cumplAllRows=[];
 
 function setCumplFilter(f,btn){
   cumplFilter=f;
@@ -2069,18 +2074,22 @@ function setCumplFilter(f,btn){
 
 function parseDate(dateStr){
   if(!dateStr) return null;
-  // Handle DD/MM/YYYY
-  if(String(dateStr).includes('/')){
-    const parts=String(dateStr).split('/');
+  const s=String(dateStr).trim();
+  // Handle DD/MM/YYYY or D/M/YYYY
+  if(s.includes('/')){
+    const parts=s.split('/');
     if(parts.length===3){
       const day=parts[0].padStart(2,'0');
       const mon=parts[1].padStart(2,'0');
-      const yr=parts[2];
-      return new Date(`${yr}-${mon}-${day}T00:00:00`);
+      const yr=parts[2].length===2?'20'+parts[2]:parts[2];
+      const d=new Date(`${yr}-${mon}-${day}T00:00:00`);
+      if(!isNaN(d)) return d;
     }
   }
   // Handle YYYY-MM-DD
-  return new Date(String(dateStr)+'T00:00:00');
+  const d=new Date(s+'T00:00:00');
+  if(!isNaN(d)) return d;
+  return null;
 }
 
 function parseTime(dateStr, timeStr){
@@ -2102,6 +2111,54 @@ function getStatus(scheduled, actual, novedad, now){
   const diffMins=Math.round((actual-scheduled)/60000);
   if(diffMins<=TOLERANCE_MINS) return {label:'Cumplió',cls:'cumplió',icon:'🟢'};
   return {label:`Tardanza +${diffMins} min`,cls:'tardanza',icon:'🟡'};
+}
+
+function renderCumplRows(){
+  const body=document.getElementById('cumpl-table-body');
+  let rows=[...cumplAllRows];
+  // Apply status filter
+  if(cumplStatusFilter) rows=rows.filter(r=>r.status.cls===cumplStatusFilter);
+  // Apply sort
+  rows.sort((a,b)=>{
+    const da=parseDate(a.fecha)||new Date(0);
+    const db=parseDate(b.fecha)||new Date(0);
+    return cumplSortAsc?da-db:db-da;
+  });
+  if(!rows.length){body.innerHTML='<div class="cumpl-empty">Sin registros para este filtro</div>';return;}
+  body.innerHTML=rows.map(r=>{
+    const startStr=r.scheduledStart?r.scheduledStart.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
+    const realStr=r.realStart?r.realStart.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
+    const dateStr=r.fecha?parseDate(r.fecha)?.toLocaleDateString('es-CO',{day:'2-digit',month:'short',year:'2-digit'})||'—':'—';
+    const endStr=r.scheduledEnd?r.scheduledEnd.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
+    const realEndStr=r.realEnd?r.realEnd.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
+    return `<div class="cumpl-row">
+      <div class="cumpl-cell bold" title="${esc(r.nombre||r.usuario||'')}">${esc(r.nombre||r.usuario||'—')}</div>
+      <div class="cumpl-cell">${dateStr}</div>
+      <div class="cumpl-cell" title="${esc(r.rol||'')}">${esc(r.rol||'—')}</div>
+      <div class="cumpl-cell">${startStr}</div>
+      <div class="cumpl-cell">${endStr}</div>
+      <div class="cumpl-cell" style="${r.realStart&&r.status.cls==='tardanza'?'color:#fbbf24;':r.status.cls==='cumplió'?'color:#4ade80;':''}">${realStr}</div>
+      <div class="cumpl-cell">${realEndStr}</div>
+      <div class="cumpl-cell" title="${esc(r.almuerzo||'')}">${esc(r.almuerzo||'—')}</div>
+      <div class="cumpl-cell" title="${esc(r.linea||'')}">${esc(r.linea||'—')}</div>
+      <div title="${esc(r.novedad||'')}">${r.novedad?`<span class="cumpl-novedad-tag">${esc(r.novedad)}</span>`:'<span style="color:var(--text-dim);font-size:11px;">—</span>'}</div>
+      <div><span class="cumpl-status ${r.status.cls}">${r.status.icon} ${r.status.label}</span></div>
+    </div>`;
+  }).join('');
+}
+
+function toggleCumplSort(){
+  cumplSortAsc=!cumplSortAsc;
+  const icon=document.getElementById('cumpl-sort-icon');
+  if(icon) icon.textContent=cumplSortAsc?'↑':'↓';
+  renderCumplRows();
+}
+
+function filterCumplByStatus(status){
+  cumplStatusFilter=status;
+  renderCumplRows();
+  const label=status?status:'todos';
+  toast(`Filtrando: ${label}`);
 }
 
 async function loadCumplimiento(){
@@ -2186,35 +2243,17 @@ async function loadCumplimiento(){
     const pct=total>0?Math.round(((cumplió+novedad)/total)*100):0;
 
     summary.innerHTML=`
-      <div class="cumpl-card purple"><div class="cumpl-card-num">${pct}%</div><div class="cumpl-card-label">Cumplimiento</div></div>
-      <div class="cumpl-card green"><div class="cumpl-card-num">${cumplió}</div><div class="cumpl-card-label">🟢 Cumplió</div></div>
-      <div class="cumpl-card yellow"><div class="cumpl-card-num">${tardanza}</div><div class="cumpl-card-label">🟡 Tardanza</div></div>
-      <div class="cumpl-card red"><div class="cumpl-card-num">${ausente}</div><div class="cumpl-card-label">🔴 Ausente</div></div>
-      <div class="cumpl-card gray"><div class="cumpl-card-num">${pendiente}</div><div class="cumpl-card-label">⏳ Pendiente</div></div>
-      <div class="cumpl-card purple" style=""><div class="cumpl-card-num">${novedad}</div><div class="cumpl-card-label">📋 Novedad</div></div>`;
+      <div class="cumpl-card purple" onclick="filterCumplByStatus(null)" style="cursor:pointer;" title="Ver todos"><div class="cumpl-card-num">${pct}%</div><div class="cumpl-card-label">Cumplimiento general</div></div>
+      <div class="cumpl-card green" onclick="filterCumplByStatus('cumplió')" style="cursor:pointer;" title="Filtrar cumplidos"><div class="cumpl-card-num">${cumplió}</div><div class="cumpl-card-label">🟢 Cumplió <span style="font-size:9px;opacity:0.6">— clic para filtrar</span></div></div>
+      <div class="cumpl-card yellow" onclick="filterCumplByStatus('tardanza')" style="cursor:pointer;" title="Filtrar tardanzas"><div class="cumpl-card-num">${tardanza}</div><div class="cumpl-card-label">🟡 Tardanza <span style="font-size:9px;opacity:0.6">— clic para filtrar</span></div></div>
+      <div class="cumpl-card red" onclick="filterCumplByStatus('ausente')" style="cursor:pointer;" title="Filtrar ausentes"><div class="cumpl-card-num">${ausente}</div><div class="cumpl-card-label">🔴 Ausente <span style="font-size:9px;opacity:0.6">— clic para filtrar</span></div></div>
+      <div class="cumpl-card gray" onclick="filterCumplByStatus('pendiente')" style="cursor:pointer;" title="Filtrar pendientes"><div class="cumpl-card-num">${pendiente}</div><div class="cumpl-card-label">⏳ Pendiente <span style="font-size:9px;opacity:0.6">— clic para filtrar</span></div></div>
+      <div class="cumpl-card purple" onclick="filterCumplByStatus('novedad')" style="cursor:pointer;" title="Filtrar novedades"><div class="cumpl-card-num">${novedad}</div><div class="cumpl-card-label">📋 Novedad <span style="font-size:9px;opacity:0.6">— clic para filtrar</span></div></div>`;
 
     if(!rows.length){body.innerHTML='<div class="cumpl-empty">Sin registros en este período</div>';return;}
-
-    body.innerHTML=rows.map(r=>{
-      const startStr=r.scheduledStart?r.scheduledStart.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
-      const realStr=r.realStart?r.realStart.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
-      const dateStr=r.fecha?parseDate(r.fecha)?.toLocaleDateString('es-CO',{day:'2-digit',month:'short'})||'—':'—';
-      const endStr=r.scheduledEnd?r.scheduledEnd.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
-      const realEndStr=r.realEnd?r.realEnd.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
-      return `<div class="cumpl-row">
-        <div class="cumpl-cell bold">${esc(r.nombre||r.usuario||'—')}</div>
-        <div class="cumpl-cell">${dateStr}</div>
-        <div class="cumpl-cell">${esc(r.rol||'—')}</div>
-        <div class="cumpl-cell">${startStr}</div>
-        <div class="cumpl-cell">${endStr}</div>
-        <div class="cumpl-cell" style="${r.realStart&&r.status.cls==='tardanza'?'color:#fbbf24;':r.status.cls==='cumplió'?'color:#4ade80;':''}">${realStr}</div>
-        <div class="cumpl-cell">${realEndStr}</div>
-        <div class="cumpl-cell">${esc(r.almuerzo||'—')}</div>
-        <div class="cumpl-cell">${esc(r.linea||'—')}</div>
-        <div>${r.novedad?`<span class="cumpl-novedad-tag">${esc(r.novedad)}</span>`:'<span style="color:var(--text-dim);font-size:11px;">—</span>'}</div>
-        <div><span class="cumpl-status ${r.status.cls}">${r.status.icon} ${r.status.label}</span></div>
-      </div>`;
-    }).join('');
+    cumplAllRows=rows;
+    cumplStatusFilter=null;
+    renderCumplRows();
 
   }catch(e){
     console.error(e);
@@ -2989,6 +3028,9 @@ window.addEventListener('beforeunload', ()=>{
 const MALLA_SCRIPT='https://script.google.com/macros/s/AKfycbyxBZWba6M1eXcwQUdBBUTqTrgGd8zwHiM6wwecXI3mUYOUP-RT9LnxSwqeXRy9prCm/exec';
 const TOLERANCE_MINS=5;
 let cumplFilter='today';
+let cumplSortAsc=true;
+let cumplStatusFilter=null;
+let cumplAllRows=[];
 
 function setCumplFilter(f,btn){
   cumplFilter=f;
@@ -3006,18 +3048,22 @@ function setCumplFilter(f,btn){
 
 function parseDate(dateStr){
   if(!dateStr) return null;
-  // Handle DD/MM/YYYY
-  if(String(dateStr).includes('/')){
-    const parts=String(dateStr).split('/');
+  const s=String(dateStr).trim();
+  // Handle DD/MM/YYYY or D/M/YYYY
+  if(s.includes('/')){
+    const parts=s.split('/');
     if(parts.length===3){
       const day=parts[0].padStart(2,'0');
       const mon=parts[1].padStart(2,'0');
-      const yr=parts[2];
-      return new Date(`${yr}-${mon}-${day}T00:00:00`);
+      const yr=parts[2].length===2?'20'+parts[2]:parts[2];
+      const d=new Date(`${yr}-${mon}-${day}T00:00:00`);
+      if(!isNaN(d)) return d;
     }
   }
   // Handle YYYY-MM-DD
-  return new Date(String(dateStr)+'T00:00:00');
+  const d=new Date(s+'T00:00:00');
+  if(!isNaN(d)) return d;
+  return null;
 }
 
 function parseTime(dateStr, timeStr){
@@ -3039,6 +3085,54 @@ function getStatus(scheduled, actual, novedad, now){
   const diffMins=Math.round((actual-scheduled)/60000);
   if(diffMins<=TOLERANCE_MINS) return {label:'Cumplió',cls:'cumplió',icon:'🟢'};
   return {label:`Tardanza +${diffMins} min`,cls:'tardanza',icon:'🟡'};
+}
+
+function renderCumplRows(){
+  const body=document.getElementById('cumpl-table-body');
+  let rows=[...cumplAllRows];
+  // Apply status filter
+  if(cumplStatusFilter) rows=rows.filter(r=>r.status.cls===cumplStatusFilter);
+  // Apply sort
+  rows.sort((a,b)=>{
+    const da=parseDate(a.fecha)||new Date(0);
+    const db=parseDate(b.fecha)||new Date(0);
+    return cumplSortAsc?da-db:db-da;
+  });
+  if(!rows.length){body.innerHTML='<div class="cumpl-empty">Sin registros para este filtro</div>';return;}
+  body.innerHTML=rows.map(r=>{
+    const startStr=r.scheduledStart?r.scheduledStart.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
+    const realStr=r.realStart?r.realStart.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
+    const dateStr=r.fecha?parseDate(r.fecha)?.toLocaleDateString('es-CO',{day:'2-digit',month:'short',year:'2-digit'})||'—':'—';
+    const endStr=r.scheduledEnd?r.scheduledEnd.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
+    const realEndStr=r.realEnd?r.realEnd.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
+    return `<div class="cumpl-row">
+      <div class="cumpl-cell bold" title="${esc(r.nombre||r.usuario||'')}">${esc(r.nombre||r.usuario||'—')}</div>
+      <div class="cumpl-cell">${dateStr}</div>
+      <div class="cumpl-cell" title="${esc(r.rol||'')}">${esc(r.rol||'—')}</div>
+      <div class="cumpl-cell">${startStr}</div>
+      <div class="cumpl-cell">${endStr}</div>
+      <div class="cumpl-cell" style="${r.realStart&&r.status.cls==='tardanza'?'color:#fbbf24;':r.status.cls==='cumplió'?'color:#4ade80;':''}">${realStr}</div>
+      <div class="cumpl-cell">${realEndStr}</div>
+      <div class="cumpl-cell" title="${esc(r.almuerzo||'')}">${esc(r.almuerzo||'—')}</div>
+      <div class="cumpl-cell" title="${esc(r.linea||'')}">${esc(r.linea||'—')}</div>
+      <div title="${esc(r.novedad||'')}">${r.novedad?`<span class="cumpl-novedad-tag">${esc(r.novedad)}</span>`:'<span style="color:var(--text-dim);font-size:11px;">—</span>'}</div>
+      <div><span class="cumpl-status ${r.status.cls}">${r.status.icon} ${r.status.label}</span></div>
+    </div>`;
+  }).join('');
+}
+
+function toggleCumplSort(){
+  cumplSortAsc=!cumplSortAsc;
+  const icon=document.getElementById('cumpl-sort-icon');
+  if(icon) icon.textContent=cumplSortAsc?'↑':'↓';
+  renderCumplRows();
+}
+
+function filterCumplByStatus(status){
+  cumplStatusFilter=status;
+  renderCumplRows();
+  const label=status?status:'todos';
+  toast(`Filtrando: ${label}`);
 }
 
 async function loadCumplimiento(){
@@ -3123,35 +3217,17 @@ async function loadCumplimiento(){
     const pct=total>0?Math.round(((cumplió+novedad)/total)*100):0;
 
     summary.innerHTML=`
-      <div class="cumpl-card purple"><div class="cumpl-card-num">${pct}%</div><div class="cumpl-card-label">Cumplimiento</div></div>
-      <div class="cumpl-card green"><div class="cumpl-card-num">${cumplió}</div><div class="cumpl-card-label">🟢 Cumplió</div></div>
-      <div class="cumpl-card yellow"><div class="cumpl-card-num">${tardanza}</div><div class="cumpl-card-label">🟡 Tardanza</div></div>
-      <div class="cumpl-card red"><div class="cumpl-card-num">${ausente}</div><div class="cumpl-card-label">🔴 Ausente</div></div>
-      <div class="cumpl-card gray"><div class="cumpl-card-num">${pendiente}</div><div class="cumpl-card-label">⏳ Pendiente</div></div>
-      <div class="cumpl-card purple" style=""><div class="cumpl-card-num">${novedad}</div><div class="cumpl-card-label">📋 Novedad</div></div>`;
+      <div class="cumpl-card purple" onclick="filterCumplByStatus(null)" style="cursor:pointer;" title="Ver todos"><div class="cumpl-card-num">${pct}%</div><div class="cumpl-card-label">Cumplimiento general</div></div>
+      <div class="cumpl-card green" onclick="filterCumplByStatus('cumplió')" style="cursor:pointer;" title="Filtrar cumplidos"><div class="cumpl-card-num">${cumplió}</div><div class="cumpl-card-label">🟢 Cumplió <span style="font-size:9px;opacity:0.6">— clic para filtrar</span></div></div>
+      <div class="cumpl-card yellow" onclick="filterCumplByStatus('tardanza')" style="cursor:pointer;" title="Filtrar tardanzas"><div class="cumpl-card-num">${tardanza}</div><div class="cumpl-card-label">🟡 Tardanza <span style="font-size:9px;opacity:0.6">— clic para filtrar</span></div></div>
+      <div class="cumpl-card red" onclick="filterCumplByStatus('ausente')" style="cursor:pointer;" title="Filtrar ausentes"><div class="cumpl-card-num">${ausente}</div><div class="cumpl-card-label">🔴 Ausente <span style="font-size:9px;opacity:0.6">— clic para filtrar</span></div></div>
+      <div class="cumpl-card gray" onclick="filterCumplByStatus('pendiente')" style="cursor:pointer;" title="Filtrar pendientes"><div class="cumpl-card-num">${pendiente}</div><div class="cumpl-card-label">⏳ Pendiente <span style="font-size:9px;opacity:0.6">— clic para filtrar</span></div></div>
+      <div class="cumpl-card purple" onclick="filterCumplByStatus('novedad')" style="cursor:pointer;" title="Filtrar novedades"><div class="cumpl-card-num">${novedad}</div><div class="cumpl-card-label">📋 Novedad <span style="font-size:9px;opacity:0.6">— clic para filtrar</span></div></div>`;
 
     if(!rows.length){body.innerHTML='<div class="cumpl-empty">Sin registros en este período</div>';return;}
-
-    body.innerHTML=rows.map(r=>{
-      const startStr=r.scheduledStart?r.scheduledStart.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
-      const realStr=r.realStart?r.realStart.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
-      const dateStr=r.fecha?parseDate(r.fecha)?.toLocaleDateString('es-CO',{day:'2-digit',month:'short'})||'—':'—';
-      const endStr=r.scheduledEnd?r.scheduledEnd.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
-      const realEndStr=r.realEnd?r.realEnd.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
-      return `<div class="cumpl-row">
-        <div class="cumpl-cell bold">${esc(r.nombre||r.usuario||'—')}</div>
-        <div class="cumpl-cell">${dateStr}</div>
-        <div class="cumpl-cell">${esc(r.rol||'—')}</div>
-        <div class="cumpl-cell">${startStr}</div>
-        <div class="cumpl-cell">${endStr}</div>
-        <div class="cumpl-cell" style="${r.realStart&&r.status.cls==='tardanza'?'color:#fbbf24;':r.status.cls==='cumplió'?'color:#4ade80;':''}">${realStr}</div>
-        <div class="cumpl-cell">${realEndStr}</div>
-        <div class="cumpl-cell">${esc(r.almuerzo||'—')}</div>
-        <div class="cumpl-cell">${esc(r.linea||'—')}</div>
-        <div>${r.novedad?`<span class="cumpl-novedad-tag">${esc(r.novedad)}</span>`:'<span style="color:var(--text-dim);font-size:11px;">—</span>'}</div>
-        <div><span class="cumpl-status ${r.status.cls}">${r.status.icon} ${r.status.label}</span></div>
-      </div>`;
-    }).join('');
+    cumplAllRows=rows;
+    cumplStatusFilter=null;
+    renderCumplRows();
 
   }catch(e){
     console.error(e);
