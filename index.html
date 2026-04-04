@@ -1295,8 +1295,8 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 
 <script>
 // Version control — increment this on every update
-const APP_VERSION = '3.3';
-const APP_CHANGELOG = 'Nueva pestaña Cumplimiento: malla de turnos programados vs real.';
+const APP_VERSION = '3.4';
+const APP_CHANGELOG = 'Cumplimiento conectado a la malla de HORARIOS OPS 2026.';
 const ADMINS = ['cromero@pibox.app'];
 
 function softReload(){
@@ -2042,7 +2042,7 @@ window.addEventListener('beforeunload', ()=>{
 });
 
 // ── CUMPLIMIENTO ──
-const MALLA_URL='https://docs.google.com/spreadsheets/d/e/2PACX-1vSc-VMkDJaPFnXOcTN0k-u0BPppIqJiAyCppehfkQgWF3Wu22H5DaLJJTDty5DgWg/pub?gid=213344476&single=true&output=csv';
+const MALLA_SCRIPT='https://script.google.com/macros/s/AKfycbwIlfB1L9kj2q6NoNqAldeVoyWW1JBxJjYBiJ14MJ7ES0GyWSB0HUAjjR2o2CXI0fNm/exec';
 const TOLERANCE_MINS=5;
 let cumplFilter='today';
 
@@ -2085,7 +2085,9 @@ async function loadCumplimiento(){
 
   try{
     // Fetch malla
-    const mallaCSV=await fetchSheetByName('Malla');
+    const mallaResp=await fetch(MALLA_SCRIPT+'?sheet=Malla',{signal:AbortSignal.timeout(10000)});
+    if(!mallaResp.ok) throw new Error('Error cargando malla');
+    const mallaCSV=await mallaResp.text();
     const mallaLines=mallaCSV.trim().split('\n').slice(1);
     let malla=mallaLines.map(l=>{
       const c=parseCSV(l);
@@ -2950,7 +2952,7 @@ window.addEventListener('beforeunload', ()=>{
 });
 
 // ── CUMPLIMIENTO ──
-const MALLA_URL='https://docs.google.com/spreadsheets/d/e/2PACX-1vSc-VMkDJaPFnXOcTN0k-u0BPppIqJiAyCppehfkQgWF3Wu22H5DaLJJTDty5DgWg/pub?gid=213344476&single=true&output=csv';
+const MALLA_SCRIPT='https://script.google.com/macros/s/AKfycbwIlfB1L9kj2q6NoNqAldeVoyWW1JBxJjYBiJ14MJ7ES0GyWSB0HUAjjR2o2CXI0fNm/exec';
 const TOLERANCE_MINS=5;
 let cumplFilter='today';
 
@@ -2993,7 +2995,9 @@ async function loadCumplimiento(){
 
   try{
     // Fetch malla
-    const mallaCSV=await fetchSheetByName('Malla');
+    const mallaResp=await fetch(MALLA_SCRIPT+'?sheet=Malla',{signal:AbortSignal.timeout(10000)});
+    if(!mallaResp.ok) throw new Error('Error cargando malla');
+    const mallaCSV=await mallaResp.text();
     const mallaLines=mallaCSV.trim().split('\n').slice(1);
     let malla=mallaLines.map(l=>{
       const c=parseCSV(l);
