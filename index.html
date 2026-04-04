@@ -843,8 +843,8 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 
 <script>
 // Version control — increment this on every update
-const APP_VERSION = '2.3';
-const APP_CHANGELOG = 'Botón para limpiar métricas disponible para administradores.';
+const APP_VERSION = '2.4';
+const APP_CHANGELOG = 'Encuesta solo aparece en el Asistente, no en otras pestañas.';
 const ADMINS = ['cromero@pibox.app'];
 
 function softReload(){
@@ -861,7 +861,8 @@ function scheduleSurvey(){
   if(surveyTimer) clearTimeout(surveyTimer);
   lastChatTimestamp=Date.now();hasConversation=true;
   surveyTimer=setTimeout(()=>{
-    if(hasConversation&&document.getElementById('user-input').value.trim()==='') showSurvey();
+    const chatActive = document.getElementById('chat-view').classList.contains('active');
+    if(hasConversation&&chatActive&&document.getElementById('user-input').value.trim()==='') showSurvey();
   },5*60*1000);
 }
 function showSurvey(){
@@ -877,7 +878,8 @@ function continueSurvey(){
   surveyAnswer=null;
   if(surveyTimer) clearTimeout(surveyTimer);
   surveyTimer=setTimeout(()=>{
-    if(hasConversation&&document.getElementById('user-input').value.trim()==='') showSurvey();
+    const chatActive = document.getElementById('chat-view').classList.contains('active');
+    if(hasConversation&&chatActive&&document.getElementById('user-input').value.trim()==='') showSurvey();
   },5*60*1000);
 }
 function closeSurvey(track=false){
