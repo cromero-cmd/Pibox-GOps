@@ -1029,9 +1029,7 @@ function renderVideos(vids){
     </a>`).join('')+'</div>';
 }
 
-async function sendMessage(retries=0){
-  if(!apiKey){document.getElementById('setup-banner').style.display='flex';return;}
-  // Survey logic
+// Survey logic
 let surveyTimer=null;
 let surveyAnswer=null;
 let lastChatTimestamp=null;
@@ -1078,6 +1076,9 @@ function closeSurvey(track=false){
   document.getElementById('survey-card').style.display='none';
   if(surveyTimer) clearTimeout(surveyTimer);
 }
+
+async function sendMessage(retries=0){
+  if(!apiKey){document.getElementById('setup-banner').style.display='flex';return;}
 
 async function selectSurvey(answer, btn){
   surveyAnswer=answer;
