@@ -711,8 +711,12 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 
 /* User breakdown table */
 .panel-table{background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden;margin-bottom:16px;}
-.panel-table-header{display:grid;grid-template-columns:1fr 80px 100px 100px 80px 90px;gap:8px;padding:10px 16px;background:var(--surface2);border-bottom:1px solid var(--border);font-size:10px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;font-family:var(--mono);}
-.panel-table-row{display:grid;grid-template-columns:1fr 80px 100px 100px 80px 90px;gap:8px;padding:11px 16px;border-bottom:1px solid var(--border);font-size:12px;align-items:center;}
+.panel-table-header{display:grid;grid-template-columns:1fr 80px 120px 100px 90px 90px;padding:0;background:var(--surface2);border-bottom:1px solid var(--border);font-size:10px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;font-family:var(--mono);}
+.panel-table-header>div{position:relative;padding:10px 14px;border-right:1px solid var(--border);overflow:hidden;white-space:nowrap;}
+.panel-table-header>div:last-child{border-right:none;}
+.panel-table-row{display:grid;grid-template-columns:1fr 80px 120px 100px 90px 90px;border-bottom:1px solid var(--border);font-size:12px;align-items:stretch;}
+.panel-table-row>div{padding:10px 14px;border-right:1px solid var(--border);display:flex;align-items:center;overflow:hidden;}
+.panel-table-row>div:last-child{border-right:none;}
 .panel-table-row:last-child{border-bottom:none;}
 .panel-table-row:hover{background:rgba(123,47,255,0.04);}
 .panel-cell-user{overflow:hidden;}
@@ -1202,12 +1206,12 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
       <!-- Right: historial -->
       <div class="panel-right">
         <div class="panel-table">
-          <div class="panel-table-header">
-            <div>Usuario</div>
-            <div>Fecha</div>
-            <div>Inicio → Fin</div>
-            <div>Duración</div>
-            <div>Dispositivo</div>
+          <div class="panel-table-header" id="panel-thead">
+            <div>Usuario<div class="col-resizer" onmousedown="startPanelColResize(event,0)"></div></div>
+            <div>Fecha<div class="col-resizer" onmousedown="startPanelColResize(event,1)"></div></div>
+            <div>Inicio → Fin<div class="col-resizer" onmousedown="startPanelColResize(event,2)"></div></div>
+            <div>Duración<div class="col-resizer" onmousedown="startPanelColResize(event,3)"></div></div>
+            <div>Dispositivo<div class="col-resizer" onmousedown="startPanelColResize(event,4)"></div></div>
             <div>Estado</div>
           </div>
           <div id="panel-table-body" style="max-height:520px;overflow-y:auto;">
@@ -3076,6 +3080,45 @@ async function loadTurnoHistory(){
     document.addEventListener('mouseup',onUp);
   };
 })();
+
+// Column resizer for panel table
+(function(){
+  let resizing=false, startX=0, startW=0, colIdx=0;
+  window.startPanelColResize = function(e, idx){
+    e.preventDefault();
+    resizing=true; colIdx=idx; startX=e.clientX;
+    const thead=document.getElementById('panel-thead');
+    if(!thead) return;
+    startW=thead.children[idx].offsetWidth;
+    document.body.style.cursor='col-resize';
+    document.body.style.userSelect='none';
+    e.target.classList.add('resizing');
+    const onMove=ev=>{
+      if(!resizing) return;
+      const diff=ev.clientX-startX;
+      const newW=Math.max(50,startW+diff)+'px';
+      const thead2=document.getElementById('panel-thead');
+      if(!thead2) return;
+      const grid=thead2.style.gridTemplateColumns||getComputedStyle(thead2).gridTemplateColumns;
+      const parts=grid.split(' ');
+      if(parts.length>colIdx) parts[colIdx]=newW;
+      const newGrid=parts.join(' ');
+      thead2.style.gridTemplateColumns=newGrid;
+      document.querySelectorAll('.panel-table-row').forEach(r=>r.style.gridTemplateColumns=newGrid);
+    };
+    const onUp=()=>{
+      resizing=false;
+      document.body.style.cursor='';
+      document.body.style.userSelect='';
+      document.removeEventListener('mousemove',onMove);
+      document.removeEventListener('mouseup',onUp);
+      document.querySelectorAll('.col-resizer').forEach(r=>r.classList.remove('resizing'));
+    };
+    document.addEventListener('mousemove',onMove);
+    document.addEventListener('mouseup',onUp);
+  };
+})();
+
 
 // Draggable floating timer
 (function(){
