@@ -1252,7 +1252,7 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
       <div class="cumpl-table-scroll">
         <div class="cumpl-table-header">
           <div>Usuario</div>
-          <div>Fecha</div>
+          <div onclick="toggleCumplSort()" style="cursor:pointer;user-select:none;color:var(--p2);" title="Ordenar por fecha">Fecha <span id="cumpl-sort-icon">↑</span></div>
           <div>Rol</div>
           <div>Prog. inicio</div>
           <div>Prog. fin</div>
@@ -1304,8 +1304,8 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 
 <script>
 // Version control — increment this on every update
-const APP_VERSION = '4.0';
-const APP_CHANGELOG = 'Cumplimiento: filtros por estado, ordenar por fecha y tooltip en valores.';
+const APP_VERSION = '4.1';
+const APP_CHANGELOG = 'Cumplimiento: filtros de fecha y ordenador por fecha corregidos.';
 const ADMINS = ['cromero@pibox.app'];
 
 function softReload(){
@@ -2197,16 +2197,23 @@ async function loadCumplimiento(){
     }
 
     // Filter by period
-    const startOfDay=new Date(now);startOfDay.setHours(0,0,0,0);
-    const startOfWeek=new Date(now);startOfWeek.setDate(now.getDate()-now.getDay());startOfWeek.setHours(0,0,0,0);
+    const startOfDay=new Date(now.getFullYear(),now.getMonth(),now.getDate(),0,0,0,0);
+    const endOfDay=new Date(now.getFullYear(),now.getMonth(),now.getDate(),23,59,59,999);
+    const startOfWeek=new Date(now);
+    startOfWeek.setDate(now.getDate()-now.getDay()+1); // Monday
+    startOfWeek.setHours(0,0,0,0);
+    const endOfWeek=new Date(startOfWeek);
+    endOfWeek.setDate(startOfWeek.getDate()+6);
+    endOfWeek.setHours(23,59,59,999);
     const startOfMonth=new Date(now.getFullYear(),now.getMonth(),1);
+    const endOfMonth=new Date(now.getFullYear(),now.getMonth()+1,0,23,59,59,999);
 
     malla=malla.filter(m=>{
       const d=parseDate(m.fecha);
       if(!d) return false;
-      if(cumplFilter==='today') return d>=startOfDay;
-      if(cumplFilter==='week') return d>=startOfWeek;
-      if(cumplFilter==='month') return d>=startOfMonth;
+      if(cumplFilter==='today') return d>=startOfDay && d<=endOfDay;
+      if(cumplFilter==='week') return d>=startOfWeek && d<=endOfWeek;
+      if(cumplFilter==='month') return d>=startOfMonth && d<=endOfMonth;
       if(cumplFilter==='custom'){
         const from=document.getElementById('cumpl-date-from')?.value;
         const to=document.getElementById('cumpl-date-to')?.value;
@@ -3171,16 +3178,23 @@ async function loadCumplimiento(){
     }
 
     // Filter by period
-    const startOfDay=new Date(now);startOfDay.setHours(0,0,0,0);
-    const startOfWeek=new Date(now);startOfWeek.setDate(now.getDate()-now.getDay());startOfWeek.setHours(0,0,0,0);
+    const startOfDay=new Date(now.getFullYear(),now.getMonth(),now.getDate(),0,0,0,0);
+    const endOfDay=new Date(now.getFullYear(),now.getMonth(),now.getDate(),23,59,59,999);
+    const startOfWeek=new Date(now);
+    startOfWeek.setDate(now.getDate()-now.getDay()+1); // Monday
+    startOfWeek.setHours(0,0,0,0);
+    const endOfWeek=new Date(startOfWeek);
+    endOfWeek.setDate(startOfWeek.getDate()+6);
+    endOfWeek.setHours(23,59,59,999);
     const startOfMonth=new Date(now.getFullYear(),now.getMonth(),1);
+    const endOfMonth=new Date(now.getFullYear(),now.getMonth()+1,0,23,59,59,999);
 
     malla=malla.filter(m=>{
       const d=parseDate(m.fecha);
       if(!d) return false;
-      if(cumplFilter==='today') return d>=startOfDay;
-      if(cumplFilter==='week') return d>=startOfWeek;
-      if(cumplFilter==='month') return d>=startOfMonth;
+      if(cumplFilter==='today') return d>=startOfDay && d<=endOfDay;
+      if(cumplFilter==='week') return d>=startOfWeek && d<=endOfWeek;
+      if(cumplFilter==='month') return d>=startOfMonth && d<=endOfMonth;
       if(cumplFilter==='custom'){
         const from=document.getElementById('cumpl-date-from')?.value;
         const to=document.getElementById('cumpl-date-to')?.value;
