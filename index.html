@@ -47,6 +47,8 @@ onAuthStateChanged(auth, async user => {
     if(clearBtn) clearBtn.style.display = isAdmin ? 'flex' : 'none';
     const panelTab = document.getElementById('tab-panel');
     if(panelTab) panelTab.style.display = isAdmin ? 'flex' : 'none';
+    const cumplTab = document.getElementById('tab-cumplimiento');
+    if(cumplTab) cumplTab.style.display = 'flex'; // visible for all
     // Load config from Firebase
     try {
       const docRef = doc(db, 'configs', user.uid);
@@ -57,6 +59,7 @@ onAuthStateChanged(auth, async user => {
         if(cfg.sheet) { localStorage.setItem('pg_sheet', cfg.sheet); }
         if(cfg.vid)   { localStorage.setItem('pg_vid',   cfg.vid);   }
         if(cfg.faq)   { localStorage.setItem('pg_faq',   cfg.faq);   }
+        if(cfg.malla) { localStorage.setItem('pg_malla', cfg.malla); }
         if(cfg.sys)   { localStorage.setItem('pg_sys',   cfg.sys);   }
         // Trigger app init with loaded config
         window._loadAppConfig&&window._loadAppConfig();
@@ -722,6 +725,55 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 .panel-badge.desktop{background:rgba(74,222,128,0.08);color:#4ade80;}
 .panel-empty{padding:40px;text-align:center;color:var(--text-dim);font-size:13px;}
 
+/* Cumplimiento styles */
+#cumplimiento-view{overflow-y:auto;padding:20px;}
+#cumplimiento-view::-webkit-scrollbar{width:4px;}
+#cumplimiento-view::-webkit-scrollbar-thumb{background:var(--surface3);border-radius:4px;}
+.cumpl-inner{max-width:1100px;margin:0 auto;}
+.cumpl-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;flex-wrap:wrap;gap:12px;}
+.cumpl-title{font-size:19px;font-weight:800;}
+.cumpl-title span{background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
+.cumpl-tolerance{display:inline-flex;align-items:center;gap:6px;background:rgba(123,47,255,0.08);border:1px solid rgba(123,47,255,0.2);border-radius:8px;padding:5px 12px;font-size:11px;color:var(--p2);font-family:var(--mono);margin-bottom:16px;}
+.cumpl-filters{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:16px;}
+.cumpl-filter-btn{background:var(--surface2);border:1px solid var(--border);color:var(--text-muted);padding:5px 14px;border-radius:100px;font-size:12px;font-weight:600;cursor:pointer;transition:all 0.2s;font-family:var(--font);}
+.cumpl-filter-btn:hover{border-color:var(--p1);color:var(--text);}
+.cumpl-filter-btn.active{background:var(--grad);border-color:transparent;color:white;}
+.cumpl-date-input{background:var(--surface2);border:1px solid var(--border);color:var(--text-muted);padding:5px 10px;border-radius:8px;font-size:12px;font-family:var(--mono);outline:none;}
+.cumpl-date-input:focus{border-color:var(--p1);}
+.cumpl-summary{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-bottom:16px;}
+.cumpl-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 16px;position:relative;overflow:hidden;text-align:center;}
+.cumpl-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;}
+.cumpl-card.green::before{background:linear-gradient(90deg,#4ade80,#22d3ee);}
+.cumpl-card.yellow::before{background:linear-gradient(90deg,#fbbf24,#fb923c);}
+.cumpl-card.red::before{background:linear-gradient(90deg,#f87171,#e879f9);}
+.cumpl-card.purple::before{background:var(--grad);}
+.cumpl-card.gray::before{background:linear-gradient(90deg,var(--text-dim),var(--surface3));}
+.cumpl-card-num{font-size:24px;font-weight:800;font-family:var(--mono);line-height:1;}
+.cumpl-card.green .cumpl-card-num{color:#4ade80;}
+.cumpl-card.yellow .cumpl-card-num{color:#fbbf24;}
+.cumpl-card.red .cumpl-card-num{color:#f87171;}
+.cumpl-card.purple .cumpl-card-num{background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
+.cumpl-card.gray .cumpl-card-num{color:var(--text-dim);}
+.cumpl-card-label{font-size:10px;color:var(--text-dim);font-family:var(--mono);margin-top:4px;}
+.cumpl-table{background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden;}
+.cumpl-table-header{display:grid;grid-template-columns:140px 80px 90px 110px 110px 100px 100px 1fr 110px;gap:6px;padding:10px 14px;background:var(--surface2);border-bottom:1px solid var(--border);font-size:10px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;font-family:var(--mono);}
+.cumpl-table-header-user{display:grid;grid-template-columns:140px 80px 90px 110px 110px 100px 100px 1fr 110px;gap:6px;padding:10px 14px;background:var(--surface2);border-bottom:1px solid var(--border);font-size:10px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;font-family:var(--mono);}
+.cumpl-row{display:grid;grid-template-columns:140px 80px 90px 110px 110px 100px 100px 1fr 110px;gap:6px;padding:10px 14px;border-bottom:1px solid var(--border);font-size:12px;align-items:center;}
+.cumpl-row:last-child{border-bottom:none;}
+.cumpl-row:hover{background:rgba(123,47,255,0.03);}
+.cumpl-cell{font-family:var(--mono);font-size:11px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.cumpl-cell.bold{font-weight:700;color:var(--text);}
+.cumpl-status{display:inline-flex;align-items:center;gap:4px;font-size:10px;font-family:var(--mono);padding:3px 8px;border-radius:5px;white-space:nowrap;}
+.cumpl-status.cumplió{background:rgba(74,222,128,0.1);color:#4ade80;}
+.cumpl-status.tardanza{background:rgba(251,191,36,0.1);color:#fbbf24;}
+.cumpl-status.ausente{background:rgba(248,113,113,0.1);color:#f87171;}
+.cumpl-status.pendiente{background:rgba(90,82,112,0.15);color:var(--text-dim);}
+.cumpl-status.novedad{background:rgba(123,47,255,0.1);color:var(--p2);}
+.cumpl-novedad-tag{display:inline-flex;background:rgba(123,47,255,0.1);border:1px solid rgba(123,47,255,0.2);color:var(--p2);padding:2px 7px;border-radius:4px;font-size:10px;font-family:var(--mono);}
+.cumpl-empty{padding:40px;text-align:center;color:var(--text-dim);font-size:13px;}
+.cumpl-user-select{background:var(--surface2);border:1px solid var(--border);color:var(--text-muted);padding:5px 10px;border-radius:8px;font-size:12px;font-family:var(--mono);outline:none;min-width:160px;}
+.cumpl-user-select:focus{border-color:var(--p1);}
+
 .toast{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:var(--grad);color:white;padding:8px 20px;border-radius:100px;font-weight:700;font-size:13px;z-index:999;box-shadow:0 4px 20px rgba(123,47,255,0.5);animation:msgIn 0.3s ease both;}
 .update-banner{position:fixed;top:0;left:0;right:0;z-index:400;background:linear-gradient(135deg,#1a0a3a,#2d1060);border-bottom:1px solid var(--p1);padding:10px 20px;display:flex;align-items:center;justify-content:center;gap:14px;animation:slideDown 0.4s ease both;}
 @keyframes slideDown{from{transform:translateY(-100%)}to{transform:translateY(0)}}
@@ -813,6 +865,10 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
         <svg viewBox="0 0 24 24" fill="none"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
         Panel de turnos
       </button>
+      <button class="tab" id="tab-cumplimiento" onclick="switchTab('cumplimiento')" style="display:none;">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Cumplimiento
+      </button>
     </div>
 
     <div class="header-right">
@@ -868,6 +924,12 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
       <div class="field">
         <label>Google Sheet — FAQ (CSV)</label>
         <input type="text" id="inp-faq" placeholder="URL del Sheet de FAQ..."/>
+    </div>
+    <hr/>
+    <div class="msec">📅 Malla de Turnos</div>
+    <div class="field">
+      <label>Google Sheet — Malla (CSV)</label>
+      <input type="text" id="inp-malla" placeholder="URL del Sheet de Malla..."/>
       </div>
       <div class="modal-actions">
         <button class="btn-cancel" onclick="closeConfig()">Cancelar</button>
@@ -1144,6 +1206,62 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
   </div>
 </div>
 
+<!-- Cumplimiento View -->
+<div class="view" id="cumplimiento-view">
+  <div class="cumpl-inner">
+    <div class="cumpl-header">
+      <div>
+        <div class="cumpl-title">Malla de <span>turnos</span></div>
+        <div style="font-size:12px;color:var(--text-dim);margin-top:2px;font-family:var(--mono)" id="cumpl-subtitle">Programado vs. Real</div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+        <select class="cumpl-user-select" id="cumpl-user-select" onchange="loadCumplimiento()" style="display:none;">
+          <option value="all">Todos los usuarios</option>
+        </select>
+        <button class="cumpl-filter-btn" onclick="loadCumplimiento()" style="padding:5px 12px;">↻ Actualizar</button>
+      </div>
+    </div>
+
+    <div class="cumpl-tolerance">
+      ⏱ Tolerancia de llegada: <strong>5 minutos</strong> — llegadas dentro de este margen se consideran cumplidas
+    </div>
+
+    <div class="cumpl-filters">
+      <button class="cumpl-filter-btn active" onclick="setCumplFilter('today',this)">Hoy</button>
+      <button class="cumpl-filter-btn" onclick="setCumplFilter('week',this)">Esta semana</button>
+      <button class="cumpl-filter-btn" onclick="setCumplFilter('month',this)">Este mes</button>
+      <button class="cumpl-filter-btn" onclick="setCumplFilter('custom',this)">Personalizado</button>
+      <div id="cumpl-date-row" style="display:none;gap:6px;align-items:center;display:none;">
+        <span style="font-size:11px;color:var(--text-dim);font-family:var(--mono);">Desde</span>
+        <input type="date" class="cumpl-date-input" id="cumpl-date-from" onchange="loadCumplimiento()"/>
+        <span style="font-size:11px;color:var(--text-dim);font-family:var(--mono);">Hasta</span>
+        <input type="date" class="cumpl-date-input" id="cumpl-date-to" onchange="loadCumplimiento()"/>
+      </div>
+    </div>
+
+    <!-- Summary -->
+    <div class="cumpl-summary" id="cumpl-summary"></div>
+
+    <!-- Table -->
+    <div class="cumpl-table">
+      <div class="cumpl-table-header">
+        <div>Usuario</div>
+        <div>Fecha</div>
+        <div>Rol</div>
+        <div>Prog. inicio</div>
+        <div>Real inicio</div>
+        <div>Almuerzo</div>
+        <div>Línea</div>
+        <div>Novedad</div>
+        <div>Estado</div>
+      </div>
+      <div id="cumpl-table-body">
+        <div class="cumpl-empty">Cargando malla de turnos...</div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Floating Timer -->
 <div class="floating-timer" id="floating-timer">
   <div class="floating-timer-dot"></div>
@@ -1177,8 +1295,8 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 
 <script>
 // Version control — increment this on every update
-const APP_VERSION = '3.2';
-const APP_CHANGELOG = 'Turno como vista principal, filtros interactivos en Panel de turnos.';
+const APP_VERSION = '3.3';
+const APP_CHANGELOG = 'Nueva pestaña Cumplimiento: malla de turnos programados vs real.';
 const ADMINS = ['cromero@pibox.app'];
 
 function softReload(){
@@ -1187,7 +1305,7 @@ function softReload(){
   window.location.href = url;
 }
 
-let apiKey='',sheetUrl='',vidUrl='',faqUrl='',sysBase='',history=[],streaming=false,sheetData='',allVideos=[],activeCat='Todos',allFAQs=[],activeFAQCat='Todos';
+let apiKey='',sheetUrl='',vidUrl='',faqUrl='',mallaUrl='',sysBase='',history=[],streaming=false,sheetData='',allVideos=[],activeCat='Todos',allFAQs=[],activeFAQCat='Todos';
 
 // Survey logic
 let surveyTimer=null,surveyAnswer=null,lastChatTimestamp=null,hasConversation=false;
@@ -1261,12 +1379,15 @@ window._loadAppConfig = () => {
   sheetUrl=localStorage.getItem('pg_sheet')||'';
   vidUrl=localStorage.getItem('pg_vid')||'';
   faqUrl=localStorage.getItem('pg_faq')||'';
+  mallaUrl=localStorage.getItem('pg_malla')||'';
   sysBase=localStorage.getItem('pg_sys')||sysBase;
   if(apiKey){
     document.getElementById('inp-key').value=apiKey;
     document.getElementById('inp-url').value=sheetUrl;
     document.getElementById('inp-vid').value=vidUrl;
     document.getElementById('inp-faq').value=faqUrl;
+    const mallaInp=document.getElementById('inp-malla');
+    if(mallaInp) mallaInp.value=mallaUrl;
     document.getElementById('inp-sys').value=sysBase;
     document.getElementById('setup-banner').style.display='none';
     fetchSheet(); loadFAQs();
@@ -1296,6 +1417,8 @@ window.onload=()=>{
     document.getElementById('inp-url').value=sheetUrl;
     document.getElementById('inp-vid').value=vidUrl;
     document.getElementById('inp-faq').value=faqUrl;
+    const mallaInp=document.getElementById('inp-malla');
+    if(mallaInp) mallaInp.value=mallaUrl;
     document.getElementById('inp-sys').value=sysBase;
   } else { document.getElementById('setup-banner').style.display='flex'; }
   fetchSheet();
@@ -1306,9 +1429,9 @@ window.onload=()=>{
 };
 
 function switchTab(t){
-  ['chat','library','analytics','turno','panel'].forEach(v=>{
+  ['chat','library','analytics','turno','panel','cumplimiento'].forEach(v=>{
     document.getElementById(v+'-view').classList.toggle('active',v===t);
-    const tid=v==='library'?'lib':v==='analytics'?'an':v==='panel'?'panel':v;
+    const tid=v==='library'?'lib':v==='analytics'?'an':v;
     const tabEl=document.getElementById('tab-'+tid);
     if(tabEl) tabEl.classList.toggle('active',v===t);
   });
@@ -1317,6 +1440,7 @@ function switchTab(t){
   if(t==='analytics') loadAnalytics();
   if(t==='turno') initTurnoView();
   if(t==='panel') initPanelView();
+  if(t==='cumplimiento') loadCumplimiento();
 }
 
 function openConfig(){document.getElementById('overlay').classList.add('open');}
@@ -1329,12 +1453,13 @@ async function saveConfig(){
   const fu=document.getElementById('inp-faq').value.trim();
   const s=document.getElementById('inp-sys').value.trim();
   if(!k){alert('Ingresa tu API Key.');return;}
-  apiKey=k;sheetUrl=u;vidUrl=vu;faqUrl=fu;if(s)sysBase=s;
+  const ma=document.getElementById('inp-malla').value.trim();
+  apiKey=k;sheetUrl=u;vidUrl=vu;faqUrl=fu;mallaUrl=ma;if(s)sysBase=s;
   localStorage.setItem('pg_key',k);localStorage.setItem('pg_sheet',u);
   localStorage.setItem('pg_vid',vu);localStorage.setItem('pg_faq',fu);
-  localStorage.setItem('pg_sys',sysBase);
+  localStorage.setItem('pg_malla',ma);localStorage.setItem('pg_sys',sysBase);
   // Save to Firebase
-  window.saveConfigToFirebase&&window.saveConfigToFirebase({key:k,sheet:u,vid:vu,faq:fu,sys:sysBase});
+  window.saveConfigToFirebase&&window.saveConfigToFirebase({key:k,sheet:u,vid:vu,faq:fu,malla:ma,sys:sysBase});
   document.getElementById('setup-banner').style.display='none';
   closeConfig();fetchSheet();loadFAQs();
   if(vu){allVideos=[];loadVideos();}
@@ -1915,6 +2040,151 @@ window.addEventListener('beforeunload', ()=>{
     });
   }
 });
+
+// ── CUMPLIMIENTO ──
+const MALLA_URL='https://docs.google.com/spreadsheets/d/e/2PACX-1vSc-VMkDJaPFnXOcTN0k-u0BPppIqJiAyCppehfkQgWF3Wu22H5DaLJJTDty5DgWg/pub?gid=213344476&single=true&output=csv';
+const TOLERANCE_MINS=5;
+let cumplFilter='today';
+
+function setCumplFilter(f,btn){
+  cumplFilter=f;
+  document.querySelectorAll('.cumpl-filter-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  const dr=document.getElementById('cumpl-date-row');
+  if(dr) dr.style.display=f==='custom'?'flex':'none';
+  if(f==='custom'){
+    const today=new Date().toISOString().split('T')[0];
+    if(!document.getElementById('cumpl-date-from').value) document.getElementById('cumpl-date-from').value=today;
+    if(!document.getElementById('cumpl-date-to').value) document.getElementById('cumpl-date-to').value=today;
+  }
+  loadCumplimiento();
+}
+
+function parseTime(dateStr, timeStr){
+  if(!dateStr||!timeStr) return null;
+  const [h,m]=(timeStr||'').split(':').map(Number);
+  const d=new Date(dateStr+'T00:00:00');
+  d.setHours(h||0,m||0,0,0);
+  return d;
+}
+
+function getStatus(scheduled, actual, novedad, now){
+  if(novedad&&novedad.trim()) return {label:novedad.trim(),cls:'novedad',icon:'📋'};
+  if(!scheduled) return {label:'Sin programar',cls:'pendiente',icon:'—'};
+  if(now<scheduled) return {label:'Pendiente por iniciar',cls:'pendiente',icon:'⏳'};
+  if(!actual) return {label:'Ausente',cls:'ausente',icon:'🔴'};
+  const diffMins=Math.round((actual-scheduled)/60000);
+  if(diffMins<=TOLERANCE_MINS) return {label:'Cumplió',cls:'cumplió',icon:'🟢'};
+  return {label:`Tardanza +${diffMins} min`,cls:'tardanza',icon:'🟡'};
+}
+
+async function loadCumplimiento(){
+  const body=document.getElementById('cumpl-table-body');
+  const summary=document.getElementById('cumpl-summary');
+  body.innerHTML='<div class="cumpl-empty">Cargando malla...</div>';
+
+  try{
+    // Fetch malla
+    const mallaCSV=await fetchSheetByName('Malla');
+    const mallaLines=mallaCSV.trim().split('\n').slice(1);
+    let malla=mallaLines.map(l=>{
+      const c=parseCSV(l);
+      return{fecha:c[0]?.trim(),usuario:c[1]?.trim(),nombre:c[2]?.trim(),rol:c[3]?.trim(),inicio:c[4]?.trim(),fin:c[5]?.trim(),almuerzo:c[6]?.trim(),linea:c[7]?.trim(),novedad:c[8]?.trim()};
+    }).filter(m=>m.fecha&&m.usuario);
+
+    // Fetch real turnos
+    const allTurnos=await window.getRecentTurnos();
+    const now=new Date();
+    const userEmail=document.getElementById('user-email').textContent;
+    const isAdmin=ADMINS.includes(userEmail);
+
+    // Filter malla by user
+    if(!isAdmin) malla=malla.filter(m=>m.usuario===userEmail);
+
+    // Show user selector for admin
+    const userSelect=document.getElementById('cumpl-user-select');
+    if(isAdmin&&userSelect){
+      userSelect.style.display='block';
+      const users=[...new Set(malla.map(m=>m.usuario).filter(Boolean))];
+      const cur=userSelect.value;
+      userSelect.innerHTML='<option value="all">Todos los usuarios</option>'+users.map(u=>`<option value="${u}"${u===cur?' selected':''}>${u}</option>`).join('');
+      if(cur!=='all') malla=malla.filter(m=>m.usuario===cur);
+    }
+
+    // Filter by period
+    const startOfDay=new Date(now);startOfDay.setHours(0,0,0,0);
+    const startOfWeek=new Date(now);startOfWeek.setDate(now.getDate()-now.getDay());startOfWeek.setHours(0,0,0,0);
+    const startOfMonth=new Date(now.getFullYear(),now.getMonth(),1);
+
+    malla=malla.filter(m=>{
+      const d=new Date(m.fecha+'T00:00:00');
+      if(cumplFilter==='today') return d>=startOfDay;
+      if(cumplFilter==='week') return d>=startOfWeek;
+      if(cumplFilter==='month') return d>=startOfMonth;
+      if(cumplFilter==='custom'){
+        const from=document.getElementById('cumpl-date-from')?.value;
+        const to=document.getElementById('cumpl-date-to')?.value;
+        if(from&&d<new Date(from+'T00:00:00')) return false;
+        if(to&&d>new Date(to+'T23:59:59')) return false;
+      }
+      return true;
+    });
+
+    // Match malla with real turnos
+    const rows=malla.map(m=>{
+      const scheduledStart=parseTime(m.fecha,m.inicio);
+      const userTurnos=allTurnos.filter(t=>t.userEmail===m.usuario&&t.startTime?.toDate?.());
+      const matchedTurno=userTurnos.find(t=>{
+        const ts=t.startTime.toDate();
+        const sameDay=ts.toDateString()===scheduledStart?.toDateString();
+        return sameDay;
+      });
+      const realStart=matchedTurno?matchedTurno.startTime.toDate():null;
+      const status=getStatus(scheduledStart,realStart,m.novedad,now);
+      return{...m,scheduledStart,realStart,status,matchedTurno};
+    });
+
+    // Summary
+    const total=rows.length;
+    const cumplió=rows.filter(r=>r.status.cls==='cumplió').length;
+    const tardanza=rows.filter(r=>r.status.cls==='tardanza').length;
+    const ausente=rows.filter(r=>r.status.cls==='ausente').length;
+    const pendiente=rows.filter(r=>r.status.cls==='pendiente').length;
+    const novedad=rows.filter(r=>r.status.cls==='novedad').length;
+    const pct=total>0?Math.round(((cumplió+novedad)/total)*100):0;
+
+    summary.innerHTML=`
+      <div class="cumpl-card purple"><div class="cumpl-card-num">${pct}%</div><div class="cumpl-card-label">Cumplimiento</div></div>
+      <div class="cumpl-card green"><div class="cumpl-card-num">${cumplió}</div><div class="cumpl-card-label">🟢 Cumplió</div></div>
+      <div class="cumpl-card yellow"><div class="cumpl-card-num">${tardanza}</div><div class="cumpl-card-label">🟡 Tardanza</div></div>
+      <div class="cumpl-card red"><div class="cumpl-card-num">${ausente}</div><div class="cumpl-card-label">🔴 Ausente</div></div>
+      <div class="cumpl-card gray"><div class="cumpl-card-num">${pendiente}</div><div class="cumpl-card-label">⏳ Pendiente</div></div>
+      <div class="cumpl-card purple" style=""><div class="cumpl-card-num">${novedad}</div><div class="cumpl-card-label">📋 Novedad</div></div>`;
+
+    if(!rows.length){body.innerHTML='<div class="cumpl-empty">Sin registros en este período</div>';return;}
+
+    body.innerHTML=rows.map(r=>{
+      const startStr=r.scheduledStart?r.scheduledStart.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
+      const realStr=r.realStart?r.realStart.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
+      const dateStr=r.fecha?new Date(r.fecha+'T00:00:00').toLocaleDateString('es-CO',{day:'2-digit',month:'short'}):'—';
+      return `<div class="cumpl-row">
+        <div class="cumpl-cell bold">${esc(r.nombre||r.usuario||'—')}</div>
+        <div class="cumpl-cell">${dateStr}</div>
+        <div class="cumpl-cell">${esc(r.rol||'—')}</div>
+        <div class="cumpl-cell">${startStr}</div>
+        <div class="cumpl-cell" style="${r.realStart&&r.status.cls==='tardanza'?'color:#fbbf24;':r.status.cls==='cumplió'?'color:#4ade80;':''}">${realStr}</div>
+        <div class="cumpl-cell">${esc(r.almuerzo||'—')}</div>
+        <div class="cumpl-cell">${esc(r.linea||'—')}</div>
+        <div>${r.novedad?`<span class="cumpl-novedad-tag">${esc(r.novedad)}</span>`:'<span style="color:var(--text-dim);font-size:11px;">—</span>'}</div>
+        <div><span class="cumpl-status ${r.status.cls}">${r.status.icon} ${r.status.label}</span></div>
+      </div>`;
+    }).join('');
+
+  }catch(e){
+    console.error(e);
+    body.innerHTML='<div class="cumpl-empty">Error al cargar la malla. Verifica la URL en ⚙ Configurar.</div>';
+  }
+}
 
 // ── PANEL DE TURNOS (ADMIN) ──
 let panelFilter='today';
@@ -2678,6 +2948,151 @@ window.addEventListener('beforeunload', ()=>{
     });
   }
 });
+
+// ── CUMPLIMIENTO ──
+const MALLA_URL='https://docs.google.com/spreadsheets/d/e/2PACX-1vSc-VMkDJaPFnXOcTN0k-u0BPppIqJiAyCppehfkQgWF3Wu22H5DaLJJTDty5DgWg/pub?gid=213344476&single=true&output=csv';
+const TOLERANCE_MINS=5;
+let cumplFilter='today';
+
+function setCumplFilter(f,btn){
+  cumplFilter=f;
+  document.querySelectorAll('.cumpl-filter-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  const dr=document.getElementById('cumpl-date-row');
+  if(dr) dr.style.display=f==='custom'?'flex':'none';
+  if(f==='custom'){
+    const today=new Date().toISOString().split('T')[0];
+    if(!document.getElementById('cumpl-date-from').value) document.getElementById('cumpl-date-from').value=today;
+    if(!document.getElementById('cumpl-date-to').value) document.getElementById('cumpl-date-to').value=today;
+  }
+  loadCumplimiento();
+}
+
+function parseTime(dateStr, timeStr){
+  if(!dateStr||!timeStr) return null;
+  const [h,m]=(timeStr||'').split(':').map(Number);
+  const d=new Date(dateStr+'T00:00:00');
+  d.setHours(h||0,m||0,0,0);
+  return d;
+}
+
+function getStatus(scheduled, actual, novedad, now){
+  if(novedad&&novedad.trim()) return {label:novedad.trim(),cls:'novedad',icon:'📋'};
+  if(!scheduled) return {label:'Sin programar',cls:'pendiente',icon:'—'};
+  if(now<scheduled) return {label:'Pendiente por iniciar',cls:'pendiente',icon:'⏳'};
+  if(!actual) return {label:'Ausente',cls:'ausente',icon:'🔴'};
+  const diffMins=Math.round((actual-scheduled)/60000);
+  if(diffMins<=TOLERANCE_MINS) return {label:'Cumplió',cls:'cumplió',icon:'🟢'};
+  return {label:`Tardanza +${diffMins} min`,cls:'tardanza',icon:'🟡'};
+}
+
+async function loadCumplimiento(){
+  const body=document.getElementById('cumpl-table-body');
+  const summary=document.getElementById('cumpl-summary');
+  body.innerHTML='<div class="cumpl-empty">Cargando malla...</div>';
+
+  try{
+    // Fetch malla
+    const mallaCSV=await fetchSheetByName('Malla');
+    const mallaLines=mallaCSV.trim().split('\n').slice(1);
+    let malla=mallaLines.map(l=>{
+      const c=parseCSV(l);
+      return{fecha:c[0]?.trim(),usuario:c[1]?.trim(),nombre:c[2]?.trim(),rol:c[3]?.trim(),inicio:c[4]?.trim(),fin:c[5]?.trim(),almuerzo:c[6]?.trim(),linea:c[7]?.trim(),novedad:c[8]?.trim()};
+    }).filter(m=>m.fecha&&m.usuario);
+
+    // Fetch real turnos
+    const allTurnos=await window.getRecentTurnos();
+    const now=new Date();
+    const userEmail=document.getElementById('user-email').textContent;
+    const isAdmin=ADMINS.includes(userEmail);
+
+    // Filter malla by user
+    if(!isAdmin) malla=malla.filter(m=>m.usuario===userEmail);
+
+    // Show user selector for admin
+    const userSelect=document.getElementById('cumpl-user-select');
+    if(isAdmin&&userSelect){
+      userSelect.style.display='block';
+      const users=[...new Set(malla.map(m=>m.usuario).filter(Boolean))];
+      const cur=userSelect.value;
+      userSelect.innerHTML='<option value="all">Todos los usuarios</option>'+users.map(u=>`<option value="${u}"${u===cur?' selected':''}>${u}</option>`).join('');
+      if(cur!=='all') malla=malla.filter(m=>m.usuario===cur);
+    }
+
+    // Filter by period
+    const startOfDay=new Date(now);startOfDay.setHours(0,0,0,0);
+    const startOfWeek=new Date(now);startOfWeek.setDate(now.getDate()-now.getDay());startOfWeek.setHours(0,0,0,0);
+    const startOfMonth=new Date(now.getFullYear(),now.getMonth(),1);
+
+    malla=malla.filter(m=>{
+      const d=new Date(m.fecha+'T00:00:00');
+      if(cumplFilter==='today') return d>=startOfDay;
+      if(cumplFilter==='week') return d>=startOfWeek;
+      if(cumplFilter==='month') return d>=startOfMonth;
+      if(cumplFilter==='custom'){
+        const from=document.getElementById('cumpl-date-from')?.value;
+        const to=document.getElementById('cumpl-date-to')?.value;
+        if(from&&d<new Date(from+'T00:00:00')) return false;
+        if(to&&d>new Date(to+'T23:59:59')) return false;
+      }
+      return true;
+    });
+
+    // Match malla with real turnos
+    const rows=malla.map(m=>{
+      const scheduledStart=parseTime(m.fecha,m.inicio);
+      const userTurnos=allTurnos.filter(t=>t.userEmail===m.usuario&&t.startTime?.toDate?.());
+      const matchedTurno=userTurnos.find(t=>{
+        const ts=t.startTime.toDate();
+        const sameDay=ts.toDateString()===scheduledStart?.toDateString();
+        return sameDay;
+      });
+      const realStart=matchedTurno?matchedTurno.startTime.toDate():null;
+      const status=getStatus(scheduledStart,realStart,m.novedad,now);
+      return{...m,scheduledStart,realStart,status,matchedTurno};
+    });
+
+    // Summary
+    const total=rows.length;
+    const cumplió=rows.filter(r=>r.status.cls==='cumplió').length;
+    const tardanza=rows.filter(r=>r.status.cls==='tardanza').length;
+    const ausente=rows.filter(r=>r.status.cls==='ausente').length;
+    const pendiente=rows.filter(r=>r.status.cls==='pendiente').length;
+    const novedad=rows.filter(r=>r.status.cls==='novedad').length;
+    const pct=total>0?Math.round(((cumplió+novedad)/total)*100):0;
+
+    summary.innerHTML=`
+      <div class="cumpl-card purple"><div class="cumpl-card-num">${pct}%</div><div class="cumpl-card-label">Cumplimiento</div></div>
+      <div class="cumpl-card green"><div class="cumpl-card-num">${cumplió}</div><div class="cumpl-card-label">🟢 Cumplió</div></div>
+      <div class="cumpl-card yellow"><div class="cumpl-card-num">${tardanza}</div><div class="cumpl-card-label">🟡 Tardanza</div></div>
+      <div class="cumpl-card red"><div class="cumpl-card-num">${ausente}</div><div class="cumpl-card-label">🔴 Ausente</div></div>
+      <div class="cumpl-card gray"><div class="cumpl-card-num">${pendiente}</div><div class="cumpl-card-label">⏳ Pendiente</div></div>
+      <div class="cumpl-card purple" style=""><div class="cumpl-card-num">${novedad}</div><div class="cumpl-card-label">📋 Novedad</div></div>`;
+
+    if(!rows.length){body.innerHTML='<div class="cumpl-empty">Sin registros en este período</div>';return;}
+
+    body.innerHTML=rows.map(r=>{
+      const startStr=r.scheduledStart?r.scheduledStart.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
+      const realStr=r.realStart?r.realStart.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
+      const dateStr=r.fecha?new Date(r.fecha+'T00:00:00').toLocaleDateString('es-CO',{day:'2-digit',month:'short'}):'—';
+      return `<div class="cumpl-row">
+        <div class="cumpl-cell bold">${esc(r.nombre||r.usuario||'—')}</div>
+        <div class="cumpl-cell">${dateStr}</div>
+        <div class="cumpl-cell">${esc(r.rol||'—')}</div>
+        <div class="cumpl-cell">${startStr}</div>
+        <div class="cumpl-cell" style="${r.realStart&&r.status.cls==='tardanza'?'color:#fbbf24;':r.status.cls==='cumplió'?'color:#4ade80;':''}">${realStr}</div>
+        <div class="cumpl-cell">${esc(r.almuerzo||'—')}</div>
+        <div class="cumpl-cell">${esc(r.linea||'—')}</div>
+        <div>${r.novedad?`<span class="cumpl-novedad-tag">${esc(r.novedad)}</span>`:'<span style="color:var(--text-dim);font-size:11px;">—</span>'}</div>
+        <div><span class="cumpl-status ${r.status.cls}">${r.status.icon} ${r.status.label}</span></div>
+      </div>`;
+    }).join('');
+
+  }catch(e){
+    console.error(e);
+    body.innerHTML='<div class="cumpl-empty">Error al cargar la malla. Verifica la URL en ⚙ Configurar.</div>';
+  }
+}
 
 // ── PANEL DE TURNOS (ADMIN) ──
 let panelFilter='today';
