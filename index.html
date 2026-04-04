@@ -45,6 +45,8 @@ onAuthStateChanged(auth, async user => {
     if(cfgBtn) cfgBtn.style.display = isAdmin ? 'flex' : 'none';
     const clearBtn = document.getElementById('btn-clear-metrics');
     if(clearBtn) clearBtn.style.display = isAdmin ? 'flex' : 'none';
+    const panelTab = document.getElementById('tab-panel');
+    if(panelTab) panelTab.style.display = isAdmin ? 'flex' : 'none';
     // Load config from Firebase
     try {
       const docRef = doc(db, 'configs', user.uid);
@@ -660,6 +662,62 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 .floating-timer-end:hover{color:#f87171;}
 @media(max-width:700px){.turno-layout{grid-template-columns:1fr;}.floating-timer{bottom:80px;right:12px;}}
 
+/* Panel de turnos styles */
+#panel-view{overflow-y:auto;padding:20px;}
+#panel-view::-webkit-scrollbar{width:4px;}
+#panel-view::-webkit-scrollbar-thumb{background:var(--surface3);border-radius:4px;}
+.panel-inner{max-width:1100px;margin:0 auto;}
+.panel-header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px;}
+.panel-title{font-size:19px;font-weight:800;}
+.panel-title span{background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
+.panel-controls{display:flex;flex-direction:column;gap:8px;align-items:flex-end;}
+.panel-filters{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+.panel-filter-btn{background:var(--surface2);border:1px solid var(--border);color:var(--text-muted);padding:5px 14px;border-radius:100px;font-size:12px;font-weight:600;cursor:pointer;transition:all 0.2s;font-family:var(--font);}
+.panel-filter-btn:hover{border-color:var(--p1);color:var(--text);}
+.panel-filter-btn.active{background:var(--grad);border-color:transparent;color:white;}
+.panel-date-row{display:flex;gap:8px;align-items:center;}
+.panel-date-input{background:var(--surface2);border:1px solid var(--border);color:var(--text-muted);padding:5px 10px;border-radius:8px;font-size:12px;font-family:var(--mono);outline:none;}
+.panel-date-input:focus{border-color:var(--p1);}
+.panel-date-label{font-size:11px;color:var(--text-dim);font-family:var(--mono);}
+.panel-user-filter{background:var(--surface2);border:1px solid var(--border);color:var(--text-muted);padding:6px 12px;border-radius:9px;font-size:12px;font-family:var(--mono);outline:none;min-width:180px;}
+.panel-user-filter:focus{border-color:var(--p1);}
+
+/* Active now cards */
+.panel-active-section{margin-bottom:20px;}
+.panel-section-title{font-size:12px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:10px;font-family:var(--mono);}
+.panel-active-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;}
+.panel-active-card{background:rgba(74,222,128,0.06);border:1px solid rgba(74,222,128,0.2);border-radius:12px;padding:14px 16px;position:relative;overflow:hidden;}
+.panel-active-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,#4ade80,#22d3ee);}
+.panel-active-name{font-size:13px;font-weight:700;color:var(--text);margin-bottom:2px;}
+.panel-active-email{font-size:10px;color:var(--text-dim);font-family:var(--mono);margin-bottom:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.panel-active-time{font-size:18px;font-weight:800;font-family:var(--mono);color:#4ade80;}
+.panel-active-since{font-size:10px;color:var(--text-dim);font-family:var(--mono);}
+.panel-active-device{position:absolute;top:12px;right:12px;font-size:16px;}
+.panel-mobile-warning{position:absolute;top:8px;right:8px;background:rgba(251,146,60,0.15);border:1px solid rgba(251,146,60,0.3);border-radius:6px;padding:2px 6px;font-size:9px;color:#fb923c;font-family:var(--mono);}
+
+/* Summary cards */
+.panel-summary-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;margin-bottom:20px;}
+.panel-summary-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 16px;position:relative;overflow:hidden;}
+.panel-summary-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:var(--grad);}
+.panel-summary-num{font-size:22px;font-weight:800;background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;line-height:1;}
+.panel-summary-label{font-size:10px;color:var(--text-dim);font-family:var(--mono);margin-top:3px;}
+
+/* User breakdown table */
+.panel-table{background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden;margin-bottom:16px;}
+.panel-table-header{display:grid;grid-template-columns:1fr 80px 100px 100px 80px 90px;gap:8px;padding:10px 16px;background:var(--surface2);border-bottom:1px solid var(--border);font-size:10px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;font-family:var(--mono);}
+.panel-table-row{display:grid;grid-template-columns:1fr 80px 100px 100px 80px 90px;gap:8px;padding:11px 16px;border-bottom:1px solid var(--border);font-size:12px;align-items:center;}
+.panel-table-row:last-child{border-bottom:none;}
+.panel-table-row:hover{background:rgba(123,47,255,0.04);}
+.panel-cell-user{overflow:hidden;}
+.panel-cell-name{font-weight:600;color:var(--text);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.panel-cell-email{font-size:10px;color:var(--text-dim);font-family:var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.panel-cell{font-family:var(--mono);font-size:11px;color:var(--text-muted);}
+.panel-cell.highlight{color:var(--p2);font-weight:700;}
+.panel-badge{font-size:10px;font-family:var(--mono);padding:2px 7px;border-radius:4px;}
+.panel-badge.mobile{background:rgba(251,146,60,0.1);color:#fb923c;}
+.panel-badge.desktop{background:rgba(74,222,128,0.08);color:#4ade80;}
+.panel-empty{padding:40px;text-align:center;color:var(--text-dim);font-size:13px;}
+
 .toast{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:var(--grad);color:white;padding:8px 20px;border-radius:100px;font-weight:700;font-size:13px;z-index:999;box-shadow:0 4px 20px rgba(123,47,255,0.5);animation:msgIn 0.3s ease both;}
 .update-banner{position:fixed;top:0;left:0;right:0;z-index:400;background:linear-gradient(135deg,#1a0a3a,#2d1060);border-bottom:1px solid var(--p1);padding:10px 20px;display:flex;align-items:center;justify-content:center;gap:14px;animation:slideDown 0.4s ease both;}
 @keyframes slideDown{from{transform:translateY(-100%)}to{transform:translateY(0)}}
@@ -746,6 +804,10 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
       <button class="tab" id="tab-turno" onclick="switchTab('turno')">
         <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/><path d="M12 6v6l4 2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
         Turno
+      </button>
+      <button class="tab" id="tab-panel" onclick="switchTab('panel')" style="display:none;">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Panel de turnos
       </button>
     </div>
 
@@ -1010,6 +1072,65 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
   </div>
 </div>
 
+<!-- Panel de Turnos View -->
+<div class="view" id="panel-view">
+  <div class="panel-inner">
+    <div class="panel-header">
+      <div>
+        <div class="panel-title">Panel de <span>turnos</span></div>
+        <div style="font-size:12px;color:var(--text-dim);margin-top:3px;font-family:var(--mono)">Vista de administrador</div>
+      </div>
+      <div class="panel-controls">
+        <div class="panel-filters">
+          <button class="panel-filter-btn active" onclick="setPanelFilter('today',this)">Hoy</button>
+          <button class="panel-filter-btn" onclick="setPanelFilter('week',this)">Esta semana</button>
+          <button class="panel-filter-btn" onclick="setPanelFilter('month',this)">Este mes</button>
+          <button class="panel-filter-btn" onclick="setPanelFilter('custom',this)">Personalizado</button>
+        </div>
+        <div class="panel-date-row" id="panel-date-row" style="display:none;">
+          <span class="panel-date-label">Desde</span>
+          <input type="date" class="panel-date-input" id="panel-date-from" onchange="loadPanelData()"/>
+          <span class="panel-date-label">Hasta</span>
+          <input type="date" class="panel-date-input" id="panel-date-to" onchange="loadPanelData()"/>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <span class="panel-date-label">Usuario:</span>
+          <select class="panel-user-filter" id="panel-user-filter" onchange="loadPanelData()">
+            <option value="all">Todos</option>
+          </select>
+          <button class="panel-filter-btn" onclick="loadPanelData()" style="padding:5px 12px;">↻ Actualizar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Active now -->
+    <div class="panel-active-section">
+      <div class="panel-section-title">🟢 En turno ahora</div>
+      <div class="panel-active-grid" id="panel-active-grid">
+        <div style="color:var(--text-dim);font-size:12px;padding:10px;">Cargando...</div>
+      </div>
+    </div>
+
+    <!-- Summary cards -->
+    <div class="panel-summary-grid" id="panel-summary-grid"></div>
+
+    <!-- Table -->
+    <div class="panel-table">
+      <div class="panel-table-header">
+        <div>Usuario</div>
+        <div>Fecha</div>
+        <div>Inicio → Fin</div>
+        <div>Duración</div>
+        <div>Dispositivo</div>
+        <div>Estado</div>
+      </div>
+      <div id="panel-table-body">
+        <div class="panel-empty">Cargando...</div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Floating Timer -->
 <div class="floating-timer" id="floating-timer">
   <div class="floating-timer-dot"></div>
@@ -1043,8 +1164,8 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 
 <script>
 // Version control — increment this on every update
-const APP_VERSION = '2.9';
-const APP_CHANGELOG = 'Contador flotante: ahora puedes moverlo libremente por la pantalla.';
+const APP_VERSION = '3.0';
+const APP_CHANGELOG = 'Nuevo: Panel de turnos para administradores con historial completo.';
 const ADMINS = ['cromero@pibox.app'];
 
 function softReload(){
@@ -1171,15 +1292,17 @@ window.onload=()=>{
 };
 
 function switchTab(t){
-  ['chat','library','analytics','turno'].forEach(v=>{
+  ['chat','library','analytics','turno','panel'].forEach(v=>{
     document.getElementById(v+'-view').classList.toggle('active',v===t);
-    const tid=v==='library'?'lib':v==='analytics'?'an':v;
-    document.getElementById('tab-'+tid).classList.toggle('active',v===t);
+    const tid=v==='library'?'lib':v==='analytics'?'an':v==='panel'?'panel':v;
+    const tabEl=document.getElementById('tab-'+tid);
+    if(tabEl) tabEl.classList.toggle('active',v===t);
   });
   document.getElementById('btn-new-chat').style.display = t==='chat' ? 'flex' : 'none';
   if(t==='library'&&allVideos.length===0&&vidUrl) loadVideos();
   if(t==='analytics') loadAnalytics();
   if(t==='turno') initTurnoView();
+  if(t==='panel') initPanelView();
 }
 
 function openConfig(){document.getElementById('overlay').classList.add('open');}
@@ -1779,6 +1902,134 @@ window.addEventListener('beforeunload', ()=>{
   }
 });
 
+// ── PANEL DE TURNOS (ADMIN) ──
+let panelFilter='today';
+let panelActiveTimers={};
+
+function setPanelFilter(filter,btn){
+  panelFilter=filter;
+  document.querySelectorAll('.panel-filter-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  const dateRow=document.getElementById('panel-date-row');
+  if(dateRow) dateRow.style.display=filter==='custom'?'flex':'none';
+  if(filter==='custom'){
+    const today=new Date().toISOString().split('T')[0];
+    if(!document.getElementById('panel-date-from').value) document.getElementById('panel-date-from').value=today;
+    if(!document.getElementById('panel-date-to').value) document.getElementById('panel-date-to').value=today;
+  }
+  loadPanelData();
+}
+
+async function initPanelView(){
+  await loadPanelData();
+}
+
+async function loadPanelData(){
+  const allTurnos=await window.getRecentTurnos();
+  const now=new Date();
+  const startOfDay=new Date(now);startOfDay.setHours(0,0,0,0);
+  const startOfWeek=new Date(now);startOfWeek.setDate(now.getDate()-now.getDay());startOfWeek.setHours(0,0,0,0);
+  const startOfMonth=new Date(now.getFullYear(),now.getMonth(),1);
+
+  // Active now
+  const activeNow=allTurnos.filter(t=>t.status==='active');
+  renderActiveNow(activeNow);
+
+  // Filter by period
+  let turnos=[...allTurnos];
+  if(panelFilter==='today') turnos=turnos.filter(t=>t.startTime?.toDate?.()>=startOfDay);
+  else if(panelFilter==='week') turnos=turnos.filter(t=>t.startTime?.toDate?.()>=startOfWeek);
+  else if(panelFilter==='month') turnos=turnos.filter(t=>t.startTime?.toDate?.()>=startOfMonth);
+  else if(panelFilter==='custom'){
+    const from=document.getElementById('panel-date-from')?.value;
+    const to=document.getElementById('panel-date-to')?.value;
+    if(from){const d=new Date(from);d.setHours(0,0,0,0);turnos=turnos.filter(t=>t.startTime?.toDate?.()>=d);}
+    if(to){const d=new Date(to);d.setHours(23,59,59,999);turnos=turnos.filter(t=>t.startTime?.toDate?.()<=d);}
+  }
+
+  // Filter by user
+  const userFilter=document.getElementById('panel-user-filter')?.value||'all';
+  const allUsers=[...new Set(allTurnos.map(t=>t.userEmail).filter(Boolean))];
+  const userSelect=document.getElementById('panel-user-filter');
+  if(userSelect){
+    const current=userSelect.value;
+    userSelect.innerHTML='<option value="all">Todos</option>'+allUsers.map(u=>`<option value="${u}"${u===current?' selected':''}>${u}</option>`).join('');
+  }
+  if(userFilter!=='all') turnos=turnos.filter(t=>t.userEmail===userFilter);
+
+  // Summary
+  const totalSecs=turnos.reduce((s,t)=>s+(t.accumulatedSeconds||0),0);
+  const uniqueUsers=[...new Set(turnos.map(t=>t.userEmail).filter(Boolean))];
+  const mobileCount=turnos.filter(t=>t.isMobile).length;
+  document.getElementById('panel-summary-grid').innerHTML=`
+    <div class="panel-summary-card"><div class="panel-summary-num">${formatDuration(totalSecs)}</div><div class="panel-summary-label">Horas totales acumuladas</div></div>
+    <div class="panel-summary-card"><div class="panel-summary-num">${turnos.length}</div><div class="panel-summary-label">Turnos registrados</div></div>
+    <div class="panel-summary-card"><div class="panel-summary-num">${uniqueUsers.length}</div><div class="panel-summary-label">Usuarios activos</div></div>
+    <div class="panel-summary-card"><div class="panel-summary-num" style="${mobileCount>0?'color:#fb923c;-webkit-text-fill-color:#fb923c':''}">${mobileCount}</div><div class="panel-summary-label">Turnos desde móvil ⚠️</div></div>`;
+
+  // Table
+  const tbody=document.getElementById('panel-table-body');
+  if(!turnos.length){tbody.innerHTML='<div class="panel-empty">Sin registros en este período</div>';return;}
+  tbody.innerHTML=turnos.map(t=>{
+    const start=t.startTime?.toDate?.();
+    const end=t.endTime?.toDate?.();
+    const dur=t.accumulatedSeconds?formatDuration(t.accumulatedSeconds):'—';
+    const startStr=start?start.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
+    const endStr=end?end.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
+    const dateStr=start?start.toLocaleDateString('es-CO',{day:'2-digit',month:'short',year:'2-digit'}):'—';
+    const statusClass=t.status==='active'?'active':t.status==='interrupted'?'interrupted':'ended';
+    const statusLabel=t.status==='active'?'En turno':t.status==='interrupted'?'Interrumpido':'Finalizado';
+    const name=t.userName||t.userEmail?.split('@')[0]||'—';
+    return `<div class="panel-table-row">
+      <div class="panel-cell-user"><div class="panel-cell-name">${esc(name)}</div><div class="panel-cell-email">${esc(t.userEmail||'')}</div></div>
+      <div class="panel-cell">${dateStr}</div>
+      <div class="panel-cell">${startStr} → ${endStr}</div>
+      <div class="panel-cell highlight">${dur}</div>
+      <div><span class="panel-badge ${t.isMobile?'mobile':'desktop'}">${t.isMobile?'📱 Móvil':'💻 Desktop'}</span></div>
+      <div><span class="turno-row-status ${statusClass}">${statusLabel}</span></div>
+    </div>`;
+  }).join('');
+}
+
+function renderActiveNow(active){
+  const grid=document.getElementById('panel-active-grid');
+  // Clear old timers
+  Object.values(panelActiveTimers).forEach(clearInterval);
+  panelActiveTimers={};
+
+  if(!active.length){
+    grid.innerHTML='<div style="color:var(--text-dim);font-size:12px;padding:10px;font-family:var(--mono);">Ningún usuario en turno ahora</div>';
+    return;
+  }
+  grid.innerHTML=active.map(t=>{
+    const name=t.userName||t.userEmail?.split('@')[0]||'—';
+    const since=t.startTime?.toDate?.();
+    const sinceStr=since?since.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
+    const id='pat_'+t.id;
+    return `<div class="panel-active-card">
+      ${t.isMobile?'<div class="panel-mobile-warning">⚠ Móvil</div>':'<div class="panel-active-device">💻</div>'}
+      <div class="panel-active-name">${esc(name)}</div>
+      <div class="panel-active-email">${esc(t.userEmail||'')}</div>
+      <div class="panel-active-time" id="${id}">00:00:00</div>
+      <div class="panel-active-since">desde las ${sinceStr}</div>
+    </div>`;
+  }).join('');
+
+  // Start timers for active users
+  active.forEach(t=>{
+    const id='pat_'+t.id;
+    const startTime=t.startTime?.toDate?.();
+    const accumulated=t.accumulatedSeconds||0;
+    if(!startTime) return;
+    panelActiveTimers[id]=setInterval(()=>{
+      const el=document.getElementById(id);
+      if(!el){clearInterval(panelActiveTimers[id]);return;}
+      const elapsed=Math.floor((Date.now()-startTime.getTime())/1000)+accumulated;
+      el.textContent=formatDuration(elapsed);
+    },1000);
+  });
+}
+
 async function confirmClearMetrics(){
   if(!confirm('⚠️ ¿Estás seguro de que quieres borrar todas las métricas? Esta acción no se puede deshacer.')) return;
   const btn = document.getElementById('btn-clear-metrics');
@@ -2356,6 +2607,134 @@ window.addEventListener('beforeunload', ()=>{
     });
   }
 });
+
+// ── PANEL DE TURNOS (ADMIN) ──
+let panelFilter='today';
+let panelActiveTimers={};
+
+function setPanelFilter(filter,btn){
+  panelFilter=filter;
+  document.querySelectorAll('.panel-filter-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  const dateRow=document.getElementById('panel-date-row');
+  if(dateRow) dateRow.style.display=filter==='custom'?'flex':'none';
+  if(filter==='custom'){
+    const today=new Date().toISOString().split('T')[0];
+    if(!document.getElementById('panel-date-from').value) document.getElementById('panel-date-from').value=today;
+    if(!document.getElementById('panel-date-to').value) document.getElementById('panel-date-to').value=today;
+  }
+  loadPanelData();
+}
+
+async function initPanelView(){
+  await loadPanelData();
+}
+
+async function loadPanelData(){
+  const allTurnos=await window.getRecentTurnos();
+  const now=new Date();
+  const startOfDay=new Date(now);startOfDay.setHours(0,0,0,0);
+  const startOfWeek=new Date(now);startOfWeek.setDate(now.getDate()-now.getDay());startOfWeek.setHours(0,0,0,0);
+  const startOfMonth=new Date(now.getFullYear(),now.getMonth(),1);
+
+  // Active now
+  const activeNow=allTurnos.filter(t=>t.status==='active');
+  renderActiveNow(activeNow);
+
+  // Filter by period
+  let turnos=[...allTurnos];
+  if(panelFilter==='today') turnos=turnos.filter(t=>t.startTime?.toDate?.()>=startOfDay);
+  else if(panelFilter==='week') turnos=turnos.filter(t=>t.startTime?.toDate?.()>=startOfWeek);
+  else if(panelFilter==='month') turnos=turnos.filter(t=>t.startTime?.toDate?.()>=startOfMonth);
+  else if(panelFilter==='custom'){
+    const from=document.getElementById('panel-date-from')?.value;
+    const to=document.getElementById('panel-date-to')?.value;
+    if(from){const d=new Date(from);d.setHours(0,0,0,0);turnos=turnos.filter(t=>t.startTime?.toDate?.()>=d);}
+    if(to){const d=new Date(to);d.setHours(23,59,59,999);turnos=turnos.filter(t=>t.startTime?.toDate?.()<=d);}
+  }
+
+  // Filter by user
+  const userFilter=document.getElementById('panel-user-filter')?.value||'all';
+  const allUsers=[...new Set(allTurnos.map(t=>t.userEmail).filter(Boolean))];
+  const userSelect=document.getElementById('panel-user-filter');
+  if(userSelect){
+    const current=userSelect.value;
+    userSelect.innerHTML='<option value="all">Todos</option>'+allUsers.map(u=>`<option value="${u}"${u===current?' selected':''}>${u}</option>`).join('');
+  }
+  if(userFilter!=='all') turnos=turnos.filter(t=>t.userEmail===userFilter);
+
+  // Summary
+  const totalSecs=turnos.reduce((s,t)=>s+(t.accumulatedSeconds||0),0);
+  const uniqueUsers=[...new Set(turnos.map(t=>t.userEmail).filter(Boolean))];
+  const mobileCount=turnos.filter(t=>t.isMobile).length;
+  document.getElementById('panel-summary-grid').innerHTML=`
+    <div class="panel-summary-card"><div class="panel-summary-num">${formatDuration(totalSecs)}</div><div class="panel-summary-label">Horas totales acumuladas</div></div>
+    <div class="panel-summary-card"><div class="panel-summary-num">${turnos.length}</div><div class="panel-summary-label">Turnos registrados</div></div>
+    <div class="panel-summary-card"><div class="panel-summary-num">${uniqueUsers.length}</div><div class="panel-summary-label">Usuarios activos</div></div>
+    <div class="panel-summary-card"><div class="panel-summary-num" style="${mobileCount>0?'color:#fb923c;-webkit-text-fill-color:#fb923c':''}">${mobileCount}</div><div class="panel-summary-label">Turnos desde móvil ⚠️</div></div>`;
+
+  // Table
+  const tbody=document.getElementById('panel-table-body');
+  if(!turnos.length){tbody.innerHTML='<div class="panel-empty">Sin registros en este período</div>';return;}
+  tbody.innerHTML=turnos.map(t=>{
+    const start=t.startTime?.toDate?.();
+    const end=t.endTime?.toDate?.();
+    const dur=t.accumulatedSeconds?formatDuration(t.accumulatedSeconds):'—';
+    const startStr=start?start.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
+    const endStr=end?end.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
+    const dateStr=start?start.toLocaleDateString('es-CO',{day:'2-digit',month:'short',year:'2-digit'}):'—';
+    const statusClass=t.status==='active'?'active':t.status==='interrupted'?'interrupted':'ended';
+    const statusLabel=t.status==='active'?'En turno':t.status==='interrupted'?'Interrumpido':'Finalizado';
+    const name=t.userName||t.userEmail?.split('@')[0]||'—';
+    return `<div class="panel-table-row">
+      <div class="panel-cell-user"><div class="panel-cell-name">${esc(name)}</div><div class="panel-cell-email">${esc(t.userEmail||'')}</div></div>
+      <div class="panel-cell">${dateStr}</div>
+      <div class="panel-cell">${startStr} → ${endStr}</div>
+      <div class="panel-cell highlight">${dur}</div>
+      <div><span class="panel-badge ${t.isMobile?'mobile':'desktop'}">${t.isMobile?'📱 Móvil':'💻 Desktop'}</span></div>
+      <div><span class="turno-row-status ${statusClass}">${statusLabel}</span></div>
+    </div>`;
+  }).join('');
+}
+
+function renderActiveNow(active){
+  const grid=document.getElementById('panel-active-grid');
+  // Clear old timers
+  Object.values(panelActiveTimers).forEach(clearInterval);
+  panelActiveTimers={};
+
+  if(!active.length){
+    grid.innerHTML='<div style="color:var(--text-dim);font-size:12px;padding:10px;font-family:var(--mono);">Ningún usuario en turno ahora</div>';
+    return;
+  }
+  grid.innerHTML=active.map(t=>{
+    const name=t.userName||t.userEmail?.split('@')[0]||'—';
+    const since=t.startTime?.toDate?.();
+    const sinceStr=since?since.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
+    const id='pat_'+t.id;
+    return `<div class="panel-active-card">
+      ${t.isMobile?'<div class="panel-mobile-warning">⚠ Móvil</div>':'<div class="panel-active-device">💻</div>'}
+      <div class="panel-active-name">${esc(name)}</div>
+      <div class="panel-active-email">${esc(t.userEmail||'')}</div>
+      <div class="panel-active-time" id="${id}">00:00:00</div>
+      <div class="panel-active-since">desde las ${sinceStr}</div>
+    </div>`;
+  }).join('');
+
+  // Start timers for active users
+  active.forEach(t=>{
+    const id='pat_'+t.id;
+    const startTime=t.startTime?.toDate?.();
+    const accumulated=t.accumulatedSeconds||0;
+    if(!startTime) return;
+    panelActiveTimers[id]=setInterval(()=>{
+      const el=document.getElementById(id);
+      if(!el){clearInterval(panelActiveTimers[id]);return;}
+      const elapsed=Math.floor((Date.now()-startTime.getTime())/1000)+accumulated;
+      el.textContent=formatDuration(elapsed);
+    },1000);
+  });
+}
 
 async function confirmClearMetrics(){
   if(!confirm('⚠️ ¿Estás seguro de que quieres borrar todas las métricas? Esta acción no se puede deshacer.')) return;
