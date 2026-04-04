@@ -1311,8 +1311,8 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 
 <script>
 // Version control — increment this on every update
-const APP_VERSION = '4.8';
-const APP_CHANGELOG = 'Resizer de columnas: ahora funciona correctamente.';
+const APP_VERSION = '4.9';
+const APP_CHANGELOG = 'Resizer de columnas: función disponible globalmente.';
 const ADMINS = ['cromero@pibox.app'];
 
 function softReload(){
@@ -1967,8 +1967,7 @@ async function loadTurnoHistory(){
 }
 
 // Column resizer for cumplimiento table
-(function(){
-  window.startColResize = function(e, idx){
+function startColResize(e, idx){
     e.preventDefault();
     e.stopPropagation();
     const thead = document.getElementById('cumpl-thead');
@@ -2006,8 +2005,7 @@ async function loadTurnoHistory(){
     }
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup', onUp);
-  };
-})();
+}
 
 // Draggable floating timer
 (function(){
