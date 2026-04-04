@@ -774,6 +774,12 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 .cumpl-status.novedad{background:rgba(123,47,255,0.1);color:var(--p2);}
 .cumpl-novedad-tag{display:inline-flex;background:rgba(123,47,255,0.1);border:1px solid rgba(123,47,255,0.2);color:var(--p2);padding:2px 7px;border-radius:4px;font-size:10px;font-family:var(--mono);}
 .cumpl-empty{padding:40px;text-align:center;color:var(--text-dim);font-size:13px;}
+.col-tooltip{position:relative;display:inline-block;}
+.col-tooltip .tooltip-text{visibility:hidden;background:var(--surface3);color:var(--text);font-size:11px;font-family:var(--font);border-radius:8px;padding:6px 10px;position:absolute;z-index:100;bottom:125%;left:50%;transform:translateX(-50%);white-space:nowrap;box-shadow:var(--shadow);border:1px solid var(--border);opacity:0;transition:opacity 0.2s;pointer-events:none;max-width:220px;white-space:normal;text-align:center;line-height:1.5;}
+.col-tooltip:hover .tooltip-text{visibility:visible;opacity:1;}
+.col-resizer{width:4px;background:transparent;cursor:col-resize;position:absolute;right:0;top:0;bottom:0;z-index:10;transition:background 0.15s;}
+.col-resizer:hover,.col-resizer.resizing{background:var(--p1);}
+.cumpl-table-header>div{position:relative;}
 .cumpl-cell{font-family:var(--mono);font-size:11px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:default;}
 .cumpl-cell[title]:hover{color:var(--text);}
 .cumpl-user-pill{background:var(--surface2);border:1px solid var(--border);color:var(--text-muted);padding:4px 12px;border-radius:100px;font-size:11px;font-weight:600;cursor:pointer;transition:all 0.18s;font-family:var(--font);white-space:nowrap;}
@@ -1171,6 +1177,7 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
             <option value="all">Todos</option>
           </select>
           <button class="panel-filter-btn" onclick="loadPanelData()" style="padding:5px 12px;">↻ Actualizar</button>
+          <button class="panel-filter-btn" onclick="clearPanelFilters()" style="padding:5px 12px;border-color:rgba(248,113,113,0.3);color:#f87171;">✕ Borrar filtros</button>
         </div>
       </div>
     </div>
@@ -1223,6 +1230,7 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
         <div id="cumpl-user-pills" style="display:none;flex-wrap:wrap;gap:6px;max-width:500px;"></div>
         <button class="cumpl-filter-btn" onclick="loadCumplimiento()" style="padding:5px 12px;">↻ Actualizar</button>
+        <button class="cumpl-filter-btn" onclick="clearCumplFilters()" style="padding:5px 12px;border-color:rgba(248,113,113,0.3);color:#f87171;">✕ Borrar filtros</button>
       </div>
     </div>
 
@@ -1303,8 +1311,8 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 
 <script>
 // Version control — increment this on every update
-const APP_VERSION = '4.5';
-const APP_CHANGELOG = 'Tabla Panel de turnos: columnas con bordes y nombres de pestañas corregidos.';
+const APP_VERSION = '4.6';
+const APP_CHANGELOG = 'Tooltips en Estado/Novedad, resizer de columnas, borrar filtros y tarjetas en Panel de control.';
 const ADMINS = ['cromero@pibox.app'];
 
 function softReload(){
@@ -1958,6 +1966,47 @@ async function loadTurnoHistory(){
   }).join('');
 }
 
+// Column resizer for cumplimiento table
+(function(){
+  let resizing=false, startX=0, startW=0, colIdx=0, cols=[];
+  window.startColResize = function(e, idx){
+    e.preventDefault();
+    resizing=true; colIdx=idx; startX=e.clientX;
+    const thead=document.getElementById('cumpl-thead');
+    if(!thead) return;
+    cols=[...thead.children];
+    startW=cols[idx].offsetWidth;
+    document.body.style.cursor='col-resize';
+    document.body.style.userSelect='none';
+    e.target.classList.add('resizing');
+    const onMove=ev=>{
+      if(!resizing) return;
+      const diff=ev.clientX-startX;
+      const newW=Math.max(60,startW+diff);
+      const thead2=document.getElementById('cumpl-thead');
+      if(!thead2) return;
+      const allCols=[...thead2.children];
+      const fr=newW+'px';
+      const grid=thead2.style.gridTemplateColumns.split(' ');
+      if(grid.length>colIdx) grid[colIdx]=fr;
+      const newGrid=grid.join(' ');
+      thead2.style.gridTemplateColumns=newGrid;
+      // Apply same to rows
+      document.querySelectorAll('.cumpl-row').forEach(r=>r.style.gridTemplateColumns=newGrid);
+    };
+    const onUp=ev=>{
+      resizing=false;
+      document.body.style.cursor='';
+      document.body.style.userSelect='';
+      document.removeEventListener('mousemove',onMove);
+      document.removeEventListener('mouseup',onUp);
+      document.querySelectorAll('.col-resizer').forEach(r=>r.classList.remove('resizing'));
+    };
+    document.addEventListener('mousemove',onMove);
+    document.addEventListener('mouseup',onUp);
+  };
+})();
+
 // Draggable floating timer
 (function(){
   function initDraggable(){
@@ -2168,6 +2217,16 @@ function toggleCumplSort(){
   renderCumplRows();
 }
 
+function clearCumplFilters(){
+  cumplStatusFilter=null;
+  window._cumplSelectedUsers=new Set();
+  cumplSortAsc=true;
+  const icon=document.getElementById('cumpl-sort-icon');
+  if(icon) icon.textContent='↑';
+  // Reset period filter to today
+  setCumplFilter('today', document.querySelector('.cumpl-filter-btn'));
+}
+
 function filterCumplByStatus(status){
   cumplStatusFilter=status;
   renderCumplRows();
@@ -2276,6 +2335,7 @@ async function loadCumplimiento(){
 
     if(!rows.length){body.innerHTML='<div class="cumpl-empty">Sin registros en este período</div>';return;}
     cumplAllRows=rows;
+    window._lastMallaRows=rows;
     cumplStatusFilter=null;
     renderCumplRows();
 
@@ -2288,6 +2348,18 @@ async function loadCumplimiento(){
 // ── PANEL DE TURNOS (ADMIN) ──
 let panelFilter='today';
 let panelActiveTimers={};
+
+function clearPanelFilters(){
+  panelFilter='today';
+  window._mobileFilter=false;
+  window._activeUsersFilter=null;
+  const select=document.getElementById('panel-user-filter');
+  if(select) select.value='all';
+  document.querySelectorAll('.panel-filter-btn').forEach((b,i)=>b.classList.toggle('active',i===0));
+  const dateRow=document.getElementById('panel-date-row');
+  if(dateRow) dateRow.style.display='none';
+  loadPanelData();
+}
 
 function setPanelFilter(filter,btn){
   panelFilter=filter;
@@ -2344,11 +2416,18 @@ async function loadPanelData(){
   const totalSecs=turnos.reduce((s,t)=>s+(t.accumulatedSeconds||0),0);
   const uniqueUsers=[...new Set(turnos.map(t=>t.userEmail).filter(Boolean))];
   const mobileCount=turnos.filter(t=>t.isMobile).length;
+  // Get cumplimiento data for tardanza/ausente cards
+  const allMallaRows = window._lastMallaRows || [];
+  const tardanzaCount = allMallaRows.filter(r=>r.status?.cls==='tardanza').length;
+  const ausenteCount = allMallaRows.filter(r=>r.status?.cls==='ausente').length;
+
   document.getElementById('panel-summary-grid').innerHTML=`
     <div class="panel-summary-card"><div class="panel-summary-num">${formatDuration(totalSecs)}</div><div class="panel-summary-label">Horas totales acumuladas</div></div>
     <div class="panel-summary-card"><div class="panel-summary-num">${turnos.length}</div><div class="panel-summary-label">Turnos registrados</div></div>
-    <div class="panel-summary-card" onclick="filterByActiveUsers('${uniqueUsers.join(',')}')" style="cursor:pointer;transition:all 0.2s;" onmouseover="this.style.borderColor='var(--p1)'" onmouseout="this.style.borderColor='var(--border)'"><div class="panel-summary-num">${uniqueUsers.length}</div><div class="panel-summary-label">👥 Usuarios activos <span style="font-size:9px;opacity:0.6;">— clic para filtrar</span></div></div>
-    <div class="panel-summary-card" onclick="filterByMobile()" style="cursor:pointer;transition:all 0.2s;" onmouseover="this.style.borderColor='#fb923c'" onmouseout="this.style.borderColor='var(--border)'"><div class="panel-summary-num" style="${mobileCount>0?'color:#fb923c;-webkit-text-fill-color:#fb923c':''}">${mobileCount}</div><div class="panel-summary-label">📱 Turnos desde móvil <span style="font-size:9px;opacity:0.6;">— clic para filtrar</span></div></div>`;
+    <div class="panel-summary-card" onclick="filterByActiveUsers('${uniqueUsers.join(',')}')" style="cursor:pointer;transition:all 0.2s;" onmouseover="this.style.borderColor='var(--p1)'" onmouseout="this.style.borderColor='var(--border)'"><div class="panel-summary-num">${uniqueUsers.length}</div><div class="panel-summary-label">👥 Usuarios activos <span style="font-size:9px;opacity:0.6;">— clic</span></div></div>
+    <div class="panel-summary-card" onclick="filterByMobile()" style="cursor:pointer;transition:all 0.2s;" onmouseover="this.style.borderColor='#fb923c'" onmouseout="this.style.borderColor='var(--border)'"><div class="panel-summary-num" style="${mobileCount>0?'color:#fb923c;-webkit-text-fill-color:#fb923c':''}">${mobileCount}</div><div class="panel-summary-label">📱 Desde móvil <span style="font-size:9px;opacity:0.6;">— clic</span></div></div>
+    <div class="panel-summary-card" onclick="switchTab('cumplimiento');setTimeout(()=>filterCumplByStatus('tardanza'),500)" style="cursor:pointer;transition:all 0.2s;" onmouseover="this.style.borderColor='#fbbf24'" onmouseout="this.style.borderColor='var(--border)'"><div class="panel-summary-num" style="color:#fbbf24;-webkit-text-fill-color:#fbbf24">${tardanzaCount}</div><div class="panel-summary-label">🟡 Tardanzas <span style="font-size:9px;opacity:0.6;">— clic</span></div></div>
+    <div class="panel-summary-card" onclick="switchTab('cumplimiento');setTimeout(()=>filterCumplByStatus('ausente'),500)" style="cursor:pointer;transition:all 0.2s;" onmouseover="this.style.borderColor='#f87171'" onmouseout="this.style.borderColor='var(--border)'"><div class="panel-summary-num" style="color:#f87171;-webkit-text-fill-color:#f87171">${ausenteCount}</div><div class="panel-summary-label">🔴 Ausentes <span style="font-size:9px;opacity:0.6;">— clic</span></div></div>`;
 
   // Table
   const tbody=document.getElementById('panel-table-body');
@@ -2957,6 +3036,47 @@ async function loadTurnoHistory(){
   }).join('');
 }
 
+// Column resizer for cumplimiento table
+(function(){
+  let resizing=false, startX=0, startW=0, colIdx=0, cols=[];
+  window.startColResize = function(e, idx){
+    e.preventDefault();
+    resizing=true; colIdx=idx; startX=e.clientX;
+    const thead=document.getElementById('cumpl-thead');
+    if(!thead) return;
+    cols=[...thead.children];
+    startW=cols[idx].offsetWidth;
+    document.body.style.cursor='col-resize';
+    document.body.style.userSelect='none';
+    e.target.classList.add('resizing');
+    const onMove=ev=>{
+      if(!resizing) return;
+      const diff=ev.clientX-startX;
+      const newW=Math.max(60,startW+diff);
+      const thead2=document.getElementById('cumpl-thead');
+      if(!thead2) return;
+      const allCols=[...thead2.children];
+      const fr=newW+'px';
+      const grid=thead2.style.gridTemplateColumns.split(' ');
+      if(grid.length>colIdx) grid[colIdx]=fr;
+      const newGrid=grid.join(' ');
+      thead2.style.gridTemplateColumns=newGrid;
+      // Apply same to rows
+      document.querySelectorAll('.cumpl-row').forEach(r=>r.style.gridTemplateColumns=newGrid);
+    };
+    const onUp=ev=>{
+      resizing=false;
+      document.body.style.cursor='';
+      document.body.style.userSelect='';
+      document.removeEventListener('mousemove',onMove);
+      document.removeEventListener('mouseup',onUp);
+      document.querySelectorAll('.col-resizer').forEach(r=>r.classList.remove('resizing'));
+    };
+    document.addEventListener('mousemove',onMove);
+    document.addEventListener('mouseup',onUp);
+  };
+})();
+
 // Draggable floating timer
 (function(){
   function initDraggable(){
@@ -3167,6 +3287,16 @@ function toggleCumplSort(){
   renderCumplRows();
 }
 
+function clearCumplFilters(){
+  cumplStatusFilter=null;
+  window._cumplSelectedUsers=new Set();
+  cumplSortAsc=true;
+  const icon=document.getElementById('cumpl-sort-icon');
+  if(icon) icon.textContent='↑';
+  // Reset period filter to today
+  setCumplFilter('today', document.querySelector('.cumpl-filter-btn'));
+}
+
 function filterCumplByStatus(status){
   cumplStatusFilter=status;
   renderCumplRows();
@@ -3275,6 +3405,7 @@ async function loadCumplimiento(){
 
     if(!rows.length){body.innerHTML='<div class="cumpl-empty">Sin registros en este período</div>';return;}
     cumplAllRows=rows;
+    window._lastMallaRows=rows;
     cumplStatusFilter=null;
     renderCumplRows();
 
@@ -3287,6 +3418,18 @@ async function loadCumplimiento(){
 // ── PANEL DE TURNOS (ADMIN) ──
 let panelFilter='today';
 let panelActiveTimers={};
+
+function clearPanelFilters(){
+  panelFilter='today';
+  window._mobileFilter=false;
+  window._activeUsersFilter=null;
+  const select=document.getElementById('panel-user-filter');
+  if(select) select.value='all';
+  document.querySelectorAll('.panel-filter-btn').forEach((b,i)=>b.classList.toggle('active',i===0));
+  const dateRow=document.getElementById('panel-date-row');
+  if(dateRow) dateRow.style.display='none';
+  loadPanelData();
+}
 
 function setPanelFilter(filter,btn){
   panelFilter=filter;
@@ -3343,11 +3486,18 @@ async function loadPanelData(){
   const totalSecs=turnos.reduce((s,t)=>s+(t.accumulatedSeconds||0),0);
   const uniqueUsers=[...new Set(turnos.map(t=>t.userEmail).filter(Boolean))];
   const mobileCount=turnos.filter(t=>t.isMobile).length;
+  // Get cumplimiento data for tardanza/ausente cards
+  const allMallaRows = window._lastMallaRows || [];
+  const tardanzaCount = allMallaRows.filter(r=>r.status?.cls==='tardanza').length;
+  const ausenteCount = allMallaRows.filter(r=>r.status?.cls==='ausente').length;
+
   document.getElementById('panel-summary-grid').innerHTML=`
     <div class="panel-summary-card"><div class="panel-summary-num">${formatDuration(totalSecs)}</div><div class="panel-summary-label">Horas totales acumuladas</div></div>
     <div class="panel-summary-card"><div class="panel-summary-num">${turnos.length}</div><div class="panel-summary-label">Turnos registrados</div></div>
-    <div class="panel-summary-card" onclick="filterByActiveUsers('${uniqueUsers.join(',')}')" style="cursor:pointer;transition:all 0.2s;" onmouseover="this.style.borderColor='var(--p1)'" onmouseout="this.style.borderColor='var(--border)'"><div class="panel-summary-num">${uniqueUsers.length}</div><div class="panel-summary-label">👥 Usuarios activos <span style="font-size:9px;opacity:0.6;">— clic para filtrar</span></div></div>
-    <div class="panel-summary-card" onclick="filterByMobile()" style="cursor:pointer;transition:all 0.2s;" onmouseover="this.style.borderColor='#fb923c'" onmouseout="this.style.borderColor='var(--border)'"><div class="panel-summary-num" style="${mobileCount>0?'color:#fb923c;-webkit-text-fill-color:#fb923c':''}">${mobileCount}</div><div class="panel-summary-label">📱 Turnos desde móvil <span style="font-size:9px;opacity:0.6;">— clic para filtrar</span></div></div>`;
+    <div class="panel-summary-card" onclick="filterByActiveUsers('${uniqueUsers.join(',')}')" style="cursor:pointer;transition:all 0.2s;" onmouseover="this.style.borderColor='var(--p1)'" onmouseout="this.style.borderColor='var(--border)'"><div class="panel-summary-num">${uniqueUsers.length}</div><div class="panel-summary-label">👥 Usuarios activos <span style="font-size:9px;opacity:0.6;">— clic</span></div></div>
+    <div class="panel-summary-card" onclick="filterByMobile()" style="cursor:pointer;transition:all 0.2s;" onmouseover="this.style.borderColor='#fb923c'" onmouseout="this.style.borderColor='var(--border)'"><div class="panel-summary-num" style="${mobileCount>0?'color:#fb923c;-webkit-text-fill-color:#fb923c':''}">${mobileCount}</div><div class="panel-summary-label">📱 Desde móvil <span style="font-size:9px;opacity:0.6;">— clic</span></div></div>
+    <div class="panel-summary-card" onclick="switchTab('cumplimiento');setTimeout(()=>filterCumplByStatus('tardanza'),500)" style="cursor:pointer;transition:all 0.2s;" onmouseover="this.style.borderColor='#fbbf24'" onmouseout="this.style.borderColor='var(--border)'"><div class="panel-summary-num" style="color:#fbbf24;-webkit-text-fill-color:#fbbf24">${tardanzaCount}</div><div class="panel-summary-label">🟡 Tardanzas <span style="font-size:9px;opacity:0.6;">— clic</span></div></div>
+    <div class="panel-summary-card" onclick="switchTab('cumplimiento');setTimeout(()=>filterCumplByStatus('ausente'),500)" style="cursor:pointer;transition:all 0.2s;" onmouseover="this.style.borderColor='#f87171'" onmouseout="this.style.borderColor='var(--border)'"><div class="panel-summary-num" style="color:#f87171;-webkit-text-fill-color:#f87171">${ausenteCount}</div><div class="panel-summary-label">🔴 Ausentes <span style="font-size:9px;opacity:0.6;">— clic</span></div></div>`;
 
   // Table
   const tbody=document.getElementById('panel-table-body');
