@@ -1264,7 +1264,7 @@ const inp=document.getElementById('user-input');
     const avatarEl = div.querySelector('.avatar.user');
     const userAvatar = document.getElementById('user-avatar')?.src;
     if(avatarEl && userAvatar) avatarEl.innerHTML=`<img src="${userAvatar}" alt=""/>`;
-    div.querySelector('.bwrap').innerHTML+='<div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-top:2px;"><span class="src-tag">📋 Google Sheets</span><span class="msg-meta">Pi GOps · '+now()+'</span></div>';
+    div.querySelector('.bwrap').innerHTML+='<div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-top:2px;"><span class="src-tag">🧠 Manual en vivo</span><span class="msg-meta">Pi GOps · '+now()+'</span></div>';
     history.push({role:'assistant',content:full});
   }catch(err){
     div.remove();
