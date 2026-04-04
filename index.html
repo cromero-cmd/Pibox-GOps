@@ -650,7 +650,9 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 .turno-summary-value{font-size:18px;font-weight:800;font-family:var(--mono);background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
 .turno-summary-sub{font-size:10px;color:var(--text-dim);font-family:var(--mono);margin-top:2px;}
 /* Floating timer */
-.floating-timer{position:fixed;bottom:24px;right:24px;z-index:300;background:var(--surface);border:1px solid var(--p1);border-radius:14px;padding:10px 18px;display:none;align-items:center;gap:12px;box-shadow:0 4px 24px rgba(123,47,255,0.35),var(--glow);animation:msgIn 0.3s ease both;}
+.floating-timer{position:fixed;bottom:24px;right:24px;z-index:300;background:var(--surface);border:1px solid var(--p1);border-radius:14px;padding:10px 18px;display:none;align-items:center;gap:12px;box-shadow:0 4px 24px rgba(123,47,255,0.35),var(--glow);animation:msgIn 0.3s ease both;cursor:grab;user-select:none;}
+.floating-timer:active{cursor:grabbing;}
+.floating-timer.dragging{opacity:0.9;transform:scale(1.03);}
 .floating-timer-dot{width:8px;height:8px;border-radius:50%;background:#4ade80;animation:pulse 1.5s ease-in-out infinite;flex-shrink:0;}
 .floating-timer-time{font-size:16px;font-weight:800;font-family:var(--mono);background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
 .floating-timer-label{font-size:10px;color:var(--text-dim);font-family:var(--mono);}
@@ -1041,8 +1043,8 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 
 <script>
 // Version control — increment this on every update
-const APP_VERSION = '2.8';
-const APP_CHANGELOG = 'Turno: filtro por fechas, total acumulado y contador flotante.';
+const APP_VERSION = '2.9';
+const APP_CHANGELOG = 'Contador flotante: ahora puedes moverlo libremente por la pantalla.';
 const ADMINS = ['cromero@pibox.app'];
 
 function softReload(){
@@ -1686,6 +1688,85 @@ async function loadTurnoHistory(){
   }).join('');
 }
 
+// Draggable floating timer
+(function(){
+  function initDraggable(){
+    const el=document.getElementById('floating-timer');
+    if(!el) return;
+
+    // Restore saved position
+    const saved=localStorage.getItem('ft_pos');
+    if(saved){
+      try{
+        const {left,top}=JSON.parse(saved);
+        el.style.left=left; el.style.top=top;
+        el.style.right='auto'; el.style.bottom='auto';
+      }catch{}
+    }
+
+    let isDragging=false,startX,startY,startLeft,startTop;
+
+    el.addEventListener('mousedown',e=>{
+      if(e.target.classList.contains('floating-timer-end')) return;
+      isDragging=true;
+      el.classList.add('dragging');
+      const rect=el.getBoundingClientRect();
+      startX=e.clientX; startY=e.clientY;
+      startLeft=rect.left; startTop=rect.top;
+      el.style.left=startLeft+'px'; el.style.top=startTop+'px';
+      el.style.right='auto'; el.style.bottom='auto';
+    });
+
+    document.addEventListener('mousemove',e=>{
+      if(!isDragging) return;
+      const dx=e.clientX-startX;
+      const dy=e.clientY-startY;
+      const newLeft=Math.max(0,Math.min(window.innerWidth-el.offsetWidth,startLeft+dx));
+      const newTop=Math.max(0,Math.min(window.innerHeight-el.offsetHeight,startTop+dy));
+      el.style.left=newLeft+'px';
+      el.style.top=newTop+'px';
+    });
+
+    document.addEventListener('mouseup',()=>{
+      if(!isDragging) return;
+      isDragging=false;
+      el.classList.remove('dragging');
+      localStorage.setItem('ft_pos',JSON.stringify({left:el.style.left,top:el.style.top}));
+    });
+
+    // Touch support
+    el.addEventListener('touchstart',e=>{
+      if(e.target.classList.contains('floating-timer-end')) return;
+      const t=e.touches[0];
+      isDragging=true;
+      el.classList.add('dragging');
+      const rect=el.getBoundingClientRect();
+      startX=t.clientX; startY=t.clientY;
+      startLeft=rect.left; startTop=rect.top;
+      el.style.left=startLeft+'px'; el.style.top=startTop+'px';
+      el.style.right='auto'; el.style.bottom='auto';
+    },{passive:true});
+
+    document.addEventListener('touchmove',e=>{
+      if(!isDragging) return;
+      const t=e.touches[0];
+      const newLeft=Math.max(0,Math.min(window.innerWidth-el.offsetWidth,startLeft+(t.clientX-startX)));
+      const newTop=Math.max(0,Math.min(window.innerHeight-el.offsetHeight,startTop+(t.clientY-startY)));
+      el.style.left=newLeft+'px'; el.style.top=newTop+'px';
+    },{passive:true});
+
+    document.addEventListener('touchend',()=>{
+      if(!isDragging) return;
+      isDragging=false;
+      el.classList.remove('dragging');
+      localStorage.setItem('ft_pos',JSON.stringify({left:el.style.left,top:el.style.top}));
+    });
+  }
+  // Init after DOM ready
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',initDraggable);
+  else initDraggable();
+})();
+
 // Auto-logout on tab close
 window.addEventListener('beforeunload', ()=>{
   if(currentTurnoId && turnoStartTime){
@@ -2184,6 +2265,85 @@ async function loadTurnoHistory(){
     </div>`;
   }).join('');
 }
+
+// Draggable floating timer
+(function(){
+  function initDraggable(){
+    const el=document.getElementById('floating-timer');
+    if(!el) return;
+
+    // Restore saved position
+    const saved=localStorage.getItem('ft_pos');
+    if(saved){
+      try{
+        const {left,top}=JSON.parse(saved);
+        el.style.left=left; el.style.top=top;
+        el.style.right='auto'; el.style.bottom='auto';
+      }catch{}
+    }
+
+    let isDragging=false,startX,startY,startLeft,startTop;
+
+    el.addEventListener('mousedown',e=>{
+      if(e.target.classList.contains('floating-timer-end')) return;
+      isDragging=true;
+      el.classList.add('dragging');
+      const rect=el.getBoundingClientRect();
+      startX=e.clientX; startY=e.clientY;
+      startLeft=rect.left; startTop=rect.top;
+      el.style.left=startLeft+'px'; el.style.top=startTop+'px';
+      el.style.right='auto'; el.style.bottom='auto';
+    });
+
+    document.addEventListener('mousemove',e=>{
+      if(!isDragging) return;
+      const dx=e.clientX-startX;
+      const dy=e.clientY-startY;
+      const newLeft=Math.max(0,Math.min(window.innerWidth-el.offsetWidth,startLeft+dx));
+      const newTop=Math.max(0,Math.min(window.innerHeight-el.offsetHeight,startTop+dy));
+      el.style.left=newLeft+'px';
+      el.style.top=newTop+'px';
+    });
+
+    document.addEventListener('mouseup',()=>{
+      if(!isDragging) return;
+      isDragging=false;
+      el.classList.remove('dragging');
+      localStorage.setItem('ft_pos',JSON.stringify({left:el.style.left,top:el.style.top}));
+    });
+
+    // Touch support
+    el.addEventListener('touchstart',e=>{
+      if(e.target.classList.contains('floating-timer-end')) return;
+      const t=e.touches[0];
+      isDragging=true;
+      el.classList.add('dragging');
+      const rect=el.getBoundingClientRect();
+      startX=t.clientX; startY=t.clientY;
+      startLeft=rect.left; startTop=rect.top;
+      el.style.left=startLeft+'px'; el.style.top=startTop+'px';
+      el.style.right='auto'; el.style.bottom='auto';
+    },{passive:true});
+
+    document.addEventListener('touchmove',e=>{
+      if(!isDragging) return;
+      const t=e.touches[0];
+      const newLeft=Math.max(0,Math.min(window.innerWidth-el.offsetWidth,startLeft+(t.clientX-startX)));
+      const newTop=Math.max(0,Math.min(window.innerHeight-el.offsetHeight,startTop+(t.clientY-startY)));
+      el.style.left=newLeft+'px'; el.style.top=newTop+'px';
+    },{passive:true});
+
+    document.addEventListener('touchend',()=>{
+      if(!isDragging) return;
+      isDragging=false;
+      el.classList.remove('dragging');
+      localStorage.setItem('ft_pos',JSON.stringify({left:el.style.left,top:el.style.top}));
+    });
+  }
+  // Init after DOM ready
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',initDraggable);
+  else initDraggable();
+})();
 
 // Auto-logout on tab close
 window.addEventListener('beforeunload', ()=>{
