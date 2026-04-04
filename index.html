@@ -10,7 +10,7 @@
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
-import { getFirestore, collection, addDoc, getDocs, query, orderBy, limit, serverTimestamp, doc, setDoc, getDoc } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import { getFirestore, collection, addDoc, getDocs, query, orderBy, limit, serverTimestamp, doc, setDoc, getDoc, deleteDoc } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 
 const firebaseConfig = {
   apiKey: "AIzaSyBvF_cChu_PQ_RvaVGh0AaXvphzGCRmV5A",
@@ -43,6 +43,8 @@ onAuthStateChanged(auth, async user => {
     const isAdmin = ADMINS.includes(user.email);
     const cfgBtn = document.getElementById('btn-config');
     if(cfgBtn) cfgBtn.style.display = isAdmin ? 'flex' : 'none';
+    const clearBtn = document.getElementById('btn-clear-metrics');
+    if(clearBtn) clearBtn.style.display = isAdmin ? 'flex' : 'none';
     // Load config from Firebase
     try {
       const docRef = doc(db, 'configs', user.uid);
@@ -86,6 +88,21 @@ window.loginWithGoogle = async () => {
 
 window.logoutUser = async () => {
   await signOut(auth);
+};
+
+// Delete all events (admin only)
+window.clearAllMetrics = async () => {
+  if(!auth.currentUser) return;
+  try {
+    const snap = await getDocs(collection(db, 'events'));
+    const batch = [];
+    snap.docs.forEach(d => batch.push(d.ref));
+    // Delete in chunks of 10
+    for(let i=0;i<batch.length;i+=10){
+      await Promise.all(batch.slice(i,i+10).map(ref => ref.delete ? ref.delete() : deleteDoc(ref)));
+    }
+    return true;
+  } catch(e){ console.log('Clear error:', e); return false; }
 };
 
 // Save config to Firestore
@@ -784,10 +801,16 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
           <div class="analytics-title">Métricas <span>de uso</span></div>
           <div style="font-size:12px;color:var(--text-dim);margin-top:3px;font-family:var(--mono)">Datos en tiempo real desde Firebase</div>
         </div>
-        <button class="btn-refresh" onclick="loadAnalytics()">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M1 4v6h6M23 20v-6h-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M20.49 9A9 9 0 005.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 013.51 15" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          Actualizar
-        </button>
+        <div style="display:flex;gap:8px;">
+          <button class="btn-refresh" onclick="loadAnalytics()">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M1 4v6h6M23 20v-6h-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M20.49 9A9 9 0 005.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 013.51 15" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Actualizar
+          </button>
+          <button class="btn-refresh" id="btn-clear-metrics" onclick="confirmClearMetrics()" style="display:none;border-color:rgba(248,113,113,0.3);color:#f87171;">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Limpiar métricas
+          </button>
+        </div>
       </div>
       <div id="analytics-content">
         <div class="an-loading">
@@ -820,8 +843,8 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 
 <script>
 // Version control — increment this on every update
-const APP_VERSION = '2.2';
-const APP_CHANGELOG = 'Configuración guardada en la nube — nunca más se pierde al actualizar.';
+const APP_VERSION = '2.3';
+const APP_CHANGELOG = 'Botón para limpiar métricas disponible para administradores.';
 const ADMINS = ['cromero@pibox.app'];
 
 function softReload(){
@@ -1242,6 +1265,22 @@ function stopMic(){
   });
 })();
 
+async function confirmClearMetrics(){
+  if(!confirm('⚠️ ¿Estás seguro de que quieres borrar todas las métricas? Esta acción no se puede deshacer.')) return;
+  const btn = document.getElementById('btn-clear-metrics');
+  btn.textContent = 'Limpiando...';
+  btn.disabled = true;
+  const ok = await window.clearAllMetrics();
+  if(ok){
+    toast('Métricas limpiadas ✓');
+    loadAnalytics();
+  } else {
+    toast('Error al limpiar métricas');
+  }
+  btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg> Limpiar métricas';
+  btn.disabled = false;
+}
+
 const inp=document.getElementById('user-input');
   const text=inp.value.trim();
   if(streaming) return;
@@ -1491,6 +1530,22 @@ function stopMic(){
     document.addEventListener('touchend', onUp);
   });
 })();
+
+async function confirmClearMetrics(){
+  if(!confirm('⚠️ ¿Estás seguro de que quieres borrar todas las métricas? Esta acción no se puede deshacer.')) return;
+  const btn = document.getElementById('btn-clear-metrics');
+  btn.textContent = 'Limpiando...';
+  btn.disabled = true;
+  const ok = await window.clearAllMetrics();
+  if(ok){
+    toast('Métricas limpiadas ✓');
+    loadAnalytics();
+  } else {
+    toast('Error al limpiar métricas');
+  }
+  btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg> Limpiar métricas';
+  btn.disabled = false;
+}
 
 const inp=document.getElementById('user-input');
 function autoResize(){inp.style.height='auto';inp.style.height=Math.min(inp.scrollHeight,120)+'px';}
