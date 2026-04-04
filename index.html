@@ -1257,16 +1257,16 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
     <!-- Table -->
     <div class="cumpl-table">
       <div class="cumpl-table-scroll">
-        <div class="cumpl-table-header">
+        <div class="cumpl-table-header" id="cumpl-thead">
           <div>Usuario</div>
-          <div onclick="toggleCumplSort()" style="cursor:pointer;user-select:none;color:var(--p2);" title="Ordenar por fecha">Fecha <span id="cumpl-sort-icon">↑</span></div>
-          <div>Rol</div>
-          <div>Prog. inicio</div>
-          <div>Prog. fin</div>
-          <div>Real inicio</div>
-          <div>Real fin</div>
-          <div>Almuerzo</div>
-          <div>Línea</div>
+          <div onclick="toggleCumplSort()" style="cursor:pointer;user-select:none;color:var(--p2);position:relative;" title="Ordenar por fecha">Fecha <span id="cumpl-sort-icon">↑</span><div class="col-resizer" onmousedown="startColResize(event,1)"></div></div>
+          <div style="position:relative;">Rol<div class="col-resizer" onmousedown="startColResize(event,2)"></div></div>
+          <div style="position:relative;">Prog. inicio<div class="col-resizer" onmousedown="startColResize(event,3)"></div></div>
+          <div style="position:relative;">Prog. fin<div class="col-resizer" onmousedown="startColResize(event,4)"></div></div>
+          <div style="position:relative;">Real inicio<div class="col-resizer" onmousedown="startColResize(event,5)"></div></div>
+          <div style="position:relative;">Real fin<div class="col-resizer" onmousedown="startColResize(event,6)"></div></div>
+          <div style="position:relative;">Almuerzo<div class="col-resizer" onmousedown="startColResize(event,7)"></div></div>
+          <div style="position:relative;">Línea<div class="col-resizer" onmousedown="startColResize(event,8)"></div></div>
           <div>Novedad</div>
           <div>Estado</div>
         </div>
@@ -1311,8 +1311,8 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 
 <script>
 // Version control — increment this on every update
-const APP_VERSION = '4.7';
-const APP_CHANGELOG = 'Resizer de columnas corregido y funcional.';
+const APP_VERSION = '4.8';
+const APP_CHANGELOG = 'Resizer de columnas: ahora funciona correctamente.';
 const ADMINS = ['cromero@pibox.app'];
 
 function softReload(){
@@ -1974,29 +1974,27 @@ async function loadTurnoHistory(){
     const thead = document.getElementById('cumpl-thead');
     if(!thead) return;
 
-    // Convert current fr-based columns to px for manipulation
+    // Always read current actual pixel widths
     const cols = [...thead.children];
     const widths = cols.map(c => c.getBoundingClientRect().width);
 
-    // Apply px widths to header and all rows
     function applyWidths(w){
-      const grid = w.map(x => x+'px').join(' ');
+      const grid = w.map(x => Math.round(x)+'px').join(' ');
       thead.style.gridTemplateColumns = grid;
       document.querySelectorAll('.cumpl-row').forEach(r => r.style.gridTemplateColumns = grid);
     }
+    // Convert to px immediately
     applyWidths(widths);
 
     const startX = e.clientX;
     const startW = widths[idx];
-
     e.target.classList.add('resizing');
     document.body.style.cursor = 'col-resize';
     document.body.style.userSelect = 'none';
 
     function onMove(ev){
       const diff = ev.clientX - startX;
-      const newW = Math.max(50, startW + diff);
-      widths[idx] = newW;
+      widths[idx] = Math.max(50, startW + diff);
       applyWidths(widths);
     }
     function onUp(){
