@@ -797,8 +797,8 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 
 <script>
 // Version control — increment this on every update
-const APP_VERSION = '2.0';
-const APP_CHANGELOG = 'Fuente renombrada a 🧠 Manual en vivo.';
+const APP_VERSION = '2.1';
+const APP_CHANGELOG = 'Encuesta: ciclo de 5 min se mantiene al continuar consultando.';
 const ADMINS = ['cromero@pibox.app'];
 
 function softReload(){
@@ -1059,17 +1059,16 @@ function showSurvey(){
 }
 
 function continueSurvey(){
-  // Close survey and restart timer — user wants to keep chatting
+  // Close survey without tracking — user wants to keep chatting
   document.getElementById('survey-card').style.display='none';
   surveyAnswer=null;
-  // Restart timer for another 5 min cycle
-  if(hasConversation){
-    surveyTimer=setTimeout(()=>{
-      if(hasConversation && document.getElementById('user-input').value.trim()===''){
-        showSurvey();
-      }
-    }, 5*60*1000);
-  }
+  // Clear any existing timer and schedule a fresh one
+  if(surveyTimer) clearTimeout(surveyTimer);
+  surveyTimer=setTimeout(()=>{
+    if(hasConversation && document.getElementById('user-input').value.trim()===''){
+      showSurvey();
+    }
+  }, 5*60*1000);
 }
 
 function closeSurvey(track=false){
@@ -1355,17 +1354,16 @@ function showSurvey(){
 }
 
 function continueSurvey(){
-  // Close survey and restart timer — user wants to keep chatting
+  // Close survey without tracking — user wants to keep chatting
   document.getElementById('survey-card').style.display='none';
   surveyAnswer=null;
-  // Restart timer for another 5 min cycle
-  if(hasConversation){
-    surveyTimer=setTimeout(()=>{
-      if(hasConversation && document.getElementById('user-input').value.trim()===''){
-        showSurvey();
-      }
-    }, 5*60*1000);
-  }
+  // Clear any existing timer and schedule a fresh one
+  if(surveyTimer) clearTimeout(surveyTimer);
+  surveyTimer=setTimeout(()=>{
+    if(hasConversation && document.getElementById('user-input').value.trim()===''){
+      showSurvey();
+    }
+  }, 5*60*1000);
 }
 
 function closeSurvey(track=false){
