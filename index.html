@@ -759,7 +759,9 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 .cumpl-table-scroll{width:100%;}
 .cumpl-table-header{display:grid;grid-template-columns:1.4fr 0.7fr 1fr 0.9fr 0.9fr 0.9fr 0.9fr 1fr 0.8fr 1fr 1.1fr;gap:6px;padding:10px 14px;background:var(--surface2);border-bottom:1px solid var(--border);font-size:10px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;font-family:var(--mono);}
 .cumpl-table-header-user{display:grid;grid-template-columns:1.4fr 0.7fr 1fr 0.9fr 0.9fr 0.9fr 0.9fr 1fr 0.8fr 1fr 1.1fr;gap:6px;padding:10px 14px;background:var(--surface2);border-bottom:1px solid var(--border);font-size:10px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;font-family:var(--mono);}
-.cumpl-row{display:grid;grid-template-columns:1.4fr 0.7fr 1fr 0.9fr 0.9fr 0.9fr 0.9fr 1fr 0.8fr 1fr 1.1fr;gap:6px;padding:10px 14px;border-bottom:1px solid var(--border);font-size:12px;align-items:center;}
+.cumpl-row{display:grid;grid-template-columns:1.4fr 0.7fr 1fr 0.9fr 0.9fr 0.9fr 0.9fr 1fr 0.8fr 1fr 1.1fr;gap:0;padding:0;border-bottom:1px solid var(--border);font-size:12px;align-items:stretch;}
+.cumpl-row>div{padding:10px 10px;border-right:1px solid var(--border);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:flex;align-items:center;}
+.cumpl-row>div:last-child{border-right:none;}
 .cumpl-row:last-child{border-bottom:none;}
 .cumpl-row:hover{background:rgba(123,47,255,0.03);}
 .cumpl-cell{font-family:var(--mono);font-size:11px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
@@ -867,11 +869,11 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
       </button>
       <button class="tab" id="tab-panel" onclick="switchTab('panel')" style="display:none;">
         <svg viewBox="0 0 24 24" fill="none"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        Panel de turnos
+        Panel de control
       </button>
       <button class="tab" id="tab-cumplimiento" onclick="switchTab('cumplimiento')" style="display:none;">
         <svg viewBox="0 0 24 24" fill="none"><path d="M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        Cumplimiento
+        Panel de turnos
       </button>
     </div>
 
@@ -1301,8 +1303,8 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 
 <script>
 // Version control — increment this on every update
-const APP_VERSION = '4.4';
-const APP_CHANGELOG = 'Pestañas renombradas: Panel de control y Panel de turnos.';
+const APP_VERSION = '4.5';
+const APP_CHANGELOG = 'Tabla Panel de turnos: columnas con bordes y nombres de pestañas corregidos.';
 const ADMINS = ['cromero@pibox.app'];
 
 function softReload(){
