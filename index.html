@@ -593,43 +593,55 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 .an-loading{display:flex;flex-direction:column;align-items:center;gap:14px;padding:60px 20px;text-align:center;}
 
 /* Turno styles */
-#turno-view{overflow-y:auto;padding:24px 20px;}
+#turno-view{overflow-y:auto;padding:20px;}
 #turno-view::-webkit-scrollbar{width:4px;}
 #turno-view::-webkit-scrollbar-thumb{background:var(--surface3);border-radius:4px;}
-.turno-inner{max-width:700px;margin:0 auto;}
-.turno-card{background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:32px;text-align:center;margin-bottom:20px;position:relative;overflow:hidden;}
-.turno-card::before{content:'';position:absolute;top:0;left:20px;right:20px;height:1px;background:var(--grad);border-radius:100px;}
-.turno-status{font-size:13px;font-weight:600;font-family:var(--mono);color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:16px;}
-.turno-timer{font-size:52px;font-weight:800;font-family:var(--mono);background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;line-height:1;margin-bottom:8px;}
-.turno-date{font-size:13px;color:var(--text-muted);margin-bottom:24px;font-family:var(--mono);}
-.turno-device{display:inline-flex;align-items:center;gap:6px;background:var(--surface2);border:1px solid var(--border);padding:5px 14px;border-radius:100px;font-size:11px;color:var(--text-muted);font-family:var(--mono);margin-bottom:24px;}
-.btn-turno-start{background:var(--grad);border:none;color:white;padding:14px 40px;border-radius:14px;cursor:pointer;font-family:var(--font);font-weight:700;font-size:16px;transition:all 0.2s;box-shadow:0 4px 20px rgba(123,47,255,0.4);display:inline-flex;align-items:center;gap:8px;}
-.btn-turno-start:hover{transform:translateY(-2px);box-shadow:0 6px 28px rgba(123,47,255,0.55);}
-.btn-turno-end{background:rgba(248,113,113,0.1);border:2px solid rgba(248,113,113,0.4);color:#f87171;padding:14px 40px;border-radius:14px;cursor:pointer;font-family:var(--font);font-weight:700;font-size:16px;transition:all 0.2s;display:inline-flex;align-items:center;gap:8px;}
+.turno-inner{max-width:1100px;margin:0 auto;}
+.turno-layout{display:grid;grid-template-columns:300px 1fr;gap:16px;align-items:start;}
+.turno-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:22px;text-align:center;position:relative;overflow:hidden;}
+.turno-card::before{content:'';position:absolute;top:0;left:16px;right:16px;height:1px;background:var(--grad);border-radius:100px;}
+.turno-status{font-size:11px;font-weight:600;font-family:var(--mono);color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:10px;}
+.turno-timer{font-size:36px;font-weight:800;font-family:var(--mono);background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;line-height:1;margin-bottom:6px;}
+.turno-date{font-size:11px;color:var(--text-muted);margin-bottom:14px;font-family:var(--mono);}
+.turno-device{display:inline-flex;align-items:center;gap:5px;background:var(--surface2);border:1px solid var(--border);padding:4px 12px;border-radius:100px;font-size:11px;color:var(--text-muted);font-family:var(--mono);margin-bottom:16px;}
+.btn-turno-start{background:var(--grad);border:none;color:white;padding:11px 28px;border-radius:12px;cursor:pointer;font-family:var(--font);font-weight:700;font-size:14px;transition:all 0.2s;box-shadow:0 4px 16px rgba(123,47,255,0.4);display:inline-flex;align-items:center;gap:7px;}
+.btn-turno-start:hover{transform:translateY(-2px);box-shadow:0 6px 24px rgba(123,47,255,0.55);}
+.btn-turno-end{background:rgba(248,113,113,0.1);border:2px solid rgba(248,113,113,0.4);color:#f87171;padding:11px 28px;border-radius:12px;cursor:pointer;font-family:var(--font);font-weight:700;font-size:14px;transition:all 0.2s;display:inline-flex;align-items:center;gap:7px;}
 .btn-turno-end:hover{background:rgba(248,113,113,0.2);transform:translateY(-2px);}
-.turno-info{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:16px;}
-.turno-info-card{background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:14px 16px;text-align:left;}
-.turno-info-label{font-size:10px;color:var(--text-dim);font-family:var(--mono);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;}
-.turno-info-value{font-size:15px;font-weight:700;color:var(--text);}
-.turno-history{background:var(--surface);border:1px solid var(--border);border-radius:16px;overflow:hidden;}
-.turno-history-header{padding:16px 20px;border-bottom:1px solid var(--border);font-size:13px;font-weight:700;color:var(--text-muted);}
-.turno-row{display:flex;align-items:center;gap:12px;padding:12px 20px;border-bottom:1px solid var(--border);font-size:13px;}
+.turno-info{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px;}
+.turno-info-card{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:10px 12px;text-align:left;}
+.turno-info-label{font-size:10px;color:var(--text-dim);font-family:var(--mono);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:3px;}
+.turno-info-value{font-size:13px;font-weight:700;color:var(--text);}
+.turno-history-wrap{background:var(--surface);border:1px solid var(--border);border-radius:16px;overflow:hidden;display:flex;flex-direction:column;}
+.turno-history-header{padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;}
+.turno-history-title{font-size:13px;font-weight:700;color:var(--text-muted);}
+.turno-filters{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+.turno-filter-btn{background:var(--surface2);border:1px solid var(--border);color:var(--text-muted);padding:4px 12px;border-radius:100px;font-size:11px;font-weight:600;cursor:pointer;transition:all 0.2s;font-family:var(--font);}
+.turno-filter-btn:hover{border-color:var(--p1);color:var(--text);}
+.turno-filter-btn.active{background:var(--grad);border-color:transparent;color:white;}
+.turno-filter-select{background:var(--surface2);border:1px solid var(--border);color:var(--text-muted);padding:4px 10px;border-radius:8px;font-size:11px;font-family:var(--mono);outline:none;cursor:pointer;}
+.turno-filter-select:focus{border-color:var(--p1);}
+.turno-history-list{overflow-y:auto;max-height:480px;}
+.turno-history-list::-webkit-scrollbar{width:3px;}
+.turno-history-list::-webkit-scrollbar-thumb{background:var(--surface3);border-radius:3px;}
+.turno-row{display:flex;align-items:center;gap:10px;padding:10px 18px;border-bottom:1px solid var(--border);font-size:12px;}
 .turno-row:last-child{border-bottom:none;}
-.turno-row-date{font-family:var(--mono);font-size:11px;color:var(--text-dim);width:80px;flex-shrink:0;}
-.turno-row-user{flex:1;color:var(--text-muted);}
-.turno-row-time{font-family:var(--mono);font-size:12px;color:var(--text);}
-.turno-row-dur{font-family:var(--mono);font-size:11px;color:var(--p2);background:rgba(123,47,255,0.1);padding:2px 8px;border-radius:5px;}
-.turno-row-device{font-size:16px;}
-.turno-row-status{font-size:11px;font-family:var(--mono);padding:2px 8px;border-radius:5px;}
+.turno-row-date{font-family:var(--mono);font-size:10px;color:var(--text-dim);width:70px;flex-shrink:0;}
+.turno-row-user{flex:1;color:var(--text-muted);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.turno-row-time{font-family:var(--mono);font-size:11px;color:var(--text);white-space:nowrap;}
+.turno-row-dur{font-family:var(--mono);font-size:10px;color:var(--p2);background:rgba(123,47,255,0.1);padding:2px 7px;border-radius:4px;white-space:nowrap;}
+.turno-row-device{font-size:14px;flex-shrink:0;}
+.turno-row-status{font-size:10px;font-family:var(--mono);padding:2px 7px;border-radius:4px;white-space:nowrap;flex-shrink:0;}
 .turno-row-status.active{background:rgba(74,222,128,0.1);color:#4ade80;}
 .turno-row-status.ended{background:rgba(90,82,112,0.2);color:var(--text-dim);}
 .turno-row-status.interrupted{background:rgba(251,146,60,0.1);color:#fb923c;}
-.resume-banner{background:rgba(251,146,60,0.08);border:1px solid rgba(251,146,60,0.25);border-radius:14px;padding:18px 22px;margin-bottom:20px;display:none;}
-.resume-banner h4{font-size:14px;font-weight:700;color:#fb923c;margin-bottom:6px;}
-.resume-banner p{font-size:12px;color:var(--text-muted);margin-bottom:14px;line-height:1.6;}
-.resume-actions{display:flex;gap:10px;}
-.btn-resume{background:var(--grad);border:none;color:white;padding:8px 20px;border-radius:9px;cursor:pointer;font-family:var(--font);font-weight:700;font-size:13px;}
-.btn-no-resume{background:none;border:1px solid var(--border);color:var(--text-muted);padding:8px 20px;border-radius:9px;cursor:pointer;font-family:var(--font);font-size:13px;}
+.resume-banner{background:rgba(251,146,60,0.08);border:1px solid rgba(251,146,60,0.25);border-radius:12px;padding:14px 18px;margin-bottom:14px;display:none;}
+.resume-banner h4{font-size:13px;font-weight:700;color:#fb923c;margin-bottom:4px;}
+.resume-banner p{font-size:12px;color:var(--text-muted);margin-bottom:12px;line-height:1.6;}
+.resume-actions{display:flex;gap:8px;}
+.btn-resume{background:var(--grad);border:none;color:white;padding:7px 18px;border-radius:8px;cursor:pointer;font-family:var(--font);font-weight:700;font-size:12px;}
+.btn-no-resume{background:none;border:1px solid var(--border);color:var(--text-muted);padding:7px 18px;border-radius:8px;cursor:pointer;font-family:var(--font);font-size:12px;}
+@media(max-width:700px){.turno-layout{grid-template-columns:1fr;}}
 
 .toast{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:var(--grad);color:white;padding:8px 20px;border-radius:100px;font-weight:700;font-size:13px;z-index:999;box-shadow:0 4px 20px rgba(123,47,255,0.5);animation:msgIn 0.3s ease both;}
 .update-banner{position:fixed;top:0;left:0;right:0;z-index:400;background:linear-gradient(135deg,#1a0a3a,#2d1060);border-bottom:1px solid var(--p1);padding:10px 20px;display:flex;align-items:center;justify-content:center;gap:14px;animation:slideDown 0.4s ease both;}
@@ -914,42 +926,50 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
       </div>
     </div>
 
-    <!-- Main turno card -->
-    <div class="turno-card">
-      <div class="turno-status" id="turno-status">Sin turno activo</div>
-      <div class="turno-timer" id="turno-timer">00:00:00</div>
-      <div class="turno-date" id="turno-date"></div>
-      <div class="turno-device" id="turno-device">
-        <span id="turno-device-icon">💻</span>
-        <span id="turno-device-label">Desktop</span>
-      </div>
-      <div id="turno-btn-wrap">
-        <button class="btn-turno-start" id="btn-turno-start" onclick="startTurno()">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/><path d="M12 6v6l4 2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-          Iniciar turno
-        </button>
-        <button class="btn-turno-end" id="btn-turno-end" onclick="endTurno()" style="display:none;">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="18" height="18" rx="3" stroke="currentColor" stroke-width="2"/></svg>
-          Finalizar turno
-        </button>
-      </div>
-      <div class="turno-info" id="turno-info" style="display:none;">
-        <div class="turno-info-card">
-          <div class="turno-info-label">Inicio</div>
-          <div class="turno-info-value" id="turno-start-display">—</div>
+    <div class="turno-layout">
+      <!-- Left: cronómetro compacto -->
+      <div class="turno-card">
+        <div class="turno-status" id="turno-status">Sin turno activo</div>
+        <div class="turno-timer" id="turno-timer">00:00:00</div>
+        <div class="turno-date" id="turno-date"></div>
+        <div class="turno-device" id="turno-device">
+          <span id="turno-device-icon">💻</span>
+          <span id="turno-device-label">Desktop</span>
         </div>
-        <div class="turno-info-card">
-          <div class="turno-info-label">Tiempo acumulado hoy</div>
-          <div class="turno-info-value" id="turno-accumulated">—</div>
+        <div id="turno-btn-wrap">
+          <button class="btn-turno-start" id="btn-turno-start" onclick="startTurno()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/><path d="M12 6v6l4 2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            Iniciar turno
+          </button>
+          <button class="btn-turno-end" id="btn-turno-end" onclick="endTurno()" style="display:none;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="18" height="18" rx="3" stroke="currentColor" stroke-width="2"/></svg>
+            Finalizar turno
+          </button>
+        </div>
+        <div class="turno-info" id="turno-info" style="display:none;">
+          <div class="turno-info-card">
+            <div class="turno-info-label">Inicio</div>
+            <div class="turno-info-value" id="turno-start-display">—</div>
+          </div>
+          <div class="turno-info-card">
+            <div class="turno-info-label">Acumulado hoy</div>
+            <div class="turno-info-value" id="turno-accumulated">—</div>
+          </div>
         </div>
       </div>
-    </div>
 
-    <!-- History (admin only) -->
-    <div id="turno-history-wrap" style="display:none;">
-      <div class="turno-history">
-        <div class="turno-history-header">📋 Historial de turnos — últimos 7 días</div>
-        <div id="turno-history-list">
+      <!-- Right: historial con filtros -->
+      <div class="turno-history-wrap">
+        <div class="turno-history-header">
+          <div class="turno-history-title">📋 Mi historial de turnos</div>
+          <div class="turno-filters">
+            <button class="turno-filter-btn active" onclick="setTurnoFilter('today',this)">Hoy</button>
+            <button class="turno-filter-btn" onclick="setTurnoFilter('week',this)">Esta semana</button>
+            <button class="turno-filter-btn" onclick="setTurnoFilter('month',this)">Este mes</button>
+            <button class="turno-filter-btn" onclick="setTurnoFilter('all',this)">Todo</button>
+          </div>
+        </div>
+        <div class="turno-history-list" id="turno-history-list">
           <div style="padding:20px;text-align:center;color:var(--text-dim);font-size:13px;">Cargando...</div>
         </div>
       </div>
@@ -981,8 +1001,8 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 
 <script>
 // Version control — increment this on every update
-const APP_VERSION = '2.6';
-const APP_CHANGELOG = 'Historial de turno se actualiza automáticamente al finalizar.';
+const APP_VERSION = '2.7';
+const APP_CHANGELOG = 'Turno: layout mejorado, cronómetro compacto y filtros por período.';
 const ADMINS = ['cromero@pibox.app'];
 
 function softReload(){
@@ -1461,12 +1481,8 @@ async function initTurnoView(){
     window._interruptedTurno=existing;
   }
 
-  // Show history for admins
-  const userEmail=document.getElementById('user-email').textContent;
-  if(ADMINS.includes(userEmail)){
-    document.getElementById('turno-history-wrap').style.display='block';
-    loadTurnoHistory();
-  }
+  // Show history for all users
+  loadTurnoHistory();
 }
 
 function setTurnoActive(turno){
@@ -1522,8 +1538,7 @@ async function endTurno(status='ended'){
     setTurnoInactive();
     toast('👋 Turno finalizado — duración: '+formatDuration(elapsed));
     // Refresh history if visible
-    const userEmail=document.getElementById('user-email').textContent;
-    if(ADMINS.includes(userEmail)) loadTurnoHistory();
+    loadTurnoHistory();
   }
 }
 
@@ -1546,11 +1561,36 @@ async function startFreshTurno(){
   await startTurno();
 }
 
+let turnoFilter='today';
+function setTurnoFilter(filter, btn){
+  turnoFilter=filter;
+  document.querySelectorAll('.turno-filter-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  loadTurnoHistory();
+}
+
 async function loadTurnoHistory(){
   const list=document.getElementById('turno-history-list');
-  const turnos=await window.getRecentTurnos();
+  list.innerHTML='<div style="padding:20px;text-align:center;color:var(--text-dim);font-size:13px;">Cargando...</div>';
+  const allTurnos=await window.getRecentTurnos();
+  const userEmail=document.getElementById('user-email').textContent;
+  const isAdmin=ADMINS.includes(userEmail);
+
+  // Filter by user (non-admins see only their own)
+  let turnos=isAdmin?allTurnos:allTurnos.filter(t=>t.userEmail===userEmail);
+
+  // Filter by period
+  const now=new Date();
+  const startOfDay=new Date(now); startOfDay.setHours(0,0,0,0);
+  const startOfWeek=new Date(now); startOfWeek.setDate(now.getDate()-now.getDay()); startOfWeek.setHours(0,0,0,0);
+  const startOfMonth=new Date(now.getFullYear(),now.getMonth(),1);
+
+  if(turnoFilter==='today') turnos=turnos.filter(t=>t.startTime?.toDate?.()>=startOfDay);
+  else if(turnoFilter==='week') turnos=turnos.filter(t=>t.startTime?.toDate?.()>=startOfWeek);
+  else if(turnoFilter==='month') turnos=turnos.filter(t=>t.startTime?.toDate?.()>=startOfMonth);
+
   if(!turnos.length){
-    list.innerHTML='<div style="padding:20px;text-align:center;color:var(--text-dim);font-size:13px;">Sin registros aún</div>';
+    list.innerHTML='<div style="padding:20px;text-align:center;color:var(--text-dim);font-size:13px;">Sin registros en este período</div>';
     return;
   }
   list.innerHTML=turnos.map(t=>{
@@ -1565,7 +1605,7 @@ async function loadTurnoHistory(){
     const deviceIcon=t.isMobile?'📱':'💻';
     return `<div class="turno-row">
       <div class="turno-row-date">${dateStr}</div>
-      <div class="turno-row-user">${t.userEmail||'—'}</div>
+      ${isAdmin?`<div class="turno-row-user">${t.userEmail||'—'}</div>`:''}
       <div class="turno-row-time">${startStr} → ${endStr}</div>
       <div class="turno-row-dur">${dur}</div>
       <div class="turno-row-device">${deviceIcon}</div>
@@ -1908,12 +1948,8 @@ async function initTurnoView(){
     window._interruptedTurno=existing;
   }
 
-  // Show history for admins
-  const userEmail=document.getElementById('user-email').textContent;
-  if(ADMINS.includes(userEmail)){
-    document.getElementById('turno-history-wrap').style.display='block';
-    loadTurnoHistory();
-  }
+  // Show history for all users
+  loadTurnoHistory();
 }
 
 function setTurnoActive(turno){
@@ -1969,8 +2005,7 @@ async function endTurno(status='ended'){
     setTurnoInactive();
     toast('👋 Turno finalizado — duración: '+formatDuration(elapsed));
     // Refresh history if visible
-    const userEmail=document.getElementById('user-email').textContent;
-    if(ADMINS.includes(userEmail)) loadTurnoHistory();
+    loadTurnoHistory();
   }
 }
 
@@ -1993,11 +2028,36 @@ async function startFreshTurno(){
   await startTurno();
 }
 
+let turnoFilter='today';
+function setTurnoFilter(filter, btn){
+  turnoFilter=filter;
+  document.querySelectorAll('.turno-filter-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  loadTurnoHistory();
+}
+
 async function loadTurnoHistory(){
   const list=document.getElementById('turno-history-list');
-  const turnos=await window.getRecentTurnos();
+  list.innerHTML='<div style="padding:20px;text-align:center;color:var(--text-dim);font-size:13px;">Cargando...</div>';
+  const allTurnos=await window.getRecentTurnos();
+  const userEmail=document.getElementById('user-email').textContent;
+  const isAdmin=ADMINS.includes(userEmail);
+
+  // Filter by user (non-admins see only their own)
+  let turnos=isAdmin?allTurnos:allTurnos.filter(t=>t.userEmail===userEmail);
+
+  // Filter by period
+  const now=new Date();
+  const startOfDay=new Date(now); startOfDay.setHours(0,0,0,0);
+  const startOfWeek=new Date(now); startOfWeek.setDate(now.getDate()-now.getDay()); startOfWeek.setHours(0,0,0,0);
+  const startOfMonth=new Date(now.getFullYear(),now.getMonth(),1);
+
+  if(turnoFilter==='today') turnos=turnos.filter(t=>t.startTime?.toDate?.()>=startOfDay);
+  else if(turnoFilter==='week') turnos=turnos.filter(t=>t.startTime?.toDate?.()>=startOfWeek);
+  else if(turnoFilter==='month') turnos=turnos.filter(t=>t.startTime?.toDate?.()>=startOfMonth);
+
   if(!turnos.length){
-    list.innerHTML='<div style="padding:20px;text-align:center;color:var(--text-dim);font-size:13px;">Sin registros aún</div>';
+    list.innerHTML='<div style="padding:20px;text-align:center;color:var(--text-dim);font-size:13px;">Sin registros en este período</div>';
     return;
   }
   list.innerHTML=turnos.map(t=>{
@@ -2012,7 +2072,7 @@ async function loadTurnoHistory(){
     const deviceIcon=t.isMobile?'📱':'💻';
     return `<div class="turno-row">
       <div class="turno-row-date">${dateStr}</div>
-      <div class="turno-row-user">${t.userEmail||'—'}</div>
+      ${isAdmin?`<div class="turno-row-user">${t.userEmail||'—'}</div>`:''}
       <div class="turno-row-time">${startStr} → ${endStr}</div>
       <div class="turno-row-dur">${dur}</div>
       <div class="turno-row-device">${deviceIcon}</div>
