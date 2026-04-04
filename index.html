@@ -30,7 +30,7 @@ provider.setCustomParameters({ hd: 'pibox.app' });
 let currentUser = null;
 
 // Auth state
-onAuthStateChanged(auth, user => {
+onAuthStateChanged(auth, async user => {
   if (user) {
     currentUser = user;
     document.getElementById('login-screen').style.display = 'none';
