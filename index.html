@@ -1295,8 +1295,8 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 
 <script>
 // Version control — increment this on every update
-const APP_VERSION = '3.6';
-const APP_CHANGELOG = 'Cumplimiento: soporte para fechas en formato DD/MM/YYYY.';
+const APP_VERSION = '3.7';
+const APP_CHANGELOG = 'Cumplimiento: malla carga correctamente desde Google Sheets.';
 const ADMINS = ['cromero@pibox.app'];
 
 function softReload(){
@@ -2042,7 +2042,7 @@ window.addEventListener('beforeunload', ()=>{
 });
 
 // ── CUMPLIMIENTO ──
-const MALLA_SCRIPT='https://script.google.com/macros/s/AKfycbyLpzwAsOYgKZKS8H7JvifWxyo9lDQeGXLQk0cOHCP15obfntcC2wGCufs_tDx6lXQa/exec';
+const MALLA_SCRIPT='https://script.google.com/macros/s/AKfycbyxBZWba6M1eXcwQUdBBUTqTrgGd8zwHiM6wwecXI3mUYOUP-RT9LnxSwqeXRy9prCm/exec';
 const TOLERANCE_MINS=5;
 let cumplFilter='today';
 
@@ -2077,9 +2077,8 @@ function parseDate(dateStr){
 }
 
 function parseTime(dateStr, timeStr){
-  if(!dateStr||!timeStr) return null;
-  const timeS=String(timeStr);
-  // Handle HH:MM:SS or HH:MM
+  if(!dateStr||!timeStr||String(timeStr).trim()==='0'||String(timeStr).trim()==='') return null;
+  const timeS=String(timeStr).trim();
   const parts=timeS.split(':').map(Number);
   const h=parts[0]||0, m=parts[1]||0;
   const d=parseDate(String(dateStr));
@@ -2974,7 +2973,7 @@ window.addEventListener('beforeunload', ()=>{
 });
 
 // ── CUMPLIMIENTO ──
-const MALLA_SCRIPT='https://script.google.com/macros/s/AKfycbyLpzwAsOYgKZKS8H7JvifWxyo9lDQeGXLQk0cOHCP15obfntcC2wGCufs_tDx6lXQa/exec';
+const MALLA_SCRIPT='https://script.google.com/macros/s/AKfycbyxBZWba6M1eXcwQUdBBUTqTrgGd8zwHiM6wwecXI3mUYOUP-RT9LnxSwqeXRy9prCm/exec';
 const TOLERANCE_MINS=5;
 let cumplFilter='today';
 
@@ -3009,9 +3008,8 @@ function parseDate(dateStr){
 }
 
 function parseTime(dateStr, timeStr){
-  if(!dateStr||!timeStr) return null;
-  const timeS=String(timeStr);
-  // Handle HH:MM:SS or HH:MM
+  if(!dateStr||!timeStr||String(timeStr).trim()==='0'||String(timeStr).trim()==='') return null;
+  const timeS=String(timeStr).trim();
   const parts=timeS.split(':').map(Number);
   const h=parts[0]||0, m=parts[1]||0;
   const d=parseDate(String(dateStr));
