@@ -90,6 +90,43 @@ window.logoutUser = async () => {
   await signOut(auth);
 };
 
+// Turno Firebase functions
+window.saveTurnoToFirebase = async (turnoData) => {
+  if(!auth.currentUser) return null;
+  try {
+    const ref = await addDoc(collection(db, 'turnos'), {
+      ...turnoData,
+      userId: auth.currentUser.uid,
+      userEmail: auth.currentUser.email,
+      userName: auth.currentUser.displayName
+    });
+    return ref.id;
+  } catch(e){ console.log('Turno save error:', e); return null; }
+};
+window.updateTurnoInFirebase = async (id, data) => {
+  if(!auth.currentUser) return;
+  try { await setDoc(doc(db, 'turnos', id), data, {merge:true}); }
+  catch(e){ console.log('Turno update error:', e); }
+};
+window.getTodayTurno = async () => {
+  if(!auth.currentUser) return null;
+  try {
+    const today = new Date(); today.setHours(0,0,0,0);
+    const snap = await getDocs(collection(db, 'turnos'));
+    const mine = snap.docs
+      .map(d=>({id:d.id,...d.data()}))
+      .filter(t=>t.userId===auth.currentUser.uid && t.startTime?.toDate()>=today)
+      .sort((a,b)=>b.startTime?.toDate()-a.startTime?.toDate());
+    return mine[0]||null;
+  } catch(e){ return null; }
+};
+window.getRecentTurnos = async () => {
+  try {
+    const snap = await getDocs(query(collection(db,'turnos'),orderBy('startTime','desc'),limit(100)));
+    return snap.docs.map(d=>({id:d.id,...d.data()}));
+  } catch(e){ return []; }
+};
+
 // Delete all events (admin only)
 window.clearAllMetrics = async () => {
   if(!auth.currentUser) return;
@@ -555,6 +592,45 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 .an-empty{font-size:12px;color:var(--text-dim);text-align:center;padding:20px 0;font-family:var(--mono);}
 .an-loading{display:flex;flex-direction:column;align-items:center;gap:14px;padding:60px 20px;text-align:center;}
 
+/* Turno styles */
+#turno-view{overflow-y:auto;padding:24px 20px;}
+#turno-view::-webkit-scrollbar{width:4px;}
+#turno-view::-webkit-scrollbar-thumb{background:var(--surface3);border-radius:4px;}
+.turno-inner{max-width:700px;margin:0 auto;}
+.turno-card{background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:32px;text-align:center;margin-bottom:20px;position:relative;overflow:hidden;}
+.turno-card::before{content:'';position:absolute;top:0;left:20px;right:20px;height:1px;background:var(--grad);border-radius:100px;}
+.turno-status{font-size:13px;font-weight:600;font-family:var(--mono);color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:16px;}
+.turno-timer{font-size:52px;font-weight:800;font-family:var(--mono);background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;line-height:1;margin-bottom:8px;}
+.turno-date{font-size:13px;color:var(--text-muted);margin-bottom:24px;font-family:var(--mono);}
+.turno-device{display:inline-flex;align-items:center;gap:6px;background:var(--surface2);border:1px solid var(--border);padding:5px 14px;border-radius:100px;font-size:11px;color:var(--text-muted);font-family:var(--mono);margin-bottom:24px;}
+.btn-turno-start{background:var(--grad);border:none;color:white;padding:14px 40px;border-radius:14px;cursor:pointer;font-family:var(--font);font-weight:700;font-size:16px;transition:all 0.2s;box-shadow:0 4px 20px rgba(123,47,255,0.4);display:inline-flex;align-items:center;gap:8px;}
+.btn-turno-start:hover{transform:translateY(-2px);box-shadow:0 6px 28px rgba(123,47,255,0.55);}
+.btn-turno-end{background:rgba(248,113,113,0.1);border:2px solid rgba(248,113,113,0.4);color:#f87171;padding:14px 40px;border-radius:14px;cursor:pointer;font-family:var(--font);font-weight:700;font-size:16px;transition:all 0.2s;display:inline-flex;align-items:center;gap:8px;}
+.btn-turno-end:hover{background:rgba(248,113,113,0.2);transform:translateY(-2px);}
+.turno-info{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:16px;}
+.turno-info-card{background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:14px 16px;text-align:left;}
+.turno-info-label{font-size:10px;color:var(--text-dim);font-family:var(--mono);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;}
+.turno-info-value{font-size:15px;font-weight:700;color:var(--text);}
+.turno-history{background:var(--surface);border:1px solid var(--border);border-radius:16px;overflow:hidden;}
+.turno-history-header{padding:16px 20px;border-bottom:1px solid var(--border);font-size:13px;font-weight:700;color:var(--text-muted);}
+.turno-row{display:flex;align-items:center;gap:12px;padding:12px 20px;border-bottom:1px solid var(--border);font-size:13px;}
+.turno-row:last-child{border-bottom:none;}
+.turno-row-date{font-family:var(--mono);font-size:11px;color:var(--text-dim);width:80px;flex-shrink:0;}
+.turno-row-user{flex:1;color:var(--text-muted);}
+.turno-row-time{font-family:var(--mono);font-size:12px;color:var(--text);}
+.turno-row-dur{font-family:var(--mono);font-size:11px;color:var(--p2);background:rgba(123,47,255,0.1);padding:2px 8px;border-radius:5px;}
+.turno-row-device{font-size:16px;}
+.turno-row-status{font-size:11px;font-family:var(--mono);padding:2px 8px;border-radius:5px;}
+.turno-row-status.active{background:rgba(74,222,128,0.1);color:#4ade80;}
+.turno-row-status.ended{background:rgba(90,82,112,0.2);color:var(--text-dim);}
+.turno-row-status.interrupted{background:rgba(251,146,60,0.1);color:#fb923c;}
+.resume-banner{background:rgba(251,146,60,0.08);border:1px solid rgba(251,146,60,0.25);border-radius:14px;padding:18px 22px;margin-bottom:20px;display:none;}
+.resume-banner h4{font-size:14px;font-weight:700;color:#fb923c;margin-bottom:6px;}
+.resume-banner p{font-size:12px;color:var(--text-muted);margin-bottom:14px;line-height:1.6;}
+.resume-actions{display:flex;gap:10px;}
+.btn-resume{background:var(--grad);border:none;color:white;padding:8px 20px;border-radius:9px;cursor:pointer;font-family:var(--font);font-weight:700;font-size:13px;}
+.btn-no-resume{background:none;border:1px solid var(--border);color:var(--text-muted);padding:8px 20px;border-radius:9px;cursor:pointer;font-family:var(--font);font-size:13px;}
+
 .toast{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:var(--grad);color:white;padding:8px 20px;border-radius:100px;font-weight:700;font-size:13px;z-index:999;box-shadow:0 4px 20px rgba(123,47,255,0.5);animation:msgIn 0.3s ease both;}
 .update-banner{position:fixed;top:0;left:0;right:0;z-index:400;background:linear-gradient(135deg,#1a0a3a,#2d1060);border-bottom:1px solid var(--p1);padding:10px 20px;display:flex;align-items:center;justify-content:center;gap:14px;animation:slideDown 0.4s ease both;}
 @keyframes slideDown{from{transform:translateY(-100%)}to{transform:translateY(0)}}
@@ -637,6 +713,10 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
       <button class="tab" id="tab-an" onclick="switchTab('analytics')">
         <svg viewBox="0 0 24 24" fill="none"><path d="M18 20V10M12 20V4M6 20v-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
         Métricas
+      </button>
+      <button class="tab" id="tab-turno" onclick="switchTab('turno')">
+        <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/><path d="M12 6v6l4 2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        Turno
       </button>
     </div>
 
@@ -820,6 +900,64 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
       </div>
     </div>
   </div>
+<!-- Turno View -->
+<div class="view" id="turno-view">
+  <div class="turno-inner">
+
+    <!-- Resume banner -->
+    <div class="resume-banner" id="resume-banner">
+      <h4>⚠️ Turno interrumpido detectado</h4>
+      <p id="resume-msg">Detectamos que tu turno fue interrumpido. ¿Deseas continuar sumando el tiempo?</p>
+      <div class="resume-actions">
+        <button class="btn-resume" onclick="resumeTurno()">✅ Continuar turno</button>
+        <button class="btn-no-resume" onclick="startFreshTurno()">Iniciar turno nuevo</button>
+      </div>
+    </div>
+
+    <!-- Main turno card -->
+    <div class="turno-card">
+      <div class="turno-status" id="turno-status">Sin turno activo</div>
+      <div class="turno-timer" id="turno-timer">00:00:00</div>
+      <div class="turno-date" id="turno-date"></div>
+      <div class="turno-device" id="turno-device">
+        <span id="turno-device-icon">💻</span>
+        <span id="turno-device-label">Desktop</span>
+      </div>
+      <div id="turno-btn-wrap">
+        <button class="btn-turno-start" id="btn-turno-start" onclick="startTurno()">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/><path d="M12 6v6l4 2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          Iniciar turno
+        </button>
+        <button class="btn-turno-end" id="btn-turno-end" onclick="endTurno()" style="display:none;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="18" height="18" rx="3" stroke="currentColor" stroke-width="2"/></svg>
+          Finalizar turno
+        </button>
+      </div>
+      <div class="turno-info" id="turno-info" style="display:none;">
+        <div class="turno-info-card">
+          <div class="turno-info-label">Inicio</div>
+          <div class="turno-info-value" id="turno-start-display">—</div>
+        </div>
+        <div class="turno-info-card">
+          <div class="turno-info-label">Tiempo acumulado hoy</div>
+          <div class="turno-info-value" id="turno-accumulated">—</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- History (admin only) -->
+    <div id="turno-history-wrap" style="display:none;">
+      <div class="turno-history">
+        <div class="turno-history-header">📋 Historial de turnos — últimos 7 días</div>
+        <div id="turno-history-list">
+          <div style="padding:20px;text-align:center;color:var(--text-dim);font-size:13px;">Cargando...</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
 <!-- Survey -->
 <div class="survey-card" id="survey-card" style="display:none;">
   <div class="survey-q">¿Se resolvió tu consulta? 🎯</div>
@@ -843,8 +981,8 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 
 <script>
 // Version control — increment this on every update
-const APP_VERSION = '2.4';
-const APP_CHANGELOG = 'Encuesta solo aparece en el Asistente, no en otras pestañas.';
+const APP_VERSION = '2.5';
+const APP_CHANGELOG = 'Nuevo módulo de Turno — registra inicio y fin de jornada.';
 const ADMINS = ['cromero@pibox.app'];
 
 function softReload(){
@@ -971,15 +1109,15 @@ window.onload=()=>{
 };
 
 function switchTab(t){
-  ['chat','library','analytics'].forEach(v=>{
+  ['chat','library','analytics','turno'].forEach(v=>{
     document.getElementById(v+'-view').classList.toggle('active',v===t);
     const tid=v==='library'?'lib':v==='analytics'?'an':v;
     document.getElementById('tab-'+tid).classList.toggle('active',v===t);
   });
-  // Show "Nueva consulta" only on chat tab
   document.getElementById('btn-new-chat').style.display = t==='chat' ? 'flex' : 'none';
   if(t==='library'&&allVideos.length===0&&vidUrl) loadVideos();
   if(t==='analytics') loadAnalytics();
+  if(t==='turno') initTurnoView();
 }
 
 function openConfig(){document.getElementById('overlay').classList.add('open');}
@@ -1267,6 +1405,184 @@ function stopMic(){
   });
 })();
 
+// ── TURNO MODULE ──
+let turnoInterval=null;
+let currentTurnoId=null;
+let turnoStartTime=null;
+let accumulatedSeconds=0;
+
+function getDeviceInfo(){
+  const ua=navigator.userAgent;
+  const isMobile=/Android|iPhone|iPad|iPod|Mobile/i.test(ua);
+  return {
+    isMobile,
+    icon: isMobile ? '📱' : '💻',
+    label: isMobile ? 'Móvil' : 'Desktop',
+    ua: ua.substring(0,120)
+  };
+}
+
+function formatDuration(seconds){
+  const h=Math.floor(seconds/3600);
+  const m=Math.floor((seconds%3600)/60);
+  const s=seconds%60;
+  return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+}
+
+function startTimer(){
+  if(turnoInterval) clearInterval(turnoInterval);
+  turnoInterval=setInterval(()=>{
+    const elapsed=Math.floor((Date.now()-turnoStartTime.getTime())/1000)+accumulatedSeconds;
+    document.getElementById('turno-timer').textContent=formatDuration(elapsed);
+  },1000);
+}
+
+async function initTurnoView(){
+  const device=getDeviceInfo();
+  document.getElementById('turno-device-icon').textContent=device.icon;
+  document.getElementById('turno-device-label').textContent=device.label;
+  document.getElementById('turno-date').textContent=new Date().toLocaleDateString('es-CO',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+
+  // Check for interrupted turno today
+  const existing=await window.getTodayTurno();
+  if(existing && existing.status==='active'){
+    // Turno still active — restore it
+    currentTurnoId=existing.id;
+    turnoStartTime=existing.startTime.toDate();
+    accumulatedSeconds=existing.accumulatedSeconds||0;
+    setTurnoActive(existing);
+    startTimer();
+  } else if(existing && existing.status==='interrupted'){
+    // Show resume banner
+    const interruptedAt=existing.endTime?.toDate();
+    const timeStr=interruptedAt?interruptedAt.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'';
+    document.getElementById('resume-msg').textContent=`Detectamos que tu turno fue interrumpido a las ${timeStr}. ¿Deseas continuar sumando el tiempo?`;
+    document.getElementById('resume-banner').style.display='block';
+    window._interruptedTurno=existing;
+  }
+
+  // Show history for admins
+  const userEmail=document.getElementById('user-email').textContent;
+  if(ADMINS.includes(userEmail)){
+    document.getElementById('turno-history-wrap').style.display='block';
+    loadTurnoHistory();
+  }
+}
+
+function setTurnoActive(turno){
+  document.getElementById('turno-status').textContent='Turno en curso';
+  document.getElementById('btn-turno-start').style.display='none';
+  document.getElementById('btn-turno-end').style.display='inline-flex';
+  document.getElementById('turno-info').style.display='grid';
+  const startDate=turno.startTime?.toDate?.()||new Date();
+  document.getElementById('turno-start-display').textContent=startDate.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'});
+  document.getElementById('turno-accumulated').textContent=formatDuration(turno.accumulatedSeconds||0);
+}
+
+function setTurnoInactive(){
+  document.getElementById('turno-status').textContent='Sin turno activo';
+  document.getElementById('turno-timer').textContent='00:00:00';
+  document.getElementById('btn-turno-start').style.display='inline-flex';
+  document.getElementById('btn-turno-end').style.display='none';
+  document.getElementById('turno-info').style.display='none';
+  if(turnoInterval){clearInterval(turnoInterval);turnoInterval=null;}
+}
+
+async function startTurno(){
+  const device=getDeviceInfo();
+  turnoStartTime=new Date();
+  accumulatedSeconds=0;
+  const turnoData={
+    startTime: turnoStartTime,
+    endTime: null,
+    accumulatedSeconds: 0,
+    status: 'active',
+    device: device.label,
+    isMobile: device.isMobile,
+    ua: device.ua
+  };
+  currentTurnoId=await window.saveTurnoToFirebase(turnoData);
+  setTurnoActive({...turnoData, startTime:{toDate:()=>turnoStartTime}});
+  startTimer();
+  toast('✅ Turno iniciado — ' + turnoStartTime.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}));
+}
+
+async function endTurno(status='ended'){
+  if(!currentTurnoId) return;
+  if(turnoInterval){clearInterval(turnoInterval);turnoInterval=null;}
+  const endTime=new Date();
+  const elapsed=Math.floor((endTime-turnoStartTime)/1000)+accumulatedSeconds;
+  await window.updateTurnoInFirebase(currentTurnoId,{
+    endTime, accumulatedSeconds:elapsed, status
+  });
+  currentTurnoId=null;
+  turnoStartTime=null;
+  accumulatedSeconds=0;
+  if(status==='ended'){
+    setTurnoInactive();
+    toast('👋 Turno finalizado — duración: '+formatDuration(elapsed));
+  }
+}
+
+async function resumeTurno(){
+  const interrupted=window._interruptedTurno;
+  if(!interrupted) return;
+  document.getElementById('resume-banner').style.display='none';
+  currentTurnoId=interrupted.id;
+  turnoStartTime=new Date();
+  accumulatedSeconds=interrupted.accumulatedSeconds||0;
+  await window.updateTurnoInFirebase(currentTurnoId,{status:'active',resumedAt:turnoStartTime});
+  setTurnoActive({...interrupted,startTime:{toDate:()=>new Date(interrupted.startTime.toDate())}});
+  startTimer();
+  toast('▶️ Turno reanudado');
+}
+
+async function startFreshTurno(){
+  document.getElementById('resume-banner').style.display='none';
+  window._interruptedTurno=null;
+  await startTurno();
+}
+
+async function loadTurnoHistory(){
+  const list=document.getElementById('turno-history-list');
+  const turnos=await window.getRecentTurnos();
+  if(!turnos.length){
+    list.innerHTML='<div style="padding:20px;text-align:center;color:var(--text-dim);font-size:13px;">Sin registros aún</div>';
+    return;
+  }
+  list.innerHTML=turnos.map(t=>{
+    const start=t.startTime?.toDate?.();
+    const end=t.endTime?.toDate?.();
+    const dur=t.accumulatedSeconds?formatDuration(t.accumulatedSeconds):'—';
+    const startStr=start?start.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
+    const endStr=end?end.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
+    const dateStr=start?start.toLocaleDateString('es-CO',{day:'2-digit',month:'short'}):'—';
+    const statusClass=t.status==='active'?'active':t.status==='interrupted'?'interrupted':'ended';
+    const statusLabel=t.status==='active'?'En turno':t.status==='interrupted'?'Interrumpido':'Finalizado';
+    const deviceIcon=t.isMobile?'📱':'💻';
+    return `<div class="turno-row">
+      <div class="turno-row-date">${dateStr}</div>
+      <div class="turno-row-user">${t.userEmail||'—'}</div>
+      <div class="turno-row-time">${startStr} → ${endStr}</div>
+      <div class="turno-row-dur">${dur}</div>
+      <div class="turno-row-device">${deviceIcon}</div>
+      <div class="turno-row-status ${statusClass}">${statusLabel}</div>
+    </div>`;
+  }).join('');
+}
+
+// Auto-logout on tab close
+window.addEventListener('beforeunload', ()=>{
+  if(currentTurnoId && turnoStartTime){
+    const elapsed=Math.floor((Date.now()-turnoStartTime.getTime())/1000)+accumulatedSeconds;
+    // Use sendBeacon for reliable logout on close
+    const data=JSON.stringify({id:currentTurnoId,elapsed,status:'interrupted'});
+    window.updateTurnoInFirebase(currentTurnoId,{
+      endTime:new Date(), accumulatedSeconds:elapsed, status:'interrupted'
+    });
+  }
+});
+
 async function confirmClearMetrics(){
   if(!confirm('⚠️ ¿Estás seguro de que quieres borrar todas las métricas? Esta acción no se puede deshacer.')) return;
   const btn = document.getElementById('btn-clear-metrics');
@@ -1532,6 +1848,184 @@ function stopMic(){
     document.addEventListener('touchend', onUp);
   });
 })();
+
+// ── TURNO MODULE ──
+let turnoInterval=null;
+let currentTurnoId=null;
+let turnoStartTime=null;
+let accumulatedSeconds=0;
+
+function getDeviceInfo(){
+  const ua=navigator.userAgent;
+  const isMobile=/Android|iPhone|iPad|iPod|Mobile/i.test(ua);
+  return {
+    isMobile,
+    icon: isMobile ? '📱' : '💻',
+    label: isMobile ? 'Móvil' : 'Desktop',
+    ua: ua.substring(0,120)
+  };
+}
+
+function formatDuration(seconds){
+  const h=Math.floor(seconds/3600);
+  const m=Math.floor((seconds%3600)/60);
+  const s=seconds%60;
+  return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+}
+
+function startTimer(){
+  if(turnoInterval) clearInterval(turnoInterval);
+  turnoInterval=setInterval(()=>{
+    const elapsed=Math.floor((Date.now()-turnoStartTime.getTime())/1000)+accumulatedSeconds;
+    document.getElementById('turno-timer').textContent=formatDuration(elapsed);
+  },1000);
+}
+
+async function initTurnoView(){
+  const device=getDeviceInfo();
+  document.getElementById('turno-device-icon').textContent=device.icon;
+  document.getElementById('turno-device-label').textContent=device.label;
+  document.getElementById('turno-date').textContent=new Date().toLocaleDateString('es-CO',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+
+  // Check for interrupted turno today
+  const existing=await window.getTodayTurno();
+  if(existing && existing.status==='active'){
+    // Turno still active — restore it
+    currentTurnoId=existing.id;
+    turnoStartTime=existing.startTime.toDate();
+    accumulatedSeconds=existing.accumulatedSeconds||0;
+    setTurnoActive(existing);
+    startTimer();
+  } else if(existing && existing.status==='interrupted'){
+    // Show resume banner
+    const interruptedAt=existing.endTime?.toDate();
+    const timeStr=interruptedAt?interruptedAt.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'';
+    document.getElementById('resume-msg').textContent=`Detectamos que tu turno fue interrumpido a las ${timeStr}. ¿Deseas continuar sumando el tiempo?`;
+    document.getElementById('resume-banner').style.display='block';
+    window._interruptedTurno=existing;
+  }
+
+  // Show history for admins
+  const userEmail=document.getElementById('user-email').textContent;
+  if(ADMINS.includes(userEmail)){
+    document.getElementById('turno-history-wrap').style.display='block';
+    loadTurnoHistory();
+  }
+}
+
+function setTurnoActive(turno){
+  document.getElementById('turno-status').textContent='Turno en curso';
+  document.getElementById('btn-turno-start').style.display='none';
+  document.getElementById('btn-turno-end').style.display='inline-flex';
+  document.getElementById('turno-info').style.display='grid';
+  const startDate=turno.startTime?.toDate?.()||new Date();
+  document.getElementById('turno-start-display').textContent=startDate.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'});
+  document.getElementById('turno-accumulated').textContent=formatDuration(turno.accumulatedSeconds||0);
+}
+
+function setTurnoInactive(){
+  document.getElementById('turno-status').textContent='Sin turno activo';
+  document.getElementById('turno-timer').textContent='00:00:00';
+  document.getElementById('btn-turno-start').style.display='inline-flex';
+  document.getElementById('btn-turno-end').style.display='none';
+  document.getElementById('turno-info').style.display='none';
+  if(turnoInterval){clearInterval(turnoInterval);turnoInterval=null;}
+}
+
+async function startTurno(){
+  const device=getDeviceInfo();
+  turnoStartTime=new Date();
+  accumulatedSeconds=0;
+  const turnoData={
+    startTime: turnoStartTime,
+    endTime: null,
+    accumulatedSeconds: 0,
+    status: 'active',
+    device: device.label,
+    isMobile: device.isMobile,
+    ua: device.ua
+  };
+  currentTurnoId=await window.saveTurnoToFirebase(turnoData);
+  setTurnoActive({...turnoData, startTime:{toDate:()=>turnoStartTime}});
+  startTimer();
+  toast('✅ Turno iniciado — ' + turnoStartTime.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}));
+}
+
+async function endTurno(status='ended'){
+  if(!currentTurnoId) return;
+  if(turnoInterval){clearInterval(turnoInterval);turnoInterval=null;}
+  const endTime=new Date();
+  const elapsed=Math.floor((endTime-turnoStartTime)/1000)+accumulatedSeconds;
+  await window.updateTurnoInFirebase(currentTurnoId,{
+    endTime, accumulatedSeconds:elapsed, status
+  });
+  currentTurnoId=null;
+  turnoStartTime=null;
+  accumulatedSeconds=0;
+  if(status==='ended'){
+    setTurnoInactive();
+    toast('👋 Turno finalizado — duración: '+formatDuration(elapsed));
+  }
+}
+
+async function resumeTurno(){
+  const interrupted=window._interruptedTurno;
+  if(!interrupted) return;
+  document.getElementById('resume-banner').style.display='none';
+  currentTurnoId=interrupted.id;
+  turnoStartTime=new Date();
+  accumulatedSeconds=interrupted.accumulatedSeconds||0;
+  await window.updateTurnoInFirebase(currentTurnoId,{status:'active',resumedAt:turnoStartTime});
+  setTurnoActive({...interrupted,startTime:{toDate:()=>new Date(interrupted.startTime.toDate())}});
+  startTimer();
+  toast('▶️ Turno reanudado');
+}
+
+async function startFreshTurno(){
+  document.getElementById('resume-banner').style.display='none';
+  window._interruptedTurno=null;
+  await startTurno();
+}
+
+async function loadTurnoHistory(){
+  const list=document.getElementById('turno-history-list');
+  const turnos=await window.getRecentTurnos();
+  if(!turnos.length){
+    list.innerHTML='<div style="padding:20px;text-align:center;color:var(--text-dim);font-size:13px;">Sin registros aún</div>';
+    return;
+  }
+  list.innerHTML=turnos.map(t=>{
+    const start=t.startTime?.toDate?.();
+    const end=t.endTime?.toDate?.();
+    const dur=t.accumulatedSeconds?formatDuration(t.accumulatedSeconds):'—';
+    const startStr=start?start.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
+    const endStr=end?end.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
+    const dateStr=start?start.toLocaleDateString('es-CO',{day:'2-digit',month:'short'}):'—';
+    const statusClass=t.status==='active'?'active':t.status==='interrupted'?'interrupted':'ended';
+    const statusLabel=t.status==='active'?'En turno':t.status==='interrupted'?'Interrumpido':'Finalizado';
+    const deviceIcon=t.isMobile?'📱':'💻';
+    return `<div class="turno-row">
+      <div class="turno-row-date">${dateStr}</div>
+      <div class="turno-row-user">${t.userEmail||'—'}</div>
+      <div class="turno-row-time">${startStr} → ${endStr}</div>
+      <div class="turno-row-dur">${dur}</div>
+      <div class="turno-row-device">${deviceIcon}</div>
+      <div class="turno-row-status ${statusClass}">${statusLabel}</div>
+    </div>`;
+  }).join('');
+}
+
+// Auto-logout on tab close
+window.addEventListener('beforeunload', ()=>{
+  if(currentTurnoId && turnoStartTime){
+    const elapsed=Math.floor((Date.now()-turnoStartTime.getTime())/1000)+accumulatedSeconds;
+    // Use sendBeacon for reliable logout on close
+    const data=JSON.stringify({id:currentTurnoId,elapsed,status:'interrupted'});
+    window.updateTurnoInFirebase(currentTurnoId,{
+      endTime:new Date(), accumulatedSeconds:elapsed, status:'interrupted'
+    });
+  }
+});
 
 async function confirmClearMetrics(){
   if(!confirm('⚠️ ¿Estás seguro de que quieres borrar todas las métricas? Esta acción no se puede deshacer.')) return;
