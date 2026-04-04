@@ -1295,8 +1295,8 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 
 <script>
 // Version control — increment this on every update
-const APP_VERSION = '3.5';
-const APP_CHANGELOG = 'Cumplimiento: conexión a malla de turnos actualizada.';
+const APP_VERSION = '3.6';
+const APP_CHANGELOG = 'Cumplimiento: soporte para fechas en formato DD/MM/YYYY.';
 const ADMINS = ['cromero@pibox.app'];
 
 function softReload(){
@@ -2060,11 +2060,31 @@ function setCumplFilter(f,btn){
   loadCumplimiento();
 }
 
+function parseDate(dateStr){
+  if(!dateStr) return null;
+  // Handle DD/MM/YYYY
+  if(String(dateStr).includes('/')){
+    const parts=String(dateStr).split('/');
+    if(parts.length===3){
+      const day=parts[0].padStart(2,'0');
+      const mon=parts[1].padStart(2,'0');
+      const yr=parts[2];
+      return new Date(`${yr}-${mon}-${day}T00:00:00`);
+    }
+  }
+  // Handle YYYY-MM-DD
+  return new Date(String(dateStr)+'T00:00:00');
+}
+
 function parseTime(dateStr, timeStr){
   if(!dateStr||!timeStr) return null;
-  const [h,m]=(timeStr||'').split(':').map(Number);
-  const d=new Date(dateStr+'T00:00:00');
-  d.setHours(h||0,m||0,0,0);
+  const timeS=String(timeStr);
+  // Handle HH:MM:SS or HH:MM
+  const parts=timeS.split(':').map(Number);
+  const h=parts[0]||0, m=parts[1]||0;
+  const d=parseDate(String(dateStr));
+  if(!d) return null;
+  d.setHours(h,m,0,0);
   return d;
 }
 
@@ -2119,7 +2139,8 @@ async function loadCumplimiento(){
     const startOfMonth=new Date(now.getFullYear(),now.getMonth(),1);
 
     malla=malla.filter(m=>{
-      const d=new Date(m.fecha+'T00:00:00');
+      const d=parseDate(m.fecha);
+      if(!d) return false;
       if(cumplFilter==='today') return d>=startOfDay;
       if(cumplFilter==='week') return d>=startOfWeek;
       if(cumplFilter==='month') return d>=startOfMonth;
@@ -2138,7 +2159,8 @@ async function loadCumplimiento(){
       const userTurnos=allTurnos.filter(t=>t.userEmail===m.usuario&&t.startTime?.toDate?.());
       const matchedTurno=userTurnos.find(t=>{
         const ts=t.startTime.toDate();
-        const sameDay=ts.toDateString()===scheduledStart?.toDateString();
+        const pd=parseDate(m.fecha);
+        const sameDay=pd&&ts.toDateString()===pd.toDateString();
         return sameDay;
       });
       const realStart=matchedTurno?matchedTurno.startTime.toDate():null;
@@ -2168,7 +2190,7 @@ async function loadCumplimiento(){
     body.innerHTML=rows.map(r=>{
       const startStr=r.scheduledStart?r.scheduledStart.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
       const realStr=r.realStart?r.realStart.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
-      const dateStr=r.fecha?new Date(r.fecha+'T00:00:00').toLocaleDateString('es-CO',{day:'2-digit',month:'short'}):'—';
+      const dateStr=r.fecha?parseDate(r.fecha)?.toLocaleDateString('es-CO',{day:'2-digit',month:'short'})||'—':'—';
       return `<div class="cumpl-row">
         <div class="cumpl-cell bold">${esc(r.nombre||r.usuario||'—')}</div>
         <div class="cumpl-cell">${dateStr}</div>
@@ -2970,11 +2992,31 @@ function setCumplFilter(f,btn){
   loadCumplimiento();
 }
 
+function parseDate(dateStr){
+  if(!dateStr) return null;
+  // Handle DD/MM/YYYY
+  if(String(dateStr).includes('/')){
+    const parts=String(dateStr).split('/');
+    if(parts.length===3){
+      const day=parts[0].padStart(2,'0');
+      const mon=parts[1].padStart(2,'0');
+      const yr=parts[2];
+      return new Date(`${yr}-${mon}-${day}T00:00:00`);
+    }
+  }
+  // Handle YYYY-MM-DD
+  return new Date(String(dateStr)+'T00:00:00');
+}
+
 function parseTime(dateStr, timeStr){
   if(!dateStr||!timeStr) return null;
-  const [h,m]=(timeStr||'').split(':').map(Number);
-  const d=new Date(dateStr+'T00:00:00');
-  d.setHours(h||0,m||0,0,0);
+  const timeS=String(timeStr);
+  // Handle HH:MM:SS or HH:MM
+  const parts=timeS.split(':').map(Number);
+  const h=parts[0]||0, m=parts[1]||0;
+  const d=parseDate(String(dateStr));
+  if(!d) return null;
+  d.setHours(h,m,0,0);
   return d;
 }
 
@@ -3029,7 +3071,8 @@ async function loadCumplimiento(){
     const startOfMonth=new Date(now.getFullYear(),now.getMonth(),1);
 
     malla=malla.filter(m=>{
-      const d=new Date(m.fecha+'T00:00:00');
+      const d=parseDate(m.fecha);
+      if(!d) return false;
       if(cumplFilter==='today') return d>=startOfDay;
       if(cumplFilter==='week') return d>=startOfWeek;
       if(cumplFilter==='month') return d>=startOfMonth;
@@ -3048,7 +3091,8 @@ async function loadCumplimiento(){
       const userTurnos=allTurnos.filter(t=>t.userEmail===m.usuario&&t.startTime?.toDate?.());
       const matchedTurno=userTurnos.find(t=>{
         const ts=t.startTime.toDate();
-        const sameDay=ts.toDateString()===scheduledStart?.toDateString();
+        const pd=parseDate(m.fecha);
+        const sameDay=pd&&ts.toDateString()===pd.toDateString();
         return sameDay;
       });
       const realStart=matchedTurno?matchedTurno.startTime.toDate():null;
@@ -3078,7 +3122,7 @@ async function loadCumplimiento(){
     body.innerHTML=rows.map(r=>{
       const startStr=r.scheduledStart?r.scheduledStart.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
       const realStr=r.realStart?r.realStart.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
-      const dateStr=r.fecha?new Date(r.fecha+'T00:00:00').toLocaleDateString('es-CO',{day:'2-digit',month:'short'}):'—';
+      const dateStr=r.fecha?parseDate(r.fecha)?.toLocaleDateString('es-CO',{day:'2-digit',month:'short'})||'—':'—';
       return `<div class="cumpl-row">
         <div class="cumpl-cell bold">${esc(r.nombre||r.usuario||'—')}</div>
         <div class="cumpl-cell">${dateStr}</div>
