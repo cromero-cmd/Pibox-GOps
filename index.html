@@ -710,13 +710,9 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 .panel-summary-label{font-size:10px;color:var(--text-dim);font-family:var(--mono);margin-top:3px;}
 
 /* User breakdown table */
-.panel-table{background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:visible;margin-bottom:16px;}
-.panel-table-header{display:grid;grid-template-columns:1fr 80px 120px 100px 90px 90px;padding:0;background:var(--surface2);border-bottom:1px solid var(--border);font-size:10px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;font-family:var(--mono);border-radius:14px 14px 0 0;overflow:visible;}
-.panel-table-header>div{position:relative;padding:10px 14px;border-right:1px solid var(--border);white-space:nowrap;overflow:visible;}
-.panel-table-header>div:last-child{border-right:none;}
-.panel-table-row{display:grid;grid-template-columns:1fr 80px 120px 100px 90px 90px;border-bottom:1px solid var(--border);font-size:12px;align-items:stretch;}
-.panel-table-row>div{padding:10px 14px;border-right:1px solid var(--border);display:flex;align-items:center;overflow:hidden;}
-.panel-table-row>div:last-child{border-right:none;}
+.panel-table{background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden;margin-bottom:16px;}
+.panel-table-header{display:grid;grid-template-columns:1fr 80px 100px 100px 80px 90px;gap:8px;padding:10px 16px;background:var(--surface2);border-bottom:1px solid var(--border);font-size:10px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;font-family:var(--mono);}
+.panel-table-row{display:grid;grid-template-columns:1fr 80px 100px 100px 80px 90px;gap:8px;padding:11px 16px;border-bottom:1px solid var(--border);font-size:12px;align-items:center;}
 .panel-table-row:last-child{border-bottom:none;}
 .panel-table-row:hover{background:rgba(123,47,255,0.04);}
 .panel-cell-user{overflow:hidden;}
@@ -1206,15 +1202,15 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
       <!-- Right: historial -->
       <div class="panel-right">
         <div class="panel-table">
-          <div class="panel-table-header" id="panel-thead">
-            <div>Usuario<div class="col-resizer" onmousedown="startPanelColResize(event,0)"></div></div>
-            <div>Fecha<div class="col-resizer" onmousedown="startPanelColResize(event,1)"></div></div>
-            <div>Inicio → Fin<div class="col-resizer" onmousedown="startPanelColResize(event,2)"></div></div>
-            <div>Duración<div class="col-resizer" onmousedown="startPanelColResize(event,3)"></div></div>
-            <div>Dispositivo<div class="col-resizer" onmousedown="startPanelColResize(event,4)"></div></div>
+          <div class="panel-table-header">
+            <div>Usuario</div>
+            <div>Fecha</div>
+            <div>Inicio → Fin</div>
+            <div>Duración</div>
+            <div>Dispositivo</div>
             <div>Estado</div>
           </div>
-          <div id="panel-table-body" style="max-height:520px;overflow-y:auto;border-radius:0 0 14px 14px;overflow-x:hidden;">
+          <div id="panel-table-body" style="max-height:520px;overflow-y:auto;">
             <div class="panel-empty">Cargando...</div>
           </div>
         </div>
@@ -1315,8 +1311,8 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 
 <script>
 // Version control — increment this on every update
-const APP_VERSION = '4.6';
-const APP_CHANGELOG = 'Tooltips en Estado/Novedad, resizer de columnas, borrar filtros y tarjetas en Panel de control.';
+const APP_VERSION = '4.7';
+const APP_CHANGELOG = 'Resizer de columnas corregido y funcional.';
 const ADMINS = ['cromero@pibox.app'];
 
 function softReload(){
@@ -1972,42 +1968,46 @@ async function loadTurnoHistory(){
 
 // Column resizer for cumplimiento table
 (function(){
-  let resizing=false, startX=0, startW=0, colIdx=0, cols=[];
   window.startColResize = function(e, idx){
     e.preventDefault();
-    resizing=true; colIdx=idx; startX=e.clientX;
-    const thead=document.getElementById('cumpl-thead');
+    e.stopPropagation();
+    const thead = document.getElementById('cumpl-thead');
     if(!thead) return;
-    cols=[...thead.children];
-    startW=cols[idx].offsetWidth;
-    document.body.style.cursor='col-resize';
-    document.body.style.userSelect='none';
+
+    // Convert current fr-based columns to px for manipulation
+    const cols = [...thead.children];
+    const widths = cols.map(c => c.getBoundingClientRect().width);
+
+    // Apply px widths to header and all rows
+    function applyWidths(w){
+      const grid = w.map(x => x+'px').join(' ');
+      thead.style.gridTemplateColumns = grid;
+      document.querySelectorAll('.cumpl-row').forEach(r => r.style.gridTemplateColumns = grid);
+    }
+    applyWidths(widths);
+
+    const startX = e.clientX;
+    const startW = widths[idx];
+
     e.target.classList.add('resizing');
-    const onMove=ev=>{
-      if(!resizing) return;
-      const diff=ev.clientX-startX;
-      const newW=Math.max(60,startW+diff);
-      const thead2=document.getElementById('cumpl-thead');
-      if(!thead2) return;
-      const allCols=[...thead2.children];
-      const fr=newW+'px';
-      const grid=thead2.style.gridTemplateColumns.split(' ');
-      if(grid.length>colIdx) grid[colIdx]=fr;
-      const newGrid=grid.join(' ');
-      thead2.style.gridTemplateColumns=newGrid;
-      // Apply same to rows
-      document.querySelectorAll('.cumpl-row').forEach(r=>r.style.gridTemplateColumns=newGrid);
-    };
-    const onUp=ev=>{
-      resizing=false;
-      document.body.style.cursor='';
-      document.body.style.userSelect='';
-      document.removeEventListener('mousemove',onMove);
-      document.removeEventListener('mouseup',onUp);
-      document.querySelectorAll('.col-resizer').forEach(r=>r.classList.remove('resizing'));
-    };
-    document.addEventListener('mousemove',onMove);
-    document.addEventListener('mouseup',onUp);
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+
+    function onMove(ev){
+      const diff = ev.clientX - startX;
+      const newW = Math.max(50, startW + diff);
+      widths[idx] = newW;
+      applyWidths(widths);
+    }
+    function onUp(){
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      document.querySelectorAll('.col-resizer').forEach(r => r.classList.remove('resizing'));
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    }
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
   };
 })();
 
@@ -3039,109 +3039,6 @@ async function loadTurnoHistory(){
     </div>`;
   }).join('');
 }
-
-// Column resizer for cumplimiento table
-(function(){
-  let resizing=false, startX=0, startW=0, colIdx=0, cols=[];
-  window.startColResize = function(e, idx){
-    e.preventDefault();
-    resizing=true; colIdx=idx; startX=e.clientX;
-    const thead=document.getElementById('cumpl-thead');
-    if(!thead) return;
-    cols=[...thead.children];
-    startW=cols[idx].offsetWidth;
-    document.body.style.cursor='col-resize';
-    document.body.style.userSelect='none';
-    e.target.classList.add('resizing');
-    const onMove=ev=>{
-      if(!resizing) return;
-      const diff=ev.clientX-startX;
-      const newW=Math.max(60,startW+diff);
-      const thead2=document.getElementById('cumpl-thead');
-      if(!thead2) return;
-      const allCols=[...thead2.children];
-      const fr=newW+'px';
-      const grid=thead2.style.gridTemplateColumns.split(' ');
-      if(grid.length>colIdx) grid[colIdx]=fr;
-      const newGrid=grid.join(' ');
-      thead2.style.gridTemplateColumns=newGrid;
-      // Apply same to rows
-      document.querySelectorAll('.cumpl-row').forEach(r=>r.style.gridTemplateColumns=newGrid);
-    };
-    const onUp=ev=>{
-      resizing=false;
-      document.body.style.cursor='';
-      document.body.style.userSelect='';
-      document.removeEventListener('mousemove',onMove);
-      document.removeEventListener('mouseup',onUp);
-      document.querySelectorAll('.col-resizer').forEach(r=>r.classList.remove('resizing'));
-    };
-    document.addEventListener('mousemove',onMove);
-    document.addEventListener('mouseup',onUp);
-  };
-})();
-
-// Column resizer for panel table
-(function(){
-  let resizing=false, startX=0, startW=0, colIdx=0;
-  // Store current column widths as px array
-  let colWidths = null;
-
-  function initColWidths(){
-    const thead=document.getElementById('panel-thead');
-    if(!thead) return;
-    colWidths=[...thead.children].map(c=>c.offsetWidth);
-  }
-
-  function applyGrid(widths){
-    const thead=document.getElementById('panel-thead');
-    if(!thead) return;
-    const grid=widths.map((w,i)=>i===0?'1fr':w+'px').join(' ');
-    // Use raw px for all cols while resizing for precision
-    const gridPx=widths.map(w=>w+'px').join(' ');
-    thead.style.gridTemplateColumns=gridPx;
-    document.querySelectorAll('.panel-table-row').forEach(r=>r.style.gridTemplateColumns=gridPx);
-  }
-
-  window.startPanelColResize = function(e, idx){
-    e.preventDefault();
-    e.stopPropagation();
-    if(!colWidths) initColWidths();
-    // Re-read actual widths at drag start
-    const thead=document.getElementById('panel-thead');
-    if(!thead) return;
-    colWidths=[...thead.children].map(c=>c.offsetWidth);
-    resizing=true; colIdx=idx; startX=e.clientX;
-    startW=colWidths[idx];
-    document.body.style.cursor='col-resize';
-    document.body.style.userSelect='none';
-    e.target.classList.add('resizing');
-
-    const onMove=ev=>{
-      if(!resizing) return;
-      const diff=ev.clientX-startX;
-      const newW=Math.max(50, startW+diff);
-      const updated=[...colWidths];
-      updated[colIdx]=newW;
-      applyGrid(updated);
-    };
-    const onUp=()=>{
-      if(!resizing) return;
-      resizing=false;
-      // Save updated widths
-      const thead2=document.getElementById('panel-thead');
-      if(thead2) colWidths=[...thead2.children].map(c=>c.offsetWidth);
-      document.body.style.cursor='';
-      document.body.style.userSelect='';
-      document.removeEventListener('mousemove',onMove);
-      document.removeEventListener('mouseup',onUp);
-      document.querySelectorAll('.col-resizer').forEach(r=>r.classList.remove('resizing'));
-    };
-    document.addEventListener('mousemove',onMove);
-    document.addEventListener('mouseup',onUp);
-  };
-})();
-
 
 // Draggable floating timer
 (function(){
