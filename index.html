@@ -641,7 +641,22 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 .resume-actions{display:flex;gap:8px;}
 .btn-resume{background:var(--grad);border:none;color:white;padding:7px 18px;border-radius:8px;cursor:pointer;font-family:var(--font);font-weight:700;font-size:12px;}
 .btn-no-resume{background:none;border:1px solid var(--border);color:var(--text-muted);padding:7px 18px;border-radius:8px;cursor:pointer;font-family:var(--font);font-size:12px;}
-@media(max-width:700px){.turno-layout{grid-template-columns:1fr;}}
+.turno-date-filters{display:flex;gap:6px;align-items:center;margin-top:8px;flex-wrap:wrap;}
+.turno-date-input{background:var(--surface2);border:1px solid var(--border);color:var(--text-muted);padding:4px 8px;border-radius:8px;font-size:11px;font-family:var(--mono);outline:none;cursor:pointer;}
+.turno-date-input:focus{border-color:var(--p1);}
+.turno-date-label{font-size:10px;color:var(--text-dim);font-family:var(--mono);}
+.turno-summary{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px 16px;margin:0 0 0;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border);}
+.turno-summary-label{font-size:11px;color:var(--text-dim);font-family:var(--mono);text-transform:uppercase;letter-spacing:0.06em;}
+.turno-summary-value{font-size:18px;font-weight:800;font-family:var(--mono);background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
+.turno-summary-sub{font-size:10px;color:var(--text-dim);font-family:var(--mono);margin-top:2px;}
+/* Floating timer */
+.floating-timer{position:fixed;bottom:24px;right:24px;z-index:300;background:var(--surface);border:1px solid var(--p1);border-radius:14px;padding:10px 18px;display:none;align-items:center;gap:12px;box-shadow:0 4px 24px rgba(123,47,255,0.35),var(--glow);animation:msgIn 0.3s ease both;}
+.floating-timer-dot{width:8px;height:8px;border-radius:50%;background:#4ade80;animation:pulse 1.5s ease-in-out infinite;flex-shrink:0;}
+.floating-timer-time{font-size:16px;font-weight:800;font-family:var(--mono);background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
+.floating-timer-label{font-size:10px;color:var(--text-dim);font-family:var(--mono);}
+.floating-timer-end{background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:18px;padding:0 2px;transition:color 0.2s;margin-left:4px;}
+.floating-timer-end:hover{color:#f87171;}
+@media(max-width:700px){.turno-layout{grid-template-columns:1fr;}.floating-timer{bottom:80px;right:12px;}}
 
 .toast{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:var(--grad);color:white;padding:8px 20px;border-radius:100px;font-weight:700;font-size:13px;z-index:999;box-shadow:0 4px 20px rgba(123,47,255,0.5);animation:msgIn 0.3s ease both;}
 .update-banner{position:fixed;top:0;left:0;right:0;z-index:400;background:linear-gradient(135deg,#1a0a3a,#2d1060);border-bottom:1px solid var(--p1);padding:10px 20px;display:flex;align-items:center;justify-content:center;gap:14px;animation:slideDown 0.4s ease both;}
@@ -962,12 +977,27 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
       <div class="turno-history-wrap">
         <div class="turno-history-header">
           <div class="turno-history-title">📋 Mi historial de turnos</div>
-          <div class="turno-filters">
-            <button class="turno-filter-btn active" onclick="setTurnoFilter('today',this)">Hoy</button>
-            <button class="turno-filter-btn" onclick="setTurnoFilter('week',this)">Esta semana</button>
-            <button class="turno-filter-btn" onclick="setTurnoFilter('month',this)">Este mes</button>
-            <button class="turno-filter-btn" onclick="setTurnoFilter('all',this)">Todo</button>
+          <div>
+            <div class="turno-filters">
+              <button class="turno-filter-btn active" onclick="setTurnoFilter('today',this)">Hoy</button>
+              <button class="turno-filter-btn" onclick="setTurnoFilter('week',this)">Esta semana</button>
+              <button class="turno-filter-btn" onclick="setTurnoFilter('month',this)">Este mes</button>
+              <button class="turno-filter-btn" onclick="setTurnoFilter('custom',this)">Personalizado</button>
+            </div>
+            <div class="turno-date-filters" id="turno-date-filters" style="display:none;">
+              <span class="turno-date-label">Desde</span>
+              <input type="date" class="turno-date-input" id="turno-date-from" onchange="loadTurnoHistory()"/>
+              <span class="turno-date-label">Hasta</span>
+              <input type="date" class="turno-date-input" id="turno-date-to" onchange="loadTurnoHistory()"/>
+            </div>
           </div>
+        </div>
+        <div class="turno-summary" id="turno-summary" style="display:none;">
+          <div>
+            <div class="turno-summary-label">Total acumulado</div>
+            <div class="turno-summary-sub" id="turno-summary-sub"></div>
+          </div>
+          <div class="turno-summary-value" id="turno-summary-value">00:00:00</div>
         </div>
         <div class="turno-history-list" id="turno-history-list">
           <div style="padding:20px;text-align:center;color:var(--text-dim);font-size:13px;">Cargando...</div>
@@ -976,6 +1006,16 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
     </div>
 
   </div>
+</div>
+
+<!-- Floating Timer -->
+<div class="floating-timer" id="floating-timer">
+  <div class="floating-timer-dot"></div>
+  <div>
+    <div class="floating-timer-time" id="floating-timer-time">00:00:00</div>
+    <div class="floating-timer-label">Turno en curso</div>
+  </div>
+  <button class="floating-timer-end" onclick="endTurno()" title="Finalizar turno">⏹</button>
 </div>
 
 <!-- Survey -->
@@ -1001,8 +1041,8 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 
 <script>
 // Version control — increment this on every update
-const APP_VERSION = '2.7';
-const APP_CHANGELOG = 'Turno: layout mejorado, cronómetro compacto y filtros por período.';
+const APP_VERSION = '2.8';
+const APP_CHANGELOG = 'Turno: filtro por fechas, total acumulado y contador flotante.';
 const ADMINS = ['cromero@pibox.app'];
 
 function softReload(){
@@ -1451,9 +1491,15 @@ function formatDuration(seconds){
 
 function startTimer(){
   if(turnoInterval) clearInterval(turnoInterval);
+  // Show floating timer
+  const ft=document.getElementById('floating-timer');
+  if(ft) ft.style.display='flex';
   turnoInterval=setInterval(()=>{
     const elapsed=Math.floor((Date.now()-turnoStartTime.getTime())/1000)+accumulatedSeconds;
-    document.getElementById('turno-timer').textContent=formatDuration(elapsed);
+    const formatted=formatDuration(elapsed);
+    document.getElementById('turno-timer').textContent=formatted;
+    const ftTime=document.getElementById('floating-timer-time');
+    if(ftTime) ftTime.textContent=formatted;
   },1000);
 }
 
@@ -1502,6 +1548,8 @@ function setTurnoInactive(){
   document.getElementById('btn-turno-end').style.display='none';
   document.getElementById('turno-info').style.display='none';
   if(turnoInterval){clearInterval(turnoInterval);turnoInterval=null;}
+  const ft=document.getElementById('floating-timer');
+  if(ft) ft.style.display='none';
 }
 
 async function startTurno(){
@@ -1566,6 +1614,14 @@ function setTurnoFilter(filter, btn){
   turnoFilter=filter;
   document.querySelectorAll('.turno-filter-btn').forEach(b=>b.classList.remove('active'));
   btn.classList.add('active');
+  const dateFilters=document.getElementById('turno-date-filters');
+  if(dateFilters) dateFilters.style.display=filter==='custom'?'flex':'none';
+  // Set default date range for custom
+  if(filter==='custom'){
+    const today=new Date().toISOString().split('T')[0];
+    if(!document.getElementById('turno-date-from').value) document.getElementById('turno-date-from').value=today;
+    if(!document.getElementById('turno-date-to').value) document.getElementById('turno-date-to').value=today;
+  }
   loadTurnoHistory();
 }
 
@@ -1588,6 +1644,22 @@ async function loadTurnoHistory(){
   if(turnoFilter==='today') turnos=turnos.filter(t=>t.startTime?.toDate?.()>=startOfDay);
   else if(turnoFilter==='week') turnos=turnos.filter(t=>t.startTime?.toDate?.()>=startOfWeek);
   else if(turnoFilter==='month') turnos=turnos.filter(t=>t.startTime?.toDate?.()>=startOfMonth);
+  else if(turnoFilter==='custom'){
+    const from=document.getElementById('turno-date-from')?.value;
+    const to=document.getElementById('turno-date-to')?.value;
+    if(from){ const d=new Date(from); d.setHours(0,0,0,0); turnos=turnos.filter(t=>t.startTime?.toDate?.()>=d); }
+    if(to){ const d=new Date(to); d.setHours(23,59,59,999); turnos=turnos.filter(t=>t.startTime?.toDate?.()<=d); }
+  }
+
+  // Calculate total accumulated time
+  const totalSecs=turnos.reduce((sum,t)=>sum+(t.accumulatedSeconds||0),0);
+  const summaryEl=document.getElementById('turno-summary');
+  if(summaryEl&&turnos.length){
+    summaryEl.style.display='flex';
+    document.getElementById('turno-summary-value').textContent=formatDuration(totalSecs);
+    const filterLabel=turnoFilter==='today'?'hoy':turnoFilter==='week'?'esta semana':turnoFilter==='month'?'este mes':'el período seleccionado';
+    document.getElementById('turno-summary-sub').textContent=`${turnos.length} turno${turnos.length!==1?'s':''} en ${filterLabel}`;
+  } else if(summaryEl){ summaryEl.style.display='none'; }
 
   if(!turnos.length){
     list.innerHTML='<div style="padding:20px;text-align:center;color:var(--text-dim);font-size:13px;">Sin registros en este período</div>';
@@ -1918,9 +1990,15 @@ function formatDuration(seconds){
 
 function startTimer(){
   if(turnoInterval) clearInterval(turnoInterval);
+  // Show floating timer
+  const ft=document.getElementById('floating-timer');
+  if(ft) ft.style.display='flex';
   turnoInterval=setInterval(()=>{
     const elapsed=Math.floor((Date.now()-turnoStartTime.getTime())/1000)+accumulatedSeconds;
-    document.getElementById('turno-timer').textContent=formatDuration(elapsed);
+    const formatted=formatDuration(elapsed);
+    document.getElementById('turno-timer').textContent=formatted;
+    const ftTime=document.getElementById('floating-timer-time');
+    if(ftTime) ftTime.textContent=formatted;
   },1000);
 }
 
@@ -1969,6 +2047,8 @@ function setTurnoInactive(){
   document.getElementById('btn-turno-end').style.display='none';
   document.getElementById('turno-info').style.display='none';
   if(turnoInterval){clearInterval(turnoInterval);turnoInterval=null;}
+  const ft=document.getElementById('floating-timer');
+  if(ft) ft.style.display='none';
 }
 
 async function startTurno(){
@@ -2033,6 +2113,14 @@ function setTurnoFilter(filter, btn){
   turnoFilter=filter;
   document.querySelectorAll('.turno-filter-btn').forEach(b=>b.classList.remove('active'));
   btn.classList.add('active');
+  const dateFilters=document.getElementById('turno-date-filters');
+  if(dateFilters) dateFilters.style.display=filter==='custom'?'flex':'none';
+  // Set default date range for custom
+  if(filter==='custom'){
+    const today=new Date().toISOString().split('T')[0];
+    if(!document.getElementById('turno-date-from').value) document.getElementById('turno-date-from').value=today;
+    if(!document.getElementById('turno-date-to').value) document.getElementById('turno-date-to').value=today;
+  }
   loadTurnoHistory();
 }
 
@@ -2055,6 +2143,22 @@ async function loadTurnoHistory(){
   if(turnoFilter==='today') turnos=turnos.filter(t=>t.startTime?.toDate?.()>=startOfDay);
   else if(turnoFilter==='week') turnos=turnos.filter(t=>t.startTime?.toDate?.()>=startOfWeek);
   else if(turnoFilter==='month') turnos=turnos.filter(t=>t.startTime?.toDate?.()>=startOfMonth);
+  else if(turnoFilter==='custom'){
+    const from=document.getElementById('turno-date-from')?.value;
+    const to=document.getElementById('turno-date-to')?.value;
+    if(from){ const d=new Date(from); d.setHours(0,0,0,0); turnos=turnos.filter(t=>t.startTime?.toDate?.()>=d); }
+    if(to){ const d=new Date(to); d.setHours(23,59,59,999); turnos=turnos.filter(t=>t.startTime?.toDate?.()<=d); }
+  }
+
+  // Calculate total accumulated time
+  const totalSecs=turnos.reduce((sum,t)=>sum+(t.accumulatedSeconds||0),0);
+  const summaryEl=document.getElementById('turno-summary');
+  if(summaryEl&&turnos.length){
+    summaryEl.style.display='flex';
+    document.getElementById('turno-summary-value').textContent=formatDuration(totalSecs);
+    const filterLabel=turnoFilter==='today'?'hoy':turnoFilter==='week'?'esta semana':turnoFilter==='month'?'este mes':'el período seleccionado';
+    document.getElementById('turno-summary-sub').textContent=`${turnos.length} turno${turnos.length!==1?'s':''} en ${filterLabel}`;
+  } else if(summaryEl){ summaryEl.style.display='none'; }
 
   if(!turnos.length){
     list.innerHTML='<div style="padding:20px;text-align:center;color:var(--text-dim);font-size:13px;">Sin registros en este período</div>';
