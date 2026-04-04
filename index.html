@@ -710,9 +710,9 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 .panel-summary-label{font-size:10px;color:var(--text-dim);font-family:var(--mono);margin-top:3px;}
 
 /* User breakdown table */
-.panel-table{background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden;margin-bottom:16px;}
-.panel-table-header{display:grid;grid-template-columns:1fr 80px 120px 100px 90px 90px;padding:0;background:var(--surface2);border-bottom:1px solid var(--border);font-size:10px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;font-family:var(--mono);}
-.panel-table-header>div{position:relative;padding:10px 14px;border-right:1px solid var(--border);overflow:hidden;white-space:nowrap;}
+.panel-table{background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:visible;margin-bottom:16px;}
+.panel-table-header{display:grid;grid-template-columns:1fr 80px 120px 100px 90px 90px;padding:0;background:var(--surface2);border-bottom:1px solid var(--border);font-size:10px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;font-family:var(--mono);border-radius:14px 14px 0 0;overflow:visible;}
+.panel-table-header>div{position:relative;padding:10px 14px;border-right:1px solid var(--border);white-space:nowrap;overflow:visible;}
 .panel-table-header>div:last-child{border-right:none;}
 .panel-table-row{display:grid;grid-template-columns:1fr 80px 120px 100px 90px 90px;border-bottom:1px solid var(--border);font-size:12px;align-items:stretch;}
 .panel-table-row>div{padding:10px 14px;border-right:1px solid var(--border);display:flex;align-items:center;overflow:hidden;}
@@ -1214,7 +1214,7 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
             <div>Dispositivo<div class="col-resizer" onmousedown="startPanelColResize(event,4)"></div></div>
             <div>Estado</div>
           </div>
-          <div id="panel-table-body" style="max-height:520px;overflow-y:auto;">
+          <div id="panel-table-body" style="max-height:520px;overflow-y:auto;border-radius:0 0 14px 14px;overflow-x:hidden;">
             <div class="panel-empty">Cargando...</div>
           </div>
         </div>
@@ -3084,30 +3084,53 @@ async function loadTurnoHistory(){
 // Column resizer for panel table
 (function(){
   let resizing=false, startX=0, startW=0, colIdx=0;
-  window.startPanelColResize = function(e, idx){
-    e.preventDefault();
-    resizing=true; colIdx=idx; startX=e.clientX;
+  // Store current column widths as px array
+  let colWidths = null;
+
+  function initColWidths(){
     const thead=document.getElementById('panel-thead');
     if(!thead) return;
-    startW=thead.children[idx].offsetWidth;
+    colWidths=[...thead.children].map(c=>c.offsetWidth);
+  }
+
+  function applyGrid(widths){
+    const thead=document.getElementById('panel-thead');
+    if(!thead) return;
+    const grid=widths.map((w,i)=>i===0?'1fr':w+'px').join(' ');
+    // Use raw px for all cols while resizing for precision
+    const gridPx=widths.map(w=>w+'px').join(' ');
+    thead.style.gridTemplateColumns=gridPx;
+    document.querySelectorAll('.panel-table-row').forEach(r=>r.style.gridTemplateColumns=gridPx);
+  }
+
+  window.startPanelColResize = function(e, idx){
+    e.preventDefault();
+    e.stopPropagation();
+    if(!colWidths) initColWidths();
+    // Re-read actual widths at drag start
+    const thead=document.getElementById('panel-thead');
+    if(!thead) return;
+    colWidths=[...thead.children].map(c=>c.offsetWidth);
+    resizing=true; colIdx=idx; startX=e.clientX;
+    startW=colWidths[idx];
     document.body.style.cursor='col-resize';
     document.body.style.userSelect='none';
     e.target.classList.add('resizing');
+
     const onMove=ev=>{
       if(!resizing) return;
       const diff=ev.clientX-startX;
-      const newW=Math.max(50,startW+diff)+'px';
-      const thead2=document.getElementById('panel-thead');
-      if(!thead2) return;
-      const grid=thead2.style.gridTemplateColumns||getComputedStyle(thead2).gridTemplateColumns;
-      const parts=grid.split(' ');
-      if(parts.length>colIdx) parts[colIdx]=newW;
-      const newGrid=parts.join(' ');
-      thead2.style.gridTemplateColumns=newGrid;
-      document.querySelectorAll('.panel-table-row').forEach(r=>r.style.gridTemplateColumns=newGrid);
+      const newW=Math.max(50, startW+diff);
+      const updated=[...colWidths];
+      updated[colIdx]=newW;
+      applyGrid(updated);
     };
     const onUp=()=>{
+      if(!resizing) return;
       resizing=false;
+      // Save updated widths
+      const thead2=document.getElementById('panel-thead');
+      if(thead2) colWidths=[...thead2.children].map(c=>c.offsetWidth);
       document.body.style.cursor='';
       document.body.style.userSelect='';
       document.removeEventListener('mousemove',onMove);
