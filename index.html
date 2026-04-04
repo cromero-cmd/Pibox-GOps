@@ -756,9 +756,12 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 .cumpl-card.gray .cumpl-card-num{color:var(--text-dim);}
 .cumpl-card-label{font-size:10px;color:var(--text-dim);font-family:var(--mono);margin-top:4px;}
 .cumpl-table{background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden;}
-.cumpl-table-header{display:grid;grid-template-columns:140px 80px 90px 110px 110px 100px 100px 1fr 110px;gap:6px;padding:10px 14px;background:var(--surface2);border-bottom:1px solid var(--border);font-size:10px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;font-family:var(--mono);}
-.cumpl-table-header-user{display:grid;grid-template-columns:140px 80px 90px 110px 110px 100px 100px 1fr 110px;gap:6px;padding:10px 14px;background:var(--surface2);border-bottom:1px solid var(--border);font-size:10px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;font-family:var(--mono);}
-.cumpl-row{display:grid;grid-template-columns:140px 80px 90px 110px 110px 100px 100px 1fr 110px;gap:6px;padding:10px 14px;border-bottom:1px solid var(--border);font-size:12px;align-items:center;}
+.cumpl-table-scroll{overflow-x:auto;width:100%;}
+.cumpl-table-scroll::-webkit-scrollbar{height:4px;}
+.cumpl-table-scroll::-webkit-scrollbar-thumb{background:var(--surface3);border-radius:4px;}
+.cumpl-table-header{display:grid;grid-template-columns:160px 75px 110px 100px 100px 100px 100px 110px 90px 1fr 140px;gap:8px;padding:10px 16px;background:var(--surface2);border-bottom:1px solid var(--border);font-size:10px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;font-family:var(--mono);min-width:1200px;}
+.cumpl-table-header-user{display:grid;grid-template-columns:160px 75px 110px 100px 100px 100px 100px 110px 90px 1fr 140px;gap:8px;padding:10px 16px;background:var(--surface2);border-bottom:1px solid var(--border);font-size:10px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;font-family:var(--mono);min-width:1200px;}
+.cumpl-row{display:grid;grid-template-columns:160px 75px 110px 100px 100px 100px 100px 110px 90px 1fr 140px;gap:8px;padding:11px 16px;border-bottom:1px solid var(--border);font-size:12px;align-items:center;min-width:1200px;}
 .cumpl-row:last-child{border-bottom:none;}
 .cumpl-row:hover{background:rgba(123,47,255,0.03);}
 .cumpl-cell{font-family:var(--mono);font-size:11px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
@@ -1244,19 +1247,23 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 
     <!-- Table -->
     <div class="cumpl-table">
-      <div class="cumpl-table-header">
-        <div>Usuario</div>
-        <div>Fecha</div>
-        <div>Rol</div>
-        <div>Prog. inicio</div>
-        <div>Real inicio</div>
-        <div>Almuerzo</div>
-        <div>Línea</div>
-        <div>Novedad</div>
-        <div>Estado</div>
-      </div>
-      <div id="cumpl-table-body">
-        <div class="cumpl-empty">Cargando malla de turnos...</div>
+      <div class="cumpl-table-scroll">
+        <div class="cumpl-table-header">
+          <div>Usuario</div>
+          <div>Fecha</div>
+          <div>Rol</div>
+          <div>Prog. inicio</div>
+          <div>Prog. fin</div>
+          <div>Real inicio</div>
+          <div>Real fin</div>
+          <div>Almuerzo</div>
+          <div>Línea</div>
+          <div>Novedad</div>
+          <div>Estado</div>
+        </div>
+        <div id="cumpl-table-body">
+          <div class="cumpl-empty">Cargando malla de turnos...</div>
+        </div>
       </div>
     </div>
   </div>
@@ -1295,8 +1302,8 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 
 <script>
 // Version control — increment this on every update
-const APP_VERSION = '3.7';
-const APP_CHANGELOG = 'Cumplimiento: malla carga correctamente desde Google Sheets.';
+const APP_VERSION = '3.9';
+const APP_CHANGELOG = 'Cumplimiento: tabla más amplia y legible, sin valores cortados.';
 const ADMINS = ['cromero@pibox.app'];
 
 function softReload(){
@@ -2155,6 +2162,7 @@ async function loadCumplimiento(){
     // Match malla with real turnos
     const rows=malla.map(m=>{
       const scheduledStart=parseTime(m.fecha,m.inicio);
+      const scheduledEnd=parseTime(m.fecha,m.fin);
       const userTurnos=allTurnos.filter(t=>t.userEmail===m.usuario&&t.startTime?.toDate?.());
       const matchedTurno=userTurnos.find(t=>{
         const ts=t.startTime.toDate();
@@ -2163,8 +2171,9 @@ async function loadCumplimiento(){
         return sameDay;
       });
       const realStart=matchedTurno?matchedTurno.startTime.toDate():null;
+      const realEnd=matchedTurno?.endTime?.toDate?matchedTurno.endTime.toDate():null;
       const status=getStatus(scheduledStart,realStart,m.novedad,now);
-      return{...m,scheduledStart,realStart,status,matchedTurno};
+      return{...m,scheduledStart,scheduledEnd,realStart,realEnd,status,matchedTurno};
     });
 
     // Summary
@@ -2190,12 +2199,16 @@ async function loadCumplimiento(){
       const startStr=r.scheduledStart?r.scheduledStart.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
       const realStr=r.realStart?r.realStart.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
       const dateStr=r.fecha?parseDate(r.fecha)?.toLocaleDateString('es-CO',{day:'2-digit',month:'short'})||'—':'—';
+      const endStr=r.scheduledEnd?r.scheduledEnd.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
+      const realEndStr=r.realEnd?r.realEnd.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
       return `<div class="cumpl-row">
         <div class="cumpl-cell bold">${esc(r.nombre||r.usuario||'—')}</div>
         <div class="cumpl-cell">${dateStr}</div>
         <div class="cumpl-cell">${esc(r.rol||'—')}</div>
         <div class="cumpl-cell">${startStr}</div>
+        <div class="cumpl-cell">${endStr}</div>
         <div class="cumpl-cell" style="${r.realStart&&r.status.cls==='tardanza'?'color:#fbbf24;':r.status.cls==='cumplió'?'color:#4ade80;':''}">${realStr}</div>
+        <div class="cumpl-cell">${realEndStr}</div>
         <div class="cumpl-cell">${esc(r.almuerzo||'—')}</div>
         <div class="cumpl-cell">${esc(r.linea||'—')}</div>
         <div>${r.novedad?`<span class="cumpl-novedad-tag">${esc(r.novedad)}</span>`:'<span style="color:var(--text-dim);font-size:11px;">—</span>'}</div>
@@ -3086,6 +3099,7 @@ async function loadCumplimiento(){
     // Match malla with real turnos
     const rows=malla.map(m=>{
       const scheduledStart=parseTime(m.fecha,m.inicio);
+      const scheduledEnd=parseTime(m.fecha,m.fin);
       const userTurnos=allTurnos.filter(t=>t.userEmail===m.usuario&&t.startTime?.toDate?.());
       const matchedTurno=userTurnos.find(t=>{
         const ts=t.startTime.toDate();
@@ -3094,8 +3108,9 @@ async function loadCumplimiento(){
         return sameDay;
       });
       const realStart=matchedTurno?matchedTurno.startTime.toDate():null;
+      const realEnd=matchedTurno?.endTime?.toDate?matchedTurno.endTime.toDate():null;
       const status=getStatus(scheduledStart,realStart,m.novedad,now);
-      return{...m,scheduledStart,realStart,status,matchedTurno};
+      return{...m,scheduledStart,scheduledEnd,realStart,realEnd,status,matchedTurno};
     });
 
     // Summary
@@ -3121,12 +3136,16 @@ async function loadCumplimiento(){
       const startStr=r.scheduledStart?r.scheduledStart.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
       const realStr=r.realStart?r.realStart.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
       const dateStr=r.fecha?parseDate(r.fecha)?.toLocaleDateString('es-CO',{day:'2-digit',month:'short'})||'—':'—';
+      const endStr=r.scheduledEnd?r.scheduledEnd.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
+      const realEndStr=r.realEnd?r.realEnd.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
       return `<div class="cumpl-row">
         <div class="cumpl-cell bold">${esc(r.nombre||r.usuario||'—')}</div>
         <div class="cumpl-cell">${dateStr}</div>
         <div class="cumpl-cell">${esc(r.rol||'—')}</div>
         <div class="cumpl-cell">${startStr}</div>
+        <div class="cumpl-cell">${endStr}</div>
         <div class="cumpl-cell" style="${r.realStart&&r.status.cls==='tardanza'?'color:#fbbf24;':r.status.cls==='cumplió'?'color:#4ade80;':''}">${realStr}</div>
+        <div class="cumpl-cell">${realEndStr}</div>
         <div class="cumpl-cell">${esc(r.almuerzo||'—')}</div>
         <div class="cumpl-cell">${esc(r.linea||'—')}</div>
         <div>${r.novedad?`<span class="cumpl-novedad-tag">${esc(r.novedad)}</span>`:'<span style="color:var(--text-dim);font-size:11px;">—</span>'}</div>
