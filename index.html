@@ -10,7 +10,7 @@
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
-import { getFirestore, collection, addDoc, getDocs, query, orderBy, limit, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import { getFirestore, collection, addDoc, getDocs, query, orderBy, limit, serverTimestamp, doc, setDoc, getDoc } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 
 const firebaseConfig = {
   apiKey: "AIzaSyBvF_cChu_PQ_RvaVGh0AaXvphzGCRmV5A",
@@ -43,6 +43,21 @@ onAuthStateChanged(auth, user => {
     const isAdmin = ADMINS.includes(user.email);
     const cfgBtn = document.getElementById('btn-config');
     if(cfgBtn) cfgBtn.style.display = isAdmin ? 'flex' : 'none';
+    // Load config from Firebase
+    try {
+      const docRef = doc(db, 'configs', user.uid);
+      const docSnap = await getDoc(docRef);
+      if(docSnap.exists()){
+        const cfg = docSnap.data();
+        if(cfg.key)   { localStorage.setItem('pg_key',   cfg.key);   }
+        if(cfg.sheet) { localStorage.setItem('pg_sheet', cfg.sheet); }
+        if(cfg.vid)   { localStorage.setItem('pg_vid',   cfg.vid);   }
+        if(cfg.faq)   { localStorage.setItem('pg_faq',   cfg.faq);   }
+        if(cfg.sys)   { localStorage.setItem('pg_sys',   cfg.sys);   }
+        // Trigger app init with loaded config
+        window._loadAppConfig&&window._loadAppConfig();
+      }
+    } catch(e){ console.log('Config load error:', e); }
   } else {
     currentUser = null;
     document.getElementById('login-screen').style.display = 'flex';
@@ -71,6 +86,14 @@ window.loginWithGoogle = async () => {
 
 window.logoutUser = async () => {
   await signOut(auth);
+};
+
+// Save config to Firestore
+window.saveConfigToFirebase = async (cfg) => {
+  if(!auth.currentUser) return;
+  try {
+    await setDoc(doc(db, 'configs', auth.currentUser.uid), cfg);
+  } catch(e){ console.log('Config save error:', e); }
 };
 
 // Track events
@@ -797,8 +820,8 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 
 <script>
 // Version control — increment this on every update
-const APP_VERSION = '2.1';
-const APP_CHANGELOG = 'Encuesta: ciclo de 5 min se mantiene al continuar consultando.';
+const APP_VERSION = '2.2';
+const APP_CHANGELOG = 'Configuración guardada en la nube — nunca más se pierde al actualizar.';
 const ADMINS = ['cromero@pibox.app'];
 
 function softReload(){
@@ -842,6 +865,24 @@ async function fetchSheetByName(name){
   if(!t||t.length<5) throw new Error('Sin datos');
   return t;
 }
+
+window._loadAppConfig = () => {
+  apiKey=localStorage.getItem('pg_key')||'';
+  sheetUrl=localStorage.getItem('pg_sheet')||'';
+  vidUrl=localStorage.getItem('pg_vid')||'';
+  faqUrl=localStorage.getItem('pg_faq')||'';
+  sysBase=localStorage.getItem('pg_sys')||sysBase;
+  if(apiKey){
+    document.getElementById('inp-key').value=apiKey;
+    document.getElementById('inp-url').value=sheetUrl;
+    document.getElementById('inp-vid').value=vidUrl;
+    document.getElementById('inp-faq').value=faqUrl;
+    document.getElementById('inp-sys').value=sysBase;
+    document.getElementById('setup-banner').style.display='none';
+    fetchSheet(); loadFAQs();
+    if(vidUrl){loadVideos();}
+  }
+};
 
 window.onload=()=>{
   if(surveyTimer){clearTimeout(surveyTimer);surveyTimer=null;}
@@ -899,6 +940,8 @@ async function saveConfig(){
   localStorage.setItem('pg_key',k);localStorage.setItem('pg_sheet',u);
   localStorage.setItem('pg_vid',vu);localStorage.setItem('pg_faq',fu);
   localStorage.setItem('pg_sys',sysBase);
+  // Save to Firebase
+  window.saveConfigToFirebase&&window.saveConfigToFirebase({key:k,sheet:u,vid:vu,faq:fu,sys:sysBase});
   document.getElementById('setup-banner').style.display='none';
   closeConfig();fetchSheet();loadFAQs();
   if(vu){allVideos=[];loadVideos();}
