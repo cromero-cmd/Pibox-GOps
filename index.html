@@ -793,7 +793,11 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
     </div>
 
     <div class="tabs">
-      <button class="tab active" id="tab-chat" onclick="switchTab('chat')">
+      <button class="tab active" id="tab-turno" onclick="switchTab('turno')">
+        <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/><path d="M12 6v6l4 2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        Turno
+      </button>
+      <button class="tab" id="tab-chat" onclick="switchTab('chat')">
         <svg viewBox="0 0 24 24" fill="none"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
         Asistente
       </button>
@@ -804,10 +808,6 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
       <button class="tab" id="tab-an" onclick="switchTab('analytics')">
         <svg viewBox="0 0 24 24" fill="none"><path d="M18 20V10M12 20V4M6 20v-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
         Métricas
-      </button>
-      <button class="tab" id="tab-turno" onclick="switchTab('turno')">
-        <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/><path d="M12 6v6l4 2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-        Turno
       </button>
       <button class="tab" id="tab-panel" onclick="switchTab('panel')" style="display:none;">
         <svg viewBox="0 0 24 24" fill="none"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -820,7 +820,7 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
         <div class="sdot" id="sdot"></div>
         <span id="stext">Sin conectar</span>
       </div>
-      <button class="btn-new" id="btn-new-chat" onclick="newChat()">
+      <button class="btn-new" id="btn-new-chat" onclick="newChat()" style="display:none;">
         <svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
         Nueva consulta
       </button>
@@ -877,7 +877,7 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
   </div>
 
   <!-- Chat View -->
-  <div class="view active" id="chat-view">
+  <div class="view" id="chat-view">
     <div class="faq-sidebar">
       <div class="faq-header">
         <div class="faq-title">Consultas frecuentes</div>
@@ -996,7 +996,7 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
     </div>
   </div>
 <!-- Turno View -->
-<div class="view" id="turno-view">
+<div class="view active" id="turno-view">
   <div class="turno-inner">
 
     <!-- Resume banner -->
@@ -1177,8 +1177,8 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 
 <script>
 // Version control — increment this on every update
-const APP_VERSION = '3.1';
-const APP_CHANGELOG = 'Panel de turnos: nuevo layout de dos columnas más organizado.';
+const APP_VERSION = '3.2';
+const APP_CHANGELOG = 'Turno como vista principal, filtros interactivos en Panel de turnos.';
 const ADMINS = ['cromero@pibox.app'];
 
 function softReload(){
@@ -1301,6 +1301,7 @@ window.onload=()=>{
   fetchSheet();
   loadFAQs();
   if(vidUrl) loadVideos();
+  initTurnoView();
   autoResize();
 };
 
@@ -1977,8 +1978,8 @@ async function loadPanelData(){
   document.getElementById('panel-summary-grid').innerHTML=`
     <div class="panel-summary-card"><div class="panel-summary-num">${formatDuration(totalSecs)}</div><div class="panel-summary-label">Horas totales acumuladas</div></div>
     <div class="panel-summary-card"><div class="panel-summary-num">${turnos.length}</div><div class="panel-summary-label">Turnos registrados</div></div>
-    <div class="panel-summary-card"><div class="panel-summary-num">${uniqueUsers.length}</div><div class="panel-summary-label">Usuarios activos</div></div>
-    <div class="panel-summary-card"><div class="panel-summary-num" style="${mobileCount>0?'color:#fb923c;-webkit-text-fill-color:#fb923c':''}">${mobileCount}</div><div class="panel-summary-label">Turnos desde móvil ⚠️</div></div>`;
+    <div class="panel-summary-card" onclick="filterByActiveUsers('${uniqueUsers.join(',')}')" style="cursor:pointer;transition:all 0.2s;" onmouseover="this.style.borderColor='var(--p1)'" onmouseout="this.style.borderColor='var(--border)'"><div class="panel-summary-num">${uniqueUsers.length}</div><div class="panel-summary-label">👥 Usuarios activos <span style="font-size:9px;opacity:0.6;">— clic para filtrar</span></div></div>
+    <div class="panel-summary-card" onclick="filterByMobile()" style="cursor:pointer;transition:all 0.2s;" onmouseover="this.style.borderColor='#fb923c'" onmouseout="this.style.borderColor='var(--border)'"><div class="panel-summary-num" style="${mobileCount>0?'color:#fb923c;-webkit-text-fill-color:#fb923c':''}">${mobileCount}</div><div class="panel-summary-label">📱 Turnos desde móvil <span style="font-size:9px;opacity:0.6;">— clic para filtrar</span></div></div>`;
 
   // Table
   const tbody=document.getElementById('panel-table-body');
@@ -2002,6 +2003,63 @@ async function loadPanelData(){
       <div><span class="turno-row-status ${statusClass}">${statusLabel}</span></div>
     </div>`;
   }).join('');
+}
+
+function filterByMobile(){
+  const select=document.getElementById('panel-user-filter');
+  if(!select) return;
+  // Show all mobile users - set filter to 'all' and reload filtered
+  window._mobileFilter=true;
+  window._activeUsersFilter=null;
+  loadPanelDataFiltered();
+}
+
+function filterByActiveUsers(users){
+  window._mobileFilter=false;
+  window._activeUsersFilter=null;
+  // Just show all users in period - reset user filter
+  const select=document.getElementById('panel-user-filter');
+  if(select) select.value='all';
+  loadPanelData();
+}
+
+async function loadPanelDataFiltered(){
+  const allTurnos=await window.getRecentTurnos();
+  const now=new Date();
+  const startOfDay=new Date(now);startOfDay.setHours(0,0,0,0);
+  const startOfWeek=new Date(now);startOfWeek.setDate(now.getDate()-now.getDay());startOfWeek.setHours(0,0,0,0);
+  const startOfMonth=new Date(now.getFullYear(),now.getMonth(),1);
+
+  let turnos=[...allTurnos];
+  if(panelFilter==='today') turnos=turnos.filter(t=>t.startTime?.toDate?.()>=startOfDay);
+  else if(panelFilter==='week') turnos=turnos.filter(t=>t.startTime?.toDate?.()>=startOfWeek);
+  else if(panelFilter==='month') turnos=turnos.filter(t=>t.startTime?.toDate?.()>=startOfMonth);
+
+  // Apply mobile filter
+  if(window._mobileFilter) turnos=turnos.filter(t=>t.isMobile);
+
+  const tbody=document.getElementById('panel-table-body');
+  if(!turnos.length){tbody.innerHTML='<div class="panel-empty">Sin turnos desde móvil en este período</div>';return;}
+  tbody.innerHTML=turnos.map(t=>{
+    const start=t.startTime?.toDate?.();
+    const end=t.endTime?.toDate?.();
+    const dur=t.accumulatedSeconds?formatDuration(t.accumulatedSeconds):'—';
+    const startStr=start?start.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
+    const endStr=end?end.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
+    const dateStr=start?start.toLocaleDateString('es-CO',{day:'2-digit',month:'short',year:'2-digit'}):'—';
+    const statusClass=t.status==='active'?'active':t.status==='interrupted'?'interrupted':'ended';
+    const statusLabel=t.status==='active'?'En turno':t.status==='interrupted'?'Interrumpido':'Finalizado';
+    const name=t.userName||t.userEmail?.split('@')[0]||'—';
+    return `<div class="panel-table-row">
+      <div class="panel-cell-user"><div class="panel-cell-name">${esc(name)}</div><div class="panel-cell-email">${esc(t.userEmail||'')}</div></div>
+      <div class="panel-cell">${dateStr}</div>
+      <div class="panel-cell">${startStr} → ${endStr}</div>
+      <div class="panel-cell highlight">${dur}</div>
+      <div><span class="panel-badge ${t.isMobile?'mobile':'desktop'}">${t.isMobile?'📱 Móvil':'💻 Desktop'}</span></div>
+      <div><span class="turno-row-status ${statusClass}">${statusLabel}</span></div>
+    </div>`;
+  }).join('');
+  toast(`Mostrando ${turnos.length} turno${turnos.length!==1?'s':''} desde móvil`);
 }
 
 function renderActiveNow(active){
@@ -2683,8 +2741,8 @@ async function loadPanelData(){
   document.getElementById('panel-summary-grid').innerHTML=`
     <div class="panel-summary-card"><div class="panel-summary-num">${formatDuration(totalSecs)}</div><div class="panel-summary-label">Horas totales acumuladas</div></div>
     <div class="panel-summary-card"><div class="panel-summary-num">${turnos.length}</div><div class="panel-summary-label">Turnos registrados</div></div>
-    <div class="panel-summary-card"><div class="panel-summary-num">${uniqueUsers.length}</div><div class="panel-summary-label">Usuarios activos</div></div>
-    <div class="panel-summary-card"><div class="panel-summary-num" style="${mobileCount>0?'color:#fb923c;-webkit-text-fill-color:#fb923c':''}">${mobileCount}</div><div class="panel-summary-label">Turnos desde móvil ⚠️</div></div>`;
+    <div class="panel-summary-card" onclick="filterByActiveUsers('${uniqueUsers.join(',')}')" style="cursor:pointer;transition:all 0.2s;" onmouseover="this.style.borderColor='var(--p1)'" onmouseout="this.style.borderColor='var(--border)'"><div class="panel-summary-num">${uniqueUsers.length}</div><div class="panel-summary-label">👥 Usuarios activos <span style="font-size:9px;opacity:0.6;">— clic para filtrar</span></div></div>
+    <div class="panel-summary-card" onclick="filterByMobile()" style="cursor:pointer;transition:all 0.2s;" onmouseover="this.style.borderColor='#fb923c'" onmouseout="this.style.borderColor='var(--border)'"><div class="panel-summary-num" style="${mobileCount>0?'color:#fb923c;-webkit-text-fill-color:#fb923c':''}">${mobileCount}</div><div class="panel-summary-label">📱 Turnos desde móvil <span style="font-size:9px;opacity:0.6;">— clic para filtrar</span></div></div>`;
 
   // Table
   const tbody=document.getElementById('panel-table-body');
@@ -2708,6 +2766,63 @@ async function loadPanelData(){
       <div><span class="turno-row-status ${statusClass}">${statusLabel}</span></div>
     </div>`;
   }).join('');
+}
+
+function filterByMobile(){
+  const select=document.getElementById('panel-user-filter');
+  if(!select) return;
+  // Show all mobile users - set filter to 'all' and reload filtered
+  window._mobileFilter=true;
+  window._activeUsersFilter=null;
+  loadPanelDataFiltered();
+}
+
+function filterByActiveUsers(users){
+  window._mobileFilter=false;
+  window._activeUsersFilter=null;
+  // Just show all users in period - reset user filter
+  const select=document.getElementById('panel-user-filter');
+  if(select) select.value='all';
+  loadPanelData();
+}
+
+async function loadPanelDataFiltered(){
+  const allTurnos=await window.getRecentTurnos();
+  const now=new Date();
+  const startOfDay=new Date(now);startOfDay.setHours(0,0,0,0);
+  const startOfWeek=new Date(now);startOfWeek.setDate(now.getDate()-now.getDay());startOfWeek.setHours(0,0,0,0);
+  const startOfMonth=new Date(now.getFullYear(),now.getMonth(),1);
+
+  let turnos=[...allTurnos];
+  if(panelFilter==='today') turnos=turnos.filter(t=>t.startTime?.toDate?.()>=startOfDay);
+  else if(panelFilter==='week') turnos=turnos.filter(t=>t.startTime?.toDate?.()>=startOfWeek);
+  else if(panelFilter==='month') turnos=turnos.filter(t=>t.startTime?.toDate?.()>=startOfMonth);
+
+  // Apply mobile filter
+  if(window._mobileFilter) turnos=turnos.filter(t=>t.isMobile);
+
+  const tbody=document.getElementById('panel-table-body');
+  if(!turnos.length){tbody.innerHTML='<div class="panel-empty">Sin turnos desde móvil en este período</div>';return;}
+  tbody.innerHTML=turnos.map(t=>{
+    const start=t.startTime?.toDate?.();
+    const end=t.endTime?.toDate?.();
+    const dur=t.accumulatedSeconds?formatDuration(t.accumulatedSeconds):'—';
+    const startStr=start?start.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
+    const endStr=end?end.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
+    const dateStr=start?start.toLocaleDateString('es-CO',{day:'2-digit',month:'short',year:'2-digit'}):'—';
+    const statusClass=t.status==='active'?'active':t.status==='interrupted'?'interrupted':'ended';
+    const statusLabel=t.status==='active'?'En turno':t.status==='interrupted'?'Interrumpido':'Finalizado';
+    const name=t.userName||t.userEmail?.split('@')[0]||'—';
+    return `<div class="panel-table-row">
+      <div class="panel-cell-user"><div class="panel-cell-name">${esc(name)}</div><div class="panel-cell-email">${esc(t.userEmail||'')}</div></div>
+      <div class="panel-cell">${dateStr}</div>
+      <div class="panel-cell">${startStr} → ${endStr}</div>
+      <div class="panel-cell highlight">${dur}</div>
+      <div><span class="panel-badge ${t.isMobile?'mobile':'desktop'}">${t.isMobile?'📱 Móvil':'💻 Desktop'}</span></div>
+      <div><span class="turno-row-status ${statusClass}">${statusLabel}</span></div>
+    </div>`;
+  }).join('');
+  toast(`Mostrando ${turnos.length} turno${turnos.length!==1?'s':''} desde móvil`);
 }
 
 function renderActiveNow(active){
