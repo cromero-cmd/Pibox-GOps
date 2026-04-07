@@ -700,6 +700,63 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
         </div>
       </div>
     </div>
+
+    <!-- Panel de control (admin only) -->
+    <div id="subview-panel" style="display:none;">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:12px;">
+        <div>
+          <div style="font-size:19px;font-weight:800;">Panel de <span style="background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;">control</span></div>
+          <div style="font-size:12px;color:var(--text-dim);margin-top:3px;font-family:var(--mono)">Vista de administrador</div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end;">
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="turno-filter-btn active" id="pf-today" onclick="setPanelFilter2('today',this)">Hoy</button>
+            <button class="turno-filter-btn" id="pf-week" onclick="setPanelFilter2('week',this)">Esta semana</button>
+            <button class="turno-filter-btn" id="pf-month" onclick="setPanelFilter2('month',this)">Este mes</button>
+            <button class="turno-filter-btn" id="pf-custom" onclick="setPanelFilter2('custom',this)">Personalizado</button>
+            <button class="turno-filter-btn" onclick="clearPanel2()" style="border-color:rgba(248,113,113,0.3);color:#f87171;">✕ Borrar</button>
+          </div>
+          <div id="panel2-date-row" style="display:none;gap:6px;align-items:center;flex-wrap:wrap;">
+            <span style="font-size:11px;color:var(--text-dim);font-family:var(--mono);">Desde</span>
+            <input type="date" class="turno-date-input" id="panel2-date-from" onchange="loadPanel2()"/>
+            <span style="font-size:11px;color:var(--text-dim);font-family:var(--mono);">Hasta</span>
+            <input type="date" class="turno-date-input" id="panel2-date-to" onchange="loadPanel2()"/>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <span style="font-size:11px;color:var(--text-dim);font-family:var(--mono);">Usuario:</span>
+            <select class="turno-date-input" id="panel2-user" onchange="loadPanel2()" style="min-width:160px;border-radius:8px;padding:5px 10px;"><option value="all">Todos</option></select>
+            <button class="turno-filter-btn" onclick="loadPanel2()" style="padding:5px 12px;">↻</button>
+          </div>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:300px 1fr;gap:16px;align-items:start;">
+        <div style="display:flex;flex-direction:column;gap:14px;">
+          <div>
+            <div style="font-size:12px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:10px;font-family:var(--mono);">🟢 En turno ahora</div>
+            <div id="panel2-active" style="display:flex;flex-direction:column;gap:10px;"><div style="color:var(--text-dim);font-size:12px;font-family:var(--mono);">Cargando...</div></div>
+          </div>
+          <div>
+            <div style="font-size:12px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:10px;font-family:var(--mono);">📊 Resumen</div>
+            <div id="panel2-summary" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;"></div>
+          </div>
+        </div>
+        <div class="turno-history-wrap">
+          <div class="turno-history-header"><div class="turno-history-title">📋 Historial de turnos</div></div>
+          <div style="display:grid;grid-template-columns:1fr 70px 120px 90px 90px 90px;gap:0;background:var(--surface2);border-bottom:1px solid var(--border);font-size:10px;font-weight:700;color:var(--text-dim);text-transform:uppercase;font-family:var(--mono);">
+            <div style="padding:10px 12px;border-right:1px solid var(--border);">Usuario</div>
+            <div style="padding:10px 12px;border-right:1px solid var(--border);">Fecha</div>
+            <div style="padding:10px 12px;border-right:1px solid var(--border);">Inicio → Fin</div>
+            <div style="padding:10px 12px;border-right:1px solid var(--border);">Duración</div>
+            <div style="padding:10px 12px;border-right:1px solid var(--border);">Dispositivo</div>
+            <div style="padding:10px 12px;">Estado</div>
+          </div>
+          <div id="panel2-table" style="max-height:500px;overflow-y:auto;">
+            <div style="padding:20px;text-align:center;color:var(--text-dim);font-size:12px;">Cargando...</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
   </div>
 
   <!-- CHAT VIEW -->
@@ -838,8 +895,8 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 </div>
 
 <script>
-const APP_VERSION='6.7';
-const APP_CHANGELOG='Panel de control: HTML restaurado y funcionando.';
+const APP_VERSION='6.8';
+const APP_CHANGELOG='Panel de control: HTML insertado correctamente.';
 const ADMINS=['cromero@pibox.app'];
 const SCRIPT_URL='https://script.google.com/macros/s/AKfycbyam6j2MG1NH11120KjvAfxU1f_z9BYh4uamQw8QgNeGsjpwoo394IeqzbDSPXSO9e5/exec';
 const MALLA_SCRIPT='https://script.google.com/macros/s/AKfycbyxBZWba6M1eXcwQUdBBUTqTrgGd8zwHiM6wwecXI3mUYOUP-RT9LnxSwqeXRy9prCm/exec';
