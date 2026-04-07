@@ -1339,8 +1339,8 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 
 <script>
 // Version control — increment this on every update
-const APP_VERSION = '5.0';
-const APP_CHANGELOG = 'Turno unificado: Mi turno + Mi malla en una sola pestaña.';
+const APP_VERSION = '5.1';
+const APP_CHANGELOG = 'Panel de control restaurado y duplicados eliminados.';
 const ADMINS = ['cromero@pibox.app'];
 
 function softReload(){
@@ -1476,7 +1476,7 @@ function switchTab(t){
   ['chat','library','analytics','turno','panel'].forEach(v=>{
     const el=document.getElementById(v+'-view');
     if(el) el.classList.toggle('active',v===t);
-    const tid=v==='library'?'lib':v==='analytics'?'an':v;
+    const tid=v==='library'?'lib':v==='analytics'?'an':v==='panel'?'panel':v;
     const tabEl=document.getElementById('tab-'+tid);
     if(tabEl) tabEl.classList.toggle('active',v===t);
   });
@@ -2618,8 +2618,8 @@ async function loadPanelData(){
     <div class="panel-summary-card"><div class="panel-summary-num">${turnos.length}</div><div class="panel-summary-label">Turnos registrados</div></div>
     <div class="panel-summary-card" onclick="filterByActiveUsers('${uniqueUsers.join(',')}')" style="cursor:pointer;transition:all 0.2s;" onmouseover="this.style.borderColor='var(--p1)'" onmouseout="this.style.borderColor='var(--border)'"><div class="panel-summary-num">${uniqueUsers.length}</div><div class="panel-summary-label">👥 Usuarios activos <span style="font-size:9px;opacity:0.6;">— clic</span></div></div>
     <div class="panel-summary-card" onclick="filterByMobile()" style="cursor:pointer;transition:all 0.2s;" onmouseover="this.style.borderColor='#fb923c'" onmouseout="this.style.borderColor='var(--border)'"><div class="panel-summary-num" style="${mobileCount>0?'color:#fb923c;-webkit-text-fill-color:#fb923c':''}">${mobileCount}</div><div class="panel-summary-label">📱 Desde móvil <span style="font-size:9px;opacity:0.6;">— clic</span></div></div>
-    <div class="panel-summary-card" onclick="switchTab('cumplimiento');setTimeout(()=>filterCumplByStatus('tardanza'),500)" style="cursor:pointer;transition:all 0.2s;" onmouseover="this.style.borderColor='#fbbf24'" onmouseout="this.style.borderColor='var(--border)'"><div class="panel-summary-num" style="color:#fbbf24;-webkit-text-fill-color:#fbbf24">${tardanzaCount}</div><div class="panel-summary-label">🟡 Tardanzas <span style="font-size:9px;opacity:0.6;">— clic</span></div></div>
-    <div class="panel-summary-card" onclick="switchTab('cumplimiento');setTimeout(()=>filterCumplByStatus('ausente'),500)" style="cursor:pointer;transition:all 0.2s;" onmouseover="this.style.borderColor='#f87171'" onmouseout="this.style.borderColor='var(--border)'"><div class="panel-summary-num" style="color:#f87171;-webkit-text-fill-color:#f87171">${ausenteCount}</div><div class="panel-summary-label">🔴 Ausentes <span style="font-size:9px;opacity:0.6;">— clic</span></div></div>`;
+    <div class="panel-summary-card" onclick="switchTab('turno');setTimeout(()=>{switchTurnoTab('malla');setTimeout(()=>filterCumplByStatus('tardanza'),300)},200)" style="cursor:pointer;transition:all 0.2s;" onmouseover="this.style.borderColor='#fbbf24'" onmouseout="this.style.borderColor='var(--border)'"><div class="panel-summary-num" style="color:#fbbf24;-webkit-text-fill-color:#fbbf24">${tardanzaCount}</div><div class="panel-summary-label">🟡 Tardanzas <span style="font-size:9px;opacity:0.6;">— clic</span></div></div>
+    <div class="panel-summary-card" onclick="switchTab('turno');setTimeout(()=>{switchTurnoTab('malla');setTimeout(()=>filterCumplByStatus('ausente'),300)},200)" style="cursor:pointer;transition:all 0.2s;" onmouseover="this.style.borderColor='#f87171'" onmouseout="this.style.borderColor='var(--border)'"><div class="panel-summary-num" style="color:#f87171;-webkit-text-fill-color:#f87171">${ausenteCount}</div><div class="panel-summary-label">🔴 Ausentes <span style="font-size:9px;opacity:0.6;">— clic</span></div></div>`;
 
   // Table
   const tbody=document.getElementById('panel-table-body');
@@ -3752,9 +3752,6 @@ function setPanelFilter(filter,btn){
   loadPanelData();
 }
 
-async function initPanelView(){
-  await loadPanelData();
-}
 
 async function loadPanelData(){
   const allTurnos=await window.getRecentTurnos();
@@ -3803,8 +3800,8 @@ async function loadPanelData(){
     <div class="panel-summary-card"><div class="panel-summary-num">${turnos.length}</div><div class="panel-summary-label">Turnos registrados</div></div>
     <div class="panel-summary-card" onclick="filterByActiveUsers('${uniqueUsers.join(',')}')" style="cursor:pointer;transition:all 0.2s;" onmouseover="this.style.borderColor='var(--p1)'" onmouseout="this.style.borderColor='var(--border)'"><div class="panel-summary-num">${uniqueUsers.length}</div><div class="panel-summary-label">👥 Usuarios activos <span style="font-size:9px;opacity:0.6;">— clic</span></div></div>
     <div class="panel-summary-card" onclick="filterByMobile()" style="cursor:pointer;transition:all 0.2s;" onmouseover="this.style.borderColor='#fb923c'" onmouseout="this.style.borderColor='var(--border)'"><div class="panel-summary-num" style="${mobileCount>0?'color:#fb923c;-webkit-text-fill-color:#fb923c':''}">${mobileCount}</div><div class="panel-summary-label">📱 Desde móvil <span style="font-size:9px;opacity:0.6;">— clic</span></div></div>
-    <div class="panel-summary-card" onclick="switchTab('cumplimiento');setTimeout(()=>filterCumplByStatus('tardanza'),500)" style="cursor:pointer;transition:all 0.2s;" onmouseover="this.style.borderColor='#fbbf24'" onmouseout="this.style.borderColor='var(--border)'"><div class="panel-summary-num" style="color:#fbbf24;-webkit-text-fill-color:#fbbf24">${tardanzaCount}</div><div class="panel-summary-label">🟡 Tardanzas <span style="font-size:9px;opacity:0.6;">— clic</span></div></div>
-    <div class="panel-summary-card" onclick="switchTab('cumplimiento');setTimeout(()=>filterCumplByStatus('ausente'),500)" style="cursor:pointer;transition:all 0.2s;" onmouseover="this.style.borderColor='#f87171'" onmouseout="this.style.borderColor='var(--border)'"><div class="panel-summary-num" style="color:#f87171;-webkit-text-fill-color:#f87171">${ausenteCount}</div><div class="panel-summary-label">🔴 Ausentes <span style="font-size:9px;opacity:0.6;">— clic</span></div></div>`;
+    <div class="panel-summary-card" onclick="switchTab('turno');setTimeout(()=>{switchTurnoTab('malla');setTimeout(()=>filterCumplByStatus('tardanza'),300)},200)" style="cursor:pointer;transition:all 0.2s;" onmouseover="this.style.borderColor='#fbbf24'" onmouseout="this.style.borderColor='var(--border)'"><div class="panel-summary-num" style="color:#fbbf24;-webkit-text-fill-color:#fbbf24">${tardanzaCount}</div><div class="panel-summary-label">🟡 Tardanzas <span style="font-size:9px;opacity:0.6;">— clic</span></div></div>
+    <div class="panel-summary-card" onclick="switchTab('turno');setTimeout(()=>{switchTurnoTab('malla');setTimeout(()=>filterCumplByStatus('ausente'),300)},200)" style="cursor:pointer;transition:all 0.2s;" onmouseover="this.style.borderColor='#f87171'" onmouseout="this.style.borderColor='var(--border)'"><div class="panel-summary-num" style="color:#f87171;-webkit-text-fill-color:#f87171">${ausenteCount}</div><div class="panel-summary-label">🔴 Ausentes <span style="font-size:9px;opacity:0.6;">— clic</span></div></div>`;
 
   // Table
   const tbody=document.getElementById('panel-table-body');
