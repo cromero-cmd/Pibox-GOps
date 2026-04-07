@@ -838,8 +838,8 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 </div>
 
 <script>
-const APP_VERSION='6.3';
-const APP_CHANGELOG='Sub-pestaña Panel de control visible correctamente para admins.';
+const APP_VERSION='6.4';
+const APP_CHANGELOG='Sub-pestañas Turno: navegación y carga de datos corregidas.';
 const ADMINS=['cromero@pibox.app'];
 const SCRIPT_URL='https://script.google.com/macros/s/AKfycbyam6j2MG1NH11120KjvAfxU1f_z9BYh4uamQw8QgNeGsjpwoo394IeqzbDSPXSO9e5/exec';
 const MALLA_SCRIPT='https://script.google.com/macros/s/AKfycbyxBZWba6M1eXcwQUdBBUTqTrgGd8zwHiM6wwecXI3mUYOUP-RT9LnxSwqeXRy9prCm/exec';
@@ -932,12 +932,19 @@ function switchTab(t){
 }
 
 function switchTurnoTab(tab){
-  document.getElementById('subview-miturno').style.display=tab==='miturno'?'block':'none';
-  document.getElementById('subview-mimalla').style.display=tab==='mimalla'?'block':'none';
-  document.getElementById('subview-panel').style.display=tab==='panel'?'block':'none';
-  document.getElementById('subtab-miturno').classList.toggle('active',tab==='miturno');
-  document.getElementById('subtab-mimalla').classList.toggle('active',tab==='mimalla');
-  const sp=document.getElementById('subtab-panel');if(sp)sp.classList.toggle('active',tab==='panel');
+  // Hide all subviews
+  ['miturno','mimalla','panel'].forEach(v=>{
+    const el=document.getElementById('subview-'+v);
+    if(el)el.style.display='none';
+    const btn=document.getElementById('subtab-'+v);
+    if(btn)btn.classList.remove('active');
+  });
+  // Show selected
+  const view=document.getElementById('subview-'+tab);
+  if(view)view.style.display='block';
+  const btn=document.getElementById('subtab-'+tab);
+  if(btn)btn.classList.add('active');
+  // Load data
   if(tab==='mimalla')loadMallaPersonal();
   if(tab==='panel')loadPanel2();
 }
