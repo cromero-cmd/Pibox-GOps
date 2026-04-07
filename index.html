@@ -838,8 +838,8 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 </div>
 
 <script>
-const APP_VERSION='6.4';
-const APP_CHANGELOG='Sub-pestañas Turno: navegación y carga de datos corregidas.';
+const APP_VERSION='6.5';
+const APP_CHANGELOG='Panel de control: error de carga corregido.';
 const ADMINS=['cromero@pibox.app'];
 const SCRIPT_URL='https://script.google.com/macros/s/AKfycbyam6j2MG1NH11120KjvAfxU1f_z9BYh4uamQw8QgNeGsjpwoo394IeqzbDSPXSO9e5/exec';
 const MALLA_SCRIPT='https://script.google.com/macros/s/AKfycbyxBZWba6M1eXcwQUdBBUTqTrgGd8zwHiM6wwecXI3mUYOUP-RT9LnxSwqeXRy9prCm/exec';
@@ -1638,6 +1638,7 @@ async function loadPanel2(){
   // Active now
   const activeNow=allTurnos.filter(t=>t.status==='active');
   const activeEl=document.getElementById('panel2-active');
+  if(!activeEl)return; // subview not in DOM yet
   Object.values(panel2ActiveTimers).forEach(clearInterval);panel2ActiveTimers={};
   if(!activeNow.length){activeEl.innerHTML='<div style="color:var(--text-dim);font-size:12px;font-family:var(--mono);">Ningún usuario en turno ahora</div>';}
   else{
