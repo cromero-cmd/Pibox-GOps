@@ -1339,8 +1339,8 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 
 <script>
 // Version control — increment this on every update
-const APP_VERSION = '5.2';
-const APP_CHANGELOG = 'Panel de control: duplicados eliminados, funciona correctamente.';
+const APP_VERSION = '5.3';
+const APP_CHANGELOG = 'Panel de control: funciones reordenadas correctamente.';
 const ADMINS = ['cromero@pibox.app'];
 
 function softReload(){
@@ -1471,6 +1471,848 @@ window.onload=()=>{
   initTurnoView();
   autoResize();
 };
+
+function clearPanelFilters(){
+  panelFilter='today';
+  window._mobileFilter=false;
+  window._activeUsersFilter=null;
+  const select=document.getElementById('panel-user-filter');
+  if(select) select.value='all';
+  document.querySelectorAll('.panel-filter-btn').forEach((b,i)=>b.classList.toggle('active',i===0));
+  const dateRow=document.getElementById('panel-date-row');
+  if(dateRow) dateRow.style.display='none';
+  loadPanelData();
+}
+
+function setPanelFilter(filter,btn){
+  panelFilter=filter;
+  document.querySelectorAll('.panel-filter-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  const dateRow=document.getElementById('panel-date-row');
+  if(dateRow) dateRow.style.display=filter==='custom'?'flex':'none';
+  if(filter==='custom'){
+    const today=new Date().toISOString().split('T')[0];
+    if(!document.getElementById('panel-date-from').value) document.getElementById('panel-date-from').value=today;
+    if(!document.getElementById('panel-date-to').value) document.getElementById('panel-date-to').value=today;
+  }
+  loadPanelData();
+}
+
+async function initPanelView(){
+  await loadPanelData();
+}
+
+async function loadPanelData(){
+  const allTurnos=await window.getRecentTurnos();
+  const now=new Date();
+  const startOfDay=new Date(now);startOfDay.setHours(0,0,0,0);
+  const startOfWeek=new Date(now);startOfWeek.setDate(now.getDate()-now.getDay());startOfWeek.setHours(0,0,0,0);
+  const startOfMonth=new Date(now.getFullYear(),now.getMonth(),1);
+
+  // Active now
+  const activeNow=allTurnos.filter(t=>t.status==='active');
+  renderActiveNow(activeNow);
+
+  // Filter by period
+  let turnos=[...allTurnos];
+  if(panelFilter==='today') turnos=turnos.filter(t=>t.startTime?.toDate?.()>=startOfDay);
+  else if(panelFilter==='week') turnos=turnos.filter(t=>t.startTime?.toDate?.()>=startOfWeek);
+  else if(panelFilter==='month') turnos=turnos.filter(t=>t.startTime?.toDate?.()>=startOfMonth);
+  else if(panelFilter==='custom'){
+    const from=document.getElementById('panel-date-from')?.value;
+    const to=document.getElementById('panel-date-to')?.value;
+    if(from){const d=new Date(from);d.setHours(0,0,0,0);turnos=turnos.filter(t=>t.startTime?.toDate?.()>=d);}
+    if(to){const d=new Date(to);d.setHours(23,59,59,999);turnos=turnos.filter(t=>t.startTime?.toDate?.()<=d);}
+  }
+
+  // Filter by user
+  const userFilter=document.getElementById('panel-user-filter')?.value||'all';
+  const allUsers=[...new Set(allTurnos.map(t=>t.userEmail).filter(Boolean))];
+  const userSelect=document.getElementById('panel-user-filter');
+  if(userSelect){
+    const current=userSelect.value;
+    userSelect.innerHTML='<option value="all">Todos</option>'+allUsers.map(u=>`<option value="${u}"${u===current?' selected':''}>${u}</option>`).join('');
+  }
+  if(userFilter!=='all') turnos=turnos.filter(t=>t.userEmail===userFilter);
+
+  // Summary
+  const totalSecs=turnos.reduce((s,t)=>s+(t.accumulatedSeconds||0),0);
+  const uniqueUsers=[...new Set(turnos.map(t=>t.userEmail).filter(Boolean))];
+  const mobileCount=turnos.filter(t=>t.isMobile).length;
+  // Get cumplimiento data for tardanza/ausente cards
+  const allMallaRows = window._lastMallaRows || [];
+  const tardanzaCount = allMallaRows.filter(r=>r.status?.cls==='tardanza').length;
+  const ausenteCount = allMallaRows.filter(r=>r.status?.cls==='ausente').length;
+
+  document.getElementById('panel-summary-grid').innerHTML=`
+    <div class="panel-summary-card"><div class="panel-summary-num">${formatDuration(totalSecs)}</div><div class="panel-summary-label">Horas totales acumuladas</div></div>
+    <div class="panel-summary-card"><div class="panel-summary-num">${turnos.length}</div><div class="panel-summary-label">Turnos registrados</div></div>
+    <div class="panel-summary-card" onclick="filterByActiveUsers('${uniqueUsers.join(',')}')" style="cursor:pointer;transition:all 0.2s;" onmouseover="this.style.borderColor='var(--p1)'" onmouseout="this.style.borderColor='var(--border)'"><div class="panel-summary-num">${uniqueUsers.length}</div><div class="panel-summary-label">👥 Usuarios activos <span style="font-size:9px;opacity:0.6;">— clic</span></div></div>
+    <div class="panel-summary-card" onclick="filterByMobile()" style="cursor:pointer;transition:all 0.2s;" onmouseover="this.style.borderColor='#fb923c'" onmouseout="this.style.borderColor='var(--border)'"><div class="panel-summary-num" style="${mobileCount>0?'color:#fb923c;-webkit-text-fill-color:#fb923c':''}">${mobileCount}</div><div class="panel-summary-label">📱 Desde móvil <span style="font-size:9px;opacity:0.6;">— clic</span></div></div>
+    <div class="panel-summary-card" onclick="switchTab('turno');setTimeout(()=>{switchTurnoTab('malla');setTimeout(()=>filterCumplByStatus('tardanza'),300)},200)" style="cursor:pointer;transition:all 0.2s;" onmouseover="this.style.borderColor='#fbbf24'" onmouseout="this.style.borderColor='var(--border)'"><div class="panel-summary-num" style="color:#fbbf24;-webkit-text-fill-color:#fbbf24">${tardanzaCount}</div><div class="panel-summary-label">🟡 Tardanzas <span style="font-size:9px;opacity:0.6;">— clic</span></div></div>
+    <div class="panel-summary-card" onclick="switchTab('turno');setTimeout(()=>{switchTurnoTab('malla');setTimeout(()=>filterCumplByStatus('ausente'),300)},200)" style="cursor:pointer;transition:all 0.2s;" onmouseover="this.style.borderColor='#f87171'" onmouseout="this.style.borderColor='var(--border)'"><div class="panel-summary-num" style="color:#f87171;-webkit-text-fill-color:#f87171">${ausenteCount}</div><div class="panel-summary-label">🔴 Ausentes <span style="font-size:9px;opacity:0.6;">— clic</span></div></div>`;
+
+  // Table
+  const tbody=document.getElementById('panel-table-body');
+  if(!turnos.length){tbody.innerHTML='<div class="panel-empty">Sin registros en este período</div>';return;}
+  tbody.innerHTML=turnos.map(t=>{
+    const start=t.startTime?.toDate?.();
+    const end=t.endTime?.toDate?.();
+    const dur=t.accumulatedSeconds?formatDuration(t.accumulatedSeconds):'—';
+    const startStr=start?start.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
+    const endStr=end?end.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
+    const dateStr=start?start.toLocaleDateString('es-CO',{day:'2-digit',month:'short',year:'2-digit'}):'—';
+    const statusClass=t.status==='active'?'active':t.status==='interrupted'?'interrupted':'ended';
+    const statusLabel=t.status==='active'?'En turno':t.status==='interrupted'?'Interrumpido':'Finalizado';
+    const name=t.userName||t.userEmail?.split('@')[0]||'—';
+    return `<div class="panel-table-row">
+      <div class="panel-cell-user"><div class="panel-cell-name">${esc(name)}</div><div class="panel-cell-email">${esc(t.userEmail||'')}</div></div>
+      <div class="panel-cell">${dateStr}</div>
+      <div class="panel-cell">${startStr} → ${endStr}</div>
+      <div class="panel-cell highlight">${dur}</div>
+      <div><span class="panel-badge ${t.isMobile?'mobile':'desktop'}">${t.isMobile?'📱 Móvil':'💻 Desktop'}</span></div>
+      <div><span class="turno-row-status ${statusClass}">${statusLabel}</span></div>
+    </div>`;
+  }).join('');
+}
+
+function filterByMobile(){
+  const select=document.getElementById('panel-user-filter');
+  if(!select) return;
+  // Show all mobile users - set filter to 'all' and reload filtered
+  window._mobileFilter=true;
+  window._activeUsersFilter=null;
+  loadPanelDataFiltered();
+}
+
+function filterByActiveUsers(users){
+  window._mobileFilter=false;
+  window._activeUsersFilter=null;
+  // Just show all users in period - reset user filter
+  const select=document.getElementById('panel-user-filter');
+  if(select) select.value='all';
+  loadPanelData();
+}
+
+async function loadPanelDataFiltered(){
+  const allTurnos=await window.getRecentTurnos();
+  const now=new Date();
+  const startOfDay=new Date(now);startOfDay.setHours(0,0,0,0);
+  const startOfWeek=new Date(now);startOfWeek.setDate(now.getDate()-now.getDay());startOfWeek.setHours(0,0,0,0);
+  const startOfMonth=new Date(now.getFullYear(),now.getMonth(),1);
+
+  let turnos=[...allTurnos];
+  if(panelFilter==='today') turnos=turnos.filter(t=>t.startTime?.toDate?.()>=startOfDay);
+  else if(panelFilter==='week') turnos=turnos.filter(t=>t.startTime?.toDate?.()>=startOfWeek);
+  else if(panelFilter==='month') turnos=turnos.filter(t=>t.startTime?.toDate?.()>=startOfMonth);
+
+  // Apply mobile filter
+  if(window._mobileFilter) turnos=turnos.filter(t=>t.isMobile);
+
+  const tbody=document.getElementById('panel-table-body');
+  if(!turnos.length){tbody.innerHTML='<div class="panel-empty">Sin turnos desde móvil en este período</div>';return;}
+  tbody.innerHTML=turnos.map(t=>{
+    const start=t.startTime?.toDate?.();
+    const end=t.endTime?.toDate?.();
+    const dur=t.accumulatedSeconds?formatDuration(t.accumulatedSeconds):'—';
+    const startStr=start?start.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
+    const endStr=end?end.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
+    const dateStr=start?start.toLocaleDateString('es-CO',{day:'2-digit',month:'short',year:'2-digit'}):'—';
+    const statusClass=t.status==='active'?'active':t.status==='interrupted'?'interrupted':'ended';
+    const statusLabel=t.status==='active'?'En turno':t.status==='interrupted'?'Interrumpido':'Finalizado';
+    const name=t.userName||t.userEmail?.split('@')[0]||'—';
+    return `<div class="panel-table-row">
+      <div class="panel-cell-user"><div class="panel-cell-name">${esc(name)}</div><div class="panel-cell-email">${esc(t.userEmail||'')}</div></div>
+      <div class="panel-cell">${dateStr}</div>
+      <div class="panel-cell">${startStr} → ${endStr}</div>
+      <div class="panel-cell highlight">${dur}</div>
+      <div><span class="panel-badge ${t.isMobile?'mobile':'desktop'}">${t.isMobile?'📱 Móvil':'💻 Desktop'}</span></div>
+      <div><span class="turno-row-status ${statusClass}">${statusLabel}</span></div>
+    </div>`;
+  }).join('');
+  toast(`Mostrando ${turnos.length} turno${turnos.length!==1?'s':''} desde móvil`);
+}
+
+function renderActiveNow(active){
+  const grid=document.getElementById('panel-active-grid');
+  // Clear old timers
+  Object.values(panelActiveTimers).forEach(clearInterval);
+  panelActiveTimers={};
+
+  if(!active.length){
+    grid.innerHTML='<div style="color:var(--text-dim);font-size:12px;padding:10px;font-family:var(--mono);">Ningún usuario en turno ahora</div>';
+    return;
+  }
+  grid.innerHTML=active.map(t=>{
+    const name=t.userName||t.userEmail?.split('@')[0]||'—';
+    const since=t.startTime?.toDate?.();
+    const sinceStr=since?since.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
+    const id='pat_'+t.id;
+    return `<div class="panel-active-card">
+      ${t.isMobile?'<div class="panel-mobile-warning">⚠ Móvil</div>':'<div class="panel-active-device">💻</div>'}
+      <div class="panel-active-name">${esc(name)}</div>
+      <div class="panel-active-email">${esc(t.userEmail||'')}</div>
+      <div class="panel-active-time" id="${id}">00:00:00</div>
+      <div class="panel-active-since">desde las ${sinceStr}</div>
+    </div>`;
+  }).join('');
+
+  // Start timers for active users
+  active.forEach(t=>{
+    const id='pat_'+t.id;
+    const startTime=t.startTime?.toDate?.();
+    const accumulated=t.accumulatedSeconds||0;
+    if(!startTime) return;
+    panelActiveTimers[id]=setInterval(()=>{
+      const el=document.getElementById(id);
+      if(!el){clearInterval(panelActiveTimers[id]);return;}
+      const elapsed=Math.floor((Date.now()-startTime.getTime())/1000)+accumulated;
+      el.textContent=formatDuration(elapsed);
+    },1000);
+  });
+}
+
+async function confirmClearMetrics(){
+  if(!confirm('⚠️ ¿Estás seguro de que quieres borrar todas las métricas? Esta acción no se puede deshacer.')) return;
+  const btn = document.getElementById('btn-clear-metrics');
+  btn.textContent = 'Limpiando...';
+  btn.disabled = true;
+  const ok = await window.clearAllMetrics();
+  if(ok){
+    toast('Métricas limpiadas ✓');
+    loadAnalytics();
+  } else {
+    toast('Error al limpiar métricas');
+  }
+  btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg> Limpiar métricas';
+  btn.disabled = false;
+}
+
+const inp=document.getElementById('user-input');
+  const text=inp.value.trim();
+  if(streaming) return;
+  if(!text && !attachedFile) return;
+  if(attachedFile && !attachedFileData){ toast('Espera un momento, cargando imagen...'); return; }
+  if(surveyTimer){clearTimeout(surveyTimer);surveyTimer=null;}
+  inp.value='';autoResize();streaming=true;
+  document.getElementById('send-btn').disabled=true;
+  const fileDataToSend = attachedFileData;
+  const fileTypeToSend = attachedFileType;
+  const fileNameToSend = attachedFile?.name;
+  removeEmpty();addUserMsg(text, fileDataToSend, fileTypeToSend, fileNameToSend);
+  // Build message content
+  let msgContent;
+  if(fileDataToSend){
+    msgContent=[];
+    if(fileTypeToSend.startsWith('image/')){
+      msgContent.push({type:'image',source:{type:'base64',media_type:fileTypeToSend,data:fileDataToSend}});
+    } else {
+      msgContent.push({type:'document',source:{type:'base64',media_type:'application/pdf',data:fileDataToSend}});
+    }
+    if(text) msgContent.push({type:'text',text});
+    else msgContent.push({type:'text',text:'Analiza este archivo y ayúdame con base en el manual de operaciones.'});
+  } else {
+    msgContent = text;
+  }
+  history.push({role:'user',content:msgContent});
+  clearFile();
+  // Track
+  window.trackEvent&&window.trackEvent('chat',{question:text,hasFile:!!attachedFile});
+  setStatus('loading','Leyendo...');
+  const fresh=await fetchSheet();
+  const manual=fresh||sheetData||'(Manual no disponible)';
+  const system=sysBase+'\n\n'+manual+'\n\n---\nResponde siempre en español. Sé claro, práctico y directo.';
+  const msgs=document.getElementById('messages');
+  const msgId='smsg_'+Date.now();const bubbleId='sb_'+Date.now();
+  const div=document.createElement('div');div.className='msg bot';div.id=msgId;
+  div.innerHTML=`<div class="avatar bot">PG</div><div class="bwrap"><div class="bubble" id="${bubbleId}"><span style="color:var(--p1)">▋</span></div></div>`;
+  msgs.appendChild(div);scrollDown();
+  const bubble=document.getElementById(bubbleId);let full='';
+  try{
+    const res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:1024,stream:true,system,messages:history})});
+    if(!res.ok){const e=await res.json().catch(()=>({}));throw new Error(e.error?.message||'Error '+res.status);}
+    const reader=res.body.getReader();const dec=new TextDecoder();
+    while(true){const{done,value}=await reader.read();if(done)break;for(const line of dec.decode(value).split('\n')){if(!line.startsWith('data: '))continue;const d=line.slice(6).trim();if(d==='[DONE]')continue;try{const p=JSON.parse(d);if(p.type==='content_block_delta'&&p.delta?.text){full+=p.delta.text;bubble.innerHTML=fmtMd(full)+'<span style="color:var(--p1)">▋</span>';scrollDown();}}catch{}}}
+    document.getElementById(msgId).id='';bubble.innerHTML=fmtMd(full);
+    // User avatar
+    const avatarEl = div.querySelector('.avatar.user');
+    const userAvatar = document.getElementById('user-avatar')?.src;
+    if(avatarEl && userAvatar) avatarEl.innerHTML=`<img src="${userAvatar}" alt=""/>`;
+    div.querySelector('.bwrap').innerHTML+='<div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-top:2px;"><span class="src-tag">🧠 Manual en vivo</span><span class="msg-meta">Pi GOps · '+now()+'</span></div>';
+    history.push({role:'assistant',content:full});
+  }catch(err){
+    div.remove();
+    if((err.message?.includes('529')||err.message?.includes('overloaded'))&&retries<2){streaming=false;document.getElementById('send-btn').disabled=false;history.pop();await sleep(2000*(retries+1));history.push({role:'user',content:text});await sendMessage(retries+1);return;}
+    addError(err.message||'No se pudo obtener respuesta.');
+  }
+  streaming=false;setStatus('on','Activo');document.getElementById('send-btn').disabled=false;
+  scheduleSurvey();
+}
+
+function addUserMsg(text, fileData, fileType, fileName){
+  const msgs=document.getElementById('messages');
+  const d=document.createElement('div');d.className='msg user';
+  const avatar=document.getElementById('user-avatar')?.src;
+  let fileHtml='';
+  if(fileData && fileType){
+    if(fileType.startsWith('image/')){
+      fileHtml=`<img class="msg-image" src="data:${fileType};base64,${fileData}" alt="imagen adjunta"/>`;
+    } else {
+      fileHtml=`<div class="msg-pdf">📄 ${esc(fileName||'Documento PDF')}</div>`;
+    }
+  }
+  d.innerHTML=`<div class="bwrap"><div class="bubble">${text?esc(text).replace(/\n/g,'<br>'):''}${fileHtml}</div><div class="msg-meta">${now()}</div></div><div class="avatar user">${avatar?`<img src="${avatar}" alt=""/>`:'👤'}</div>`;
+  msgs.appendChild(d);scrollDown();
+}
+function addError(msg){const msgs=document.getElementById('messages');const d=document.createElement('div');d.className='msg bot';d.innerHTML='<div class="avatar bot">PG</div><div class="error-bub">⚠ '+esc(msg)+'</div>';msgs.appendChild(d);scrollDown();}
+function removeEmpty(){const e=document.getElementById('empty-state');if(e)e.remove();}
+function fmtMd(t){
+  let h=esc(t);
+  // Bold and code
+  h=h.replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>');
+  h=h.replace(/`([^`]+)`/g,'<code>$1</code>');
+  // Headers
+  h=h.replace(/^### (.+)$/gm,'<strong style="display:block;margin:6px 0 2px;font-size:13px;color:var(--p3)">$1</strong>');
+  h=h.replace(/^## (.+)$/gm,'<strong style="display:block;margin:8px 0 3px;color:var(--p2)">$1</strong>');
+  // Lists — collect consecutive list items into a single ul/ol
+  h=h.replace(/(^[\-\*] .+$\n?)+/gm, m=>{
+    const items=m.trim().split('\n').map(l=>`<li>${l.replace(/^[\-\*] /,'')}</li>`).join('');
+    return `<ul>${items}</ul>`;
+  });
+  h=h.replace(/(^\d+\. .+$\n?)+/gm, m=>{
+    const items=m.trim().split('\n').map(l=>`<li>${l.replace(/^\d+\. /,'')}</li>`).join('');
+    return `<ol>${items}</ol>`;
+  });
+  // Remove excessive blank lines (3+ newlines -> 2)
+  h=h.replace(/\n{3,}/g,'\n\n');
+  // Paragraphs
+  h=h.replace(/\n\n/g,'</p><p>');
+  h=h.replace(/\n/g,'<br>');
+  // Clean up empty paragraphs
+  h=h.replace(/<p><\/p>/g,'');
+  h=h.replace(/<p>(<br>)+<\/p>/g,'');
+  h=h.replace(/(<br>){2,}/g,'<br>');
+  return '<p>'+h+'</p>';
+}
+function parseCSV(line){const r=[];let cur='',q=false;for(const ch of line){if(ch==='"'){q=!q;}else if(ch===','&&!q){r.push(cur.trim());cur='';}else cur+=ch;}r.push(cur.trim());return r;}
+function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function now(){return new Date().toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'});}
+function scrollDown(){const c=document.getElementById('chat-container');c.scrollTop=c.scrollHeight;}
+function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
+function setStatus(state,text){document.getElementById('sdot').className='sdot '+state;document.getElementById('stext').textContent=text;}
+function toast(msg){const t=document.createElement('div');t.className='toast';t.textContent=msg;document.body.appendChild(t);setTimeout(()=>t.remove(),2500);}
+// Survey logic
+
+
+async function selectSurvey(answer, btn){
+  surveyAnswer=answer;
+  document.querySelectorAll('.survey-btn').forEach(b=>b.classList.remove('sel'));
+  btn.classList.add('sel');
+  if(answer==='yes'){
+    // Auto-submit immediately
+    await window.trackEvent('survey',{resolved:'yes',feedback:null,conversationLength:history.length});
+    closeSurvey();
+    toast('¡Gracias por tu respuesta! 🎉');
+  } else {
+    // Show feedback field for partial/no
+    document.getElementById('survey-followup').style.display='block';
+    document.getElementById('survey-submit').style.display='block';
+    document.getElementById('survey-feedback').focus();
+  }
+}
+
+async function submitSurvey(){
+  if(!surveyAnswer) return;
+  const feedback=document.getElementById('survey-feedback').value.trim();
+  await window.trackEvent('survey',{
+    resolved: surveyAnswer,
+    feedback: feedback||null,
+    conversationLength: history.length
+  });
+  closeSurvey();
+  toast(surveyAnswer==='yes'?'¡Gracias por tu respuesta! 🎉':'Gracias, usaremos esto para mejorar 💪');
+}
+
+// Voice recognition
+let recognition = null;
+let isRecording = false;
+
+function toggleMic(){
+  if(!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)){
+    toast('Tu navegador no soporta transcripción por voz');
+    return;
+  }
+  if(isRecording){
+    stopMic();
+  } else {
+    startMic();
+  }
+}
+
+function startMic(){
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  recognition = new SpeechRecognition();
+  recognition.lang = 'es-CO';
+  recognition.continuous = true;
+  recognition.interimResults = true;
+
+  const inp = document.getElementById('user-input');
+  const micBtn = document.getElementById('mic-btn');
+  const baseText = inp.value;
+
+  recognition.onstart = () => {
+    isRecording = true;
+    micBtn.classList.add('recording');
+    toast('🎤 Escuchando... habla tu consulta');
+  };
+
+  recognition.onresult = (e) => {
+    let interim = '';
+    let final = '';
+    for(let i = e.resultIndex; i < e.results.length; i++){
+      if(e.results[i].isFinal){
+        final += e.results[i][0].transcript;
+      } else {
+        interim += e.results[i][0].transcript;
+      }
+    }
+    inp.value = baseText + final + interim;
+    autoResize();
+  };
+
+  recognition.onerror = (e) => {
+    stopMic();
+    if(e.error === 'not-allowed') toast('Permiso de micrófono denegado');
+    else toast('Error al transcribir: ' + e.error);
+  };
+
+  recognition.onend = () => {
+    if(isRecording) stopMic();
+  };
+
+  recognition.start();
+}
+
+function stopMic(){
+  isRecording = false;
+  document.getElementById('mic-btn').classList.remove('recording');
+  if(recognition){ recognition.stop(); recognition = null; }
+}
+
+// Drag-to-resize FAQ sidebar
+(function(){
+  const resizer = document.getElementById('faq-resizer');
+  const sidebar = document.querySelector('.faq-sidebar');
+  if(!resizer || !sidebar) return;
+  let startX, startW;
+  resizer.addEventListener('mousedown', e => {
+    startX = e.clientX;
+    startW = sidebar.offsetWidth;
+    resizer.classList.add('dragging');
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    function onMove(e){
+      const diff = e.clientX - startX;
+      const newW = Math.min(400, Math.max(160, startW + diff));
+      sidebar.style.width = newW + 'px';
+    }
+    function onUp(){
+      resizer.classList.remove('dragging');
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    }
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
+  // Touch support
+  resizer.addEventListener('touchstart', e => {
+    startX = e.touches[0].clientX;
+    startW = sidebar.offsetWidth;
+    resizer.classList.add('dragging');
+    function onMove(e){ const diff=e.touches[0].clientX-startX; sidebar.style.width=Math.min(400,Math.max(160,startW+diff))+'px'; }
+    function onUp(){ resizer.classList.remove('dragging'); document.removeEventListener('touchmove',onMove); document.removeEventListener('touchend',onUp); }
+    document.addEventListener('touchmove', onMove);
+    document.addEventListener('touchend', onUp);
+  });
+})();
+
+// ── TURNO MODULE ──
+let turnoInterval=null;
+let currentTurnoId=null;
+let turnoStartTime=null;
+let accumulatedSeconds=0;
+
+function getDeviceInfo(){
+  const ua=navigator.userAgent;
+  const isMobile=/Android|iPhone|iPad|iPod|Mobile/i.test(ua);
+  return {
+    isMobile,
+    icon: isMobile ? '📱' : '💻',
+    label: isMobile ? 'Móvil' : 'Desktop',
+    ua: ua.substring(0,120)
+  };
+}
+
+function formatDuration(seconds){
+  const h=Math.floor(seconds/3600);
+  const m=Math.floor((seconds%3600)/60);
+  const s=seconds%60;
+  return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+}
+
+function startTimer(){
+  if(turnoInterval) clearInterval(turnoInterval);
+  // Show floating timer
+  const ft=document.getElementById('floating-timer');
+  if(ft) ft.style.display='flex';
+  turnoInterval=setInterval(()=>{
+    const elapsed=Math.floor((Date.now()-turnoStartTime.getTime())/1000)+accumulatedSeconds;
+    const formatted=formatDuration(elapsed);
+    document.getElementById('turno-timer').textContent=formatted;
+    const ftTime=document.getElementById('floating-timer-time');
+    if(ftTime) ftTime.textContent=formatted;
+  },1000);
+}
+
+async function initTurnoView(){
+  const device=getDeviceInfo();
+  document.getElementById('turno-device-icon').textContent=device.icon;
+  document.getElementById('turno-device-label').textContent=device.label;
+  document.getElementById('turno-date').textContent=new Date().toLocaleDateString('es-CO',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+
+  // Check for interrupted turno today
+  const existing=await window.getTodayTurno();
+  if(existing && existing.status==='active'){
+    // Turno still active — restore it
+    currentTurnoId=existing.id;
+    turnoStartTime=existing.startTime.toDate();
+    accumulatedSeconds=existing.accumulatedSeconds||0;
+    setTurnoActive(existing);
+    startTimer();
+  } else if(existing && existing.status==='interrupted'){
+    // Show resume banner
+    const interruptedAt=existing.endTime?.toDate();
+    const timeStr=interruptedAt?interruptedAt.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'';
+    document.getElementById('resume-msg').textContent=`Detectamos que tu turno fue interrumpido a las ${timeStr}. ¿Deseas continuar sumando el tiempo?`;
+    document.getElementById('resume-banner').style.display='block';
+    window._interruptedTurno=existing;
+  }
+
+  // Show history for all users
+  loadTurnoHistory();
+}
+
+function setTurnoActive(turno){
+  document.getElementById('turno-status').textContent='Turno en curso';
+  document.getElementById('btn-turno-start').style.display='none';
+  document.getElementById('btn-turno-end').style.display='inline-flex';
+  document.getElementById('turno-info').style.display='grid';
+  const startDate=turno.startTime?.toDate?.()||new Date();
+  document.getElementById('turno-start-display').textContent=startDate.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'});
+  document.getElementById('turno-accumulated').textContent=formatDuration(turno.accumulatedSeconds||0);
+}
+
+function setTurnoInactive(){
+  document.getElementById('turno-status').textContent='Sin turno activo';
+  document.getElementById('turno-timer').textContent='00:00:00';
+  document.getElementById('btn-turno-start').style.display='inline-flex';
+  document.getElementById('btn-turno-end').style.display='none';
+  document.getElementById('turno-info').style.display='none';
+  if(turnoInterval){clearInterval(turnoInterval);turnoInterval=null;}
+  const ft=document.getElementById('floating-timer');
+  if(ft) ft.style.display='none';
+}
+
+async function startTurno(){
+  const device=getDeviceInfo();
+  turnoStartTime=new Date();
+  accumulatedSeconds=0;
+  const turnoData={
+    startTime: turnoStartTime,
+    endTime: null,
+    accumulatedSeconds: 0,
+    status: 'active',
+    device: device.label,
+    isMobile: device.isMobile,
+    ua: device.ua
+  };
+  currentTurnoId=await window.saveTurnoToFirebase(turnoData);
+  setTurnoActive({...turnoData, startTime:{toDate:()=>turnoStartTime}});
+  startTimer();
+  toast('✅ Turno iniciado — ' + turnoStartTime.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}));
+}
+
+async function endTurno(status='ended'){
+  if(!currentTurnoId) return;
+  if(turnoInterval){clearInterval(turnoInterval);turnoInterval=null;}
+  const endTime=new Date();
+  const elapsed=Math.floor((endTime-turnoStartTime)/1000)+accumulatedSeconds;
+  await window.updateTurnoInFirebase(currentTurnoId,{
+    endTime, accumulatedSeconds:elapsed, status
+  });
+  currentTurnoId=null;
+  turnoStartTime=null;
+  accumulatedSeconds=0;
+  if(status==='ended'){
+    setTurnoInactive();
+    toast('👋 Turno finalizado — duración: '+formatDuration(elapsed));
+    // Refresh history if visible
+    loadTurnoHistory();
+  }
+}
+
+async function resumeTurno(){
+  const interrupted=window._interruptedTurno;
+  if(!interrupted) return;
+  document.getElementById('resume-banner').style.display='none';
+  currentTurnoId=interrupted.id;
+  turnoStartTime=new Date();
+  accumulatedSeconds=interrupted.accumulatedSeconds||0;
+  await window.updateTurnoInFirebase(currentTurnoId,{status:'active',resumedAt:turnoStartTime});
+  setTurnoActive({...interrupted,startTime:{toDate:()=>new Date(interrupted.startTime.toDate())}});
+  startTimer();
+  toast('▶️ Turno reanudado');
+}
+
+async function startFreshTurno(){
+  document.getElementById('resume-banner').style.display='none';
+  window._interruptedTurno=null;
+  await startTurno();
+}
+
+let turnoFilter='today';
+function setTurnoFilter(filter, btn){
+  turnoFilter=filter;
+  document.querySelectorAll('.turno-filter-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  const dateFilters=document.getElementById('turno-date-filters');
+  if(dateFilters) dateFilters.style.display=filter==='custom'?'flex':'none';
+  // Set default date range for custom
+  if(filter==='custom'){
+    const today=new Date().toISOString().split('T')[0];
+    if(!document.getElementById('turno-date-from').value) document.getElementById('turno-date-from').value=today;
+    if(!document.getElementById('turno-date-to').value) document.getElementById('turno-date-to').value=today;
+  }
+  loadTurnoHistory();
+}
+
+async function loadTurnoHistory(){
+  const list=document.getElementById('turno-history-list');
+  list.innerHTML='<div style="padding:20px;text-align:center;color:var(--text-dim);font-size:13px;">Cargando...</div>';
+  const allTurnos=await window.getRecentTurnos();
+  const userEmail=document.getElementById('user-email').textContent;
+  const isAdmin=ADMINS.includes(userEmail);
+
+  // Filter by user (non-admins see only their own)
+  let turnos=isAdmin?allTurnos:allTurnos.filter(t=>t.userEmail===userEmail);
+
+  // Filter by period
+  const now=new Date();
+  const startOfDay=new Date(now); startOfDay.setHours(0,0,0,0);
+  const startOfWeek=new Date(now); startOfWeek.setDate(now.getDate()-now.getDay()); startOfWeek.setHours(0,0,0,0);
+  const startOfMonth=new Date(now.getFullYear(),now.getMonth(),1);
+
+  if(turnoFilter==='today') turnos=turnos.filter(t=>t.startTime?.toDate?.()>=startOfDay);
+  else if(turnoFilter==='week') turnos=turnos.filter(t=>t.startTime?.toDate?.()>=startOfWeek);
+  else if(turnoFilter==='month') turnos=turnos.filter(t=>t.startTime?.toDate?.()>=startOfMonth);
+  else if(turnoFilter==='custom'){
+    const from=document.getElementById('turno-date-from')?.value;
+    const to=document.getElementById('turno-date-to')?.value;
+    if(from){ const d=new Date(from); d.setHours(0,0,0,0); turnos=turnos.filter(t=>t.startTime?.toDate?.()>=d); }
+    if(to){ const d=new Date(to); d.setHours(23,59,59,999); turnos=turnos.filter(t=>t.startTime?.toDate?.()<=d); }
+  }
+
+  // Calculate total accumulated time
+  const totalSecs=turnos.reduce((sum,t)=>sum+(t.accumulatedSeconds||0),0);
+  const summaryEl=document.getElementById('turno-summary');
+  if(summaryEl&&turnos.length){
+    summaryEl.style.display='flex';
+    document.getElementById('turno-summary-value').textContent=formatDuration(totalSecs);
+    const filterLabel=turnoFilter==='today'?'hoy':turnoFilter==='week'?'esta semana':turnoFilter==='month'?'este mes':'el período seleccionado';
+    document.getElementById('turno-summary-sub').textContent=`${turnos.length} turno${turnos.length!==1?'s':''} en ${filterLabel}`;
+  } else if(summaryEl){ summaryEl.style.display='none'; }
+
+  if(!turnos.length){
+    list.innerHTML='<div style="padding:20px;text-align:center;color:var(--text-dim);font-size:13px;">Sin registros en este período</div>';
+    return;
+  }
+  list.innerHTML=turnos.map(t=>{
+    const start=t.startTime?.toDate?.();
+    const end=t.endTime?.toDate?.();
+    const dur=t.accumulatedSeconds?formatDuration(t.accumulatedSeconds):'—';
+    const startStr=start?start.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
+    const endStr=end?end.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
+    const dateStr=start?start.toLocaleDateString('es-CO',{day:'2-digit',month:'short'}):'—';
+    const statusClass=t.status==='active'?'active':t.status==='interrupted'?'interrupted':'ended';
+    const statusLabel=t.status==='active'?'En turno':t.status==='interrupted'?'Interrumpido':'Finalizado';
+    const deviceIcon=t.isMobile?'📱':'💻';
+    return `<div class="turno-row">
+      <div class="turno-row-date">${dateStr}</div>
+      ${isAdmin?`<div class="turno-row-user">${t.userEmail||'—'}</div>`:''}
+      <div class="turno-row-time">${startStr} → ${endStr}</div>
+      <div class="turno-row-dur">${dur}</div>
+      <div class="turno-row-device">${deviceIcon}</div>
+      <div class="turno-row-status ${statusClass}">${statusLabel}</div>
+    </div>`;
+  }).join('');
+}
+
+// Draggable floating timer
+(function(){
+  function initDraggable(){
+    const el=document.getElementById('floating-timer');
+    if(!el) return;
+
+    // Restore saved position
+    const saved=localStorage.getItem('ft_pos');
+    if(saved){
+      try{
+        const {left,top}=JSON.parse(saved);
+        el.style.left=left; el.style.top=top;
+        el.style.right='auto'; el.style.bottom='auto';
+      }catch{}
+    }
+
+    let isDragging=false,startX,startY,startLeft,startTop;
+
+    el.addEventListener('mousedown',e=>{
+      if(e.target.classList.contains('floating-timer-end')) return;
+      isDragging=true;
+      el.classList.add('dragging');
+      const rect=el.getBoundingClientRect();
+      startX=e.clientX; startY=e.clientY;
+      startLeft=rect.left; startTop=rect.top;
+      el.style.left=startLeft+'px'; el.style.top=startTop+'px';
+      el.style.right='auto'; el.style.bottom='auto';
+    });
+
+    document.addEventListener('mousemove',e=>{
+      if(!isDragging) return;
+      const dx=e.clientX-startX;
+      const dy=e.clientY-startY;
+      const newLeft=Math.max(0,Math.min(window.innerWidth-el.offsetWidth,startLeft+dx));
+      const newTop=Math.max(0,Math.min(window.innerHeight-el.offsetHeight,startTop+dy));
+      el.style.left=newLeft+'px';
+      el.style.top=newTop+'px';
+    });
+
+    document.addEventListener('mouseup',()=>{
+      if(!isDragging) return;
+      isDragging=false;
+      el.classList.remove('dragging');
+      localStorage.setItem('ft_pos',JSON.stringify({left:el.style.left,top:el.style.top}));
+    });
+
+    // Touch support
+    el.addEventListener('touchstart',e=>{
+      if(e.target.classList.contains('floating-timer-end')) return;
+      const t=e.touches[0];
+      isDragging=true;
+      el.classList.add('dragging');
+      const rect=el.getBoundingClientRect();
+      startX=t.clientX; startY=t.clientY;
+      startLeft=rect.left; startTop=rect.top;
+      el.style.left=startLeft+'px'; el.style.top=startTop+'px';
+      el.style.right='auto'; el.style.bottom='auto';
+    },{passive:true});
+
+    document.addEventListener('touchmove',e=>{
+      if(!isDragging) return;
+      const t=e.touches[0];
+      const newLeft=Math.max(0,Math.min(window.innerWidth-el.offsetWidth,startLeft+(t.clientX-startX)));
+      const newTop=Math.max(0,Math.min(window.innerHeight-el.offsetHeight,startTop+(t.clientY-startY)));
+      el.style.left=newLeft+'px'; el.style.top=newTop+'px';
+    },{passive:true});
+
+    document.addEventListener('touchend',()=>{
+      if(!isDragging) return;
+      isDragging=false;
+      el.classList.remove('dragging');
+      localStorage.setItem('ft_pos',JSON.stringify({left:el.style.left,top:el.style.top}));
+    });
+  }
+  // Init after DOM ready
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',initDraggable);
+  else initDraggable();
+})();
+
+// Auto-logout on tab close
+window.addEventListener('beforeunload', ()=>{
+  if(currentTurnoId && turnoStartTime){
+    const elapsed=Math.floor((Date.now()-turnoStartTime.getTime())/1000)+accumulatedSeconds;
+    // Use sendBeacon for reliable logout on close
+    const data=JSON.stringify({id:currentTurnoId,elapsed,status:'interrupted'});
+    window.updateTurnoInFirebase(currentTurnoId,{
+      endTime:new Date(), accumulatedSeconds:elapsed, status:'interrupted'
+    });
+  }
+});
+
+// ── CUMPLIMIENTO ──
+const MALLA_SCRIPT='https://script.google.com/macros/s/AKfycbyxBZWba6M1eXcwQUdBBUTqTrgGd8zwHiM6wwecXI3mUYOUP-RT9LnxSwqeXRy9prCm/exec';
+const TOLERANCE_MINS=5;
+let cumplFilter='today';
+let cumplSortAsc=true;
+let cumplStatusFilter=null;
+let cumplAllRows=[];
+
+function setCumplFilter(f,btn){
+  cumplFilter=f;
+  document.querySelectorAll('.cumpl-filter-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  const dr=document.getElementById('cumpl-date-row');
+  if(dr) dr.style.display=f==='custom'?'flex':'none';
+  if(f==='custom'){
+    const today=new Date().toISOString().split('T')[0];
+    if(!document.getElementById('cumpl-date-from').value) document.getElementById('cumpl-date-from').value=today;
+    if(!document.getElementById('cumpl-date-to').value) document.getElementById('cumpl-date-to').value=today;
+  }
+  loadCumplimiento();
+}
+
+function parseDate(dateStr){
+  if(!dateStr) return null;
+  const s=String(dateStr).trim();
+  // Handle DD/MM/YYYY or D/M/YYYY
+  if(s.includes('/')){
+    const parts=s.split('/');
+    if(parts.length===3){
+      const day=parts[0].padStart(2,'0');
+      const mon=parts[1].padStart(2,'0');
+      const yr=parts[2].length===2?'20'+parts[2]:parts[2];
+      const d=new Date(`${yr}-${mon}-${day}T00:00:00`);
+      if(!isNaN(d)) return d;
+    }
+  }
+  // Handle YYYY-MM-DD
+  const d=new Date(s+'T00:00:00');
+  if(!isNaN(d)) return d;
+  return null;
+}
+
+function parseTime(dateStr, timeStr){
+  if(!dateStr||!timeStr||String(timeStr).trim()==='0'||String(timeStr).trim()==='') return null;
+  const timeS=String(timeStr).trim();
+  const parts=timeS.split(':').map(Number);
+  const h=parts[0]||0, m=parts[1]||0;
+  const d=parseDate(String(dateStr));
+  if(!d) return null;
+  d.setHours(h,m,0,0);
+  return d;
+}
+
+function getStatus(scheduled, actual, novedad, now){
+  if(novedad&&novedad.trim()) return {label:novedad.trim(),cls:'novedad',icon:'📋'};
+  if(!scheduled) return {label:'Sin programar',cls:'pendiente',icon:'—'};
+  if(now<scheduled) return {label:'Pendiente por iniciar',cls:'pendiente',icon:'⏳'};
+  if(!actual) return {label:'Ausente',cls:'ausente',icon:'🔴'};
+  const diffMins=Math.round((actual-scheduled)/60000);
+  if(diffMins<=TOLERANCE_MINS) return {label:'Cumplió',cls:'cumplió',icon:'🟢'};
+  return {label:`Tardanza +${diffMins} min`,cls:'tardanza',icon:'🟡'};
+}
+
 
 function switchTab(t){
   ['chat','library','analytics','turno','panel'].forEach(v=>{
@@ -2541,846 +3383,6 @@ async function loadCumplimiento(){
 let panelFilter='today';
 let panelActiveTimers={};
 
-function clearPanelFilters(){
-  panelFilter='today';
-  window._mobileFilter=false;
-  window._activeUsersFilter=null;
-  const select=document.getElementById('panel-user-filter');
-  if(select) select.value='all';
-  document.querySelectorAll('.panel-filter-btn').forEach((b,i)=>b.classList.toggle('active',i===0));
-  const dateRow=document.getElementById('panel-date-row');
-  if(dateRow) dateRow.style.display='none';
-  loadPanelData();
-}
-
-function setPanelFilter(filter,btn){
-  panelFilter=filter;
-  document.querySelectorAll('.panel-filter-btn').forEach(b=>b.classList.remove('active'));
-  btn.classList.add('active');
-  const dateRow=document.getElementById('panel-date-row');
-  if(dateRow) dateRow.style.display=filter==='custom'?'flex':'none';
-  if(filter==='custom'){
-    const today=new Date().toISOString().split('T')[0];
-    if(!document.getElementById('panel-date-from').value) document.getElementById('panel-date-from').value=today;
-    if(!document.getElementById('panel-date-to').value) document.getElementById('panel-date-to').value=today;
-  }
-  loadPanelData();
-}
-
-async function initPanelView(){
-  await loadPanelData();
-}
-
-async function loadPanelData(){
-  const allTurnos=await window.getRecentTurnos();
-  const now=new Date();
-  const startOfDay=new Date(now);startOfDay.setHours(0,0,0,0);
-  const startOfWeek=new Date(now);startOfWeek.setDate(now.getDate()-now.getDay());startOfWeek.setHours(0,0,0,0);
-  const startOfMonth=new Date(now.getFullYear(),now.getMonth(),1);
-
-  // Active now
-  const activeNow=allTurnos.filter(t=>t.status==='active');
-  renderActiveNow(activeNow);
-
-  // Filter by period
-  let turnos=[...allTurnos];
-  if(panelFilter==='today') turnos=turnos.filter(t=>t.startTime?.toDate?.()>=startOfDay);
-  else if(panelFilter==='week') turnos=turnos.filter(t=>t.startTime?.toDate?.()>=startOfWeek);
-  else if(panelFilter==='month') turnos=turnos.filter(t=>t.startTime?.toDate?.()>=startOfMonth);
-  else if(panelFilter==='custom'){
-    const from=document.getElementById('panel-date-from')?.value;
-    const to=document.getElementById('panel-date-to')?.value;
-    if(from){const d=new Date(from);d.setHours(0,0,0,0);turnos=turnos.filter(t=>t.startTime?.toDate?.()>=d);}
-    if(to){const d=new Date(to);d.setHours(23,59,59,999);turnos=turnos.filter(t=>t.startTime?.toDate?.()<=d);}
-  }
-
-  // Filter by user
-  const userFilter=document.getElementById('panel-user-filter')?.value||'all';
-  const allUsers=[...new Set(allTurnos.map(t=>t.userEmail).filter(Boolean))];
-  const userSelect=document.getElementById('panel-user-filter');
-  if(userSelect){
-    const current=userSelect.value;
-    userSelect.innerHTML='<option value="all">Todos</option>'+allUsers.map(u=>`<option value="${u}"${u===current?' selected':''}>${u}</option>`).join('');
-  }
-  if(userFilter!=='all') turnos=turnos.filter(t=>t.userEmail===userFilter);
-
-  // Summary
-  const totalSecs=turnos.reduce((s,t)=>s+(t.accumulatedSeconds||0),0);
-  const uniqueUsers=[...new Set(turnos.map(t=>t.userEmail).filter(Boolean))];
-  const mobileCount=turnos.filter(t=>t.isMobile).length;
-  // Get cumplimiento data for tardanza/ausente cards
-  const allMallaRows = window._lastMallaRows || [];
-  const tardanzaCount = allMallaRows.filter(r=>r.status?.cls==='tardanza').length;
-  const ausenteCount = allMallaRows.filter(r=>r.status?.cls==='ausente').length;
-
-  document.getElementById('panel-summary-grid').innerHTML=`
-    <div class="panel-summary-card"><div class="panel-summary-num">${formatDuration(totalSecs)}</div><div class="panel-summary-label">Horas totales acumuladas</div></div>
-    <div class="panel-summary-card"><div class="panel-summary-num">${turnos.length}</div><div class="panel-summary-label">Turnos registrados</div></div>
-    <div class="panel-summary-card" onclick="filterByActiveUsers('${uniqueUsers.join(',')}')" style="cursor:pointer;transition:all 0.2s;" onmouseover="this.style.borderColor='var(--p1)'" onmouseout="this.style.borderColor='var(--border)'"><div class="panel-summary-num">${uniqueUsers.length}</div><div class="panel-summary-label">👥 Usuarios activos <span style="font-size:9px;opacity:0.6;">— clic</span></div></div>
-    <div class="panel-summary-card" onclick="filterByMobile()" style="cursor:pointer;transition:all 0.2s;" onmouseover="this.style.borderColor='#fb923c'" onmouseout="this.style.borderColor='var(--border)'"><div class="panel-summary-num" style="${mobileCount>0?'color:#fb923c;-webkit-text-fill-color:#fb923c':''}">${mobileCount}</div><div class="panel-summary-label">📱 Desde móvil <span style="font-size:9px;opacity:0.6;">— clic</span></div></div>
-    <div class="panel-summary-card" onclick="switchTab('turno');setTimeout(()=>{switchTurnoTab('malla');setTimeout(()=>filterCumplByStatus('tardanza'),300)},200)" style="cursor:pointer;transition:all 0.2s;" onmouseover="this.style.borderColor='#fbbf24'" onmouseout="this.style.borderColor='var(--border)'"><div class="panel-summary-num" style="color:#fbbf24;-webkit-text-fill-color:#fbbf24">${tardanzaCount}</div><div class="panel-summary-label">🟡 Tardanzas <span style="font-size:9px;opacity:0.6;">— clic</span></div></div>
-    <div class="panel-summary-card" onclick="switchTab('turno');setTimeout(()=>{switchTurnoTab('malla');setTimeout(()=>filterCumplByStatus('ausente'),300)},200)" style="cursor:pointer;transition:all 0.2s;" onmouseover="this.style.borderColor='#f87171'" onmouseout="this.style.borderColor='var(--border)'"><div class="panel-summary-num" style="color:#f87171;-webkit-text-fill-color:#f87171">${ausenteCount}</div><div class="panel-summary-label">🔴 Ausentes <span style="font-size:9px;opacity:0.6;">— clic</span></div></div>`;
-
-  // Table
-  const tbody=document.getElementById('panel-table-body');
-  if(!turnos.length){tbody.innerHTML='<div class="panel-empty">Sin registros en este período</div>';return;}
-  tbody.innerHTML=turnos.map(t=>{
-    const start=t.startTime?.toDate?.();
-    const end=t.endTime?.toDate?.();
-    const dur=t.accumulatedSeconds?formatDuration(t.accumulatedSeconds):'—';
-    const startStr=start?start.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
-    const endStr=end?end.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
-    const dateStr=start?start.toLocaleDateString('es-CO',{day:'2-digit',month:'short',year:'2-digit'}):'—';
-    const statusClass=t.status==='active'?'active':t.status==='interrupted'?'interrupted':'ended';
-    const statusLabel=t.status==='active'?'En turno':t.status==='interrupted'?'Interrumpido':'Finalizado';
-    const name=t.userName||t.userEmail?.split('@')[0]||'—';
-    return `<div class="panel-table-row">
-      <div class="panel-cell-user"><div class="panel-cell-name">${esc(name)}</div><div class="panel-cell-email">${esc(t.userEmail||'')}</div></div>
-      <div class="panel-cell">${dateStr}</div>
-      <div class="panel-cell">${startStr} → ${endStr}</div>
-      <div class="panel-cell highlight">${dur}</div>
-      <div><span class="panel-badge ${t.isMobile?'mobile':'desktop'}">${t.isMobile?'📱 Móvil':'💻 Desktop'}</span></div>
-      <div><span class="turno-row-status ${statusClass}">${statusLabel}</span></div>
-    </div>`;
-  }).join('');
-}
-
-function filterByMobile(){
-  const select=document.getElementById('panel-user-filter');
-  if(!select) return;
-  // Show all mobile users - set filter to 'all' and reload filtered
-  window._mobileFilter=true;
-  window._activeUsersFilter=null;
-  loadPanelDataFiltered();
-}
-
-function filterByActiveUsers(users){
-  window._mobileFilter=false;
-  window._activeUsersFilter=null;
-  // Just show all users in period - reset user filter
-  const select=document.getElementById('panel-user-filter');
-  if(select) select.value='all';
-  loadPanelData();
-}
-
-async function loadPanelDataFiltered(){
-  const allTurnos=await window.getRecentTurnos();
-  const now=new Date();
-  const startOfDay=new Date(now);startOfDay.setHours(0,0,0,0);
-  const startOfWeek=new Date(now);startOfWeek.setDate(now.getDate()-now.getDay());startOfWeek.setHours(0,0,0,0);
-  const startOfMonth=new Date(now.getFullYear(),now.getMonth(),1);
-
-  let turnos=[...allTurnos];
-  if(panelFilter==='today') turnos=turnos.filter(t=>t.startTime?.toDate?.()>=startOfDay);
-  else if(panelFilter==='week') turnos=turnos.filter(t=>t.startTime?.toDate?.()>=startOfWeek);
-  else if(panelFilter==='month') turnos=turnos.filter(t=>t.startTime?.toDate?.()>=startOfMonth);
-
-  // Apply mobile filter
-  if(window._mobileFilter) turnos=turnos.filter(t=>t.isMobile);
-
-  const tbody=document.getElementById('panel-table-body');
-  if(!turnos.length){tbody.innerHTML='<div class="panel-empty">Sin turnos desde móvil en este período</div>';return;}
-  tbody.innerHTML=turnos.map(t=>{
-    const start=t.startTime?.toDate?.();
-    const end=t.endTime?.toDate?.();
-    const dur=t.accumulatedSeconds?formatDuration(t.accumulatedSeconds):'—';
-    const startStr=start?start.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
-    const endStr=end?end.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
-    const dateStr=start?start.toLocaleDateString('es-CO',{day:'2-digit',month:'short',year:'2-digit'}):'—';
-    const statusClass=t.status==='active'?'active':t.status==='interrupted'?'interrupted':'ended';
-    const statusLabel=t.status==='active'?'En turno':t.status==='interrupted'?'Interrumpido':'Finalizado';
-    const name=t.userName||t.userEmail?.split('@')[0]||'—';
-    return `<div class="panel-table-row">
-      <div class="panel-cell-user"><div class="panel-cell-name">${esc(name)}</div><div class="panel-cell-email">${esc(t.userEmail||'')}</div></div>
-      <div class="panel-cell">${dateStr}</div>
-      <div class="panel-cell">${startStr} → ${endStr}</div>
-      <div class="panel-cell highlight">${dur}</div>
-      <div><span class="panel-badge ${t.isMobile?'mobile':'desktop'}">${t.isMobile?'📱 Móvil':'💻 Desktop'}</span></div>
-      <div><span class="turno-row-status ${statusClass}">${statusLabel}</span></div>
-    </div>`;
-  }).join('');
-  toast(`Mostrando ${turnos.length} turno${turnos.length!==1?'s':''} desde móvil`);
-}
-
-function renderActiveNow(active){
-  const grid=document.getElementById('panel-active-grid');
-  // Clear old timers
-  Object.values(panelActiveTimers).forEach(clearInterval);
-  panelActiveTimers={};
-
-  if(!active.length){
-    grid.innerHTML='<div style="color:var(--text-dim);font-size:12px;padding:10px;font-family:var(--mono);">Ningún usuario en turno ahora</div>';
-    return;
-  }
-  grid.innerHTML=active.map(t=>{
-    const name=t.userName||t.userEmail?.split('@')[0]||'—';
-    const since=t.startTime?.toDate?.();
-    const sinceStr=since?since.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
-    const id='pat_'+t.id;
-    return `<div class="panel-active-card">
-      ${t.isMobile?'<div class="panel-mobile-warning">⚠ Móvil</div>':'<div class="panel-active-device">💻</div>'}
-      <div class="panel-active-name">${esc(name)}</div>
-      <div class="panel-active-email">${esc(t.userEmail||'')}</div>
-      <div class="panel-active-time" id="${id}">00:00:00</div>
-      <div class="panel-active-since">desde las ${sinceStr}</div>
-    </div>`;
-  }).join('');
-
-  // Start timers for active users
-  active.forEach(t=>{
-    const id='pat_'+t.id;
-    const startTime=t.startTime?.toDate?.();
-    const accumulated=t.accumulatedSeconds||0;
-    if(!startTime) return;
-    panelActiveTimers[id]=setInterval(()=>{
-      const el=document.getElementById(id);
-      if(!el){clearInterval(panelActiveTimers[id]);return;}
-      const elapsed=Math.floor((Date.now()-startTime.getTime())/1000)+accumulated;
-      el.textContent=formatDuration(elapsed);
-    },1000);
-  });
-}
-
-async function confirmClearMetrics(){
-  if(!confirm('⚠️ ¿Estás seguro de que quieres borrar todas las métricas? Esta acción no se puede deshacer.')) return;
-  const btn = document.getElementById('btn-clear-metrics');
-  btn.textContent = 'Limpiando...';
-  btn.disabled = true;
-  const ok = await window.clearAllMetrics();
-  if(ok){
-    toast('Métricas limpiadas ✓');
-    loadAnalytics();
-  } else {
-    toast('Error al limpiar métricas');
-  }
-  btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg> Limpiar métricas';
-  btn.disabled = false;
-}
-
-const inp=document.getElementById('user-input');
-  const text=inp.value.trim();
-  if(streaming) return;
-  if(!text && !attachedFile) return;
-  if(attachedFile && !attachedFileData){ toast('Espera un momento, cargando imagen...'); return; }
-  if(surveyTimer){clearTimeout(surveyTimer);surveyTimer=null;}
-  inp.value='';autoResize();streaming=true;
-  document.getElementById('send-btn').disabled=true;
-  const fileDataToSend = attachedFileData;
-  const fileTypeToSend = attachedFileType;
-  const fileNameToSend = attachedFile?.name;
-  removeEmpty();addUserMsg(text, fileDataToSend, fileTypeToSend, fileNameToSend);
-  // Build message content
-  let msgContent;
-  if(fileDataToSend){
-    msgContent=[];
-    if(fileTypeToSend.startsWith('image/')){
-      msgContent.push({type:'image',source:{type:'base64',media_type:fileTypeToSend,data:fileDataToSend}});
-    } else {
-      msgContent.push({type:'document',source:{type:'base64',media_type:'application/pdf',data:fileDataToSend}});
-    }
-    if(text) msgContent.push({type:'text',text});
-    else msgContent.push({type:'text',text:'Analiza este archivo y ayúdame con base en el manual de operaciones.'});
-  } else {
-    msgContent = text;
-  }
-  history.push({role:'user',content:msgContent});
-  clearFile();
-  // Track
-  window.trackEvent&&window.trackEvent('chat',{question:text,hasFile:!!attachedFile});
-  setStatus('loading','Leyendo...');
-  const fresh=await fetchSheet();
-  const manual=fresh||sheetData||'(Manual no disponible)';
-  const system=sysBase+'\n\n'+manual+'\n\n---\nResponde siempre en español. Sé claro, práctico y directo.';
-  const msgs=document.getElementById('messages');
-  const msgId='smsg_'+Date.now();const bubbleId='sb_'+Date.now();
-  const div=document.createElement('div');div.className='msg bot';div.id=msgId;
-  div.innerHTML=`<div class="avatar bot">PG</div><div class="bwrap"><div class="bubble" id="${bubbleId}"><span style="color:var(--p1)">▋</span></div></div>`;
-  msgs.appendChild(div);scrollDown();
-  const bubble=document.getElementById(bubbleId);let full='';
-  try{
-    const res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:1024,stream:true,system,messages:history})});
-    if(!res.ok){const e=await res.json().catch(()=>({}));throw new Error(e.error?.message||'Error '+res.status);}
-    const reader=res.body.getReader();const dec=new TextDecoder();
-    while(true){const{done,value}=await reader.read();if(done)break;for(const line of dec.decode(value).split('\n')){if(!line.startsWith('data: '))continue;const d=line.slice(6).trim();if(d==='[DONE]')continue;try{const p=JSON.parse(d);if(p.type==='content_block_delta'&&p.delta?.text){full+=p.delta.text;bubble.innerHTML=fmtMd(full)+'<span style="color:var(--p1)">▋</span>';scrollDown();}}catch{}}}
-    document.getElementById(msgId).id='';bubble.innerHTML=fmtMd(full);
-    // User avatar
-    const avatarEl = div.querySelector('.avatar.user');
-    const userAvatar = document.getElementById('user-avatar')?.src;
-    if(avatarEl && userAvatar) avatarEl.innerHTML=`<img src="${userAvatar}" alt=""/>`;
-    div.querySelector('.bwrap').innerHTML+='<div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-top:2px;"><span class="src-tag">🧠 Manual en vivo</span><span class="msg-meta">Pi GOps · '+now()+'</span></div>';
-    history.push({role:'assistant',content:full});
-  }catch(err){
-    div.remove();
-    if((err.message?.includes('529')||err.message?.includes('overloaded'))&&retries<2){streaming=false;document.getElementById('send-btn').disabled=false;history.pop();await sleep(2000*(retries+1));history.push({role:'user',content:text});await sendMessage(retries+1);return;}
-    addError(err.message||'No se pudo obtener respuesta.');
-  }
-  streaming=false;setStatus('on','Activo');document.getElementById('send-btn').disabled=false;
-  scheduleSurvey();
-}
-
-function addUserMsg(text, fileData, fileType, fileName){
-  const msgs=document.getElementById('messages');
-  const d=document.createElement('div');d.className='msg user';
-  const avatar=document.getElementById('user-avatar')?.src;
-  let fileHtml='';
-  if(fileData && fileType){
-    if(fileType.startsWith('image/')){
-      fileHtml=`<img class="msg-image" src="data:${fileType};base64,${fileData}" alt="imagen adjunta"/>`;
-    } else {
-      fileHtml=`<div class="msg-pdf">📄 ${esc(fileName||'Documento PDF')}</div>`;
-    }
-  }
-  d.innerHTML=`<div class="bwrap"><div class="bubble">${text?esc(text).replace(/\n/g,'<br>'):''}${fileHtml}</div><div class="msg-meta">${now()}</div></div><div class="avatar user">${avatar?`<img src="${avatar}" alt=""/>`:'👤'}</div>`;
-  msgs.appendChild(d);scrollDown();
-}
-function addError(msg){const msgs=document.getElementById('messages');const d=document.createElement('div');d.className='msg bot';d.innerHTML='<div class="avatar bot">PG</div><div class="error-bub">⚠ '+esc(msg)+'</div>';msgs.appendChild(d);scrollDown();}
-function removeEmpty(){const e=document.getElementById('empty-state');if(e)e.remove();}
-function fmtMd(t){
-  let h=esc(t);
-  // Bold and code
-  h=h.replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>');
-  h=h.replace(/`([^`]+)`/g,'<code>$1</code>');
-  // Headers
-  h=h.replace(/^### (.+)$/gm,'<strong style="display:block;margin:6px 0 2px;font-size:13px;color:var(--p3)">$1</strong>');
-  h=h.replace(/^## (.+)$/gm,'<strong style="display:block;margin:8px 0 3px;color:var(--p2)">$1</strong>');
-  // Lists — collect consecutive list items into a single ul/ol
-  h=h.replace(/(^[\-\*] .+$\n?)+/gm, m=>{
-    const items=m.trim().split('\n').map(l=>`<li>${l.replace(/^[\-\*] /,'')}</li>`).join('');
-    return `<ul>${items}</ul>`;
-  });
-  h=h.replace(/(^\d+\. .+$\n?)+/gm, m=>{
-    const items=m.trim().split('\n').map(l=>`<li>${l.replace(/^\d+\. /,'')}</li>`).join('');
-    return `<ol>${items}</ol>`;
-  });
-  // Remove excessive blank lines (3+ newlines -> 2)
-  h=h.replace(/\n{3,}/g,'\n\n');
-  // Paragraphs
-  h=h.replace(/\n\n/g,'</p><p>');
-  h=h.replace(/\n/g,'<br>');
-  // Clean up empty paragraphs
-  h=h.replace(/<p><\/p>/g,'');
-  h=h.replace(/<p>(<br>)+<\/p>/g,'');
-  h=h.replace(/(<br>){2,}/g,'<br>');
-  return '<p>'+h+'</p>';
-}
-function parseCSV(line){const r=[];let cur='',q=false;for(const ch of line){if(ch==='"'){q=!q;}else if(ch===','&&!q){r.push(cur.trim());cur='';}else cur+=ch;}r.push(cur.trim());return r;}
-function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
-function now(){return new Date().toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'});}
-function scrollDown(){const c=document.getElementById('chat-container');c.scrollTop=c.scrollHeight;}
-function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
-function setStatus(state,text){document.getElementById('sdot').className='sdot '+state;document.getElementById('stext').textContent=text;}
-function toast(msg){const t=document.createElement('div');t.className='toast';t.textContent=msg;document.body.appendChild(t);setTimeout(()=>t.remove(),2500);}
-// Survey logic
-
-
-async function selectSurvey(answer, btn){
-  surveyAnswer=answer;
-  document.querySelectorAll('.survey-btn').forEach(b=>b.classList.remove('sel'));
-  btn.classList.add('sel');
-  if(answer==='yes'){
-    // Auto-submit immediately
-    await window.trackEvent('survey',{resolved:'yes',feedback:null,conversationLength:history.length});
-    closeSurvey();
-    toast('¡Gracias por tu respuesta! 🎉');
-  } else {
-    // Show feedback field for partial/no
-    document.getElementById('survey-followup').style.display='block';
-    document.getElementById('survey-submit').style.display='block';
-    document.getElementById('survey-feedback').focus();
-  }
-}
-
-async function submitSurvey(){
-  if(!surveyAnswer) return;
-  const feedback=document.getElementById('survey-feedback').value.trim();
-  await window.trackEvent('survey',{
-    resolved: surveyAnswer,
-    feedback: feedback||null,
-    conversationLength: history.length
-  });
-  closeSurvey();
-  toast(surveyAnswer==='yes'?'¡Gracias por tu respuesta! 🎉':'Gracias, usaremos esto para mejorar 💪');
-}
-
-// Voice recognition
-let recognition = null;
-let isRecording = false;
-
-function toggleMic(){
-  if(!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)){
-    toast('Tu navegador no soporta transcripción por voz');
-    return;
-  }
-  if(isRecording){
-    stopMic();
-  } else {
-    startMic();
-  }
-}
-
-function startMic(){
-  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-  recognition = new SpeechRecognition();
-  recognition.lang = 'es-CO';
-  recognition.continuous = true;
-  recognition.interimResults = true;
-
-  const inp = document.getElementById('user-input');
-  const micBtn = document.getElementById('mic-btn');
-  const baseText = inp.value;
-
-  recognition.onstart = () => {
-    isRecording = true;
-    micBtn.classList.add('recording');
-    toast('🎤 Escuchando... habla tu consulta');
-  };
-
-  recognition.onresult = (e) => {
-    let interim = '';
-    let final = '';
-    for(let i = e.resultIndex; i < e.results.length; i++){
-      if(e.results[i].isFinal){
-        final += e.results[i][0].transcript;
-      } else {
-        interim += e.results[i][0].transcript;
-      }
-    }
-    inp.value = baseText + final + interim;
-    autoResize();
-  };
-
-  recognition.onerror = (e) => {
-    stopMic();
-    if(e.error === 'not-allowed') toast('Permiso de micrófono denegado');
-    else toast('Error al transcribir: ' + e.error);
-  };
-
-  recognition.onend = () => {
-    if(isRecording) stopMic();
-  };
-
-  recognition.start();
-}
-
-function stopMic(){
-  isRecording = false;
-  document.getElementById('mic-btn').classList.remove('recording');
-  if(recognition){ recognition.stop(); recognition = null; }
-}
-
-// Drag-to-resize FAQ sidebar
-(function(){
-  const resizer = document.getElementById('faq-resizer');
-  const sidebar = document.querySelector('.faq-sidebar');
-  if(!resizer || !sidebar) return;
-  let startX, startW;
-  resizer.addEventListener('mousedown', e => {
-    startX = e.clientX;
-    startW = sidebar.offsetWidth;
-    resizer.classList.add('dragging');
-    document.body.style.cursor = 'col-resize';
-    document.body.style.userSelect = 'none';
-    function onMove(e){
-      const diff = e.clientX - startX;
-      const newW = Math.min(400, Math.max(160, startW + diff));
-      sidebar.style.width = newW + 'px';
-    }
-    function onUp(){
-      resizer.classList.remove('dragging');
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-      document.removeEventListener('mousemove', onMove);
-      document.removeEventListener('mouseup', onUp);
-    }
-    document.addEventListener('mousemove', onMove);
-    document.addEventListener('mouseup', onUp);
-  });
-  // Touch support
-  resizer.addEventListener('touchstart', e => {
-    startX = e.touches[0].clientX;
-    startW = sidebar.offsetWidth;
-    resizer.classList.add('dragging');
-    function onMove(e){ const diff=e.touches[0].clientX-startX; sidebar.style.width=Math.min(400,Math.max(160,startW+diff))+'px'; }
-    function onUp(){ resizer.classList.remove('dragging'); document.removeEventListener('touchmove',onMove); document.removeEventListener('touchend',onUp); }
-    document.addEventListener('touchmove', onMove);
-    document.addEventListener('touchend', onUp);
-  });
-})();
-
-// ── TURNO MODULE ──
-let turnoInterval=null;
-let currentTurnoId=null;
-let turnoStartTime=null;
-let accumulatedSeconds=0;
-
-function getDeviceInfo(){
-  const ua=navigator.userAgent;
-  const isMobile=/Android|iPhone|iPad|iPod|Mobile/i.test(ua);
-  return {
-    isMobile,
-    icon: isMobile ? '📱' : '💻',
-    label: isMobile ? 'Móvil' : 'Desktop',
-    ua: ua.substring(0,120)
-  };
-}
-
-function formatDuration(seconds){
-  const h=Math.floor(seconds/3600);
-  const m=Math.floor((seconds%3600)/60);
-  const s=seconds%60;
-  return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
-}
-
-function startTimer(){
-  if(turnoInterval) clearInterval(turnoInterval);
-  // Show floating timer
-  const ft=document.getElementById('floating-timer');
-  if(ft) ft.style.display='flex';
-  turnoInterval=setInterval(()=>{
-    const elapsed=Math.floor((Date.now()-turnoStartTime.getTime())/1000)+accumulatedSeconds;
-    const formatted=formatDuration(elapsed);
-    document.getElementById('turno-timer').textContent=formatted;
-    const ftTime=document.getElementById('floating-timer-time');
-    if(ftTime) ftTime.textContent=formatted;
-  },1000);
-}
-
-async function initTurnoView(){
-  const device=getDeviceInfo();
-  document.getElementById('turno-device-icon').textContent=device.icon;
-  document.getElementById('turno-device-label').textContent=device.label;
-  document.getElementById('turno-date').textContent=new Date().toLocaleDateString('es-CO',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
-
-  // Check for interrupted turno today
-  const existing=await window.getTodayTurno();
-  if(existing && existing.status==='active'){
-    // Turno still active — restore it
-    currentTurnoId=existing.id;
-    turnoStartTime=existing.startTime.toDate();
-    accumulatedSeconds=existing.accumulatedSeconds||0;
-    setTurnoActive(existing);
-    startTimer();
-  } else if(existing && existing.status==='interrupted'){
-    // Show resume banner
-    const interruptedAt=existing.endTime?.toDate();
-    const timeStr=interruptedAt?interruptedAt.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'';
-    document.getElementById('resume-msg').textContent=`Detectamos que tu turno fue interrumpido a las ${timeStr}. ¿Deseas continuar sumando el tiempo?`;
-    document.getElementById('resume-banner').style.display='block';
-    window._interruptedTurno=existing;
-  }
-
-  // Show history for all users
-  loadTurnoHistory();
-}
-
-function setTurnoActive(turno){
-  document.getElementById('turno-status').textContent='Turno en curso';
-  document.getElementById('btn-turno-start').style.display='none';
-  document.getElementById('btn-turno-end').style.display='inline-flex';
-  document.getElementById('turno-info').style.display='grid';
-  const startDate=turno.startTime?.toDate?.()||new Date();
-  document.getElementById('turno-start-display').textContent=startDate.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'});
-  document.getElementById('turno-accumulated').textContent=formatDuration(turno.accumulatedSeconds||0);
-}
-
-function setTurnoInactive(){
-  document.getElementById('turno-status').textContent='Sin turno activo';
-  document.getElementById('turno-timer').textContent='00:00:00';
-  document.getElementById('btn-turno-start').style.display='inline-flex';
-  document.getElementById('btn-turno-end').style.display='none';
-  document.getElementById('turno-info').style.display='none';
-  if(turnoInterval){clearInterval(turnoInterval);turnoInterval=null;}
-  const ft=document.getElementById('floating-timer');
-  if(ft) ft.style.display='none';
-}
-
-async function startTurno(){
-  const device=getDeviceInfo();
-  turnoStartTime=new Date();
-  accumulatedSeconds=0;
-  const turnoData={
-    startTime: turnoStartTime,
-    endTime: null,
-    accumulatedSeconds: 0,
-    status: 'active',
-    device: device.label,
-    isMobile: device.isMobile,
-    ua: device.ua
-  };
-  currentTurnoId=await window.saveTurnoToFirebase(turnoData);
-  setTurnoActive({...turnoData, startTime:{toDate:()=>turnoStartTime}});
-  startTimer();
-  toast('✅ Turno iniciado — ' + turnoStartTime.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}));
-}
-
-async function endTurno(status='ended'){
-  if(!currentTurnoId) return;
-  if(turnoInterval){clearInterval(turnoInterval);turnoInterval=null;}
-  const endTime=new Date();
-  const elapsed=Math.floor((endTime-turnoStartTime)/1000)+accumulatedSeconds;
-  await window.updateTurnoInFirebase(currentTurnoId,{
-    endTime, accumulatedSeconds:elapsed, status
-  });
-  currentTurnoId=null;
-  turnoStartTime=null;
-  accumulatedSeconds=0;
-  if(status==='ended'){
-    setTurnoInactive();
-    toast('👋 Turno finalizado — duración: '+formatDuration(elapsed));
-    // Refresh history if visible
-    loadTurnoHistory();
-  }
-}
-
-async function resumeTurno(){
-  const interrupted=window._interruptedTurno;
-  if(!interrupted) return;
-  document.getElementById('resume-banner').style.display='none';
-  currentTurnoId=interrupted.id;
-  turnoStartTime=new Date();
-  accumulatedSeconds=interrupted.accumulatedSeconds||0;
-  await window.updateTurnoInFirebase(currentTurnoId,{status:'active',resumedAt:turnoStartTime});
-  setTurnoActive({...interrupted,startTime:{toDate:()=>new Date(interrupted.startTime.toDate())}});
-  startTimer();
-  toast('▶️ Turno reanudado');
-}
-
-async function startFreshTurno(){
-  document.getElementById('resume-banner').style.display='none';
-  window._interruptedTurno=null;
-  await startTurno();
-}
-
-let turnoFilter='today';
-function setTurnoFilter(filter, btn){
-  turnoFilter=filter;
-  document.querySelectorAll('.turno-filter-btn').forEach(b=>b.classList.remove('active'));
-  btn.classList.add('active');
-  const dateFilters=document.getElementById('turno-date-filters');
-  if(dateFilters) dateFilters.style.display=filter==='custom'?'flex':'none';
-  // Set default date range for custom
-  if(filter==='custom'){
-    const today=new Date().toISOString().split('T')[0];
-    if(!document.getElementById('turno-date-from').value) document.getElementById('turno-date-from').value=today;
-    if(!document.getElementById('turno-date-to').value) document.getElementById('turno-date-to').value=today;
-  }
-  loadTurnoHistory();
-}
-
-async function loadTurnoHistory(){
-  const list=document.getElementById('turno-history-list');
-  list.innerHTML='<div style="padding:20px;text-align:center;color:var(--text-dim);font-size:13px;">Cargando...</div>';
-  const allTurnos=await window.getRecentTurnos();
-  const userEmail=document.getElementById('user-email').textContent;
-  const isAdmin=ADMINS.includes(userEmail);
-
-  // Filter by user (non-admins see only their own)
-  let turnos=isAdmin?allTurnos:allTurnos.filter(t=>t.userEmail===userEmail);
-
-  // Filter by period
-  const now=new Date();
-  const startOfDay=new Date(now); startOfDay.setHours(0,0,0,0);
-  const startOfWeek=new Date(now); startOfWeek.setDate(now.getDate()-now.getDay()); startOfWeek.setHours(0,0,0,0);
-  const startOfMonth=new Date(now.getFullYear(),now.getMonth(),1);
-
-  if(turnoFilter==='today') turnos=turnos.filter(t=>t.startTime?.toDate?.()>=startOfDay);
-  else if(turnoFilter==='week') turnos=turnos.filter(t=>t.startTime?.toDate?.()>=startOfWeek);
-  else if(turnoFilter==='month') turnos=turnos.filter(t=>t.startTime?.toDate?.()>=startOfMonth);
-  else if(turnoFilter==='custom'){
-    const from=document.getElementById('turno-date-from')?.value;
-    const to=document.getElementById('turno-date-to')?.value;
-    if(from){ const d=new Date(from); d.setHours(0,0,0,0); turnos=turnos.filter(t=>t.startTime?.toDate?.()>=d); }
-    if(to){ const d=new Date(to); d.setHours(23,59,59,999); turnos=turnos.filter(t=>t.startTime?.toDate?.()<=d); }
-  }
-
-  // Calculate total accumulated time
-  const totalSecs=turnos.reduce((sum,t)=>sum+(t.accumulatedSeconds||0),0);
-  const summaryEl=document.getElementById('turno-summary');
-  if(summaryEl&&turnos.length){
-    summaryEl.style.display='flex';
-    document.getElementById('turno-summary-value').textContent=formatDuration(totalSecs);
-    const filterLabel=turnoFilter==='today'?'hoy':turnoFilter==='week'?'esta semana':turnoFilter==='month'?'este mes':'el período seleccionado';
-    document.getElementById('turno-summary-sub').textContent=`${turnos.length} turno${turnos.length!==1?'s':''} en ${filterLabel}`;
-  } else if(summaryEl){ summaryEl.style.display='none'; }
-
-  if(!turnos.length){
-    list.innerHTML='<div style="padding:20px;text-align:center;color:var(--text-dim);font-size:13px;">Sin registros en este período</div>';
-    return;
-  }
-  list.innerHTML=turnos.map(t=>{
-    const start=t.startTime?.toDate?.();
-    const end=t.endTime?.toDate?.();
-    const dur=t.accumulatedSeconds?formatDuration(t.accumulatedSeconds):'—';
-    const startStr=start?start.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
-    const endStr=end?end.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
-    const dateStr=start?start.toLocaleDateString('es-CO',{day:'2-digit',month:'short'}):'—';
-    const statusClass=t.status==='active'?'active':t.status==='interrupted'?'interrupted':'ended';
-    const statusLabel=t.status==='active'?'En turno':t.status==='interrupted'?'Interrumpido':'Finalizado';
-    const deviceIcon=t.isMobile?'📱':'💻';
-    return `<div class="turno-row">
-      <div class="turno-row-date">${dateStr}</div>
-      ${isAdmin?`<div class="turno-row-user">${t.userEmail||'—'}</div>`:''}
-      <div class="turno-row-time">${startStr} → ${endStr}</div>
-      <div class="turno-row-dur">${dur}</div>
-      <div class="turno-row-device">${deviceIcon}</div>
-      <div class="turno-row-status ${statusClass}">${statusLabel}</div>
-    </div>`;
-  }).join('');
-}
-
-// Draggable floating timer
-(function(){
-  function initDraggable(){
-    const el=document.getElementById('floating-timer');
-    if(!el) return;
-
-    // Restore saved position
-    const saved=localStorage.getItem('ft_pos');
-    if(saved){
-      try{
-        const {left,top}=JSON.parse(saved);
-        el.style.left=left; el.style.top=top;
-        el.style.right='auto'; el.style.bottom='auto';
-      }catch{}
-    }
-
-    let isDragging=false,startX,startY,startLeft,startTop;
-
-    el.addEventListener('mousedown',e=>{
-      if(e.target.classList.contains('floating-timer-end')) return;
-      isDragging=true;
-      el.classList.add('dragging');
-      const rect=el.getBoundingClientRect();
-      startX=e.clientX; startY=e.clientY;
-      startLeft=rect.left; startTop=rect.top;
-      el.style.left=startLeft+'px'; el.style.top=startTop+'px';
-      el.style.right='auto'; el.style.bottom='auto';
-    });
-
-    document.addEventListener('mousemove',e=>{
-      if(!isDragging) return;
-      const dx=e.clientX-startX;
-      const dy=e.clientY-startY;
-      const newLeft=Math.max(0,Math.min(window.innerWidth-el.offsetWidth,startLeft+dx));
-      const newTop=Math.max(0,Math.min(window.innerHeight-el.offsetHeight,startTop+dy));
-      el.style.left=newLeft+'px';
-      el.style.top=newTop+'px';
-    });
-
-    document.addEventListener('mouseup',()=>{
-      if(!isDragging) return;
-      isDragging=false;
-      el.classList.remove('dragging');
-      localStorage.setItem('ft_pos',JSON.stringify({left:el.style.left,top:el.style.top}));
-    });
-
-    // Touch support
-    el.addEventListener('touchstart',e=>{
-      if(e.target.classList.contains('floating-timer-end')) return;
-      const t=e.touches[0];
-      isDragging=true;
-      el.classList.add('dragging');
-      const rect=el.getBoundingClientRect();
-      startX=t.clientX; startY=t.clientY;
-      startLeft=rect.left; startTop=rect.top;
-      el.style.left=startLeft+'px'; el.style.top=startTop+'px';
-      el.style.right='auto'; el.style.bottom='auto';
-    },{passive:true});
-
-    document.addEventListener('touchmove',e=>{
-      if(!isDragging) return;
-      const t=e.touches[0];
-      const newLeft=Math.max(0,Math.min(window.innerWidth-el.offsetWidth,startLeft+(t.clientX-startX)));
-      const newTop=Math.max(0,Math.min(window.innerHeight-el.offsetHeight,startTop+(t.clientY-startY)));
-      el.style.left=newLeft+'px'; el.style.top=newTop+'px';
-    },{passive:true});
-
-    document.addEventListener('touchend',()=>{
-      if(!isDragging) return;
-      isDragging=false;
-      el.classList.remove('dragging');
-      localStorage.setItem('ft_pos',JSON.stringify({left:el.style.left,top:el.style.top}));
-    });
-  }
-  // Init after DOM ready
-  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',initDraggable);
-  else initDraggable();
-})();
-
-// Auto-logout on tab close
-window.addEventListener('beforeunload', ()=>{
-  if(currentTurnoId && turnoStartTime){
-    const elapsed=Math.floor((Date.now()-turnoStartTime.getTime())/1000)+accumulatedSeconds;
-    // Use sendBeacon for reliable logout on close
-    const data=JSON.stringify({id:currentTurnoId,elapsed,status:'interrupted'});
-    window.updateTurnoInFirebase(currentTurnoId,{
-      endTime:new Date(), accumulatedSeconds:elapsed, status:'interrupted'
-    });
-  }
-});
-
-// ── CUMPLIMIENTO ──
-const MALLA_SCRIPT='https://script.google.com/macros/s/AKfycbyxBZWba6M1eXcwQUdBBUTqTrgGd8zwHiM6wwecXI3mUYOUP-RT9LnxSwqeXRy9prCm/exec';
-const TOLERANCE_MINS=5;
-let cumplFilter='today';
-let cumplSortAsc=true;
-let cumplStatusFilter=null;
-let cumplAllRows=[];
-
-function setCumplFilter(f,btn){
-  cumplFilter=f;
-  document.querySelectorAll('.cumpl-filter-btn').forEach(b=>b.classList.remove('active'));
-  btn.classList.add('active');
-  const dr=document.getElementById('cumpl-date-row');
-  if(dr) dr.style.display=f==='custom'?'flex':'none';
-  if(f==='custom'){
-    const today=new Date().toISOString().split('T')[0];
-    if(!document.getElementById('cumpl-date-from').value) document.getElementById('cumpl-date-from').value=today;
-    if(!document.getElementById('cumpl-date-to').value) document.getElementById('cumpl-date-to').value=today;
-  }
-  loadCumplimiento();
-}
-
-function parseDate(dateStr){
-  if(!dateStr) return null;
-  const s=String(dateStr).trim();
-  // Handle DD/MM/YYYY or D/M/YYYY
-  if(s.includes('/')){
-    const parts=s.split('/');
-    if(parts.length===3){
-      const day=parts[0].padStart(2,'0');
-      const mon=parts[1].padStart(2,'0');
-      const yr=parts[2].length===2?'20'+parts[2]:parts[2];
-      const d=new Date(`${yr}-${mon}-${day}T00:00:00`);
-      if(!isNaN(d)) return d;
-    }
-  }
-  // Handle YYYY-MM-DD
-  const d=new Date(s+'T00:00:00');
-  if(!isNaN(d)) return d;
-  return null;
-}
-
-function parseTime(dateStr, timeStr){
-  if(!dateStr||!timeStr||String(timeStr).trim()==='0'||String(timeStr).trim()==='') return null;
-  const timeS=String(timeStr).trim();
-  const parts=timeS.split(':').map(Number);
-  const h=parts[0]||0, m=parts[1]||0;
-  const d=parseDate(String(dateStr));
-  if(!d) return null;
-  d.setHours(h,m,0,0);
-  return d;
-}
-
-function getStatus(scheduled, actual, novedad, now){
-  if(novedad&&novedad.trim()) return {label:novedad.trim(),cls:'novedad',icon:'📋'};
-  if(!scheduled) return {label:'Sin programar',cls:'pendiente',icon:'—'};
-  if(now<scheduled) return {label:'Pendiente por iniciar',cls:'pendiente',icon:'⏳'};
-  if(!actual) return {label:'Ausente',cls:'ausente',icon:'🔴'};
-  const diffMins=Math.round((actual-scheduled)/60000);
-  if(diffMins<=TOLERANCE_MINS) return {label:'Cumplió',cls:'cumplió',icon:'🟢'};
-  return {label:`Tardanza +${diffMins} min`,cls:'tardanza',icon:'🟡'};
-}
 
 function renderCumplRows(){
   const body=document.getElementById('cumpl-table-body');
