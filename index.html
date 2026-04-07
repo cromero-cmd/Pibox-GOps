@@ -838,8 +838,8 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 </div>
 
 <script>
-const APP_VERSION='6.2';
-const APP_CHANGELOG='Panel de control visible para administradores.';
+const APP_VERSION='6.3';
+const APP_CHANGELOG='Sub-pestaña Panel de control visible correctamente para admins.';
 const ADMINS=['cromero@pibox.app'];
 const SCRIPT_URL='https://script.google.com/macros/s/AKfycbyam6j2MG1NH11120KjvAfxU1f_z9BYh4uamQw8QgNeGsjpwoo394IeqzbDSPXSO9e5/exec';
 const MALLA_SCRIPT='https://script.google.com/macros/s/AKfycbyxBZWba6M1eXcwQUdBBUTqTrgGd8zwHiM6wwecXI3mUYOUP-RT9LnxSwqeXRy9prCm/exec';
@@ -901,6 +901,18 @@ window.onload=()=>{
   autoResize();
   initDraggableTimer();
   initFAQResizer();
+  // Re-apply admin visibility after DOM is ready
+  setTimeout(()=>{
+    const email=document.getElementById('user-email')?.textContent||'';
+    const adminList=['cromero@pibox.app'];
+    const isAdmin=adminList.includes(email);
+    const sp=document.getElementById('subtab-panel');
+    if(sp)sp.style.display=isAdmin?'flex':'none';
+    const cfgBtn=document.getElementById('btn-config');
+    if(cfgBtn)cfgBtn.style.display=isAdmin?'flex':'none';
+    const clearBtn=document.getElementById('btn-clear-metrics');
+    if(clearBtn)clearBtn.style.display=isAdmin?'flex':'none';
+  },1000);
 };
 
 // ── TABS ──
