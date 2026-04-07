@@ -42,6 +42,8 @@ onAuthStateChanged(auth, async user => {
     if (clearBtn) clearBtn.style.display = isAdmin ? 'flex' : 'none';
     const panelTab = document.getElementById('tab-panel');
     if (panelTab) panelTab.style.display = isAdmin ? 'flex' : 'none';
+    const subtabPanel = document.getElementById('subtab-panel');
+    if (subtabPanel) subtabPanel.style.display = isAdmin ? 'flex' : 'none';
     try {
       const snap = await getDoc(doc(db, 'configs', user.uid));
       if (snap.exists()) {
@@ -616,6 +618,7 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
       <div class="sub-tabs">
         <button class="sub-tab active" id="subtab-miturno" onclick="switchTurnoTab('miturno')">⏱ Mi turno</button>
         <button class="sub-tab" id="subtab-mimalla" onclick="switchTurnoTab('mimalla')">📋 Mi malla</button>
+        <button class="sub-tab" id="subtab-panel" onclick="switchTurnoTab('panel')" style="display:none;">👥 Panel de control</button>
       </div>
 
       <!-- Mi turno -->
@@ -835,8 +838,8 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 </div>
 
 <script>
-const APP_VERSION='6.0';
-const APP_CHANGELOG='Reconstrucción limpia — todas las funciones funcionando correctamente.';
+const APP_VERSION='6.1';
+const APP_CHANGELOG='Panel de control integrado como sub-pestaña en Turno (solo admins).';
 const ADMINS=['cromero@pibox.app'];
 const SCRIPT_URL='https://script.google.com/macros/s/AKfycbyam6j2MG1NH11120KjvAfxU1f_z9BYh4uamQw8QgNeGsjpwoo394IeqzbDSPXSO9e5/exec';
 const MALLA_SCRIPT='https://script.google.com/macros/s/AKfycbyxBZWba6M1eXcwQUdBBUTqTrgGd8zwHiM6wwecXI3mUYOUP-RT9LnxSwqeXRy9prCm/exec';
@@ -919,9 +922,12 @@ function switchTab(t){
 function switchTurnoTab(tab){
   document.getElementById('subview-miturno').style.display=tab==='miturno'?'block':'none';
   document.getElementById('subview-mimalla').style.display=tab==='mimalla'?'block':'none';
+  document.getElementById('subview-panel').style.display=tab==='panel'?'block':'none';
   document.getElementById('subtab-miturno').classList.toggle('active',tab==='miturno');
   document.getElementById('subtab-mimalla').classList.toggle('active',tab==='mimalla');
+  const sp=document.getElementById('subtab-panel');if(sp)sp.classList.toggle('active',tab==='panel');
   if(tab==='mimalla')loadMallaPersonal();
+  if(tab==='panel')loadPanel2();
 }
 
 // ── CONFIG ──
@@ -1577,6 +1583,110 @@ function initFAQResizer(){
     function onUp(){resizer.classList.remove('dragging');document.body.style.cursor='';document.body.style.userSelect='';document.removeEventListener('mousemove',onMove);document.removeEventListener('mouseup',onUp);}
     document.addEventListener('mousemove',onMove);document.addEventListener('mouseup',onUp);
   });
+}
+
+// ── PANEL DE CONTROL (subview) ──
+let panel2Filter='today';
+let panel2ActiveTimers={};
+
+function setPanelFilter2(f,btn){
+  panel2Filter=f;
+  ['today','week','month','custom'].forEach(x=>{const b=document.getElementById('pf-'+x);if(b)b.classList.toggle('active',x===f);});
+  const dr=document.getElementById('panel2-date-row');
+  if(dr)dr.style.display=f==='custom'?'flex':'none';
+  if(f==='custom'){const today=new Date().toISOString().split('T')[0];if(!document.getElementById('panel2-date-from').value)document.getElementById('panel2-date-from').value=today;if(!document.getElementById('panel2-date-to').value)document.getElementById('panel2-date-to').value=today;}
+  loadPanel2();
+}
+
+function clearPanel2(){
+  panel2Filter='today';
+  ['today','week','month','custom'].forEach((x,i)=>{const b=document.getElementById('pf-'+x);if(b)b.classList.toggle('active',i===0);});
+  const dr=document.getElementById('panel2-date-row');if(dr)dr.style.display='none';
+  const sel=document.getElementById('panel2-user');if(sel)sel.value='all';
+  loadPanel2();
+}
+
+async function loadPanel2(){
+  const allTurnos=await window.getRecentTurnos();
+  const now=new Date();
+  const sod=new Date(now.getFullYear(),now.getMonth(),now.getDate());
+  const eod=new Date(now.getFullYear(),now.getMonth(),now.getDate(),23,59,59);
+  const sow=new Date(now);sow.setDate(now.getDate()-now.getDay()+1);sow.setHours(0,0,0,0);
+  const eow=new Date(sow);eow.setDate(sow.getDate()+6);eow.setHours(23,59,59);
+  const som=new Date(now.getFullYear(),now.getMonth(),1);
+  const eom=new Date(now.getFullYear(),now.getMonth()+1,0,23,59,59);
+
+  // Active now
+  const activeNow=allTurnos.filter(t=>t.status==='active');
+  const activeEl=document.getElementById('panel2-active');
+  Object.values(panel2ActiveTimers).forEach(clearInterval);panel2ActiveTimers={};
+  if(!activeNow.length){activeEl.innerHTML='<div style="color:var(--text-dim);font-size:12px;font-family:var(--mono);">Ningún usuario en turno ahora</div>';}
+  else{
+    activeEl.innerHTML=activeNow.map(t=>{
+      const name=t.userName||t.userEmail?.split('@')[0]||'—';
+      const since=t.startTime?.toDate?.();
+      const sinceStr=since?since.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
+      const id='p2a_'+t.id;
+      return`<div style="background:rgba(74,222,128,0.06);border:1px solid rgba(74,222,128,0.2);border-radius:12px;padding:14px 16px;position:relative;">
+        ${t.isMobile?'<div style="position:absolute;top:8px;right:8px;background:rgba(251,146,60,0.15);border:1px solid rgba(251,146,60,0.3);border-radius:6px;padding:2px 6px;font-size:9px;color:#fb923c;font-family:var(--mono);">⚠ Móvil</div>':'<div style="position:absolute;top:12px;right:12px;font-size:16px;">💻</div>'}
+        <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:2px;">${esc(name)}</div>
+        <div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);margin-bottom:8px;">${esc(t.userEmail||'')}</div>
+        <div style="font-size:18px;font-weight:800;font-family:var(--mono);color:#4ade80;" id="${id}">00:00:00</div>
+        <div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);">desde las ${sinceStr}</div>
+      </div>`;
+    }).join('');
+    activeNow.forEach(t=>{
+      const id='p2a_'+t.id;const start=t.startTime?.toDate?.();const acc=t.accumulatedSeconds||0;
+      if(!start)return;
+      panel2ActiveTimers[id]=setInterval(()=>{const el=document.getElementById(id);if(!el){clearInterval(panel2ActiveTimers[id]);return;}el.textContent=formatDuration(Math.floor((Date.now()-start.getTime())/1000)+acc);},1000);
+    });
+  }
+
+  // Filter turnos
+  let turnos=[...allTurnos];
+  if(panel2Filter==='today')turnos=turnos.filter(t=>t.startTime?.toDate?.()>=sod&&t.startTime?.toDate?.()<=eod);
+  else if(panel2Filter==='week')turnos=turnos.filter(t=>t.startTime?.toDate?.()>=sow&&t.startTime?.toDate?.()<=eow);
+  else if(panel2Filter==='month')turnos=turnos.filter(t=>t.startTime?.toDate?.()>=som&&t.startTime?.toDate?.()<=eom);
+  else if(panel2Filter==='custom'){const f=document.getElementById('panel2-date-from')?.value;const to=document.getElementById('panel2-date-to')?.value;if(f)turnos=turnos.filter(t=>t.startTime?.toDate?.()>=new Date(f+'T00:00:00'));if(to)turnos=turnos.filter(t=>t.startTime?.toDate?.()<=new Date(to+'T23:59:59'));}
+
+  // User filter
+  const allUsers=[...new Set(allTurnos.map(t=>t.userEmail).filter(Boolean))];
+  const sel=document.getElementById('panel2-user');
+  if(sel){const cur=sel.value;sel.innerHTML='<option value="all">Todos</option>'+allUsers.map(u=>`<option value="${u}"${u===cur?' selected':''}>${u}</option>`).join('');}
+  const userFilter=sel?.value||'all';
+  if(userFilter!=='all')turnos=turnos.filter(t=>t.userEmail===userFilter);
+
+  // Summary
+  const totalSecs=turnos.reduce((s,t)=>s+(t.accumulatedSeconds||0),0);
+  const uniqueUsers=[...new Set(turnos.map(t=>t.userEmail).filter(Boolean))];
+  const mobileCount=turnos.filter(t=>t.isMobile).length;
+  document.getElementById('panel2-summary').innerHTML=`
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 16px;position:relative;overflow:hidden;"><div style="position:absolute;top:0;left:0;right:0;height:2px;background:var(--grad);"></div><div style="font-size:22px;font-weight:800;background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;">${formatDuration(totalSecs)}</div><div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);margin-top:3px;">Horas acumuladas</div></div>
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 16px;position:relative;overflow:hidden;"><div style="position:absolute;top:0;left:0;right:0;height:2px;background:var(--grad);"></div><div style="font-size:22px;font-weight:800;background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;">${turnos.length}</div><div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);margin-top:3px;">Turnos registrados</div></div>
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 16px;position:relative;overflow:hidden;"><div style="position:absolute;top:0;left:0;right:0;height:2px;background:var(--grad);"></div><div style="font-size:22px;font-weight:800;background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;">${uniqueUsers.length}</div><div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);margin-top:3px;">Usuarios activos</div></div>
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 16px;position:relative;overflow:hidden;"><div style="position:absolute;top:0;left:0;right:0;height:2px;background:var(--grad);"></div><div style="font-size:22px;font-weight:800;${mobileCount>0?'color:#fb923c;-webkit-text-fill-color:#fb923c':''}">${mobileCount}</div><div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);margin-top:3px;">📱 Desde móvil</div></div>`;
+
+  // Table
+  const tbody=document.getElementById('panel2-table');
+  if(!turnos.length){tbody.innerHTML='<div style="padding:20px;text-align:center;color:var(--text-dim);font-size:12px;">Sin registros en este período</div>';return;}
+  tbody.innerHTML=turnos.map(t=>{
+    const start=t.startTime?.toDate?.();const end=t.endTime?.toDate?.();
+    const dur=t.accumulatedSeconds?formatDuration(t.accumulatedSeconds):'—';
+    const ss=start?start.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
+    const es=end?end.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
+    const ds=start?start.toLocaleDateString('es-CO',{day:'2-digit',month:'short'}):'—';
+    const sc=t.status==='active'?'active':t.status==='interrupted'?'interrupted':'ended';
+    const sl=t.status==='active'?'En turno':t.status==='interrupted'?'Interrumpido':'Finalizado';
+    const name=t.userName||t.userEmail?.split('@')[0]||'—';
+    return`<div style="display:grid;grid-template-columns:1fr 70px 120px 90px 90px 90px;gap:0;border-bottom:1px solid var(--border);font-size:12px;align-items:stretch;">
+      <div style="padding:10px 12px;border-right:1px solid var(--border);overflow:hidden;"><div style="font-weight:600;color:var(--text);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(name)}</div><div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(t.userEmail||'')}</div></div>
+      <div style="padding:10px 12px;border-right:1px solid var(--border);font-family:var(--mono);font-size:11px;color:var(--text-muted);display:flex;align-items:center;">${ds}</div>
+      <div style="padding:10px 12px;border-right:1px solid var(--border);font-family:var(--mono);font-size:11px;color:var(--text-muted);display:flex;align-items:center;">${ss} → ${es}</div>
+      <div style="padding:10px 12px;border-right:1px solid var(--border);font-family:var(--mono);font-size:11px;color:var(--p2);font-weight:700;display:flex;align-items:center;">${dur}</div>
+      <div style="padding:10px 12px;border-right:1px solid var(--border);display:flex;align-items:center;"><span style="font-size:10px;font-family:var(--mono);padding:2px 7px;border-radius:4px;${t.isMobile?'background:rgba(251,146,60,0.1);color:#fb923c;':'background:rgba(74,222,128,0.08);color:#4ade80;'}">${t.isMobile?'📱 Móvil':'💻 Desktop'}</span></div>
+      <div style="padding:10px 12px;display:flex;align-items:center;"><span class="turno-row-status ${sc}">${sl}</span></div>
+    </div>`;
+  }).join('');
 }
 
 // ── UTILS ──
