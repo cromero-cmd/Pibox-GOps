@@ -35,7 +35,8 @@ onAuthStateChanged(auth, async user => {
     document.getElementById('user-email').textContent = user.email;
     document.getElementById('user-avatar').src = user.photoURL || '';
     window._fbReady = true;
-    const isAdmin = window.ADMINS?.includes(user.email);
+    const ADMIN_LIST=['cromero@pibox.app'];
+    const isAdmin = ADMIN_LIST.includes(user.email);
     const cfgBtn = document.getElementById('btn-config');
     if (cfgBtn) cfgBtn.style.display = isAdmin ? 'flex' : 'none';
     const clearBtn = document.getElementById('btn-clear-metrics');
@@ -900,8 +901,8 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 </div>
 
 <script>
-const APP_VERSION='6.9';
-const APP_CHANGELOG='Panel de control: estados de cumplimiento, filtros por usuario y estado.';
+const APP_VERSION='7.0';
+const APP_CHANGELOG='Botón Configurar restaurado para administradores.';
 const ADMINS=['cromero@pibox.app'];
 const SCRIPT_URL='https://script.google.com/macros/s/AKfycbyam6j2MG1NH11120KjvAfxU1f_z9BYh4uamQw8QgNeGsjpwoo394IeqzbDSPXSO9e5/exec';
 const MALLA_SCRIPT='https://script.google.com/macros/s/AKfycbyxBZWba6M1eXcwQUdBBUTqTrgGd8zwHiM6wwecXI3mUYOUP-RT9LnxSwqeXRy9prCm/exec';
