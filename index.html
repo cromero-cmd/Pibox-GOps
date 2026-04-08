@@ -746,7 +746,7 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
         <div class="turno-history-header"><div class="turno-history-title">📋 Historial de turnos</div></div>
         <div id="panel2-user-pills" style="display:flex;flex-wrap:wrap;gap:6px;padding:10px 14px;border-bottom:1px solid var(--border);background:var(--surface2);"></div>
         <div id="panel2-status-cards" style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px;padding:12px 14px;border-bottom:1px solid var(--border);"></div>
-        <div style="display:grid;grid-template-columns:1.2fr 70px 130px 90px 90px 100px 120px;gap:0;background:var(--surface2);border-bottom:1px solid var(--border);font-size:10px;font-weight:700;color:var(--text-dim);text-transform:uppercase;font-family:var(--mono);">
+        <div style="display:grid;grid-template-columns:160px 65px 120px 85px 85px 90px 110px;gap:0;background:var(--surface2);border-bottom:1px solid var(--border);font-size:10px;font-weight:700;color:var(--text-dim);text-transform:uppercase;font-family:var(--mono);">
           <div style="padding:10px 12px;border-right:1px solid var(--border);">Usuario</div>
           <div style="padding:10px 12px;border-right:1px solid var(--border);">Fecha</div>
           <div style="padding:10px 12px;border-right:1px solid var(--border);">Inicio → Fin</div>
@@ -900,8 +900,8 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 </div>
 
 <script>
-const APP_VERSION='7.4';
-const APP_CHANGELOG='Panel de control: nuevo layout — tarjetas arriba, tabla abajo.';
+const APP_VERSION='7.5';
+const APP_CHANGELOG='Panel de control: columna usuario ajustada, tabla sin scroll horizontal.';
 const ADMINS=['cromero@pibox.app'];
 const SCRIPT_URL='https://script.google.com/macros/s/AKfycbyam6j2MG1NH11120KjvAfxU1f_z9BYh4uamQw8QgNeGsjpwoo394IeqzbDSPXSO9e5/exec';
 const MALLA_SCRIPT='https://script.google.com/macros/s/AKfycbyxBZWba6M1eXcwQUdBBUTqTrgGd8zwHiM6wwecXI3mUYOUP-RT9LnxSwqeXRy9prCm/exec';
@@ -1827,7 +1827,7 @@ async function loadPanel2(){
     const fc=t.status==='active'?'active':t.status==='interrupted'?'interrupted':'ended';
     const fl=t.status==='active'?'En turno':t.status==='interrupted'?'Interrumpido':'Finalizado';
     const name=t.userName||t.userEmail?.split('@')[0]||'—';
-    return`<div style="display:grid;grid-template-columns:1.2fr 70px 130px 90px 90px 100px 120px;gap:0;border-bottom:1px solid var(--border);font-size:12px;align-items:stretch;">
+    return`<div style="display:grid;grid-template-columns:160px 65px 120px 85px 85px 90px 110px;gap:0;border-bottom:1px solid var(--border);font-size:12px;align-items:stretch;">
       <div style="padding:10px 12px;border-right:1px solid var(--border);overflow:hidden;display:flex;flex-direction:column;justify-content:center;"><div style="font-weight:600;color:var(--text);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${esc(t.userEmail||'')}">${esc(name)}</div><div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(t.userEmail||'')}</div></div>
       <div style="padding:10px 12px;border-right:1px solid var(--border);font-family:var(--mono);font-size:11px;color:var(--text-muted);display:flex;align-items:center;">${ds}</div>
       <div style="padding:10px 12px;border-right:1px solid var(--border);font-family:var(--mono);font-size:11px;color:var(--text-muted);display:flex;align-items:center;">${ss} → ${es}</div>
@@ -1883,7 +1883,7 @@ function renderPanel2Table(){
     const fc=t.status==='active'?'active':t.status==='interrupted'?'interrupted':'ended';
     const fl=t.status==='active'?'En turno':t.status==='interrupted'?'Interrumpido':'Finalizado';
     const name=t.userName||t.userEmail?.split('@')[0]||'—';
-    return`<div style="display:grid;grid-template-columns:1.2fr 70px 130px 90px 90px 100px 120px;gap:0;border-bottom:1px solid var(--border);font-size:12px;align-items:stretch;">
+    return`<div style="display:grid;grid-template-columns:160px 65px 120px 85px 85px 90px 110px;gap:0;border-bottom:1px solid var(--border);font-size:12px;align-items:stretch;">
       <div style="padding:10px 12px;border-right:1px solid var(--border);overflow:hidden;display:flex;flex-direction:column;justify-content:center;"><div style="font-weight:600;color:var(--text);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(name)}</div><div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(t.userEmail||'')}</div></div>
       <div style="padding:10px 12px;border-right:1px solid var(--border);font-family:var(--mono);font-size:11px;color:var(--text-muted);display:flex;align-items:center;">${ds}</div>
       <div style="padding:10px 12px;border-right:1px solid var(--border);font-family:var(--mono);font-size:11px;color:var(--text-muted);display:flex;align-items:center;">${ss} → ${es}</div>
