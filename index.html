@@ -742,13 +742,18 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
         </div>
         <div class="turno-history-wrap">
           <div class="turno-history-header"><div class="turno-history-title">📋 Historial de turnos</div></div>
-          <div style="display:grid;grid-template-columns:1fr 70px 120px 90px 90px 90px;gap:0;background:var(--surface2);border-bottom:1px solid var(--border);font-size:10px;font-weight:700;color:var(--text-dim);text-transform:uppercase;font-family:var(--mono);">
+          <!-- User filter pills -->
+          <div id="panel2-user-pills" style="display:flex;flex-wrap:wrap;gap:6px;padding:10px 14px;border-bottom:1px solid var(--border);background:var(--surface2);"></div>
+          <!-- Status filter cards -->
+          <div id="panel2-status-cards" style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px;padding:12px 14px;border-bottom:1px solid var(--border);"></div>
+          <div style="display:grid;grid-template-columns:1.2fr 70px 130px 90px 90px 100px 120px;gap:0;background:var(--surface2);border-bottom:1px solid var(--border);font-size:10px;font-weight:700;color:var(--text-dim);text-transform:uppercase;font-family:var(--mono);">
             <div style="padding:10px 12px;border-right:1px solid var(--border);">Usuario</div>
             <div style="padding:10px 12px;border-right:1px solid var(--border);">Fecha</div>
             <div style="padding:10px 12px;border-right:1px solid var(--border);">Inicio → Fin</div>
             <div style="padding:10px 12px;border-right:1px solid var(--border);">Duración</div>
             <div style="padding:10px 12px;border-right:1px solid var(--border);">Dispositivo</div>
-            <div style="padding:10px 12px;">Estado</div>
+            <div style="padding:10px 12px;border-right:1px solid var(--border);">Fichaje</div>
+            <div style="padding:10px 12px;">Cumplimiento</div>
           </div>
           <div id="panel2-table" style="max-height:500px;overflow-y:auto;">
             <div style="padding:20px;text-align:center;color:var(--text-dim);font-size:12px;">Cargando...</div>
@@ -895,8 +900,8 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 </div>
 
 <script>
-const APP_VERSION='6.8';
-const APP_CHANGELOG='Panel de control: HTML insertado correctamente.';
+const APP_VERSION='6.9';
+const APP_CHANGELOG='Panel de control: estados de cumplimiento, filtros por usuario y estado.';
 const ADMINS=['cromero@pibox.app'];
 const SCRIPT_URL='https://script.google.com/macros/s/AKfycbyam6j2MG1NH11120KjvAfxU1f_z9BYh4uamQw8QgNeGsjpwoo394IeqzbDSPXSO9e5/exec';
 const MALLA_SCRIPT='https://script.google.com/macros/s/AKfycbyxBZWba6M1eXcwQUdBBUTqTrgGd8zwHiM6wwecXI3mUYOUP-RT9LnxSwqeXRy9prCm/exec';
@@ -1500,6 +1505,11 @@ function setMallaFilter(f,btn){
   if(f==='custom'){const today=new Date().toISOString().split('T')[0];if(!document.getElementById('malla-date-from').value)document.getElementById('malla-date-from').value=today;if(!document.getElementById('malla-date-to').value)document.getElementById('malla-date-to').value=today;}
   renderMallaPersonal();
 }
+function setMallaStatusFilter(cls){
+  window._mallaStatusFilter=cls===window._mallaStatusFilter?null:cls;
+  renderMallaPersonal();
+}
+
 function clearMallaFilters(){mallaFilter='today';document.querySelectorAll('#subview-mimalla .turno-filter-btn').forEach((b,i)=>b.classList.toggle('active',i===0));document.getElementById('malla-date-row').style.display='none';renderMallaPersonal();}
 
 async function loadMallaPersonal(){
@@ -1544,9 +1554,17 @@ function renderMallaPersonal(){
     return true;
   });
   rows.sort((a,b)=>(parseDate(a.fecha)||0)-(parseDate(b.fecha)||0));
+  if(window._mallaStatusFilter)rows=rows.filter(r=>r.status.cls===window._mallaStatusFilter);
   const total=rows.length,cumplió=rows.filter(r=>r.status.cls==='cumplió').length,tardanza=rows.filter(r=>r.status.cls==='tardanza').length,ausente=rows.filter(r=>r.status.cls==='ausente').length,pendiente=rows.filter(r=>r.status.cls==='pendiente').length,novedad=rows.filter(r=>r.status.cls==='novedad').length;
   const pct=total?Math.round(((cumplió+novedad)/total)*100):0;
-  if(summaryEl)summaryEl.innerHTML=`<div class="cumpl-card purple"><div class="cumpl-card-num">${pct}%</div><div class="cumpl-card-label">Cumplimiento</div></div><div class="cumpl-card green"><div class="cumpl-card-num">${cumplió}</div><div class="cumpl-card-label">🟢 Cumplió</div></div><div class="cumpl-card yellow"><div class="cumpl-card-num">${tardanza}</div><div class="cumpl-card-label">🟡 Tardanza</div></div><div class="cumpl-card red"><div class="cumpl-card-num">${ausente}</div><div class="cumpl-card-label">🔴 Ausente</div></div><div class="cumpl-card gray"><div class="cumpl-card-num">${pendiente}</div><div class="cumpl-card-label">⏳ Pendiente</div></div><div class="cumpl-card purple"><div class="cumpl-card-num">${novedad}</div><div class="cumpl-card-label">📋 Novedad</div></div>`;
+  let mallaStatusFilter=window._mallaStatusFilter||null;
+  if(summaryEl)summaryEl.innerHTML=`
+    <div class="cumpl-card purple" onclick="setMallaStatusFilter(null)" style="cursor:pointer;" title="Ver todos"><div class="cumpl-card-num">${pct}%</div><div class="cumpl-card-label">Cumplimiento</div></div>
+    <div class="cumpl-card green" onclick="setMallaStatusFilter('cumplió')" style="cursor:pointer;${mallaStatusFilter==='cumplió'?'border:1px solid #4ade80;':''}" title="Filtrar"><div class="cumpl-card-num">${cumplió}</div><div class="cumpl-card-label">🟢 Cumplió</div></div>
+    <div class="cumpl-card yellow" onclick="setMallaStatusFilter('tardanza')" style="cursor:pointer;${mallaStatusFilter==='tardanza'?'border:1px solid #fbbf24;':''}" title="Filtrar"><div class="cumpl-card-num">${tardanza}</div><div class="cumpl-card-label">🟡 Tardanza</div></div>
+    <div class="cumpl-card red" onclick="setMallaStatusFilter('ausente')" style="cursor:pointer;${mallaStatusFilter==='ausente'?'border:1px solid #f87171;':''}" title="Filtrar"><div class="cumpl-card-num">${ausente}</div><div class="cumpl-card-label">🔴 Ausente</div></div>
+    <div class="cumpl-card gray" onclick="setMallaStatusFilter('pendiente')" style="cursor:pointer;${mallaStatusFilter==='pendiente'?'border:1px solid var(--text-dim);':''}" title="Filtrar"><div class="cumpl-card-num">${pendiente}</div><div class="cumpl-card-label">⏳ Pendiente</div></div>
+    <div class="cumpl-card purple" onclick="setMallaStatusFilter('novedad')" style="cursor:pointer;${mallaStatusFilter==='novedad'?'border:1px solid var(--p1);':''}" title="Filtrar"><div class="cumpl-card-num">${novedad}</div><div class="cumpl-card-label">📋 Novedad</div></div>`;
   if(!rows.length){body.innerHTML='<div style="padding:30px;text-align:center;color:var(--text-dim);font-size:12px;">Sin registros en este período</div>';return;}
   body.innerHTML=rows.map(r=>{
     const ss=r.scheduledStart?r.scheduledStart.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
@@ -1664,6 +1682,9 @@ function initFAQResizer(){
 // ── PANEL DE CONTROL (subview) ──
 let panel2Filter='today';
 let panel2ActiveTimers={};
+let panel2SelectedUsers=new Set();
+let panel2StatusFilter=null;
+let panel2AllRows=[];
 
 function setPanelFilter2(f,btn){
   panel2Filter=f;
@@ -1705,7 +1726,7 @@ async function loadPanel2(){
       const sinceStr=since?since.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
       const id='p2a_'+t.id;
       return`<div style="background:rgba(74,222,128,0.06);border:1px solid rgba(74,222,128,0.2);border-radius:12px;padding:14px 16px;position:relative;">
-        ${t.isMobile?'<div style="position:absolute;top:8px;right:8px;background:rgba(251,146,60,0.15);border:1px solid rgba(251,146,60,0.3);border-radius:6px;padding:2px 6px;font-size:9px;color:#fb923c;font-family:var(--mono);">⚠ Móvil</div>':'<div style="position:absolute;top:12px;right:12px;font-size:16px;">💻</div>'}
+        ${t.isMobile?'<div style="position:absolute;top:8px;right:8px;background:rgba(251,146,60,0.15);border:1px solid rgba(251,146,60,0.3);border-radius:6px;padding:2px 6px;font-size:9px;color:#fb923c;font-family:var(--mono);">⚠ Móvil</div>':`<div style="position:absolute;top:12px;right:12px;font-size:16px;">💻</div>`}
         <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:2px;">${esc(name)}</div>
         <div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);margin-bottom:8px;">${esc(t.userEmail||'')}</div>
         <div style="font-size:18px;font-weight:800;font-family:var(--mono);color:#4ade80;" id="${id}">00:00:00</div>
@@ -1719,75 +1740,160 @@ async function loadPanel2(){
     });
   }
 
-  // Filter turnos
+  // Filter by period
   let turnos=[...allTurnos];
   if(panel2Filter==='today')turnos=turnos.filter(t=>t.startTime?.toDate?.()>=sod&&t.startTime?.toDate?.()<=eod);
   else if(panel2Filter==='week')turnos=turnos.filter(t=>t.startTime?.toDate?.()>=sow&&t.startTime?.toDate?.()<=eow);
   else if(panel2Filter==='month')turnos=turnos.filter(t=>t.startTime?.toDate?.()>=som&&t.startTime?.toDate?.()<=eom);
   else if(panel2Filter==='custom'){const f=document.getElementById('panel2-date-from')?.value;const to=document.getElementById('panel2-date-to')?.value;if(f)turnos=turnos.filter(t=>t.startTime?.toDate?.()>=new Date(f+'T00:00:00'));if(to)turnos=turnos.filter(t=>t.startTime?.toDate?.()<=new Date(to+'T23:59:59'));}
 
-  // User filter
-  const allUsers=[...new Set(allTurnos.map(t=>t.userEmail).filter(Boolean))];
-  const sel=document.getElementById('panel2-user');
-  if(sel){const cur=sel.value;sel.innerHTML='<option value="all">Todos</option>'+allUsers.map(u=>`<option value="${u}"${u===cur?' selected':''}>${u}</option>`).join('');}
-  const userFilter=sel?.value||'all';
-  if(userFilter!=='all')turnos=turnos.filter(t=>t.userEmail===userFilter);
+  // Load malla for cumplimiento cross-reference
+  let mallaData=[];
+  try{
+    const resp=await fetch(MALLA_SCRIPT+'?sheet=Malla',{signal:AbortSignal.timeout(8000)});
+    const csv=await resp.text();
+    mallaData=csv.trim().split('\n').slice(1).map(l=>{const c=parseCSVLine(l);return{fecha:c[0]?.trim(),usuario:c[1]?.trim(),inicio:c[4]?.trim(),novedad:c[8]?.trim()};}).filter(m=>m.fecha&&m.usuario);
+  }catch(e){}
 
-  // Summary
-  const totalSecs=turnos.reduce((s,t)=>s+(t.accumulatedSeconds||0),0);
-  const uniqueUsers=[...new Set(turnos.map(t=>t.userEmail).filter(Boolean))];
-  const mobileCount=turnos.filter(t=>t.isMobile).length;
+  // Build rows with cumplimiento
+  panel2AllRows=turnos.map(t=>{
+    const start=t.startTime?.toDate?.();
+    const mallaEntry=mallaData.find(m=>{
+      if(m.usuario!==t.userEmail)return false;
+      const md=parseDate(m.fecha);
+      return md&&start&&md.toDateString()===start.toDateString();
+    });
+    let cumplStatus={label:'Sin malla',cls:'pendiente',icon:'—'};
+    if(mallaEntry){
+      const ss=parseTime(mallaEntry.fecha,mallaEntry.inicio);
+      cumplStatus=getStatus(ss,start,mallaEntry.novedad,now);
+    }
+    return{...t,cumplStatus};
+  });
+
+  // Build user pills
+  const allUsers=[...new Set(turnos.map(t=>t.userEmail).filter(Boolean))];
+  const pillsEl=document.getElementById('panel2-user-pills');
+  if(pillsEl){
+    pillsEl.innerHTML=`<button class="turno-filter-btn${panel2SelectedUsers.size===0?' active':''}" onclick="setPanel2Users(null)" style="font-size:11px;padding:3px 10px;">Todos</button>`
+      +allUsers.map(u=>`<button class="turno-filter-btn${panel2SelectedUsers.has(u)?' active':''}" onclick="setPanel2Users('${u}')" style="font-size:11px;padding:3px 10px;">${u.split('@')[0]}</button>`).join('');
+  }
+
+  // Apply user filter
+  let filtered=[...panel2AllRows];
+  if(panel2SelectedUsers.size>0)filtered=filtered.filter(r=>panel2SelectedUsers.has(r.userEmail));
+  if(panel2StatusFilter)filtered=filtered.filter(r=>r.cumplStatus.cls===panel2StatusFilter);
+
+  // Summary + status cards
+  const totalSecs=filtered.reduce((s,t)=>s+(t.accumulatedSeconds||0),0);
+  const uniqueUsers=[...new Set(filtered.map(t=>t.userEmail).filter(Boolean))];
+  const mobileCount=filtered.filter(t=>t.isMobile).length;
+  const cumplió=panel2AllRows.filter(r=>r.cumplStatus.cls==='cumplió').length;
+  const tardanza=panel2AllRows.filter(r=>r.cumplStatus.cls==='tardanza').length;
+  const ausente=panel2AllRows.filter(r=>r.cumplStatus.cls==='ausente').length;
+  const pendiente=panel2AllRows.filter(r=>r.cumplStatus.cls==='pendiente').length;
+  const novedad=panel2AllRows.filter(r=>r.cumplStatus.cls==='novedad').length;
+
   document.getElementById('panel2-summary').innerHTML=`
-    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 16px;position:relative;overflow:hidden;"><div style="position:absolute;top:0;left:0;right:0;height:2px;background:var(--grad);"></div><div style="font-size:22px;font-weight:800;background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;">${formatDuration(totalSecs)}</div><div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);margin-top:3px;">Horas acumuladas</div></div>
-    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 16px;position:relative;overflow:hidden;"><div style="position:absolute;top:0;left:0;right:0;height:2px;background:var(--grad);"></div><div style="font-size:22px;font-weight:800;background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;">${turnos.length}</div><div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);margin-top:3px;">Turnos registrados</div></div>
-    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 16px;position:relative;overflow:hidden;"><div style="position:absolute;top:0;left:0;right:0;height:2px;background:var(--grad);"></div><div style="font-size:22px;font-weight:800;background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;">${uniqueUsers.length}</div><div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);margin-top:3px;">Usuarios activos</div></div>
-    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 16px;position:relative;overflow:hidden;"><div style="position:absolute;top:0;left:0;right:0;height:2px;background:var(--grad);"></div><div style="font-size:22px;font-weight:800;${mobileCount>0?'color:#fb923c;-webkit-text-fill-color:#fb923c':''}">${mobileCount}</div><div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);margin-top:3px;">📱 Desde móvil</div></div>`;
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px;position:relative;overflow:hidden;"><div style="position:absolute;top:0;left:0;right:0;height:2px;background:var(--grad);"></div><div style="font-size:20px;font-weight:800;background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;">${formatDuration(totalSecs)}</div><div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);margin-top:2px;">Horas acumuladas</div></div>
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px;position:relative;overflow:hidden;"><div style="position:absolute;top:0;left:0;right:0;height:2px;background:var(--grad);"></div><div style="font-size:20px;font-weight:800;background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;">${filtered.length}</div><div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);margin-top:2px;">Turnos</div></div>
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px;position:relative;overflow:hidden;"><div style="position:absolute;top:0;left:0;right:0;height:2px;background:var(--grad);"></div><div style="font-size:20px;font-weight:800;background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;">${uniqueUsers.length}</div><div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);margin-top:2px;">Usuarios</div></div>
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px;position:relative;overflow:hidden;cursor:pointer;" onclick="setPanel2MobileFilter()"><div style="position:absolute;top:0;left:0;right:0;height:2px;background:var(--grad);"></div><div style="font-size:20px;font-weight:800;${mobileCount>0?'color:#fb923c;-webkit-text-fill-color:#fb923c':''}">${mobileCount}</div><div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);margin-top:2px;">📱 Móvil</div></div>`;
 
-  // Table
+  const statusCards=document.getElementById('panel2-status-cards');
+  if(statusCards){
+    const cards=[
+      {cls:'cumplió',icon:'🟢',label:'Cumplió',count:cumplió,color:'#4ade80',bg:'rgba(74,222,128,0.08)',border:'rgba(74,222,128,0.2)'},
+      {cls:'tardanza',icon:'🟡',label:'Tardanza',count:tardanza,color:'#fbbf24',bg:'rgba(251,191,36,0.08)',border:'rgba(251,191,36,0.2)'},
+      {cls:'ausente',icon:'🔴',label:'Ausente',count:ausente,color:'#f87171',bg:'rgba(248,113,113,0.08)',border:'rgba(248,113,113,0.2)'},
+      {cls:'pendiente',icon:'⏳',label:'Pendiente',count:pendiente,color:'var(--text-dim)',bg:'rgba(90,82,112,0.1)',border:'rgba(90,82,112,0.2)'},
+      {cls:'novedad',icon:'📋',label:'Novedad',count:novedad,color:'var(--p2)',bg:'rgba(123,47,255,0.08)',border:'rgba(123,47,255,0.2)'},
+      {cls:null,icon:'📋',label:'Todos',count:panel2AllRows.length,color:'var(--text-muted)',bg:'var(--surface2)',border:'var(--border)'},
+    ];
+    statusCards.innerHTML=cards.map(c=>`<div onclick="setPanel2StatusFilter('${c.cls}')" style="background:${c.bg};border:1px solid ${panel2StatusFilter===c.cls?c.color:c.border};border-radius:10px;padding:10px 12px;cursor:pointer;text-align:center;transition:all 0.2s;">
+      <div style="font-size:18px;font-weight:800;color:${c.color};${c.color.startsWith('var')?'':'-webkit-text-fill-color:'+c.color+';'}">${c.count}</div>
+      <div style="font-size:10px;color:${c.color};font-family:var(--mono);margin-top:2px;">${c.icon} ${c.label}</div>
+    </div>`).join('');
+  }
+
+  // Render table
   const tbody=document.getElementById('panel2-table');
-  if(!turnos.length){tbody.innerHTML='<div style="padding:20px;text-align:center;color:var(--text-dim);font-size:12px;">Sin registros en este período</div>';return;}
-  tbody.innerHTML=turnos.map(t=>{
+  if(!filtered.length){tbody.innerHTML='<div style="padding:20px;text-align:center;color:var(--text-dim);font-size:12px;">Sin registros en este período</div>';return;}
+  tbody.innerHTML=filtered.map(t=>{
     const start=t.startTime?.toDate?.();const end=t.endTime?.toDate?.();
     const dur=t.accumulatedSeconds?formatDuration(t.accumulatedSeconds):'—';
     const ss=start?start.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
     const es=end?end.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
     const ds=start?start.toLocaleDateString('es-CO',{day:'2-digit',month:'short'}):'—';
-    const sc=t.status==='active'?'active':t.status==='interrupted'?'interrupted':'ended';
-    const sl=t.status==='active'?'En turno':t.status==='interrupted'?'Interrumpido':'Finalizado';
+    const fc=t.status==='active'?'active':t.status==='interrupted'?'interrupted':'ended';
+    const fl=t.status==='active'?'En turno':t.status==='interrupted'?'Interrumpido':'Finalizado';
     const name=t.userName||t.userEmail?.split('@')[0]||'—';
-    return`<div style="display:grid;grid-template-columns:1fr 70px 120px 90px 90px 90px;gap:0;border-bottom:1px solid var(--border);font-size:12px;align-items:stretch;">
-      <div style="padding:10px 12px;border-right:1px solid var(--border);overflow:hidden;"><div style="font-weight:600;color:var(--text);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(name)}</div><div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(t.userEmail||'')}</div></div>
+    return`<div style="display:grid;grid-template-columns:1.2fr 70px 130px 90px 90px 100px 120px;gap:0;border-bottom:1px solid var(--border);font-size:12px;align-items:stretch;">
+      <div style="padding:10px 12px;border-right:1px solid var(--border);overflow:hidden;display:flex;flex-direction:column;justify-content:center;"><div style="font-weight:600;color:var(--text);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${esc(t.userEmail||'')}">${esc(name)}</div><div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(t.userEmail||'')}</div></div>
       <div style="padding:10px 12px;border-right:1px solid var(--border);font-family:var(--mono);font-size:11px;color:var(--text-muted);display:flex;align-items:center;">${ds}</div>
       <div style="padding:10px 12px;border-right:1px solid var(--border);font-family:var(--mono);font-size:11px;color:var(--text-muted);display:flex;align-items:center;">${ss} → ${es}</div>
       <div style="padding:10px 12px;border-right:1px solid var(--border);font-family:var(--mono);font-size:11px;color:var(--p2);font-weight:700;display:flex;align-items:center;">${dur}</div>
       <div style="padding:10px 12px;border-right:1px solid var(--border);display:flex;align-items:center;"><span style="font-size:10px;font-family:var(--mono);padding:2px 7px;border-radius:4px;${t.isMobile?'background:rgba(251,146,60,0.1);color:#fb923c;':'background:rgba(74,222,128,0.08);color:#4ade80;'}">${t.isMobile?'📱 Móvil':'💻 Desktop'}</span></div>
-      <div style="padding:10px 12px;display:flex;align-items:center;"><span class="turno-row-status ${sc}">${sl}</span></div>
+      <div style="padding:10px 12px;border-right:1px solid var(--border);display:flex;align-items:center;"><span class="turno-row-status ${fc}">${fl}</span></div>
+      <div style="padding:10px 12px;display:flex;align-items:center;"><span class="cumpl-status ${t.cumplStatus.cls}">${t.cumplStatus.icon} ${t.cumplStatus.label}</span></div>
     </div>`;
   }).join('');
 }
 
-// ── UTILS ──
-function parseCSVLine(line){const r=[];let cur='',q=false;for(const ch of line){if(ch==='"'){q=!q;}else if(ch===','&&!q){r.push(cur.trim());cur='';}else cur+=ch;}r.push(cur.trim());return r;}
-function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
-function now(){return new Date().toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'});}
-function scrollDown(){const c=document.getElementById('chat-container');c.scrollTop=c.scrollHeight;}
-function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
-function setStatus(state,text){document.getElementById('sdot').className='sdot '+state;document.getElementById('stext').textContent=text;}
-function toast(msg){const t=document.createElement('div');t.className='toast';t.textContent=msg;document.body.appendChild(t);setTimeout(()=>t.remove(),2500);}
+function setPanel2Users(user){
+  if(user===null){panel2SelectedUsers.clear();}
+  else{panel2SelectedUsers.has(user)?panel2SelectedUsers.delete(user):panel2SelectedUsers.add(user);}
+  renderPanel2Table();
+  // Re-render pills
+  const pillsEl=document.getElementById('panel2-user-pills');
+  if(pillsEl){
+    const btns=pillsEl.querySelectorAll('button');
+    btns[0].classList.toggle('active',panel2SelectedUsers.size===0);
+    btns.forEach((b,i)=>{if(i>0){const u=Array.from(panel2SelectedUsers);b.classList.toggle('active',u.some(x=>b.textContent.trim()===x.split('@')[0]));}});
+  }
+}
 
-const inp=document.getElementById('user-input');
-function autoResize(){inp.style.height='auto';inp.style.height=Math.min(inp.scrollHeight,120)+'px';}
-inp.addEventListener('input',()=>{autoResize();if(surveyTimer){clearTimeout(surveyTimer);surveyTimer=null;}});
-inp.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMessage();}});
-inp.addEventListener('paste',e=>{
-  const items=e.clipboardData?.items;if(!items)return;
-  for(const item of items){if(item.type.startsWith('image/')){e.preventDefault();const file=item.getAsFile();if(!file)continue;
-    attachedFile=file;attachedFileType=file.type;attachedFileData=null;
-    document.getElementById('file-preview-icon').textContent='🖼️';document.getElementById('file-preview-name').textContent='Imagen pegada';document.getElementById('file-preview-size').textContent=(file.size/1024).toFixed(1)+' KB';document.getElementById('file-preview-wrap').style.display='flex';
-    const reader=new FileReader();reader.onload=ev=>{attachedFileData=ev.target.result.split(',')[1];toast('Imagen lista ✓ — presiona Enter para enviar');};reader.readAsDataURL(file);break;}}
-});
+function setPanel2StatusFilter(cls){
+  panel2StatusFilter=cls==='null'||cls===panel2StatusFilter?null:cls;
+  renderPanel2Table();
+  loadPanel2();
+}
 
-function toggleMic(){if(!('webkitSpeechRecognition'in window)&&!('SpeechRecognition'in window)){toast('Tu navegador no soporta voz');return;}isRecording?stopMic():startMic();}
-</script>
-</body>
-</html>
+function setPanel2MobileFilter(){
+  panel2StatusFilter=null;
+  panel2SelectedUsers.clear();
+  loadPanel2().then(()=>{
+    panel2AllRows=panel2AllRows.filter(r=>r.isMobile);
+    renderPanel2Table();
+  });
+}
+
+function renderPanel2Table(){
+  let filtered=[...panel2AllRows];
+  if(panel2SelectedUsers.size>0)filtered=filtered.filter(r=>panel2SelectedUsers.has(r.userEmail));
+  if(panel2StatusFilter)filtered=filtered.filter(r=>r.cumplStatus.cls===panel2StatusFilter);
+  const tbody=document.getElementById('panel2-table');
+  if(!tbody)return;
+  if(!filtered.length){tbody.innerHTML='<div style="padding:20px;text-align:center;color:var(--text-dim);font-size:12px;">Sin registros para este filtro</div>';return;}
+  tbody.innerHTML=filtered.map(t=>{
+    const start=t.startTime?.toDate?.();const end=t.endTime?.toDate?.();
+    const dur=t.accumulatedSeconds?formatDuration(t.accumulatedSeconds):'—';
+    const ss=start?start.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
+    const es=end?end.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
+    const ds=start?start.toLocaleDateString('es-CO',{day:'2-digit',month:'short'}):'—';
+    const fc=t.status==='active'?'active':t.status==='interrupted'?'interrupted':'ended';
+    const fl=t.status==='active'?'En turno':t.status==='interrupted'?'Interrumpido':'Finalizado';
+    const name=t.userName||t.userEmail?.split('@')[0]||'—';
+    return`<div style="display:grid;grid-template-columns:1.2fr 70px 130px 90px 90px 100px 120px;gap:0;border-bottom:1px solid var(--border);font-size:12px;align-items:stretch;">
+      <div style="padding:10px 12px;border-right:1px solid var(--border);overflow:hidden;display:flex;flex-direction:column;justify-content:center;"><div style="font-weight:600;color:var(--text);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(name)}</div><div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(t.userEmail||'')}</div></div>
+      <div style="padding:10px 12px;border-right:1px solid var(--border);font-family:var(--mono);font-size:11px;color:var(--text-muted);display:flex;align-items:center;">${ds}</div>
+      <div style="padding:10px 12px;border-right:1px solid var(--border);font-family:var(--mono);font-size:11px;color:var(--text-muted);display:flex;align-items:center;">${ss} → ${es}</div>
+      <div style="padding:10px 12px;border-right:1px solid var(--border);font-family:var(--mono);font-size:11px;color:var(--p2);font-weight:700;display:flex;align-items:center;">${dur}</div>
+      <div style="padding:10px 12px;border-right:1px solid var(--border);display:flex;align-items:center;"><span style="font-size:10px;font-family:var(--mono);padding:2px 7px;border-radius:4px;${t.isMobile?'background:rgba(251,146,60,0.1);color:#fb923c;':'background:rgba(74,222,128,0.08);color:#4ade80;'}">${t.isMobile?'📱 Móvil':'💻 Desktop'}</span></div>
+      <div style="padding:10px 12px;border-right:1px solid var(--border);display:flex;align-items:center;"><span class="turno-row-status ${fc}">${fl}</span></div>
+      <div style="padding:10px 12px;display:flex;align-items:center;"><span class="cumpl-status ${t.cumplStatus.cls}">${t.cumplStatus.icon} ${t.cumplStatus.label}</span></div>
+    </div>`;
+  }).join('');
+}
+
+
