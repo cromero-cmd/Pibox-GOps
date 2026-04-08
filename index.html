@@ -682,6 +682,10 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
           <button class="turno-filter-btn" onclick="setMallaFilter('month',this)">Este mes</button>
           <button class="turno-filter-btn" onclick="setMallaFilter('custom',this)">Personalizado</button>
           <button class="turno-filter-btn" onclick="clearMallaFilters()" style="border-color:rgba(248,113,113,0.3);color:#f87171;">✕ Borrar filtros</button>
+          <button class="turno-filter-btn" onclick="exportMallaXLSX()" style="border-color:rgba(74,222,128,0.3);color:#4ade80;">⬇ Exportar Excel</button>
+        </div>
+        <div id="malla-user-filter-wrap" style="display:none;margin-bottom:12px;">
+          <div id="malla-user-pills" style="display:flex;flex-wrap:wrap;gap:6px;"></div>
         </div>
         <div id="malla-date-row" style="display:none;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:14px;">
           <span style="font-size:11px;color:var(--text-dim);font-family:var(--mono);">Desde</span>
@@ -726,6 +730,7 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
             <span style="font-size:11px;color:var(--text-dim);font-family:var(--mono);">Usuario:</span>
             <select class="turno-date-input" id="panel2-user" onchange="loadPanel2()" style="min-width:160px;border-radius:8px;padding:5px 10px;"><option value="all">Todos</option></select>
             <button class="turno-filter-btn" onclick="loadPanel2()" style="padding:5px 12px;">↻</button>
+            <button class="turno-filter-btn" onclick="exportPanel2XLSX()" style="border-color:rgba(74,222,128,0.3);color:#4ade80;padding:5px 12px;">⬇ Exportar Excel</button>
           </div>
         </div>
       </div>
@@ -900,8 +905,8 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 </div>
 
 <script>
-const APP_VERSION='7.5';
-const APP_CHANGELOG='Panel de control: columna usuario ajustada, tabla sin scroll horizontal.';
+const APP_VERSION='7.7';
+const APP_CHANGELOG='Mi malla: exportar Excel disponible para todos. Filtro por usuario solo para admins.';
 const ADMINS=['cromero@pibox.app'];
 const SCRIPT_URL='https://script.google.com/macros/s/AKfycbyam6j2MG1NH11120KjvAfxU1f_z9BYh4uamQw8QgNeGsjpwoo394IeqzbDSPXSO9e5/exec';
 const MALLA_SCRIPT='https://script.google.com/macros/s/AKfycbyxBZWba6M1eXcwQUdBBUTqTrgGd8zwHiM6wwecXI3mUYOUP-RT9LnxSwqeXRy9prCm/exec';
@@ -1504,6 +1509,13 @@ function setMallaFilter(f,btn){
   if(f==='custom'){const today=new Date().toISOString().split('T')[0];if(!document.getElementById('malla-date-from').value)document.getElementById('malla-date-from').value=today;if(!document.getElementById('malla-date-to').value)document.getElementById('malla-date-to').value=today;}
   renderMallaPersonal();
 }
+function setMallaUsers(user){
+  if(!window._mallaSelectedUsers)window._mallaSelectedUsers=new Set();
+  if(user===null){window._mallaSelectedUsers.clear();}
+  else{window._mallaSelectedUsers.has(user)?window._mallaSelectedUsers.delete(user):window._mallaSelectedUsers.add(user);}
+  loadMallaPersonal();
+}
+
 function setMallaStatusFilter(cls){
   window._mallaStatusFilter=cls===window._mallaStatusFilter?null:cls;
   renderMallaPersonal();
@@ -1518,9 +1530,26 @@ async function loadMallaPersonal(){
     const csv=await resp.text();
     const lines=csv.trim().split('\n').slice(1);
     const userEmail=document.getElementById('user-email').textContent;
+    const isAdmin=ADMINS.includes(userEmail);
     const allTurnos=await window.getRecentTurnos();
     const now=new Date();
-    let malla=lines.map(l=>{const c=parseCSVLine(l);return{fecha:c[0]?.trim(),usuario:c[1]?.trim(),nombre:c[2]?.trim(),rol:c[3]?.trim(),inicio:c[4]?.trim(),fin:c[5]?.trim(),almuerzo:c[6]?.trim(),linea:c[7]?.trim(),novedad:c[8]?.trim()};}).filter(m=>m.fecha&&m.usuario&&m.usuario===userEmail);
+    let allMalla=lines.map(l=>{const c=parseCSVLine(l);return{fecha:c[0]?.trim(),usuario:c[1]?.trim(),nombre:c[2]?.trim(),rol:c[3]?.trim(),inicio:c[4]?.trim(),fin:c[5]?.trim(),almuerzo:c[6]?.trim(),linea:c[7]?.trim(),novedad:c[8]?.trim()};}).filter(m=>m.fecha&&m.usuario);
+
+    // Show user filter for admins
+    const filterWrap=document.getElementById('malla-user-filter-wrap');
+    const pillsEl=document.getElementById('malla-user-pills');
+    if(isAdmin&&filterWrap&&pillsEl){
+      filterWrap.style.display='block';
+      const allUsers=[...new Set(allMalla.map(m=>m.usuario).filter(Boolean))];
+      if(!window._mallaSelectedUsers)window._mallaSelectedUsers=new Set();
+      pillsEl.innerHTML=`<button class="turno-filter-btn${window._mallaSelectedUsers.size===0?' active':''}" onclick="setMallaUsers(null)" style="font-size:11px;padding:3px 10px;">Todos</button>`
+        +allUsers.map(u=>`<button class="turno-filter-btn${window._mallaSelectedUsers.has(u)?' active':''}" onclick="setMallaUsers('${u}')" style="font-size:11px;padding:3px 10px;">${u.split('@')[0]}</button>`).join('');
+    }
+
+    // Filter by user
+    let malla=isAdmin
+      ?(window._mallaSelectedUsers?.size>0?allMalla.filter(m=>window._mallaSelectedUsers.has(m.usuario)):allMalla)
+      :allMalla.filter(m=>m.usuario===userEmail);
     mallaAllRows=malla.map(m=>{
       const ss=parseTime(m.fecha,m.inicio),se=parseTime(m.fecha,m.fin);
       const ut=allTurnos.filter(t=>t.userEmail===m.usuario&&t.startTime?.toDate?.());
@@ -1894,6 +1923,48 @@ function renderPanel2Table(){
     </div>`;
   }).join('');
 }
+// ── EXPORT ──
+function exportToXLSX(headers, rows, filename){
+  // Build CSV content
+  const csvRows=[headers.join(','),...rows.map(r=>r.map(c=>'"'+String(c||'').replace(/"/g,'""')+'"').join(','))];
+  const csv=csvRows.join('\n');
+  const blob=new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8;'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');a.href=url;a.download=filename+'.csv';a.click();
+  URL.revokeObjectURL(url);
+  toast('Exportado ✓ — '+filename+'.csv');
+}
+
+function exportMallaXLSX(){
+  if(!mallaAllRows||!mallaAllRows.length){toast('Sin datos para exportar');return;}
+  const userEmail=document.getElementById('user-email').textContent;
+  const isAdmin=ADMINS.includes(userEmail);
+  const headers=isAdmin
+    ?['Fecha','Usuario','Rol','Prog. Inicio','Prog. Fin','Real Inicio','Real Fin','Almuerzo','Línea','Novedad','Estado']
+    :['Fecha','Rol','Prog. Inicio','Prog. Fin','Real Inicio','Real Fin','Almuerzo','Línea','Novedad','Estado'];
+  const fmt=t=>t?t.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
+  const fmtD=d=>parseDate(d)?.toLocaleDateString('es-CO',{day:'2-digit',month:'short',year:'numeric'})||d||'—';
+  const rows=mallaAllRows.map(r=>{
+    const base=[fmtD(r.fecha),r.rol||'—',fmt(r.scheduledStart),fmt(r.scheduledEnd),fmt(r.realStart),fmt(r.realEnd),r.almuerzo||'—',r.linea||'—',r.novedad||'—',r.status.label];
+    return isAdmin?[r.usuario||'—',...base].map((v,i)=>i===1?v:v):base;
+  });
+  exportToXLSX(headers,rows,'malla_turnos_'+new Date().toISOString().split('T')[0]);
+}
+
+function exportPanel2XLSX(){
+  if(!panel2AllRows||!panel2AllRows.length){toast('Sin datos para exportar');return;}
+  const headers=['Usuario','Email','Fecha','Inicio','Fin','Duración','Dispositivo','Fichaje','Cumplimiento'];
+  const fmt=t=>t?t.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
+  const rows=panel2AllRows.map(t=>{
+    const start=t.startTime?.toDate?.();const end=t.endTime?.toDate?.();
+    const name=t.userName||t.userEmail?.split('@')[0]||'—';
+    const ds=start?start.toLocaleDateString('es-CO',{day:'2-digit',month:'short',year:'numeric'}):'—';
+    const fl=t.status==='active'?'En turno':t.status==='interrupted'?'Interrumpido':'Finalizado';
+    return[name,t.userEmail||'—',ds,fmt(start),fmt(end),t.accumulatedSeconds?formatDuration(t.accumulatedSeconds):'—',t.isMobile?'Móvil':'Desktop',fl,t.cumplStatus?.label||'—'];
+  });
+  exportToXLSX(headers,rows,'panel_control_'+new Date().toISOString().split('T')[0]);
+}
+
 // ── UTILS ──
 function parseCSVLine(line){const r=[];let cur='',q=false;for(const ch of line){if(ch==='"'){q=!q;}else if(ch===','&&!q){r.push(cur.trim());cur='';}else cur+=ch;}r.push(cur.trim());return r;}
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
