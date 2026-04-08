@@ -41,8 +41,7 @@ onAuthStateChanged(auth, async user => {
     if (cfgBtn) cfgBtn.style.display = isAdmin ? 'flex' : 'none';
     const clearBtn = document.getElementById('btn-clear-metrics');
     if (clearBtn) clearBtn.style.display = isAdmin ? 'flex' : 'none';
-    const panelTab = document.getElementById('tab-panel');
-    if (panelTab) panelTab.style.display = isAdmin ? 'flex' : 'none';
+
     const subtabPanel = document.getElementById('subtab-panel');
     if (subtabPanel) subtabPanel.style.display = isAdmin ? 'flex' : 'none';
     try {
@@ -577,7 +576,7 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
       <button class="tab" id="tab-chat" onclick="switchTab('chat')"><svg viewBox="0 0 24 24" fill="none"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Asistente</button>
       <button class="tab" id="tab-lib" onclick="switchTab('library')"><svg viewBox="0 0 24 24" fill="none"><path d="M15 10l4.553-2.069A1 1 0 0121 8.87v6.26a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h10a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Tutoriales</button>
       <button class="tab" id="tab-an" onclick="switchTab('analytics')"><svg viewBox="0 0 24 24" fill="none"><path d="M18 20V10M12 20V4M6 20v-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Métricas</button>
-      <button class="tab" id="tab-panel" onclick="switchTab('panel')" style="display:none;"><svg viewBox="0 0 24 24" fill="none"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Panel de control</button>
+
     </div>
     <div class="header-right">
       <div class="status-pill"><div class="sdot" id="sdot"></div><span id="stext">Sin conectar</span></div>
@@ -901,8 +900,8 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 </div>
 
 <script>
-const APP_VERSION='7.0';
-const APP_CHANGELOG='Botón Configurar restaurado para administradores.';
+const APP_VERSION='7.1';
+const APP_CHANGELOG='Panel de control externo eliminado. Solo sub-pestaña en Turno.';
 const ADMINS=['cromero@pibox.app'];
 const SCRIPT_URL='https://script.google.com/macros/s/AKfycbyam6j2MG1NH11120KjvAfxU1f_z9BYh4uamQw8QgNeGsjpwoo394IeqzbDSPXSO9e5/exec';
 const MALLA_SCRIPT='https://script.google.com/macros/s/AKfycbyxBZWba6M1eXcwQUdBBUTqTrgGd8zwHiM6wwecXI3mUYOUP-RT9LnxSwqeXRy9prCm/exec';
@@ -980,7 +979,7 @@ window.onload=()=>{
 
 // ── TABS ──
 function switchTab(t){
-  ['turno','chat','library','analytics','panel'].forEach(v=>{
+  ['turno','chat','library','analytics'].forEach(v=>{
     const el=document.getElementById(v+'-view');
     if(el)el.classList.toggle('active',v===t);
     const tid=v==='library'?'lib':v==='analytics'?'an':v;
@@ -991,7 +990,6 @@ function switchTab(t){
   if(t==='library'&&allVideos.length===0&&vidUrl)loadVideos();
   if(t==='analytics')window.loadAnalytics&&window.loadAnalytics();
   if(t==='turno')initTurnoView();
-  if(t==='panel')initPanelView();
 }
 
 function switchTurnoTab(tab){
@@ -1896,5 +1894,6 @@ function renderPanel2Table(){
     </div>`;
   }).join('');
 }
-
-
+</script>
+</body>
+</html>
