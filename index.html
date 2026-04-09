@@ -974,8 +974,8 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 </div>
 
 <script>
-const APP_VERSION='9.3';
-const APP_CHANGELOG='Métricas: filtros accionables y tiempo promedio en formato h:m:s.';
+const APP_VERSION='9.4';
+const APP_CHANGELOG='Turno: bloqueo automático si hay novedad registrada en la malla para hoy.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
 const SCRIPT_URL='https://script.google.com/macros/s/AKfycbyam6j2MG1NH11120KjvAfxU1f_z9BYh4uamQw8QgNeGsjpwoo394IeqzbDSPXSO9e5/exec';
@@ -1493,6 +1493,27 @@ async function initTurnoView(){
     window._interruptedTurno=existing;
   }
   loadTurnoHistory();
+  // Pre-check malla for today
+  checkTodayNovedad();
+}
+
+async function checkTodayNovedad(){
+  const userEmail=document.getElementById('user-email').textContent;
+  const today=new Date();
+  // Only check if no active turno
+  if(currentTurnoId)return;
+  try{
+    const resp=await fetch(MALLA_SCRIPT+'?sheet=Malla',{signal:AbortSignal.timeout(8000)});
+    const csv=await resp.text();
+    const lines=csv.trim().split('\n').slice(1);
+    const todayEntry=lines.map(l=>{const c=parseCSVLine(l);return{fecha:c[0]?.trim(),usuario:c[1]?.trim(),novedad:c[8]?.trim()};})
+      .find(m=>{
+        if(!m.fecha||m.usuario!==userEmail)return false;
+        const d=parseDate(m.fecha);
+        return d&&d.toDateString()===today.toDateString();
+      });
+    if(todayEntry?.novedad)showTurnoBlocked(todayEntry.novedad);
+  }catch(e){}
 }
 
 function setTurnoActive(t){
@@ -1516,11 +1537,54 @@ function setTurnoInactive(){
 }
 
 async function startTurno(){
+  // Check malla for today - block if novedad exists
+  const userEmail=document.getElementById('user-email').textContent;
+  const today=new Date();
+  try{
+    const resp=await fetch(MALLA_SCRIPT+'?sheet=Malla',{signal:AbortSignal.timeout(8000)});
+    const csv=await resp.text();
+    const lines=csv.trim().split('\n').slice(1);
+    const todayEntries=lines.map(l=>{const c=parseCSVLine(l);return{fecha:c[0]?.trim(),usuario:c[1]?.trim(),novedad:c[8]?.trim()};})
+      .filter(m=>{
+        if(!m.fecha||m.usuario!==userEmail)return false;
+        const d=parseDate(m.fecha);
+        return d&&d.toDateString()===today.toDateString();
+      });
+    if(todayEntries.length>0&&todayEntries[0].novedad){
+      const novedad=todayEntries[0].novedad;
+      showTurnoBlocked(novedad);
+      return;
+    }
+  }catch(e){
+    // If malla check fails, allow start anyway
+    console.warn('Malla check failed, allowing start:', e);
+  }
+
   const device=getDeviceInfo();turnoStartTime=new Date();accumulatedSeconds=0;
   const data={startTime:turnoStartTime,endTime:null,accumulatedSeconds:0,status:'active',device:device.label,isMobile:device.isMobile,ua:device.ua};
   currentTurnoId=await window.saveTurnoToFirebase(data);
   setTurnoActive({...data,startTime:{toDate:()=>turnoStartTime}});startTimer();
   toast('✅ Turno iniciado — '+turnoStartTime.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}));
+}
+
+function showTurnoBlocked(novedad){
+  const card=document.getElementById('turno-card-inner');
+  document.getElementById('turno-status').textContent='Turno no disponible hoy';
+  document.getElementById('turno-timer').textContent='—';
+  document.getElementById('btn-turno-start').style.display='none';
+  // Show blocked message
+  let blockedEl=document.getElementById('turno-blocked-msg');
+  if(!blockedEl){
+    blockedEl=document.createElement('div');
+    blockedEl.id='turno-blocked-msg';
+    blockedEl.style.cssText='background:rgba(251,146,60,0.08);border:1px solid rgba(251,146,60,0.25);border-radius:12px;padding:14px 18px;margin-top:12px;text-align:center;';
+    document.getElementById('btn-turno-start').parentNode.appendChild(blockedEl);
+  }
+  blockedEl.innerHTML=`
+    <div style="font-size:22px;margin-bottom:8px;">📋</div>
+    <div style="font-size:13px;font-weight:700;color:#fb923c;margin-bottom:6px;">Novedad registrada para hoy</div>
+    <div style="font-size:12px;color:var(--text-muted);line-height:1.6;">${esc(novedad)}</div>
+    <div style="font-size:11px;color:var(--text-dim);margin-top:8px;font-family:var(--mono);">Si crees que esto es un error, contacta a tu administrador.</div>`;
 }
 
 async function endTurno(status='ended'){
@@ -1551,6 +1615,27 @@ function setTurnoFilter(f,btn){
   if(df)df.style.display=f==='custom'?'flex':'none';
   if(f==='custom'){const today=new Date().toISOString().split('T')[0];if(!document.getElementById('turno-date-from').value)document.getElementById('turno-date-from').value=today;if(!document.getElementById('turno-date-to').value)document.getElementById('turno-date-to').value=today;}
   loadTurnoHistory();
+  // Pre-check malla for today
+  checkTodayNovedad();
+}
+
+async function checkTodayNovedad(){
+  const userEmail=document.getElementById('user-email').textContent;
+  const today=new Date();
+  // Only check if no active turno
+  if(currentTurnoId)return;
+  try{
+    const resp=await fetch(MALLA_SCRIPT+'?sheet=Malla',{signal:AbortSignal.timeout(8000)});
+    const csv=await resp.text();
+    const lines=csv.trim().split('\n').slice(1);
+    const todayEntry=lines.map(l=>{const c=parseCSVLine(l);return{fecha:c[0]?.trim(),usuario:c[1]?.trim(),novedad:c[8]?.trim()};})
+      .find(m=>{
+        if(!m.fecha||m.usuario!==userEmail)return false;
+        const d=parseDate(m.fecha);
+        return d&&d.toDateString()===today.toDateString();
+      });
+    if(todayEntry?.novedad)showTurnoBlocked(todayEntry.novedad);
+  }catch(e){}
 }
 
 async function loadTurnoHistory(){
