@@ -160,26 +160,6 @@ window.getRecentTurnos = async () => {
   } catch(e) { return []; }
 };
 
-let analyticsFilter='today';
-
-function setAnalyticsFilter(f,btn){
-  analyticsFilter=f;
-  ['today','week','month','custom','all'].forEach(x=>{
-    const b=document.getElementById('af-'+x);
-    if(b){b.style.borderColor=x===f?'var(--p1)':'var(--border)';b.style.color=x===f?'var(--p2)':'var(--text-muted)';}
-  });
-  const dr=document.getElementById('af-date-row');
-  if(dr)dr.style.display=f==='custom'?'flex':'none';
-  if(f==='custom'){
-    const today=new Date().toISOString().split('T')[0];
-    const from=document.getElementById('af-date-from');
-    const to=document.getElementById('af-date-to');
-    if(from&&!from.value)from.value=today;
-    if(to&&!to.value)to.value=today;
-  }
-  window.loadAnalytics();
-}
-
 window.loadAnalytics = async () => {
   try {
     const snap = await getDocs(query(collection(db, 'events'), orderBy('timestamp', 'desc'), limit(1000)));
@@ -994,7 +974,7 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 </div>
 
 <script>
-const APP_VERSION='9.0';
+const APP_VERSION='9.1';
 const APP_CHANGELOG='Métricas: filtros accionables y tiempo promedio en formato h:m:s.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -1083,6 +1063,28 @@ function switchTab(t){
   if(t==='analytics')window.loadAnalytics&&window.loadAnalytics();
   if(t==='turno')initTurnoView();
 }
+
+
+let analyticsFilter='today';
+
+function setAnalyticsFilter(f,btn){
+  analyticsFilter=f;
+  ['today','week','month','custom','all'].forEach(x=>{
+    const b=document.getElementById('af-'+x);
+    if(b){b.style.borderColor=x===f?'var(--p1)':'var(--border)';b.style.color=x===f?'var(--p2)':'var(--text-muted)';}
+  });
+  const dr=document.getElementById('af-date-row');
+  if(dr)dr.style.display=f==='custom'?'flex':'none';
+  if(f==='custom'){
+    const today=new Date().toISOString().split('T')[0];
+    const from=document.getElementById('af-date-from');
+    const to=document.getElementById('af-date-to');
+    if(from&&!from.value)from.value=today;
+    if(to&&!to.value)to.value=today;
+  }
+  window.loadAnalytics();
+}
+
 
 function switchTurnoTab(tab){
   // Hide all subviews
