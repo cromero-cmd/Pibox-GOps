@@ -974,7 +974,7 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 </div>
 
 <script>
-const APP_VERSION='9.1';
+const APP_VERSION='9.2';
 const APP_CHANGELOG='Métricas: filtros accionables y tiempo promedio en formato h:m:s.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -1402,14 +1402,23 @@ function renderAnalytics(events){
   let avgResolutionStr = '—';
   try {
     const resolvedSurveys = surveyEvents.filter(e=>e.resolved==='yes'&&e.timestamp);
+    console.log('resolvedSurveys:', resolvedSurveys.length, resolvedSurveys[0]);
+    console.log('chatEvents sample:', chatEvents[0]);
     if(resolvedSurveys.length > 0) {
       const times = resolvedSurveys.map(s=>{
         const surveyTime = s.timestamp?.toDate?.();
         if(!surveyTime) return null;
-        const userChats = chatEvents.filter(c=>c.user===s.user&&c.timestamp?.toDate?.()<=surveyTime);
+        // Try both 'user' and 'userEmail' fields
+        const sUser = s.user || s.userEmail;
+        const userChats = chatEvents.filter(c=>{
+          const cUser = c.user || c.userEmail;
+          return cUser===sUser && c.timestamp?.toDate?.()<=surveyTime;
+        });
+        console.log('userChats for', sUser, ':', userChats.length);
         if(!userChats.length) return null;
         const firstChat = userChats.reduce((a,b)=>a.timestamp?.toDate?.()<b.timestamp?.toDate?.()?a:b);
         const diffSecs = Math.round((surveyTime - firstChat.timestamp.toDate()) / 1000);
+        console.log('diffSecs:', diffSecs);
         return diffSecs > 0 && diffSecs < 7200 ? diffSecs : null;
       }).filter(Boolean);
       if(times.length){
@@ -1418,7 +1427,7 @@ function renderAnalytics(events){
         avgResolutionStr = h>0 ? `${h}h ${m}m ${s}s` : m>0 ? `${m}m ${s}s` : `${s}s`;
       }
     }
-  } catch(e){}
+  } catch(e){console.error('avg resolution error:', e);}
 
   document.getElementById('analytics-content').innerHTML=`
     <div class="an-cards">
