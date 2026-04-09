@@ -160,6 +160,13 @@ window.getRecentTurnos = async () => {
   } catch(e) { return []; }
 };
 
+window.loadOvertimeEvents = async () => {
+  try {
+    const snap = await getDocs(query(collection(db, 'events'), orderBy('timestamp', 'desc'), limit(500)));
+    return snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(e=>e.type==='overtime'&&e.status==='pending_review');
+  } catch(e) { return []; }
+};
+
 window.loadAnalytics = async () => {
   try {
     const snap = await getDocs(query(collection(db, 'events'), orderBy('timestamp', 'desc'), limit(1000)));
@@ -658,6 +665,13 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
       <div class="msec">⚡ Preguntas Frecuentes</div>
       <div class="field"><label>Google Sheet — FAQ</label><input type="text" id="inp-faq" placeholder="URL del Sheet de FAQ..."/></div>
       <hr/>
+      <div class="msec">📧 Correos reporte de nómina</div>
+      <div class="field">
+        <label>Destinatarios (separados por coma)</label>
+        <input type="text" id="inp-payroll-emails" placeholder="nomina@pibox.app, otro@pibox.app"/>
+        <div style="font-size:10px;color:var(--text-dim);margin-top:4px;font-family:var(--mono);">Se envía cada lunes automáticamente + botón manual en Panel de control</div>
+      </div>
+      <hr/>
       <div class="msec">👥 Gestión de administradores</div>
       <div id="admin-list-wrap">
         <div style="font-size:12px;color:var(--text-dim);margin-bottom:10px;">Usuarios con rol admin (pueden ver Panel de control y Mi malla de todos)</div>
@@ -825,8 +839,6 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 
   </div>
 
-  </div>
-
   <!-- CHAT VIEW -->
   <div class="view" id="chat-view">
     <div class="faq-sidebar">
@@ -907,7 +919,14 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
   <div class="view" id="panel-view">
     <div class="panel-inner">
       <div class="panel-header">
-        <div><div class="panel-title">Panel de <span>control</span></div><div style="font-size:12px;color:var(--text-dim);margin-top:3px;font-family:var(--mono)">Vista de administrador</div></div>
+        <div>
+          <div class="panel-title">Panel de <span>control</span></div>
+          <div style="font-size:12px;color:var(--text-dim);margin-top:3px;font-family:var(--mono)">Vista de administrador</div>
+          <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">
+            <button class="turno-filter-btn" onclick="showOvertimeRequests()" style="border-color:rgba(251,146,60,0.4);color:#fb923c;" id="btn-overtime-requests">⏰ Horas extras <span id="overtime-badge" style="display:none;background:#fb923c;color:white;border-radius:100px;padding:1px 6px;font-size:10px;margin-left:4px;"></span></button>
+            <button class="turno-filter-btn" onclick="sendPayrollReport()" style="border-color:rgba(74,222,128,0.3);color:#4ade80;">📋 Enviar reporte nómina</button>
+          </div>
+        </div>
         <div class="panel-controls">
           <div class="panel-filters">
             <button class="panel-filter-btn active" onclick="setPanelFilter('today',this)">Hoy</button>
@@ -974,12 +993,13 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 </div>
 
 <script>
-const APP_VERSION='9.5';
-const APP_CHANGELOG='Turno: bloqueo automático si hay novedad registrada en la malla para hoy.';
+const APP_VERSION='9.6';
+const APP_CHANGELOG='Horas extras: detección, aprobación por niveles y reporte de nómina por correo.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
 const SCRIPT_URL='https://script.google.com/macros/s/AKfycbyam6j2MG1NH11120KjvAfxU1f_z9BYh4uamQw8QgNeGsjpwoo394IeqzbDSPXSO9e5/exec';
 const MALLA_SCRIPT='https://script.google.com/macros/s/AKfycbyxBZWba6M1eXcwQUdBBUTqTrgGd8zwHiM6wwecXI3mUYOUP-RT9LnxSwqeXRy9prCm/exec';
+const NOTIF_SCRIPT='https://script.google.com/macros/s/AKfycbzGlmiVS0XLWlyA0A8EJiV_TZAToPqg7O8zmZWOKwS_w0WyVZTx_05iBdCeY6Vyc7PhkA/exec';
 const TOLERANCE_MINS=5;
 
 let apiKey='',sheetUrl='',vidUrl='',faqUrl='',sysBase='Eres Pi GOps, el asistente inteligente de operaciones de Pibox. Tu rol es ayudar al equipo operativo a tomar decisiones rápidas y correctas en campo.\n\nTienes acceso a un manual de operaciones. Úsalo como tu fuente principal, pero también puedes razonar e interpretar cuando la pregunta no esté respondida textualmente.\n\nCómo debes responder:\n- Sé claro, directo y práctico. El equipo está en campo y necesita respuestas rápidas.\n- Si la respuesta está en el manual, úsala y explícala con tus propias palabras.\n- Si definitivamente no está en el manual, dilo con honestidad y sugiere a quién escalar.\n- Nunca te quedes en blanco. Siempre da una respuesta útil.\n- Habla en español colombiano, de forma cercana y profesional.',history=[],streaming=false,sheetData='',allVideos=[],activeCat='Todos',allFAQs=[],activeFAQCat='Todos';
@@ -1105,7 +1125,13 @@ function switchTurnoTab(tab){
 }
 
 // ── CONFIG ──
-function openConfig(){document.getElementById('overlay').classList.add('open');loadAdminListInModal();}
+function openConfig(){
+  document.getElementById('overlay').classList.add('open');
+  loadAdminListInModal();
+  const pe=localStorage.getItem('pg_payroll_emails')||'';
+  const inp=document.getElementById('inp-payroll-emails');
+  if(inp)inp.value=pe;
+}
 function closeConfig(){document.getElementById('overlay').classList.remove('open');}
 async function saveConfig(){
   const k=document.getElementById('inp-key').value.trim();
@@ -1114,11 +1140,13 @@ async function saveConfig(){
   const fu=document.getElementById('inp-faq').value.trim();
   const s=document.getElementById('inp-sys').value.trim();
   if(!k){alert('Ingresa tu API Key.');return;}
+  const pe=document.getElementById('inp-payroll-emails').value.trim();
   apiKey=k;sheetUrl=u;vidUrl=vu;faqUrl=fu;if(s)sysBase=s;
   localStorage.setItem('pg_key',k);localStorage.setItem('pg_sheet',u);
   localStorage.setItem('pg_vid',vu);localStorage.setItem('pg_faq',fu);
   localStorage.setItem('pg_sys',sysBase);
-  window.saveConfigToFirebase&&window.saveConfigToFirebase({key:k,sheet:u,vid:vu,faq:fu,sys:sysBase});
+  if(pe)localStorage.setItem('pg_payroll_emails',pe);
+  window.saveConfigToFirebase&&window.saveConfigToFirebase({key:k,sheet:u,vid:vu,faq:fu,sys:sysBase,payrollEmails:pe});
   document.getElementById('setup-banner').style.display='none';
   closeConfig();fetchSheet();loadFAQs();
   if(vu){allVideos=[];loadVideos();}
@@ -1593,8 +1621,107 @@ async function endTurno(status='ended'){
   const endTime=new Date();
   const elapsed=Math.floor((endTime-turnoStartTime)/1000)+accumulatedSeconds;
   await window.updateTurnoInFirebase(currentTurnoId,{endTime,accumulatedSeconds:elapsed,status});
+  if(status==='ended'){
+    // Check for overtime and schedule discrepancy
+    await checkOvertimeAndDiscrepancy(endTime,elapsed);
+    setTurnoInactive();
+    toast('👋 Turno finalizado — duración: '+formatDuration(elapsed));
+    loadTurnoHistory();
+  }
   currentTurnoId=null;turnoStartTime=null;accumulatedSeconds=0;
-  if(status==='ended'){setTurnoInactive();toast('👋 Turno finalizado — duración: '+formatDuration(elapsed));loadTurnoHistory();}
+}
+
+async function checkOvertimeAndDiscrepancy(endTime,elapsedSecs){
+  const userEmail=document.getElementById('user-email').textContent;
+  const today=new Date();
+  try{
+    const resp=await fetch(MALLA_SCRIPT+'?sheet=Malla',{signal:AbortSignal.timeout(8000)});
+    const csv=await resp.text();
+    const lines=csv.trim().split('\n').slice(1);
+    const todayEntry=lines.map(l=>{const c=parseCSVLine(l);return{fecha:c[0]?.trim(),usuario:c[1]?.trim(),nombre:c[2]?.trim(),inicio:c[4]?.trim(),fin:c[5]?.trim(),novedad:c[8]?.trim()};})
+      .find(m=>{
+        if(!m.fecha||m.usuario!==userEmail)return false;
+        const d=parseDate(m.fecha);
+        return d&&d.toDateString()===today.toDateString();
+      });
+    if(!todayEntry)return;
+    const scheduledStart=parseTime(todayEntry.fecha,todayEntry.inicio);
+    const scheduledEnd=parseTime(todayEntry.fecha,todayEntry.fin);
+    if(!scheduledStart||!scheduledEnd)return;
+    const scheduledSecs=Math.round((scheduledEnd-scheduledStart)/1000);
+    const extraSecs=elapsedSecs-scheduledSecs;
+
+    // Check late start discrepancy (>60 min late)
+    const lateStartMins=Math.round((turnoStartTime-scheduledStart)/60000);
+    if(lateStartMins>60){
+      await window.updateTurnoInFirebase(window._lastTurnoId||'',{discrepancy:'late_start',lateStartMins});
+    }
+
+    // Check overtime (>0 extra seconds)
+    if(extraSecs>0){
+      const extraMins=Math.round(extraSecs/60);
+      showOvertimePrompt(extraMins,scheduledSecs,elapsedSecs,todayEntry);
+    }
+  }catch(e){console.warn('Overtime check failed:',e);}
+}
+
+function showOvertimePrompt(extraMins,scheduledSecs,workedSecs,mallaEntry){
+  const overlay=document.createElement('div');
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(13,11,20,0.88);backdrop-filter:blur(8px);z-index:700;display:flex;align-items:center;justify-content:center;';
+  const h=Math.floor(extraMins/60),m=extraMins%60;
+  const extraStr=h>0?`${h}h ${m}m`:`${m}m`;
+  overlay.innerHTML=`
+    <div style="background:var(--surface);border:1px solid rgba(251,146,60,0.4);border-radius:20px;padding:28px;width:min(420px,92vw);position:relative;box-shadow:0 8px 32px rgba(0,0,0,0.4);">
+      <div style="position:absolute;top:0;left:20px;right:20px;height:2px;background:linear-gradient(90deg,#fb923c,#fbbf24);border-radius:100px;"></div>
+      <div style="font-size:28px;text-align:center;margin-bottom:12px;">⏰</div>
+      <div style="font-size:17px;font-weight:800;text-align:center;margin-bottom:8px;">Horas extras detectadas</div>
+      <div style="font-size:13px;color:var(--text-muted);text-align:center;margin-bottom:20px;line-height:1.6;">
+        Trabajaste <strong style="color:#fb923c;">${extraStr}</strong> adicionales a tu turno programado.<br/>
+        Programado: <strong>${formatDuration(scheduledSecs)}</strong> · Trabajado: <strong>${formatDuration(workedSecs)}</strong>
+      </div>
+      <div style="font-size:14px;font-weight:700;text-align:center;margin-bottom:16px;">¿Estas horas extras fueron aprobadas por tu líder inmediato?</div>
+      <div style="display:flex;gap:10px;">
+        <button onclick="submitOvertimeResponse(false,${extraMins},this.closest('div[style*=fixed]'))" style="flex:1;padding:12px;border-radius:11px;border:1.5px solid rgba(248,113,113,0.4);background:rgba(248,113,113,0.08);color:#f87171;font-family:var(--font);font-weight:700;font-size:14px;cursor:pointer;">❌ No fueron aprobadas</button>
+        <button onclick="submitOvertimeResponse(true,${extraMins},this.closest('div[style*=fixed]'))" style="flex:1;padding:12px;border-radius:11px;border:1.5px solid rgba(74,222,128,0.4);background:rgba(74,222,128,0.08);color:#4ade80;font-family:var(--font);font-weight:700;font-size:14px;cursor:pointer;">✅ Sí fueron aprobadas</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  window._overtimeMallaEntry=mallaEntry;
+}
+
+async function submitOvertimeResponse(approved,extraMins,overlayEl){
+  overlayEl.remove();
+  const userEmail=document.getElementById('user-email').textContent;
+  const userName=document.getElementById('user-name').textContent;
+  const today=new Date().toLocaleDateString('es-CO',{day:'2-digit',month:'long',year:'numeric'});
+  const status=approved?'pending_review':'rejected';
+  // Save overtime request to Firebase
+  await window.trackEvent('overtime',{
+    agentEmail:userEmail,agentName:userName,
+    date:today,extraMins,approved,status,
+    mallaEntry:window._overtimeMallaEntry
+  });
+  if(approved){
+    // Notify admins via Apps Script
+    const admins=window.ADMINS||[SUPER_ADMIN];
+    const payrollRecipients=admins.concat([SUPER_ADMIN]).filter((v,i,a)=>a.indexOf(v)===i);
+    try{
+      await fetch(NOTIF_SCRIPT,{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({
+          type:'overtime_request',
+          agentName:userName,agentEmail:userEmail,
+          date:today,
+          scheduledHours:window._overtimeMallaEntry?.inicio+' - '+window._overtimeMallaEntry?.fin,
+          workedHours:formatDuration((window._overtimeMallaEntry?Math.round((parseTime(window._overtimeMallaEntry.fecha,window._overtimeMallaEntry.fin)-parseTime(window._overtimeMallaEntry.fecha,window._overtimeMallaEntry.inicio))/1000)+extraMins*60:extraMins*60)),
+          extraHours:Math.floor(extraMins/60)+'h '+extraMins%60+'m',
+          recipients:payrollRecipients
+        })
+      });
+    }catch(e){console.warn('Notif failed:',e);}
+    toast('✅ Solicitud enviada — pendiente de aprobación');
+  }else{
+    toast('Horas extras registradas como no aprobadas');
+  }
 }
 
 async function resumeTurno(){
@@ -2142,6 +2269,121 @@ function renderPanel2Table(){
     </div>`;
   }).join('');
 }
+// ── OVERTIME & PAYROLL ──
+async function showOvertimeRequests(){
+  const allEvents=await new Promise(resolve=>{
+    window.loadAnalytics&&resolve([]);
+    // Fetch from Firebase via getRecentTurnos workaround
+    resolve([]);
+  });
+  // Show overtime requests modal
+  const modal=document.createElement('div');
+  modal.style.cssText='position:fixed;inset:0;background:rgba(13,11,20,0.88);backdrop-filter:blur(8px);z-index:700;display:flex;align-items:center;justify-content:center;';
+  modal.innerHTML=`
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:28px;width:min(600px,94vw);max-height:80vh;overflow-y:auto;position:relative;">
+      <div style="position:absolute;top:0;left:20px;right:20px;height:2px;background:linear-gradient(90deg,#fb923c,#fbbf24);border-radius:100px;"></div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
+        <div style="font-size:17px;font-weight:800;">⏰ Solicitudes de horas extras</div>
+        <button onclick="this.closest('div[style*=fixed]').remove()" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:20px;">×</button>
+      </div>
+      <div id="overtime-list">Cargando...</div>
+    </div>`;
+  document.body.appendChild(modal);
+  loadOvertimeList(modal.querySelector('#overtime-list'));
+}
+
+async function loadOvertimeList(el){
+  // Get overtime events from Firebase
+  const allTurnos=await window.getRecentTurnos();
+  // We store overtime in events collection - fetch via loadAnalytics workaround
+  // For now show placeholder - full impl needs getDocs access
+  el.innerHTML=`<div style="font-size:12px;color:var(--text-dim);text-align:center;padding:20px;font-family:var(--mono);">Cargando solicitudes...</div>`;
+  // Use window.loadOvertimeEvents if available
+  if(window.loadOvertimeEvents){
+    const events=await window.loadOvertimeEvents();
+    renderOvertimeList(el,events);
+  }else{
+    el.innerHTML=`<div style="font-size:12px;color:var(--text-dim);text-align:center;padding:20px;">Sin solicitudes pendientes</div>`;
+  }
+}
+
+function renderOvertimeList(el,events){
+  const pending=events.filter(e=>e.type==='overtime'&&e.status==='pending_review');
+  if(!pending.length){el.innerHTML='<div style="font-size:12px;color:var(--text-dim);text-align:center;padding:20px;font-family:var(--mono);">Sin solicitudes pendientes ✓</div>';return;}
+  el.innerHTML=pending.map(e=>`
+    <div style="background:var(--surface2);border:1px solid rgba(251,146,60,0.2);border-radius:12px;padding:14px 16px;margin-bottom:10px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+        <div>
+          <div style="font-size:13px;font-weight:700;color:var(--text);">${esc(e.agentName||e.userName||'—')}</div>
+          <div style="font-size:11px;color:var(--text-dim);font-family:var(--mono);">${esc(e.agentEmail||e.user||'—')} · ${esc(e.date||'—')}</div>
+          <div style="font-size:12px;color:#fb923c;margin-top:4px;">⏰ ${e.extraMins||0} min extras</div>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button onclick="approveOvertime('${e.id}',false,this)" style="padding:7px 14px;border-radius:8px;border:1px solid rgba(248,113,113,0.4);background:rgba(248,113,113,0.08);color:#f87171;font-family:var(--font);font-weight:600;font-size:12px;cursor:pointer;">Rechazar</button>
+          <button onclick="approveOvertime('${e.id}',true,this)" style="padding:7px 14px;border-radius:8px;border:1px solid rgba(74,222,128,0.4);background:rgba(74,222,128,0.08);color:#4ade80;font-family:var(--font);font-weight:600;font-size:12px;cursor:pointer;">Aprobar</button>
+        </div>
+      </div>
+    </div>`).join('');
+}
+
+async function approveOvertime(eventId,approved,btn){
+  const userEmail=document.getElementById('user-email').textContent;
+  const isSuperAdmin=userEmail===SUPER_ADMIN;
+  const newStatus=approved?(isSuperAdmin?'approved':'pending_super_admin'):'rejected';
+  btn.textContent='Guardando...';btn.disabled=true;
+  await window.trackEvent('overtime_decision',{eventId,approved,decidedBy:userEmail,newStatus});
+  toast(approved?(isSuperAdmin?'✅ Aprobado definitivamente':'✅ Aprobado — pendiente super admin'):'❌ Rechazado');
+  btn.closest('div[style*=border]').style.opacity='0.4';
+}
+
+async function sendPayrollReport(){
+  const payrollEmails=localStorage.getItem('pg_payroll_emails')||'';
+  if(!payrollEmails){toast('Configura los correos de nómina primero ⚙');openConfig();return;}
+  const recipients=payrollEmails.split(',').map(e=>e.trim()).filter(Boolean);
+  // Get last week dates
+  const now=new Date();
+  const lastMonday=new Date(now);lastMonday.setDate(now.getDate()-now.getDay()-6);lastMonday.setHours(0,0,0,0);
+  const lastSunday=new Date(lastMonday);lastSunday.setDate(lastMonday.getDate()+6);lastSunday.setHours(23,59,59);
+  const fmtDate=d=>d.toLocaleDateString('es-CO',{day:'2-digit',month:'long',year:'numeric'});
+  const weekStart=fmtDate(lastMonday);
+  const weekEnd=fmtDate(lastSunday);
+  toast('Generando reporte...');
+  // Get all turnos from last week
+  const allTurnos=await window.getRecentTurnos();
+  const weekTurnos=allTurnos.filter(t=>{
+    const s=t.startTime?.toDate?.();
+    return s&&s>=lastMonday&&s<=lastSunday&&t.status==='ended';
+  });
+  // Get malla for names/novedades
+  let mallaData=[];
+  try{
+    const resp=await fetch(MALLA_SCRIPT+'?sheet=Malla',{signal:AbortSignal.timeout(8000)});
+    const csv=await resp.text();
+    mallaData=csv.trim().split('\n').slice(1).map(l=>{const c=parseCSVLine(l);return{fecha:c[0]?.trim(),usuario:c[1]?.trim(),nombre:c[2]?.trim(),novedad:c[8]?.trim()};});
+  }catch(e){}
+  const records=weekTurnos.map(t=>{
+    const start=t.startTime?.toDate?.();const end=t.endTime?.toDate?.();
+    const mallaEntry=mallaData.find(m=>{
+      const md=parseDate(m.fecha);return md&&start&&md.toDateString()===start.toDateString()&&m.usuario===t.userEmail;
+    });
+    return{
+      name:t.userName||t.userEmail?.split('@')[0]||'—',
+      date:start?start.toLocaleDateString('es-CO',{weekday:'short',day:'2-digit',month:'short'}):'—',
+      checkIn:start?start.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—',
+      checkOut:end?end.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—',
+      hours:t.accumulatedSeconds?formatDuration(t.accumulatedSeconds):'—',
+      novedad:mallaEntry?.novedad||'—'
+    };
+  }).sort((a,b)=>a.name.localeCompare(b.name));
+  if(!records.length){toast('Sin registros para la semana anterior');return;}
+  try{
+    await fetch(NOTIF_SCRIPT,{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({type:'payroll_report',weekStart,weekEnd,records,recipients})
+    });
+    toast('📋 Reporte enviado a '+recipients.join(', '));
+  }catch(e){toast('Error al enviar reporte: '+e.message);}
+}
+
 // ── EXPORT ──
 function exportToXLSX(headers, rows, filename){
   // Build CSV content
