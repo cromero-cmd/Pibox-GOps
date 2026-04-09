@@ -994,8 +994,8 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 </div>
 
 <script>
-const APP_VERSION='8.9';
-const APP_CHANGELOG='Métricas: filtro personalizado por fechas y tarjeta de tiempo promedio de resolución.';
+const APP_VERSION='9.0';
+const APP_CHANGELOG='Métricas: filtros accionables y tiempo promedio en formato h:m:s.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
 const SCRIPT_URL='https://script.google.com/macros/s/AKfycbyam6j2MG1NH11120KjvAfxU1f_z9BYh4uamQw8QgNeGsjpwoo394IeqzbDSPXSO9e5/exec';
@@ -1396,23 +1396,25 @@ function renderAnalytics(events){
   const topT=Object.entries(tCount).sort((a,b)=>b[1]-a[1]).slice(0,5);
   const uCount={};events.forEach(e=>{if(e.user)uCount[e.user]=(uCount[e.user]||0)+1;});
   const topU=Object.entries(uCount).sort((a,b)=>b[1]-a[1]).slice(0,8);
-  // Avg resolution time: time between first chat and survey response in same session
-  // Approximate: use timestamp diff between chat events and survey events per user per day
-  let avgResolutionMins = null;
+  // Avg resolution time
+  let avgResolutionStr = '—';
   try {
     const resolvedSurveys = surveyEvents.filter(e=>e.resolved==='yes'&&e.timestamp);
     if(resolvedSurveys.length > 0) {
       const times = resolvedSurveys.map(s=>{
         const surveyTime = s.timestamp?.toDate?.();
         if(!surveyTime) return null;
-        // Find nearest chat event before this survey from same user
         const userChats = chatEvents.filter(c=>c.user===s.user&&c.timestamp?.toDate?.()<=surveyTime);
         if(!userChats.length) return null;
-        const lastChat = userChats.reduce((a,b)=>a.timestamp?.toDate?.()>b.timestamp?.toDate?.()?a:b);
-        const diff = (surveyTime - lastChat.timestamp.toDate()) / 60000;
-        return diff > 0 && diff < 120 ? diff : null;
+        const firstChat = userChats.reduce((a,b)=>a.timestamp?.toDate?.()<b.timestamp?.toDate?.()?a:b);
+        const diffSecs = Math.round((surveyTime - firstChat.timestamp.toDate()) / 1000);
+        return diffSecs > 0 && diffSecs < 7200 ? diffSecs : null;
       }).filter(Boolean);
-      if(times.length) avgResolutionMins = Math.round(times.reduce((a,b)=>a+b,0)/times.length);
+      if(times.length){
+        const avgSecs = Math.round(times.reduce((a,b)=>a+b,0)/times.length);
+        const h=Math.floor(avgSecs/3600),m=Math.floor((avgSecs%3600)/60),s=avgSecs%60;
+        avgResolutionStr = h>0 ? `${h}h ${m}m ${s}s` : m>0 ? `${m}m ${s}s` : `${s}s`;
+      }
     }
   } catch(e){}
 
@@ -1422,7 +1424,7 @@ function renderAnalytics(events){
       <div class="an-card"><div class="an-num">${users.length}</div><div class="an-label">Usuarios únicos</div></div>
       <div class="an-card"><div class="an-num">${chatEvents.length}</div><div class="an-label">Consultas al asistente</div></div>
       <div class="an-card"><div class="an-num">${sTotal?pYes+'%':'—'}</div><div class="an-label">Tasa de resolución</div></div>
-      <div class="an-card"><div class="an-num">${avgResolutionMins!==null?avgResolutionMins+' min':'—'}</div><div class="an-label">Tiempo promedio de resolución</div></div>
+      <div class="an-card"><div class="an-num" style="font-size:20px;">${avgResolutionStr}</div><div class="an-label">Tiempo promedio de resolución</div></div>
     </div>
     <div class="an-section" style="margin-bottom:16px;">
       <div class="an-section-title">🎯 Tasa de resolución — ${sTotal} encuestas</div>
