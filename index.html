@@ -160,10 +160,29 @@ window.getRecentTurnos = async () => {
   } catch(e) { return []; }
 };
 
+let analyticsFilter='today';
+
+function setAnalyticsFilter(f,btn){
+  analyticsFilter=f;
+  ['today','week','month','all'].forEach(x=>{
+    const b=document.getElementById('af-'+x);
+    if(b){b.style.borderColor=x===f?'var(--p1)':'var(--border)';b.style.color=x===f?'var(--p2)':'var(--text-muted)';}
+  });
+  window.loadAnalytics();
+}
+
 window.loadAnalytics = async () => {
   try {
-    const snap = await getDocs(query(collection(db, 'events'), orderBy('timestamp', 'desc'), limit(500)));
-    const events = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const snap = await getDocs(query(collection(db, 'events'), orderBy('timestamp', 'desc'), limit(1000)));
+    let events = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    // Apply period filter
+    const now = new Date();
+    const sod = new Date(now.getFullYear(),now.getMonth(),now.getDate());
+    const sow = new Date(now); sow.setDate(now.getDate()-now.getDay()+1); sow.setHours(0,0,0,0);
+    const som = new Date(now.getFullYear(),now.getMonth(),1);
+    if(analyticsFilter==='today') events=events.filter(e=>e.timestamp?.toDate?.()>=sod);
+    else if(analyticsFilter==='week') events=events.filter(e=>e.timestamp?.toDate?.()>=sow);
+    else if(analyticsFilter==='month') events=events.filter(e=>e.timestamp?.toDate?.()>=som);
     renderAnalytics(events);
   } catch(e) {
     document.getElementById('analytics-content').innerHTML = '<p style="color:var(--text-muted);text-align:center;padding:40px">Error al cargar métricas.</p>';
@@ -613,7 +632,7 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
       <button class="tab active" id="tab-turno" onclick="switchTab('turno')"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/><path d="M12 6v6l4 2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>Turno</button>
       <button class="tab" id="tab-chat" onclick="switchTab('chat')"><svg viewBox="0 0 24 24" fill="none"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Asistente</button>
       <button class="tab" id="tab-lib" onclick="switchTab('library')"><svg viewBox="0 0 24 24" fill="none"><path d="M15 10l4.553-2.069A1 1 0 0121 8.87v6.26a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h10a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Tutoriales</button>
-      <button class="tab" id="tab-an" onclick="switchTab('analytics')"><svg viewBox="0 0 24 24" fill="none"><path d="M18 20V10M12 20V4M6 20v-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Métricas</button>
+      <button class="tab" id="tab-an" onclick="switchTab('analytics')" style="display:none;"><svg viewBox="0 0 24 24" fill="none"><path d="M18 20V10M12 20V4M6 20v-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Métricas</button>
 
     </div>
     <div class="header-right">
@@ -869,9 +888,13 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
     <div class="analytics-inner">
       <div class="analytics-header">
         <div><div class="analytics-title">Métricas <span>de uso</span></div><div style="font-size:12px;color:var(--text-dim);margin-top:3px;font-family:var(--mono)">Datos en tiempo real desde Firebase</div></div>
-        <div style="display:flex;gap:8px;">
-          <button class="btn-refresh" onclick="window.loadAnalytics()"><svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M1 4v6h6M23 20v-6h-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M20.49 9A9 9 0 005.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 013.51 15" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Actualizar</button>
-          <button class="btn-refresh" id="btn-clear-metrics" onclick="confirmClearMetrics()" style="display:none;border-color:rgba(248,113,113,0.3);color:#f87171;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Limpiar métricas</button>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+          <button class="btn-refresh active" id="af-today" onclick="setAnalyticsFilter('today',this)" style="border-color:var(--p1);color:var(--p2);">Hoy</button>
+          <button class="btn-refresh" id="af-week" onclick="setAnalyticsFilter('week',this)">Esta semana</button>
+          <button class="btn-refresh" id="af-month" onclick="setAnalyticsFilter('month',this)">Este mes</button>
+          <button class="btn-refresh" id="af-all" onclick="setAnalyticsFilter('all',this)">Todo</button>
+          <button class="btn-refresh" onclick="window.loadAnalytics()"><svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M1 4v6h6M23 20v-6h-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M20.49 9A9 9 0 005.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 013.51 15" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>↻</button>
+          <button class="btn-refresh" id="btn-clear-metrics" onclick="confirmClearMetrics()" style="display:none;border-color:rgba(248,113,113,0.3);color:#f87171;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Limpiar</button>
         </div>
       </div>
       <div id="analytics-content"><div style="display:flex;flex-direction:column;align-items:center;gap:14px;padding:60px 20px;"><div class="spinner"></div><p style="color:var(--text-dim);font-size:13px;">Cargando métricas...</p></div></div>
@@ -949,8 +972,8 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 </div>
 
 <script>
-const APP_VERSION='8.7';
-const APP_CHANGELOG='Super admin: gestión de admins desde Configurar sin tocar código.';
+const APP_VERSION='8.8';
+const APP_CHANGELOG='Métricas solo para admins, filtros por período y limpiar solo super admin.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
 const SCRIPT_URL='https://script.google.com/macros/s/AKfycbyam6j2MG1NH11120KjvAfxU1f_z9BYh4uamQw8QgNeGsjpwoo394IeqzbDSPXSO9e5/exec';
@@ -2065,11 +2088,13 @@ function applyAdminUI(){
   const isSuperAdmin=userEmail===SUPER_ADMIN;
   const isAdmin=(window.ADMINS||[]).includes(userEmail)||isSuperAdmin;
   const clearBtn=document.getElementById('btn-clear-metrics');
-  if(clearBtn)clearBtn.style.display=isAdmin?'flex':'none';
+  if(clearBtn)clearBtn.style.display=isSuperAdmin?'flex':'none';
   const panelTab=document.getElementById('tab-panel');
-  if(panelTab)panelTab.style.display='none'; // no external panel tab
+  if(panelTab)panelTab.style.display='none';
   const subtabPanel=document.getElementById('subtab-panel');
   if(subtabPanel)subtabPanel.style.display=isAdmin?'flex':'none';
+  const anTab=document.getElementById('tab-an');
+  if(anTab)anTab.style.display=isAdmin?'flex':'none';
 }
 
 // ── UTILS ──
