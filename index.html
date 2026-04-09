@@ -164,10 +164,19 @@ let analyticsFilter='today';
 
 function setAnalyticsFilter(f,btn){
   analyticsFilter=f;
-  ['today','week','month','all'].forEach(x=>{
+  ['today','week','month','custom','all'].forEach(x=>{
     const b=document.getElementById('af-'+x);
     if(b){b.style.borderColor=x===f?'var(--p1)':'var(--border)';b.style.color=x===f?'var(--p2)':'var(--text-muted)';}
   });
+  const dr=document.getElementById('af-date-row');
+  if(dr)dr.style.display=f==='custom'?'flex':'none';
+  if(f==='custom'){
+    const today=new Date().toISOString().split('T')[0];
+    const from=document.getElementById('af-date-from');
+    const to=document.getElementById('af-date-to');
+    if(from&&!from.value)from.value=today;
+    if(to&&!to.value)to.value=today;
+  }
   window.loadAnalytics();
 }
 
@@ -183,6 +192,12 @@ window.loadAnalytics = async () => {
     if(analyticsFilter==='today') events=events.filter(e=>e.timestamp?.toDate?.()>=sod);
     else if(analyticsFilter==='week') events=events.filter(e=>e.timestamp?.toDate?.()>=sow);
     else if(analyticsFilter==='month') events=events.filter(e=>e.timestamp?.toDate?.()>=som);
+    else if(analyticsFilter==='custom'){
+      const from=document.getElementById('af-date-from')?.value;
+      const to=document.getElementById('af-date-to')?.value;
+      if(from) events=events.filter(e=>e.timestamp?.toDate?.()>=new Date(from+'T00:00:00'));
+      if(to) events=events.filter(e=>e.timestamp?.toDate?.()<=new Date(to+'T23:59:59'));
+    }
     renderAnalytics(events);
   } catch(e) {
     document.getElementById('analytics-content').innerHTML = '<p style="color:var(--text-muted);text-align:center;padding:40px">Error al cargar métricas.</p>';
@@ -892,7 +907,14 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
           <button class="btn-refresh active" id="af-today" onclick="setAnalyticsFilter('today',this)" style="border-color:var(--p1);color:var(--p2);">Hoy</button>
           <button class="btn-refresh" id="af-week" onclick="setAnalyticsFilter('week',this)">Esta semana</button>
           <button class="btn-refresh" id="af-month" onclick="setAnalyticsFilter('month',this)">Este mes</button>
+          <button class="btn-refresh" id="af-custom" onclick="setAnalyticsFilter('custom',this)">Personalizado</button>
           <button class="btn-refresh" id="af-all" onclick="setAnalyticsFilter('all',this)">Todo</button>
+          <div id="af-date-row" style="display:none;gap:6px;align-items:center;">
+            <span style="font-size:11px;color:var(--text-dim);font-family:var(--mono);">Desde</span>
+            <input type="date" class="turno-date-input" id="af-date-from" onchange="window.loadAnalytics()"/>
+            <span style="font-size:11px;color:var(--text-dim);font-family:var(--mono);">Hasta</span>
+            <input type="date" class="turno-date-input" id="af-date-to" onchange="window.loadAnalytics()"/>
+          </div>
           <button class="btn-refresh" onclick="window.loadAnalytics()"><svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M1 4v6h6M23 20v-6h-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M20.49 9A9 9 0 005.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 013.51 15" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>↻</button>
           <button class="btn-refresh" id="btn-clear-metrics" onclick="confirmClearMetrics()" style="display:none;border-color:rgba(248,113,113,0.3);color:#f87171;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Limpiar</button>
         </div>
@@ -972,8 +994,8 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 </div>
 
 <script>
-const APP_VERSION='8.8';
-const APP_CHANGELOG='Métricas solo para admins, filtros por período y limpiar solo super admin.';
+const APP_VERSION='8.9';
+const APP_CHANGELOG='Métricas: filtro personalizado por fechas y tarjeta de tiempo promedio de resolución.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
 const SCRIPT_URL='https://script.google.com/macros/s/AKfycbyam6j2MG1NH11120KjvAfxU1f_z9BYh4uamQw8QgNeGsjpwoo394IeqzbDSPXSO9e5/exec';
@@ -1374,12 +1396,33 @@ function renderAnalytics(events){
   const topT=Object.entries(tCount).sort((a,b)=>b[1]-a[1]).slice(0,5);
   const uCount={};events.forEach(e=>{if(e.user)uCount[e.user]=(uCount[e.user]||0)+1;});
   const topU=Object.entries(uCount).sort((a,b)=>b[1]-a[1]).slice(0,8);
+  // Avg resolution time: time between first chat and survey response in same session
+  // Approximate: use timestamp diff between chat events and survey events per user per day
+  let avgResolutionMins = null;
+  try {
+    const resolvedSurveys = surveyEvents.filter(e=>e.resolved==='yes'&&e.timestamp);
+    if(resolvedSurveys.length > 0) {
+      const times = resolvedSurveys.map(s=>{
+        const surveyTime = s.timestamp?.toDate?.();
+        if(!surveyTime) return null;
+        // Find nearest chat event before this survey from same user
+        const userChats = chatEvents.filter(c=>c.user===s.user&&c.timestamp?.toDate?.()<=surveyTime);
+        if(!userChats.length) return null;
+        const lastChat = userChats.reduce((a,b)=>a.timestamp?.toDate?.()>b.timestamp?.toDate?.()?a:b);
+        const diff = (surveyTime - lastChat.timestamp.toDate()) / 60000;
+        return diff > 0 && diff < 120 ? diff : null;
+      }).filter(Boolean);
+      if(times.length) avgResolutionMins = Math.round(times.reduce((a,b)=>a+b,0)/times.length);
+    }
+  } catch(e){}
+
   document.getElementById('analytics-content').innerHTML=`
     <div class="an-cards">
       <div class="an-card"><div class="an-num">${total}</div><div class="an-label">Interacciones totales</div></div>
       <div class="an-card"><div class="an-num">${users.length}</div><div class="an-label">Usuarios únicos</div></div>
       <div class="an-card"><div class="an-num">${chatEvents.length}</div><div class="an-label">Consultas al asistente</div></div>
       <div class="an-card"><div class="an-num">${sTotal?pYes+'%':'—'}</div><div class="an-label">Tasa de resolución</div></div>
+      <div class="an-card"><div class="an-num">${avgResolutionMins!==null?avgResolutionMins+' min':'—'}</div><div class="an-label">Tiempo promedio de resolución</div></div>
     </div>
     <div class="an-section" style="margin-bottom:16px;">
       <div class="an-section-title">🎯 Tasa de resolución — ${sTotal} encuestas</div>
