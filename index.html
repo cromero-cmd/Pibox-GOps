@@ -1009,7 +1009,7 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 </div>
 
 <script>
-const APP_VERSION='12.2';
+const APP_VERSION='12.3';
 const APP_CHANGELOG='Reporte nómina: corrección de CORS para envío por correo.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -1581,6 +1581,14 @@ function showTurnoDoneToday(turno){
     <div style="font-size:13px;font-weight:700;color:#4ade80;margin-bottom:6px;">Turno finalizado</div>
     <div style="font-size:12px;color:var(--text-muted);line-height:1.6;">Tu turno de hoy ya fue registrado.<br/>Finalizaste a las <strong>${endStr}</strong> con una duración de <strong>${dur}</strong>.</div>
     <div style="font-size:11px;color:var(--text-dim);margin-top:8px;font-family:var(--mono);">Si necesitas registrar tiempo adicional, contacta a tu líder inmediato.</div>`;
+  // Poll every 15s to check if admin authorized resumption
+  window._resumePollId=setInterval(async()=>{
+    const t=await window.getTodayTurno();
+    if(t?.resumeAuthorized){
+      clearInterval(window._resumePollId);
+      initTurnoView();
+    }
+  },15000);
 }
 
 async function checkTodayNovedad(){
@@ -1686,6 +1694,7 @@ async function endTurno(status='ended'){
     setTurnoInactive();
     toast('👋 Turno finalizado — duración: '+formatDuration(elapsed));
     loadTurnoHistory();
+    setTimeout(()=>initTurnoView(),800);
   }
   currentTurnoId=null;turnoStartTime=null;accumulatedSeconds=0;
 }
@@ -1809,13 +1818,14 @@ async function submitOvertimeResponse(approved,extraMins,overlayEl){
 
 async function resumeTurno(){
   const t=window._interruptedTurno;if(!t)return;
+  if(window._resumePollId){clearInterval(window._resumePollId);window._resumePollId=null;}
   document.getElementById('resume-banner').style.display='none';
   currentTurnoId=t.id;turnoStartTime=new Date();accumulatedSeconds=t.accumulatedSeconds||0;
   await window.updateTurnoInFirebase(currentTurnoId,{status:'active',resumedAt:turnoStartTime});
   setTurnoActive({...t,startTime:{toDate:()=>new Date(t.startTime.toDate())}});startTimer();
   toast('▶️ Turno reanudado');
 }
-async function startFreshTurno(){document.getElementById('resume-banner').style.display='none';window._interruptedTurno=null;await startTurno();}
+async function startFreshTurno(){if(window._resumePollId){clearInterval(window._resumePollId);window._resumePollId=null;}document.getElementById('resume-banner').style.display='none';window._interruptedTurno=null;await startTurno();}
 
 function setTurnoFilter(f,btn){
   turnoFilter=f;
@@ -1861,6 +1871,14 @@ function showTurnoDoneToday(turno){
     <div style="font-size:13px;font-weight:700;color:#4ade80;margin-bottom:6px;">Turno finalizado</div>
     <div style="font-size:12px;color:var(--text-muted);line-height:1.6;">Tu turno de hoy ya fue registrado.<br/>Finalizaste a las <strong>${endStr}</strong> con una duración de <strong>${dur}</strong>.</div>
     <div style="font-size:11px;color:var(--text-dim);margin-top:8px;font-family:var(--mono);">Si necesitas registrar tiempo adicional, contacta a tu líder inmediato.</div>`;
+  // Poll every 15s to check if admin authorized resumption
+  window._resumePollId=setInterval(async()=>{
+    const t=await window.getTodayTurno();
+    if(t?.resumeAuthorized){
+      clearInterval(window._resumePollId);
+      initTurnoView();
+    }
+  },15000);
 }
 
 async function checkTodayNovedad(){
