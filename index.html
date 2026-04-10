@@ -1068,8 +1068,8 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 </div>
 
 <script>
-const APP_VERSION='12.5';
-const APP_CHANGELOG='Nuevo logo y vista de inicio con tarjetas por rol.';
+const APP_VERSION='13.0';
+const APP_CHANGELOG='Vista de inicio con tarjetas por rol funcionando correctamente.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
 const SCRIPT_URL='https://script.google.com/macros/s/AKfycbyam6j2MG1NH11120KjvAfxU1f_z9BYh4uamQw8QgNeGsjpwoo394IeqzbDSPXSO9e5/exec';
@@ -1138,6 +1138,27 @@ window.onload=()=>{
 };
 
 // ── TABS ──
+function initHomeView(){
+  const userEmail=document.getElementById('user-email')?.textContent||'';
+  const userName=document.getElementById('user-name')?.textContent||'';
+  const isSuperAdmin=userEmail===SUPER_ADMIN;
+  const isAdmin=(window.ADMINS||ADMINS).includes(userEmail)||isSuperAdmin;
+  const greet=document.getElementById('home-greeting');
+  if(greet)greet.textContent='Hola, '+userName+' 👋';
+  const cards=[
+    {id:'turno',icon:'⏱️',title:'Mi turno',desc:'Inicia y finaliza tu turno, consulta tu historial y verifica tu malla programada.',color:'#7B2FFF',grad:'linear-gradient(135deg,#7B2FFF,#C83FE8)',roles:['user','admin','super']},
+    {id:'chat',icon:'💬',title:'Asistente',desc:'Resuelve dudas operativas al instante con el asistente inteligente de Pi GOps.',color:'#06b6d4',grad:'linear-gradient(135deg,#06b6d4,#3b82f6)',roles:['user','admin','super']},
+    {id:'library',icon:'🎬',title:'Tutoriales',desc:'Biblioteca de videos de capacitación y guías para el equipo de operaciones.',color:'#8b5cf6',grad:'linear-gradient(135deg,#8b5cf6,#ec4899)',roles:['user','admin','super']},
+    {id:'analytics',icon:'📊',title:'Métricas',desc:'Indicadores de uso del asistente, tasa de resolución y tiempos de respuesta.',color:'#10b981',grad:'linear-gradient(135deg,#10b981,#06b6d4)',roles:['admin','super']},
+    {id:'turno-panel',icon:'👥',title:'Panel de control',desc:'Historial de turnos del equipo, gestión de extras y reportes de nómina.',color:'#f59e0b',grad:'linear-gradient(135deg,#f59e0b,#ef4444)',roles:['admin','super']},
+  ];
+  const role=isSuperAdmin?'super':isAdmin?'admin':'user';
+  const filtered=cards.filter(c=>c.roles.includes(role));
+  const wrap=document.getElementById('home-cards');
+  if(!wrap)return;
+  wrap.innerHTML=filtered.map(c=>'<div class="home-card" onclick="'+(c.id==='turno-panel'?"switchTab(\'turno\');setTimeout(()=>switchTurnoTab(\'panel\'),300)":"switchTab(\'"+c.id+"\'")+'" ><div style="position:absolute;top:0;left:0;right:0;height:3px;background:'+c.grad+';border-radius:18px 18px 0 0;"></div><div class="home-card-icon" style="background:'+c.color+'20;border:1px solid '+c.color+'30;"><span style="font-size:22px;">'+c.icon+'</span></div><div><div class="home-card-title">'+c.title+'</div><div class="home-card-desc">'+c.desc+'</div></div></div>').join('');
+}
+
 function switchTab(t){
   // Check if survey should show when returning to chat
   if(t==='chat'&&hasConversation&&window._surveyScheduledAt){
