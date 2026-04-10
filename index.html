@@ -1068,7 +1068,7 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 </div>
 
 <script>
-const APP_VERSION='13.2';
+const APP_VERSION='13.3';
 const APP_CHANGELOG='Inicio: pestañas ocultas en home, visibles al navegar.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -1167,6 +1167,7 @@ function initHomeView(){
     el.addEventListener('click',()=>{
       const id=el.dataset.cardid;
       if(id==='turno-panel'){switchTab('turno');setTimeout(()=>switchTurnoTab('panel'),300);}
+      else if(id==='turno'){switchTab('turno');setTimeout(()=>switchTurnoTab('miturno'),100);}
       else{switchTab(id);}
     });
   });
