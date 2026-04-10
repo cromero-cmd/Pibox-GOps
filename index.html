@@ -1009,7 +1009,7 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 </div>
 
 <script>
-const APP_VERSION='11.0';
+const APP_VERSION='11.1';
 const APP_CHANGELOG='Reporte nómina: corrección de CORS para envío por correo.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -1757,7 +1757,7 @@ async function submitOvertimeResponse(approved,extraMins,overlayEl){
         recipients:payrollRecipients
       };
       const otPayload=encodeURIComponent(JSON.stringify(otData));
-      await callAppsScript(NOTIF_SCRIPT+'?type=overtime_request&data='+otPayload);
+      await fetch(NOTIF_SCRIPT+'?type=overtime_request&data='+otPayload,{method:'GET',mode:'no-cors'});
     }catch(e){console.warn('Notif failed:',e);}
     toast('✅ Solicitud enviada — pendiente de aprobación');
   }else{
