@@ -1009,8 +1009,8 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 </div>
 
 <script>
-const APP_VERSION='10.0';
-const APP_CHANGELOG='Horas extras: aprobación y rechazo funcionando correctamente.';
+const APP_VERSION='10.1';
+const APP_CHANGELOG='Nómina: salida reportada según extras aprobadas/rechazadas. Badge en historial de turnos.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
 const SCRIPT_URL='https://script.google.com/macros/s/AKfycbyam6j2MG1NH11120KjvAfxU1f_z9BYh4uamQw8QgNeGsjpwoo394IeqzbDSPXSO9e5/exec';
@@ -1637,6 +1637,7 @@ async function endTurno(status='ended'){
   const endTime=new Date();
   const elapsed=Math.floor((endTime-turnoStartTime)/1000)+accumulatedSeconds;
   await window.updateTurnoInFirebase(currentTurnoId,{endTime,accumulatedSeconds:elapsed,status});
+  window._lastTurnoId=currentTurnoId;
   if(status==='ended'){
     // Check for overtime and schedule discrepancy
     await checkOvertimeAndDiscrepancy(endTime,elapsed);
@@ -1723,12 +1724,22 @@ async function submitOvertimeResponse(approved,extraMins,overlayEl){
   const userName=document.getElementById('user-name').textContent;
   const today=new Date().toLocaleDateString('es-CO',{day:'2-digit',month:'long',year:'numeric'});
   const status=approved?'pending_review':'rejected';
-  // Save overtime request to Firebase
-  await window.trackEvent('overtime',{
+  // Save overtime event
+  const overtimeEventData={
     agentEmail:userEmail,agentName:userName,
     date:today,extraMins,approved,status,
-    mallaEntry:window._overtimeMallaEntry
-  });
+    mallaEntry:window._overtimeMallaEntry,
+    turnoId:window._lastTurnoId||null
+  };
+  await window.trackEvent('overtime', overtimeEventData);
+  // Also tag the turno record with overtime status
+  if(window._lastTurnoId){
+    await window.updateTurnoInFirebase(window._lastTurnoId,{
+      overtimeStatus:status,
+      overtimeExtraMins:extraMins,
+      scheduledEndTime:window._overtimeMallaEntry?.fin||null
+    });
+  }
   if(approved){
     // Notify admins via Apps Script
     const admins=window.ADMINS||[SUPER_ADMIN];
@@ -1824,7 +1835,13 @@ async function loadTurnoHistory(){
     const dateStr=start?start.toLocaleDateString('es-CO',{day:'2-digit',month:'short'}):'—';
     const sc=t.status==='active'?'active':t.status==='interrupted'?'interrupted':'ended';
     const sl=t.status==='active'?'En turno':t.status==='interrupted'?'Interrumpido':'Finalizado';
-    return`<div class="turno-row"><div class="turno-row-date">${dateStr}</div>${isAdmin?`<div class="turno-row-user">${t.userEmail||'—'}</div>`:''}<div class="turno-row-time">${startStr} → ${endStr}</div><div class="turno-row-dur">${dur}</div><div class="turno-row-device">${t.isMobile?'📱':'💻'}</div><div class="turno-row-status ${sc}">${sl}</div></div>`;
+    const otBadge=t.overtimeStatus?{
+      'pending_review':'<span style="background:rgba(251,146,60,0.15);border:1px solid rgba(251,146,60,0.4);color:#fb923c;padding:1px 6px;border-radius:4px;font-size:9px;font-family:var(--mono);margin-left:4px;">⏳ Extra pendiente</span>',
+      'pending_super_admin':'<span style="background:rgba(251,146,60,0.15);border:1px solid rgba(251,146,60,0.4);color:#fb923c;padding:1px 6px;border-radius:4px;font-size:9px;font-family:var(--mono);margin-left:4px;">⏳ Extra en revisión</span>',
+      'approved':'<span style="background:rgba(74,222,128,0.1);border:1px solid rgba(74,222,128,0.3);color:#4ade80;padding:1px 6px;border-radius:4px;font-size:9px;font-family:var(--mono);margin-left:4px;">✅ Extra aprobada</span>',
+      'rejected':'<span style="background:rgba(248,113,113,0.1);border:1px solid rgba(248,113,113,0.3);color:#f87171;padding:1px 6px;border-radius:4px;font-size:9px;font-family:var(--mono);margin-left:4px;">❌ Extra rechazada</span>'
+    }[t.overtimeStatus]||'':'';
+    return`<div class="turno-row"><div class="turno-row-date">${dateStr}</div>${isAdmin?`<div class="turno-row-user">${t.userEmail||'—'}</div>`:''}<div class="turno-row-time">${startStr} → ${endStr}</div><div class="turno-row-dur">${dur}</div><div class="turno-row-device">${t.isMobile?'📱':'💻'}</div><div class="turno-row-status ${sc}">${sl}${otBadge}</div></div>`;
   }).join('');
 }
 
@@ -2353,20 +2370,24 @@ function renderOvertimeList(el,events){
           <div style="font-size:12px;color:#fb923c;margin-top:4px;">⏰ ${e.extraMins||0} min extras</div>
         </div>
         <div style="display:flex;gap:8px;">
-          <button onclick="approveOvertime('${e.id}',false,this)" style="padding:7px 14px;border-radius:8px;border:1px solid rgba(248,113,113,0.4);background:rgba(248,113,113,0.08);color:#f87171;font-family:var(--font);font-weight:600;font-size:12px;cursor:pointer;">Rechazar</button>
-          <button onclick="approveOvertime('${e.id}',true,this)" style="padding:7px 14px;border-radius:8px;border:1px solid rgba(74,222,128,0.4);background:rgba(74,222,128,0.08);color:#4ade80;font-family:var(--font);font-weight:600;font-size:12px;cursor:pointer;">Aprobar</button>
+          <button onclick="approveOvertime('${e.id}',false,this,'${e.turnoId||''}')" style="padding:7px 14px;border-radius:8px;border:1px solid rgba(248,113,113,0.4);background:rgba(248,113,113,0.08);color:#f87171;font-family:var(--font);font-weight:600;font-size:12px;cursor:pointer;">Rechazar</button>
+          <button onclick="approveOvertime('${e.id}',true,this,'${e.turnoId||''}')" style="padding:7px 14px;border-radius:8px;border:1px solid rgba(74,222,128,0.4);background:rgba(74,222,128,0.08);color:#4ade80;font-family:var(--font);font-weight:600;font-size:12px;cursor:pointer;">Aprobar</button>
         </div>
       </div>
     </div>`).join('');
 }
 
-async function approveOvertime(eventId,approved,btn){
+async function approveOvertime(eventId,approved,btn,turnoId){
   const userEmail=document.getElementById('user-email').textContent;
   const isSuperAdmin=userEmail===SUPER_ADMIN;
   const newStatus=approved?(isSuperAdmin?'approved':'pending_super_admin'):'rejected';
   btn.textContent='Guardando...';btn.disabled=true;
   try{
     await window.updateOvertimeEvent(eventId,{status:newStatus,decidedBy:userEmail,decidedAt:new Date().toISOString()});
+    // Update turno record with final overtime status
+    if(turnoId){
+      await window.updateTurnoInFirebase(turnoId,{overtimeStatus:newStatus});
+    }
     toast(approved?(isSuperAdmin?'✅ Aprobado definitivamente':'✅ Aprobado — pendiente super admin'):'❌ Rechazado');
     // Mark row as processed
     const row=btn.closest('.overtime-row');
@@ -2421,13 +2442,33 @@ async function sendPayrollReport(){
     const mallaEntry=mallaData.find(m=>{
       const md=parseDate(m.fecha);return md&&start&&md.toDateString()===start.toDateString()&&m.usuario===t.userEmail;
     });
+    // Use scheduled end if extras were rejected or pending
+    const extrasApproved=t.overtimeStatus==='approved';
+    const hasExtras=t.overtimeStatus&&t.overtimeStatus!=='approved';
+    let reportEnd=end;
+    if(hasExtras&&mallaEntry){
+      const scheduledEnd=parseTime(mallaEntry.fecha,mallaEntry.fin);
+      if(scheduledEnd){
+        // Handle overnight
+        if(start&&scheduledEnd<start) scheduledEnd.setDate(scheduledEnd.getDate()+1);
+        reportEnd=scheduledEnd;
+      }
+    }
+    const scheduledSecs=mallaEntry?(()=>{
+      const ss=parseTime(mallaEntry.fecha,mallaEntry.inicio);
+      let se=parseTime(mallaEntry.fecha,mallaEntry.fin);
+      if(ss&&se&&se<ss)se.setDate(se.getDate()+1);
+      return ss&&se?Math.round((se-ss)/1000):null;
+    })():null;
+    const reportSecs=hasExtras&&scheduledSecs?scheduledSecs:t.accumulatedSeconds;
     return{
       name:t.userName||t.userEmail?.split('@')[0]||'—',
       date:start?start.toLocaleDateString('es-CO',{weekday:'short',day:'2-digit',month:'short'}):'—',
       checkIn:start?start.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—',
-      checkOut:end?end.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—',
-      hours:t.accumulatedSeconds?formatDuration(t.accumulatedSeconds):'—',
-      novedad:mallaEntry?.novedad||'—'
+      checkOut:reportEnd?reportEnd.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—',
+      hours:reportSecs?formatDuration(reportSecs):'—',
+      novedad:mallaEntry?.novedad||'—',
+      extras:t.overtimeStatus?({approved:'✅ Aprobada',rejected:'❌ Rechazada',pending_review:'⏳ Pendiente',pending_super_admin:'⏳ En revisión'}[t.overtimeStatus]||'—'):'—'
     };
   }).sort((a,b)=>a.name.localeCompare(b.name));
   if(!records.length){toast('Sin registros para la semana anterior');return;}
@@ -2471,13 +2512,7 @@ function exportPanel2XLSX(){
   if(!panel2AllRows||!panel2AllRows.length){toast('Sin datos para exportar');return;}
   const headers=['Usuario','Email','Fecha','Inicio','Fin','Duración','Dispositivo','Fichaje','Cumplimiento'];
   const fmt=t=>t?t.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
-  const rows=panel2AllRows.map(t=>{
-    const start=t.startTime?.toDate?.();const end=t.endTime?.toDate?.();
-    const name=t.userName||t.userEmail?.split('@')[0]||'—';
-    const ds=start?start.toLocaleDateString('es-CO',{day:'2-digit',month:'short',year:'numeric'}):'—';
-    const fl=t.status==='active'?'En turno':t.status==='interrupted'?'Interrumpido':'Finalizado';
-    return[name,t.userEmail||'—',ds,fmt(start),fmt(end),t.accumulatedSeconds?formatDuration(t.accumulatedSeconds):'—',t.isMobile?'Móvil':'Desktop',fl,t.cumplStatus?.label||'—'];
-  });
+  const rows=records.map(r=>[r.name,r.date,r.checkIn,r.checkOut,r.hours,r.novedad,r.extras]);
   exportToXLSX(headers,rows,'panel_control_'+new Date().toISOString().split('T')[0]);
 }
 
