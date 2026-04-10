@@ -1009,13 +1009,13 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 </div>
 
 <script>
-const APP_VERSION='10.7';
+const APP_VERSION='10.9';
 const APP_CHANGELOG='Nómina: salida reportada según extras aprobadas/rechazadas. Badge en historial de turnos.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
 const SCRIPT_URL='https://script.google.com/macros/s/AKfycbyam6j2MG1NH11120KjvAfxU1f_z9BYh4uamQw8QgNeGsjpwoo394IeqzbDSPXSO9e5/exec';
 const MALLA_SCRIPT='https://script.google.com/macros/s/AKfycbyxBZWba6M1eXcwQUdBBUTqTrgGd8zwHiM6wwecXI3mUYOUP-RT9LnxSwqeXRy9prCm/exec';
-const NOTIF_SCRIPT='https://script.google.com/macros/s/AKfycbxf0d0hOig1E_eF5gC8a6KRh7ocSGBaP1xflhWh4fSpn-W-HNwCMJBLP-MG9O2WKJ14oA/exec';
+const NOTIF_SCRIPT='https://script.google.com/macros/s/AKfycbx0bK2PUHqQ366JQBWCPrgpAxbWA3HKovK6mRdeU_AdsBWz_aCC5lZDmNKHEG0HTta6vA/exec';
 const TOLERANCE_MINS=5;
 
 let apiKey='',sheetUrl='',vidUrl='',faqUrl='',sysBase='Eres Pi GOps, el asistente inteligente de operaciones de Pibox. Tu rol es ayudar al equipo operativo a tomar decisiones rápidas y correctas en campo.\n\nTienes acceso a un manual de operaciones. Úsalo como tu fuente principal, pero también puedes razonar e interpretar cuando la pregunta no esté respondida textualmente.\n\nCómo debes responder:\n- Sé claro, directo y práctico. El equipo está en campo y necesita respuestas rápidas.\n- Si la respuesta está en el manual, úsala y explícala con tus propias palabras.\n- Si definitivamente no está en el manual, dilo con honestidad y sugiere a quién escalar.\n- Nunca te quedes en blanco. Siempre da una respuesta útil.\n- Habla en español colombiano, de forma cercana y profesional.',history=[],streaming=false,sheetData='',allVideos=[],activeCat='Todos',allFAQs=[],activeFAQCat='Todos';
@@ -1748,20 +1748,16 @@ async function submitOvertimeResponse(approved,extraMins,overlayEl){
     const admins=window.ADMINS||[SUPER_ADMIN];
     const payrollRecipients=admins.concat([SUPER_ADMIN]).filter((v,i,a)=>a.indexOf(v)===i);
     try{
-      await fetch(NOTIF_SCRIPT,{
-        method:'POST',
-        mode:'no-cors',
-        headers:{'Content-Type':'text/plain'},
-        body:JSON.stringify({
-          type:'overtime_request',
-          agentName:userName,agentEmail:userEmail,
-          date:today,
-          scheduledHours:window._overtimeMallaEntry?.inicio+' - '+window._overtimeMallaEntry?.fin,
-          workedHours:formatDuration((window._overtimeMallaEntry?Math.round((parseTime(window._overtimeMallaEntry.fecha,window._overtimeMallaEntry.fin)-parseTime(window._overtimeMallaEntry.fecha,window._overtimeMallaEntry.inicio))/1000)+extraMins*60:extraMins*60)),
-          extraHours:Math.floor(extraMins/60)+'h '+extraMins%60+'m',
-          recipients:payrollRecipients
-        })
-      });
+      const otData={
+        agentName:userName,agentEmail:userEmail,
+        date:today,
+        scheduledHours:(window._overtimeMallaEntry?.inicio||'')+'→'+(window._overtimeMallaEntry?.fin||''),
+        workedHours:formatDuration(extraMins*60),
+        extraHours:Math.floor(extraMins/60)+'h '+extraMins%60+'m',
+        recipients:payrollRecipients
+      };
+      const otPayload=encodeURIComponent(JSON.stringify(otData));
+      await fetch(NOTIF_SCRIPT+'?type=overtime_request&data='+otPayload,{method:'GET',mode:'no-cors'});
     }catch(e){console.warn('Notif failed:',e);}
     toast('✅ Solicitud enviada — pendiente de aprobación');
   }else{
