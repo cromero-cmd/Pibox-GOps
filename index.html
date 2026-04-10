@@ -1009,7 +1009,7 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 </div>
 
 <script>
-const APP_VERSION='12.4';
+const APP_VERSION='12.5';
 const APP_CHANGELOG='Reporte nómina: corrección de CORS para envío por correo.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -1826,7 +1826,7 @@ async function resumeTurno(){
   if(window._resumePollId){clearInterval(window._resumePollId);window._resumePollId=null;}
   document.getElementById('resume-banner').style.display='none';
   currentTurnoId=t.id;turnoStartTime=new Date();accumulatedSeconds=t.accumulatedSeconds||0;
-  await window.updateTurnoInFirebase(currentTurnoId,{status:'active',resumedAt:turnoStartTime});
+  await window.updateTurnoInFirebase(currentTurnoId,{status:'active',resumedAt:turnoStartTime,resumeAuthorized:false});
   setTurnoActive({...t,startTime:{toDate:()=>new Date(t.startTime.toDate())}});startTimer();
   toast('▶️ Turno reanudado');
 }
