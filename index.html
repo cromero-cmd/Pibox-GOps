@@ -1068,7 +1068,7 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 </div>
 
 <script>
-const APP_VERSION='13.0';
+const APP_VERSION='13.1';
 const APP_CHANGELOG='Vista de inicio con tarjetas por rol funcionando correctamente.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -1156,7 +1156,17 @@ function initHomeView(){
   const filtered=cards.filter(c=>c.roles.includes(role));
   const wrap=document.getElementById('home-cards');
   if(!wrap)return;
-  wrap.innerHTML=filtered.map(c=>'<div class="home-card" onclick="'+(c.id==='turno-panel'?"switchTab(\'turno\');setTimeout(()=>switchTurnoTab(\'panel\'),300)":"switchTab(\'"+c.id+"\'")+'" ><div style="position:absolute;top:0;left:0;right:0;height:3px;background:'+c.grad+';border-radius:18px 18px 0 0;"></div><div class="home-card-icon" style="background:'+c.color+'20;border:1px solid '+c.color+'30;"><span style="font-size:22px;">'+c.icon+'</span></div><div><div class="home-card-title">'+c.title+'</div><div class="home-card-desc">'+c.desc+'</div></div></div>').join('');
+  wrap.innerHTML=filtered.map(c=>{
+    return '<div class="home-card" data-cardid="'+c.id+'" style="cursor:pointer;"><div style="position:absolute;top:0;left:0;right:0;height:3px;background:'+c.grad+';border-radius:18px 18px 0 0;"></div><div class="home-card-icon" style="background:'+c.color+'20;border:1px solid '+c.color+'30;"><span style="font-size:22px;">'+c.icon+'</span></div><div><div class="home-card-title">'+c.title+'</div><div class="home-card-desc">'+c.desc+'</div></div></div>';
+  }).join('');
+  // Add click handlers after DOM is updated
+  wrap.querySelectorAll('.home-card').forEach(el=>{
+    el.addEventListener('click',()=>{
+      const id=el.dataset.cardid;
+      if(id==='turno-panel'){switchTab('turno');setTimeout(()=>switchTurnoTab('panel'),300);}
+      else{switchTab(id);}
+    });
+  });
 }
 
 function switchTab(t){
