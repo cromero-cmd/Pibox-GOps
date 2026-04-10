@@ -1009,7 +1009,7 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 </div>
 
 <script>
-const APP_VERSION='11.2';
+const APP_VERSION='11.3';
 const APP_CHANGELOG='Reporte nómina: corrección de CORS para envío por correo.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -2476,9 +2476,9 @@ async function sendPayrollReport(){
   }).sort((a,b)=>a.name.localeCompare(b.name));
   if(!records.length){toast('Sin registros para la semana anterior');return;}
   try{
-    await fetch(NOTIF_SCRIPT,{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({type:'payroll_report',weekStart,weekEnd,records,recipients})
-    });
+    const payload=encodeURIComponent(JSON.stringify({weekStart,weekEnd,records,recipients}));
+    const url=NOTIF_SCRIPT+'?type=payroll_report&data='+payload;
+    await fetch(url,{mode:'no-cors'});
     toast('📋 Reporte enviado a '+recipients.join(', '));
   }catch(e){toast('Error al enviar reporte: '+e.message);}
 }
