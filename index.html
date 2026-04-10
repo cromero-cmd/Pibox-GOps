@@ -1009,7 +1009,7 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 </div>
 
 <script>
-const APP_VERSION='11.9';
+const APP_VERSION='12.2';
 const APP_CHANGELOG='Reporte nómina: corrección de CORS para envío por correo.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -1525,6 +1525,11 @@ async function initTurnoView(){
   document.getElementById('turno-device-icon').textContent=device.icon;
   document.getElementById('turno-device-label').textContent=device.label;
   document.getElementById('turno-date').textContent=new Date().toLocaleDateString('es-CO',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+  // Wait for Firebase auth to be ready
+  if(!window._fbReady){
+    setTimeout(()=>initTurnoView(),500);
+    return;
+  }
   const existing=await window.getTodayTurno();
   if(existing&&existing.status==='active'){
     currentTurnoId=existing.id;turnoStartTime=existing.startTime.toDate();accumulatedSeconds=existing.accumulatedSeconds||0;
@@ -1535,10 +1540,47 @@ async function initTurnoView(){
     document.getElementById('resume-msg').textContent=`Detectamos que tu turno fue interrumpido a las ${ts}. ¿Deseas continuar?`;
     document.getElementById('resume-banner').style.display='block';
     window._interruptedTurno=existing;
+  }else if(existing&&existing.status==='ended'){
+    // Turno already completed today - block re-start
+    showTurnoDoneToday(existing);
   }
   loadTurnoHistory();
   // Pre-check malla for today
   checkTodayNovedad();
+}
+
+function showTurnoDoneToday(turno){
+  const endTime=turno.endTime?.toDate?.();
+  const endStr=endTime?endTime.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
+  const dur=turno.accumulatedSeconds?formatDuration(turno.accumulatedSeconds):'—';
+  document.getElementById('turno-status').textContent='Turno completado hoy';
+  document.getElementById('turno-timer').textContent=dur;
+  document.getElementById('btn-turno-start').style.display='none';
+  document.getElementById('btn-turno-end').style.display='none';
+
+  // Check if admin authorized resumption
+  if(turno.resumeAuthorized){
+    // Show resume banner instead
+    const t=turno.endTime?.toDate?.();
+    const ts=t?t.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'';
+    document.getElementById('resume-msg').textContent=`Tu líder autorizó reanudar tu turno (finalizado a las ${ts}). ¿Deseas continuar?`;
+    document.getElementById('resume-banner').style.display='block';
+    window._interruptedTurno=turno;
+    return;
+  }
+
+  let doneEl=document.getElementById('turno-done-msg');
+  if(!doneEl){
+    doneEl=document.createElement('div');
+    doneEl.id='turno-done-msg';
+    doneEl.style.cssText='background:rgba(74,222,128,0.06);border:1px solid rgba(74,222,128,0.2);border-radius:12px;padding:14px 18px;margin-top:12px;text-align:center;';
+    document.getElementById('btn-turno-start').parentNode.appendChild(doneEl);
+  }
+  doneEl.innerHTML=`
+    <div style="font-size:22px;margin-bottom:8px;">✅</div>
+    <div style="font-size:13px;font-weight:700;color:#4ade80;margin-bottom:6px;">Turno finalizado</div>
+    <div style="font-size:12px;color:var(--text-muted);line-height:1.6;">Tu turno de hoy ya fue registrado.<br/>Finalizaste a las <strong>${endStr}</strong> con una duración de <strong>${dur}</strong>.</div>
+    <div style="font-size:11px;color:var(--text-dim);margin-top:8px;font-family:var(--mono);">Si necesitas registrar tiempo adicional, contacta a tu líder inmediato.</div>`;
 }
 
 async function checkTodayNovedad(){
@@ -1785,6 +1827,40 @@ function setTurnoFilter(f,btn){
   loadTurnoHistory();
   // Pre-check malla for today
   checkTodayNovedad();
+}
+
+function showTurnoDoneToday(turno){
+  const endTime=turno.endTime?.toDate?.();
+  const endStr=endTime?endTime.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
+  const dur=turno.accumulatedSeconds?formatDuration(turno.accumulatedSeconds):'—';
+  document.getElementById('turno-status').textContent='Turno completado hoy';
+  document.getElementById('turno-timer').textContent=dur;
+  document.getElementById('btn-turno-start').style.display='none';
+  document.getElementById('btn-turno-end').style.display='none';
+
+  // Check if admin authorized resumption
+  if(turno.resumeAuthorized){
+    // Show resume banner instead
+    const t=turno.endTime?.toDate?.();
+    const ts=t?t.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'';
+    document.getElementById('resume-msg').textContent=`Tu líder autorizó reanudar tu turno (finalizado a las ${ts}). ¿Deseas continuar?`;
+    document.getElementById('resume-banner').style.display='block';
+    window._interruptedTurno=turno;
+    return;
+  }
+
+  let doneEl=document.getElementById('turno-done-msg');
+  if(!doneEl){
+    doneEl=document.createElement('div');
+    doneEl.id='turno-done-msg';
+    doneEl.style.cssText='background:rgba(74,222,128,0.06);border:1px solid rgba(74,222,128,0.2);border-radius:12px;padding:14px 18px;margin-top:12px;text-align:center;';
+    document.getElementById('btn-turno-start').parentNode.appendChild(doneEl);
+  }
+  doneEl.innerHTML=`
+    <div style="font-size:22px;margin-bottom:8px;">✅</div>
+    <div style="font-size:13px;font-weight:700;color:#4ade80;margin-bottom:6px;">Turno finalizado</div>
+    <div style="font-size:12px;color:var(--text-muted);line-height:1.6;">Tu turno de hoy ya fue registrado.<br/>Finalizaste a las <strong>${endStr}</strong> con una duración de <strong>${dur}</strong>.</div>
+    <div style="font-size:11px;color:var(--text-dim);margin-top:8px;font-family:var(--mono);">Si necesitas registrar tiempo adicional, contacta a tu líder inmediato.</div>`;
 }
 
 async function checkTodayNovedad(){
@@ -2266,7 +2342,11 @@ async function loadPanel2(){
       <div style="padding:10px 12px;border-right:1px solid var(--border);font-family:var(--mono);font-size:11px;color:var(--text-muted);display:flex;align-items:center;">${ss} → ${es}</div>
       <div style="padding:10px 12px;border-right:1px solid var(--border);font-family:var(--mono);font-size:11px;color:var(--p2);font-weight:700;display:flex;align-items:center;">${dur}</div>
       <div style="padding:10px 12px;border-right:1px solid var(--border);display:flex;align-items:center;"><span style="font-size:10px;font-family:var(--mono);padding:2px 7px;border-radius:4px;${t.isMobile?'background:rgba(251,146,60,0.1);color:#fb923c;':'background:rgba(74,222,128,0.08);color:#4ade80;'}">${t.isMobile?'📱 Móvil':'💻 Desktop'}</span></div>
-      <div style="padding:10px 12px;border-right:1px solid var(--border);display:flex;align-items:center;"><span class="turno-row-status ${fc}">${fl}</span></div>
+      <div style="padding:10px 12px;border-right:1px solid var(--border);display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+        <span class="turno-row-status ${fc}">${fl}</span>
+        ${t.status==='ended'&&!t.resumeAuthorized?`<button onclick="authorizeResume('${t.id}',this)" style="background:rgba(123,47,255,0.1);border:1px solid rgba(123,47,255,0.3);color:var(--p2);padding:2px 7px;border-radius:5px;font-size:9px;font-family:var(--mono);cursor:pointer;">▶ Autorizar reanudación</button>`:''}
+        ${t.resumeAuthorized?'<span style="font-size:9px;color:var(--p2);font-family:var(--mono);">▶ Reanudación autorizada</span>':''}
+      </div>
       <div style="padding:10px 12px;display:flex;align-items:center;"><span class="cumpl-status ${t.cumplStatus.cls}">${t.cumplStatus.icon} ${t.cumplStatus.label}</span></div>
     </div>`;
   }).join('');
@@ -2322,7 +2402,11 @@ function renderPanel2Table(){
       <div style="padding:10px 12px;border-right:1px solid var(--border);font-family:var(--mono);font-size:11px;color:var(--text-muted);display:flex;align-items:center;">${ss} → ${es}</div>
       <div style="padding:10px 12px;border-right:1px solid var(--border);font-family:var(--mono);font-size:11px;color:var(--p2);font-weight:700;display:flex;align-items:center;">${dur}</div>
       <div style="padding:10px 12px;border-right:1px solid var(--border);display:flex;align-items:center;"><span style="font-size:10px;font-family:var(--mono);padding:2px 7px;border-radius:4px;${t.isMobile?'background:rgba(251,146,60,0.1);color:#fb923c;':'background:rgba(74,222,128,0.08);color:#4ade80;'}">${t.isMobile?'📱 Móvil':'💻 Desktop'}</span></div>
-      <div style="padding:10px 12px;border-right:1px solid var(--border);display:flex;align-items:center;"><span class="turno-row-status ${fc}">${fl}</span></div>
+      <div style="padding:10px 12px;border-right:1px solid var(--border);display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+        <span class="turno-row-status ${fc}">${fl}</span>
+        ${t.status==='ended'&&!t.resumeAuthorized?`<button onclick="authorizeResume('${t.id}',this)" style="background:rgba(123,47,255,0.1);border:1px solid rgba(123,47,255,0.3);color:var(--p2);padding:2px 7px;border-radius:5px;font-size:9px;font-family:var(--mono);cursor:pointer;">▶ Autorizar reanudación</button>`:''}
+        ${t.resumeAuthorized?'<span style="font-size:9px;color:var(--p2);font-family:var(--mono);">▶ Reanudación autorizada</span>':''}
+      </div>
       <div style="padding:10px 12px;display:flex;align-items:center;"><span class="cumpl-status ${t.cumplStatus.cls}">${t.cumplStatus.icon} ${t.cumplStatus.label}</span></div>
     </div>`;
   }).join('');
@@ -2511,6 +2595,29 @@ function callAppsScript(url){
       }
     },8000);
   });
+}
+
+// ── AUTHORIZE RESUME ──
+async function authorizeResume(turnoId, btn){
+  btn.textContent='Autorizando...';
+  btn.disabled=true;
+  try{
+    await window.updateTurnoInFirebase(turnoId,{
+      resumeAuthorized:true,
+      resumeAuthorizedBy:document.getElementById('user-email').textContent,
+      resumeAuthorizedAt:new Date().toISOString(),
+      status:'interrupted' // change status so agent sees resume banner
+    });
+    btn.textContent='✅ Autorizado';
+    btn.style.color='#4ade80';
+    btn.style.borderColor='rgba(74,222,128,0.3)';
+    toast('✅ Reanudación autorizada — el agente puede continuar su turno');
+    setTimeout(()=>loadPanel2(),600);
+  }catch(e){
+    btn.textContent='▶ Autorizar reanudación';
+    btn.disabled=false;
+    toast('Error al autorizar. Intenta de nuevo.');
+  }
 }
 
 // ── EXPORT ──
