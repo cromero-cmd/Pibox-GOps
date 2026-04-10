@@ -814,6 +814,11 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
           </div>
         </div>
       </div>
+      <!-- Action buttons row -->
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;">
+        <button class="turno-filter-btn" onclick="showOvertimeRequests()" style="border-color:rgba(251,146,60,0.4);color:#fb923c;" id="btn-overtime-requests">⏰ Horas extras <span id="overtime-badge" style="display:none;background:#fb923c;color:white;border-radius:100px;padding:1px 6px;font-size:10px;margin-left:4px;"></span></button>
+        <button class="turno-filter-btn" onclick="sendPayrollReport()" style="border-color:rgba(74,222,128,0.3);color:#4ade80;">📋 Enviar reporte nómina</button>
+      </div>
       <!-- Top row: active now + summary -->
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
         <div>
@@ -930,10 +935,6 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
         <div>
           <div class="panel-title">Panel de <span>control</span></div>
           <div style="font-size:12px;color:var(--text-dim);margin-top:3px;font-family:var(--mono)">Vista de administrador</div>
-          <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">
-            <button class="turno-filter-btn" onclick="showOvertimeRequests()" style="border-color:rgba(251,146,60,0.4);color:#fb923c;" id="btn-overtime-requests">⏰ Horas extras <span id="overtime-badge" style="display:none;background:#fb923c;color:white;border-radius:100px;padding:1px 6px;font-size:10px;margin-left:4px;"></span></button>
-            <button class="turno-filter-btn" onclick="sendPayrollReport()" style="border-color:rgba(74,222,128,0.3);color:#4ade80;">📋 Enviar reporte nómina</button>
-          </div>
         </div>
         <div class="panel-controls">
           <div class="panel-filters">
@@ -1001,7 +1002,7 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 </div>
 
 <script>
-const APP_VERSION='9.7';
+const APP_VERSION='9.8';
 const APP_CHANGELOG='Extras: cálculo corregido para turnos nocturnos y umbral mínimo de 1 min.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
