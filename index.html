@@ -1009,7 +1009,7 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 </div>
 
 <script>
-const APP_VERSION='10.2';
+const APP_VERSION='10.4';
 const APP_CHANGELOG='Nómina: salida reportada según extras aprobadas/rechazadas. Badge en historial de turnos.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -1839,8 +1839,8 @@ async function loadTurnoHistory(){
     const sc=t.status==='active'?'active':t.status==='interrupted'?'interrupted':'ended';
     const sl=t.status==='active'?'En turno':t.status==='interrupted'?'Interrumpido':'Finalizado';
     const otBadge=t.overtimeStatus?{
-      'pending_review':'<span style="background:rgba(251,146,60,0.15);border:1px solid rgba(251,146,60,0.4);color:#fb923c;padding:1px 6px;border-radius:4px;font-size:9px;font-family:var(--mono);margin-left:4px;">⏳ Extra pendiente</span>',
-      'pending_super_admin':'<span style="background:rgba(251,146,60,0.15);border:1px solid rgba(251,146,60,0.4);color:#fb923c;padding:1px 6px;border-radius:4px;font-size:9px;font-family:var(--mono);margin-left:4px;">⏳ Extra en revisión</span>',
+      'pending_review':'<span title="Extra pendiente de aprobación" style="background:rgba(251,146,60,0.15);border:1px solid rgba(251,146,60,0.4);color:#fb923c;padding:1px 6px;border-radius:4px;font-size:9px;font-family:var(--mono);margin-left:4px;cursor:default;">⏳ Extra pend. aprobación</span>',
+      'pending_super_admin':'<span title="Extra pendiente aprobación final (super admin)" style="background:rgba(251,146,60,0.15);border:1px solid rgba(251,146,60,0.4);color:#fb923c;padding:1px 6px;border-radius:4px;font-size:9px;font-family:var(--mono);margin-left:4px;cursor:default;">⏳ Extra en revisión final</span>',
       'approved':'<span style="background:rgba(74,222,128,0.1);border:1px solid rgba(74,222,128,0.3);color:#4ade80;padding:1px 6px;border-radius:4px;font-size:9px;font-family:var(--mono);margin-left:4px;">✅ Extra aprobada</span>',
       'rejected':'<span style="background:rgba(248,113,113,0.1);border:1px solid rgba(248,113,113,0.3);color:#f87171;padding:1px 6px;border-radius:4px;font-size:9px;font-family:var(--mono);margin-left:4px;">❌ Extra rechazada</span>'
     }[t.overtimeStatus]||'':'';
@@ -2398,9 +2398,10 @@ async function approveOvertime(eventId,approved,btn,turnoId){
       row.style.opacity='0.4';
       row.style.pointerEvents='none';
     }
-    // Reload the list
+    // Reload overtime list and turno history
     const listEl=document.getElementById('overtime-list');
     if(listEl)loadOvertimeList(listEl);
+    setTimeout(()=>loadTurnoHistory(),600);
     // Refresh badge
     if(window.loadOvertimeEvents){
       window.loadOvertimeEvents().then(events=>{
