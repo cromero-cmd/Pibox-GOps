@@ -682,9 +682,42 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
       <hr/>
       <div class="msec">📧 Correos reporte de nómina</div>
       <div class="field">
-        <label>Destinatarios (separados por coma)</label>
+        <label>Destinatarios reporte nómina (separados por coma)</label>
         <input type="text" id="inp-payroll-emails" placeholder="nomina@pibox.app, otro@pibox.app"/>
-        <div style="font-size:10px;color:var(--text-dim);margin-top:4px;font-family:var(--mono);">Se envía cada lunes automáticamente + botón manual en Panel de control</div>
+        <div style="font-size:10px;color:var(--text-dim);margin-top:4px;font-family:var(--mono);">Correos a los que se envía el reporte manual desde Panel de control</div>
+      </div>
+      <div class="field">
+        <label>Destinatarios recordatorio semanal (separados por coma)</label>
+        <input type="text" id="inp-reminder-emails" placeholder="cromero@pibox.app"/>
+        <div style="font-size:10px;color:var(--text-dim);margin-top:4px;font-family:var(--mono);">Correos que reciben el recordatorio automático cada lunes al mediodía</div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div class="field">
+          <label>Día de corte semanal</label>
+          <select id="inp-cut-day" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:10px;color:var(--text);font-family:var(--mono);font-size:13px;padding:10px 13px;outline:none;">
+            <option value="1">Lunes → Domingo</option>
+            <option value="2">Martes → Lunes</option>
+            <option value="3">Miércoles → Martes</option>
+            <option value="4">Jueves → Miércoles</option>
+            <option value="5">Viernes → Jueves</option>
+            <option value="6">Sábado → Viernes</option>
+            <option value="0">Domingo → Sábado</option>
+          </select>
+          <div style="font-size:10px;color:var(--text-dim);margin-top:4px;font-family:var(--mono);">Define qué semana se reporta</div>
+        </div>
+        <div class="field">
+          <label>Hora de envío del recordatorio</label>
+          <select id="inp-cut-hour" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:10px;color:var(--text);font-family:var(--mono);font-size:13px;padding:10px 13px;outline:none;">
+            <option value="8">8:00 AM</option>
+            <option value="9">9:00 AM</option>
+            <option value="10">10:00 AM</option>
+            <option value="11">11:00 AM</option>
+            <option value="12" selected>12:00 PM</option>
+            <option value="13">1:00 PM</option>
+            <option value="14">2:00 PM</option>
+          </select>
+          <div style="font-size:10px;color:var(--text-dim);margin-top:4px;font-family:var(--mono);">Hora del recordatorio automático</div>
+        </div>
       </div>
       <hr/>
       <div class="msec">👥 Gestión de administradores</div>
@@ -1012,12 +1045,12 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 
 <script>
 const APP_VERSION='12.5';
-const APP_CHANGELOG='Reporte nómina: corrección de CORS para envío por correo.';
+const APP_CHANGELOG='Configurar: campos para recordatorio semanal, día de corte y hora de envío.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
 const SCRIPT_URL='https://script.google.com/macros/s/AKfycbyam6j2MG1NH11120KjvAfxU1f_z9BYh4uamQw8QgNeGsjpwoo394IeqzbDSPXSO9e5/exec';
 const MALLA_SCRIPT='https://script.google.com/macros/s/AKfycbyxBZWba6M1eXcwQUdBBUTqTrgGd8zwHiM6wwecXI3mUYOUP-RT9LnxSwqeXRy9prCm/exec';
-const NOTIF_SCRIPT='https://script.google.com/macros/s/AKfycbzuwUmnbqFacPq8V7y4VbKp_z6YonkhCuOhFCiWLsaLExS55lx56WSAwlLz2syL8tWbSQ/exec';
+const NOTIF_SCRIPT='https://script.google.com/macros/s/AKfycbwMIh6SfAlC-I6nhkcM9URYmz69nIeDjKkMwUKTdYJz0fszK8JAKzOtrt4qGujWcfjfVQ/exec';
 const TOLERANCE_MINS=5;
 
 let apiKey='',sheetUrl='',vidUrl='',faqUrl='',sysBase='Eres Pi GOps, el asistente inteligente de operaciones de Pibox. Tu rol es ayudar al equipo operativo a tomar decisiones rápidas y correctas en campo.\n\nTienes acceso a un manual de operaciones. Úsalo como tu fuente principal, pero también puedes razonar e interpretar cuando la pregunta no esté respondida textualmente.\n\nCómo debes responder:\n- Sé claro, directo y práctico. El equipo está en campo y necesita respuestas rápidas.\n- Si la respuesta está en el manual, úsala y explícala con tus propias palabras.\n- Si definitivamente no está en el manual, dilo con honestidad y sugiere a quién escalar.\n- Nunca te quedes en blanco. Siempre da una respuesta útil.\n- Habla en español colombiano, de forma cercana y profesional.',history=[],streaming=false,sheetData='',allVideos=[],activeCat='Todos',allFAQs=[],activeFAQCat='Todos';
@@ -1147,8 +1180,13 @@ function openConfig(){
   document.getElementById('overlay').classList.add('open');
   loadAdminListInModal();
   const pe=localStorage.getItem('pg_payroll_emails')||'';
-  const inp=document.getElementById('inp-payroll-emails');
-  if(inp)inp.value=pe;
+  const re=localStorage.getItem('pg_reminder_emails')||'cromero@pibox.app';
+  const cd=localStorage.getItem('pg_cut_day')||'1';
+  const ch=localStorage.getItem('pg_cut_hour')||'12';
+  const inp=document.getElementById('inp-payroll-emails');if(inp)inp.value=pe;
+  const inpR=document.getElementById('inp-reminder-emails');if(inpR)inpR.value=re;
+  const inpCD=document.getElementById('inp-cut-day');if(inpCD)inpCD.value=cd;
+  const inpCH=document.getElementById('inp-cut-hour');if(inpCH)inpCH.value=ch;
 }
 function closeConfig(){document.getElementById('overlay').classList.remove('open');}
 async function saveConfig(){
@@ -1163,8 +1201,17 @@ async function saveConfig(){
   localStorage.setItem('pg_key',k);localStorage.setItem('pg_sheet',u);
   localStorage.setItem('pg_vid',vu);localStorage.setItem('pg_faq',fu);
   localStorage.setItem('pg_sys',sysBase);
+  const re=document.getElementById('inp-reminder-emails')?.value.trim()||'';
+  const cd=document.getElementById('inp-cut-day')?.value||'1';
+  const ch=document.getElementById('inp-cut-hour')?.value||'12';
   if(pe)localStorage.setItem('pg_payroll_emails',pe);
-  window.saveConfigToFirebase&&window.saveConfigToFirebase({key:k,sheet:u,vid:vu,faq:fu,sys:sysBase,payrollEmails:pe});
+  if(re)localStorage.setItem('pg_reminder_emails',re);
+  localStorage.setItem('pg_cut_day',cd);
+  localStorage.setItem('pg_cut_hour',ch);
+  window.saveConfigToFirebase&&window.saveConfigToFirebase({key:k,sheet:u,vid:vu,faq:fu,sys:sysBase,payrollEmails:pe,reminderEmails:re,cutDay:cd,cutHour:ch});
+  // Save config to Apps Script
+  const cfgPayload=encodeURIComponent(JSON.stringify({recipients:re||'cromero@pibox.app',cutDay:parseInt(cd),cutHour:parseInt(ch)}));
+  fetch(NOTIF_SCRIPT+'?type=save_config&data='+cfgPayload,{mode:'no-cors'}).catch(()=>{});
   document.getElementById('setup-banner').style.display='none';
   closeConfig();fetchSheet();loadFAQs();
   if(vu){allVideos=[];loadVideos();}
