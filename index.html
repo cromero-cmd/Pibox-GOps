@@ -1075,8 +1075,8 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 </div>
 
 <script>
-const APP_VERSION='13.5';
-const APP_CHANGELOG='Inicio: pestañas ocultas en home, visibles al navegar.';
+const APP_VERSION='13.6';
+const APP_CHANGELOG='Banner de actualización: aparece automáticamente sin refrescar.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
 const SCRIPT_URL='https://script.google.com/macros/s/AKfycbyam6j2MG1NH11120KjvAfxU1f_z9BYh4uamQw8QgNeGsjpwoo394IeqzbDSPXSO9e5/exec';
@@ -1145,7 +1145,30 @@ window.onload=()=>{
   if(tabsEl)tabsEl.style.display='none';
   // Re-apply admin visibility after DOM is ready
   setTimeout(()=>applyAdminUI(),1000);
+  // Start version polling
+  startVersionPolling();
 };
+
+function startVersionPolling(){
+  const POLL_INTERVAL = 30 * 60 * 1000; // 30 minutes
+  async function checkVersion(){
+    try{
+      const url = window.location.href.split('?')[0];
+      const res = await fetch(url + '?_v=' + Date.now(), {cache:'no-store'});
+      const html = await res.text();
+      const match = html.match(/APP_VERSION='([^']+)'/);
+      if(match && match[1] && match[1] !== APP_VERSION){
+        const changelogMatch = html.match(/APP_CHANGELOG='([^']+)'/);
+        const b = document.getElementById('update-banner');
+        const c = document.getElementById('update-changelog');
+        if(b) b.style.display='flex';
+        if(c && changelogMatch) c.textContent='✦ ' + changelogMatch[1];
+      }
+    }catch(e){}
+  }
+  // Check every 30 min
+  setInterval(checkVersion, POLL_INTERVAL);
+}
 
 // ── TABS ──
 function initHomeView(){
