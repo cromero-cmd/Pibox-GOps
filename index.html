@@ -1075,7 +1075,7 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 </div>
 
 <script>
-const APP_VERSION='13.6';
+const APP_VERSION='13.7';
 const APP_CHANGELOG='Banner de actualización: aparece automáticamente sin refrescar.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -1538,6 +1538,8 @@ function closeSurvey(track=false){
   if(track&&surveyAnswer===null)window.trackEvent&&window.trackEvent('survey',{resolved:'skipped',feedback:null,conversationLength:history.length});
   document.getElementById('survey-card').style.display='none';
   if(surveyTimer)clearTimeout(surveyTimer);
+  // Clear scheduled timestamp so it doesn't re-trigger on tab switch
+  window._surveyScheduledAt=null;
 }
 async function selectSurvey(answer,btn){
   surveyAnswer=answer;
@@ -1545,6 +1547,7 @@ async function selectSurvey(answer,btn){
   btn.classList.add('sel');
   if(answer==='yes'){
     await window.trackEvent('survey',{resolved:'yes',feedback:null,conversationLength:history.length});
+    hasConversation=false;
     closeSurvey();toast('¡Gracias por tu respuesta! 🎉');
   }else{
     document.getElementById('survey-followup').style.display='block';
@@ -1556,6 +1559,7 @@ async function submitSurvey(){
   if(!surveyAnswer)return;
   const feedback=document.getElementById('survey-feedback').value.trim();
   await window.trackEvent('survey',{resolved:surveyAnswer,feedback:feedback||null,conversationLength:history.length});
+  hasConversation=false;
   closeSurvey();toast(surveyAnswer==='yes'?'¡Gracias! 🎉':'Gracias, usaremos esto para mejorar 💪');
 }
 
