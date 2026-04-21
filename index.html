@@ -1085,8 +1085,8 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 </div>
 
 <script>
-const APP_VERSION='14.2';
-const APP_CHANGELOG='Filtro por línea de negocio en Mi malla y Panel de control.';
+const APP_VERSION='14.3';
+const APP_CHANGELOG='Salida anticipada justificada: popup de motivo, revisión admin y reflejo en nómina.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
 const SCRIPT_URL='https://script.google.com/macros/s/AKfycbyam6j2MG1NH11120KjvAfxU1f_z9BYh4uamQw8QgNeGsjpwoo394IeqzbDSPXSO9e5/exec';
@@ -1907,6 +1907,9 @@ async function checkOvertimeAndDiscrepancy(endTime,elapsedSecs){
     if(extraSecs>60){ // at least 1 min extra to avoid rounding noise
       const extraMins=Math.round(extraSecs/60);
       showOvertimePrompt(extraMins,scheduledSecs,elapsedSecs,todayEntry);
+    } else if(extraSecs < -60){ // finished early by more than 1 min
+      const earlyMins=Math.round(Math.abs(extraSecs)/60);
+      showEarlyLeavePrompt(earlyMins,scheduledSecs,elapsedSecs,todayEntry);
     }
   }catch(e){console.warn('Overtime check failed:',e);}
 }
@@ -1933,6 +1936,86 @@ function showOvertimePrompt(extraMins,scheduledSecs,workedSecs,mallaEntry){
     </div>`;
   document.body.appendChild(overlay);
   window._overtimeMallaEntry=mallaEntry;
+}
+
+function showEarlyLeavePrompt(earlyMins,scheduledSecs,workedSecs,mallaEntry){
+  const overlay=document.createElement('div');
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(13,11,20,0.88);backdrop-filter:blur(8px);z-index:700;display:flex;align-items:center;justify-content:center;';
+  const h=Math.floor(earlyMins/60),m=earlyMins%60;
+  const earlyStr=h>0?`${h}h ${m}m`:`${m}m`;
+  overlay.innerHTML=`
+    <div style="background:var(--surface);border:1px solid rgba(96,165,250,0.4);border-radius:20px;padding:28px;width:min(420px,92vw);position:relative;box-shadow:0 8px 32px rgba(0,0,0,0.4);">
+      <div style="position:absolute;top:0;left:20px;right:20px;height:2px;background:linear-gradient(90deg,#60a5fa,#818cf8);border-radius:100px;"></div>
+      <div style="font-size:28px;text-align:center;margin-bottom:12px;">🏁</div>
+      <div style="font-size:17px;font-weight:800;text-align:center;margin-bottom:8px;">Salida anticipada detectada</div>
+      <div style="font-size:13px;color:var(--text-muted);text-align:center;margin-bottom:20px;line-height:1.6;">
+        Finalizaste <strong style="color:#60a5fa;">${earlyStr}</strong> antes de tu turno programado.<br/>
+        Programado: <strong>${formatDuration(scheduledSecs)}</strong> · Trabajado: <strong>${formatDuration(workedSecs)}</strong>
+      </div>
+      <div style="font-size:14px;font-weight:700;text-align:center;margin-bottom:14px;">¿Cuál es el motivo?</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px;">
+        <button onclick="selectEarlyReason(this,'Enfermedad')" class="early-reason-btn" style="padding:10px;border-radius:10px;border:1.5px solid var(--border);background:var(--surface2);color:var(--text-muted);font-family:var(--font);font-size:13px;cursor:pointer;transition:all 0.2s;">🤒 Enfermedad</button>
+        <button onclick="selectEarlyReason(this,'Cita médica')" class="early-reason-btn" style="padding:10px;border-radius:10px;border:1.5px solid var(--border);background:var(--surface2);color:var(--text-muted);font-family:var(--font);font-size:13px;cursor:pointer;transition:all 0.2s;">🏥 Cita médica</button>
+        <button onclick="selectEarlyReason(this,'Calamidad')" class="early-reason-btn" style="padding:10px;border-radius:10px;border:1.5px solid var(--border);background:var(--surface2);color:var(--text-muted);font-family:var(--font);font-size:13px;cursor:pointer;transition:all 0.2s;">🚨 Calamidad</button>
+        <button onclick="selectEarlyReason(this,'Otro')" class="early-reason-btn" style="padding:10px;border-radius:10px;border:1.5px solid var(--border);background:var(--surface2);color:var(--text-muted);font-family:var(--font);font-size:13px;cursor:pointer;transition:all 0.2s;">📝 Otro</button>
+      </div>
+      <div id="early-other-wrap" style="display:none;margin-bottom:14px;">
+        <input type="text" id="early-other-text" placeholder="Describe el motivo..." style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:10px;color:var(--text);font-family:var(--font);font-size:13px;padding:10px 13px;outline:none;"/>
+      </div>
+      <button id="early-submit-btn" onclick="submitEarlyLeave(${earlyMins},${scheduledSecs},${workedSecs},this.closest('div[style*=fixed]'))" disabled style="width:100%;padding:12px;border-radius:11px;border:none;background:linear-gradient(135deg,#60a5fa,#818cf8);color:white;font-family:var(--font);font-weight:700;font-size:14px;cursor:pointer;opacity:0.5;transition:all 0.2s;">Registrar novedad</button>
+    </div>`;
+  document.body.appendChild(overlay);
+  window._earlyLeaveMallaEntry=mallaEntry;
+  window._earlyLeaveReason=null;
+}
+
+function selectEarlyReason(btn,reason){
+  document.querySelectorAll('.early-reason-btn').forEach(b=>{
+    b.style.borderColor='var(--border)';
+    b.style.background='var(--surface2)';
+    b.style.color='var(--text-muted)';
+  });
+  btn.style.borderColor='#60a5fa';
+  btn.style.background='rgba(96,165,250,0.1)';
+  btn.style.color='#60a5fa';
+  window._earlyLeaveReason=reason;
+  const otherWrap=document.getElementById('early-other-wrap');
+  if(otherWrap)otherWrap.style.display=reason==='Otro'?'block':'none';
+  const submitBtn=document.getElementById('early-submit-btn');
+  if(submitBtn){submitBtn.disabled=false;submitBtn.style.opacity='1';}
+}
+
+async function submitEarlyLeave(earlyMins,scheduledSecs,workedSecs,overlayEl){
+  let reason=window._earlyLeaveReason;
+  if(reason==='Otro'){
+    const txt=document.getElementById('early-other-text')?.value.trim();
+    if(txt)reason=txt;
+  }
+  if(!reason)return;
+  overlayEl.remove();
+  const userEmail=document.getElementById('user-email').textContent;
+  const userName=document.getElementById('user-name').textContent;
+  const today=new Date().toLocaleDateString('es-CO',{day:'2-digit',month:'long',year:'numeric'});
+  // Save early leave event
+  await window.trackEvent('early_leave',{
+    agentEmail:userEmail,agentName:userName,
+    date:today,earlyMins,reason,
+    status:'pending_review',
+    scheduledSecs,workedSecs,
+    mallaEntry:window._earlyLeaveMallaEntry,
+    turnoId:window._lastTurnoId||null
+  });
+  // Tag turno record
+  if(window._lastTurnoId){
+    await window.updateTurnoInFirebase(window._lastTurnoId,{
+      earlyLeave:true,
+      earlyLeaveReason:reason,
+      earlyLeaveMins:earlyMins,
+      earlyLeaveStatus:'pending_review'
+    });
+  }
+  setTimeout(()=>loadTurnoHistory(),500);
+  toast('📋 Novedad registrada — pendiente de revisión del admin');
 }
 
 async function submitOvertimeResponse(approved,extraMins,overlayEl){
@@ -2102,13 +2185,18 @@ async function loadTurnoHistory(){
     const dateStr=start?start.toLocaleDateString('es-CO',{day:'2-digit',month:'short'}):'—';
     const sc=t.status==='active'?'active':t.status==='interrupted'?'interrupted':'ended';
     const sl=t.status==='active'?'En turno':t.status==='interrupted'?'Interrumpido':'Finalizado';
+    const elBadge=t.earlyLeave?{
+      'pending_review':'<span style="background:rgba(96,165,250,0.1);border:1px solid rgba(96,165,250,0.3);color:#60a5fa;padding:1px 6px;border-radius:4px;font-size:9px;font-family:var(--mono);margin-left:4px;">🏁 Salida anticipada pendiente</span>',
+      'justified':'<span style="background:rgba(74,222,128,0.1);border:1px solid rgba(74,222,128,0.3);color:#4ade80;padding:1px 6px;border-radius:4px;font-size:9px;font-family:var(--mono);margin-left:4px;">✅ Salida justificada</span>',
+      'not_justified':'<span style="background:rgba(248,113,113,0.1);border:1px solid rgba(248,113,113,0.3);color:#f87171;padding:1px 6px;border-radius:4px;font-size:9px;font-family:var(--mono);margin-left:4px;">❌ Salida no justificada</span>'
+    }[t.earlyLeaveStatus||'pending_review']||'':'';
     const otBadge=t.overtimeStatus?{
       'pending_review':'<span title="Extra pendiente de aprobación" style="background:rgba(251,146,60,0.15);border:1px solid rgba(251,146,60,0.4);color:#fb923c;padding:1px 6px;border-radius:4px;font-size:9px;font-family:var(--mono);margin-left:4px;cursor:default;">⏳ Extra pend. aprobación</span>',
       'pending_super_admin':'<span title="Extra pendiente aprobación final (super admin)" style="background:rgba(251,146,60,0.15);border:1px solid rgba(251,146,60,0.4);color:#fb923c;padding:1px 6px;border-radius:4px;font-size:9px;font-family:var(--mono);margin-left:4px;cursor:default;">⏳ Extra en revisión final</span>',
       'approved':'<span style="background:rgba(74,222,128,0.1);border:1px solid rgba(74,222,128,0.3);color:#4ade80;padding:1px 6px;border-radius:4px;font-size:9px;font-family:var(--mono);margin-left:4px;">✅ Extra aprobada</span>',
       'rejected':'<span style="background:rgba(248,113,113,0.1);border:1px solid rgba(248,113,113,0.3);color:#f87171;padding:1px 6px;border-radius:4px;font-size:9px;font-family:var(--mono);margin-left:4px;">❌ Extra rechazada</span>'
     }[t.overtimeStatus]||'':'';
-    return`<div class="turno-row"><div class="turno-row-date">${dateStr}</div>${isAdmin?`<div class="turno-row-user">${t.userEmail||'—'}</div>`:''}<div class="turno-row-time">${startStr} → ${endStr}</div><div class="turno-row-dur">${dur}</div><div class="turno-row-device">${t.isMobile?'📱':'💻'}</div><div class="turno-row-status ${sc}">${sl}${otBadge}</div></div>`;
+    return`<div class="turno-row"><div class="turno-row-date">${dateStr}</div>${isAdmin?`<div class="turno-row-user">${t.userEmail||'—'}</div>`:''}<div class="turno-row-time">${startStr} → ${endStr}</div><div class="turno-row-dur">${dur}</div><div class="turno-row-device">${t.isMobile?'📱':'💻'}</div><div class="turno-row-status ${sc}">${sl}${elBadge}${otBadge}</div></div>`;
   }).join('');
 }
 
@@ -2559,6 +2647,9 @@ async function loadPanel2(){
         <span class="turno-row-status ${fc}">${fl}</span>
         ${t.status==='ended'&&!t.resumeAuthorized?`<button onclick="authorizeResume('${t.id}',this)" style="background:rgba(123,47,255,0.1);border:1px solid rgba(123,47,255,0.3);color:var(--p2);padding:2px 7px;border-radius:5px;font-size:9px;font-family:var(--mono);cursor:pointer;">▶ Autorizar reanudación</button>`:''}
         ${t.resumeAuthorized?'<span style="font-size:9px;color:var(--p2);font-family:var(--mono);">▶ Reanudación autorizada</span>':''}
+        ${t.earlyLeave&&t.earlyLeaveStatus==='pending_review'?`<button onclick="reviewEarlyLeave('${t.id}',true,this)" style="background:rgba(74,222,128,0.08);border:1px solid rgba(74,222,128,0.3);color:#4ade80;padding:2px 7px;border-radius:5px;font-size:9px;font-family:var(--mono);cursor:pointer;">✅ Justificar</button><button onclick="reviewEarlyLeave('${t.id}',false,this)" style="background:rgba(248,113,113,0.08);border:1px solid rgba(248,113,113,0.3);color:#f87171;padding:2px 7px;border-radius:5px;font-size:9px;font-family:var(--mono);cursor:pointer;margin-left:4px;">❌ No justificar</button>`:''}
+        ${t.earlyLeave&&t.earlyLeaveStatus==='justified'?'<span style="font-size:9px;color:#4ade80;font-family:var(--mono);">✅ Justificada</span>':''}
+        ${t.earlyLeave&&t.earlyLeaveStatus==='not_justified'?'<span style="font-size:9px;color:#f87171;font-family:var(--mono);">❌ No justificada</span>':''}
       </div>
       <div style="padding:10px 12px;display:flex;align-items:center;"><span class="cumpl-status ${t.cumplStatus.cls}">${t.cumplStatus.icon} ${t.cumplStatus.label}</span></div>
     </div>`;
@@ -2619,6 +2710,9 @@ function renderPanel2Table(){
         <span class="turno-row-status ${fc}">${fl}</span>
         ${t.status==='ended'&&!t.resumeAuthorized?`<button onclick="authorizeResume('${t.id}',this)" style="background:rgba(123,47,255,0.1);border:1px solid rgba(123,47,255,0.3);color:var(--p2);padding:2px 7px;border-radius:5px;font-size:9px;font-family:var(--mono);cursor:pointer;">▶ Autorizar reanudación</button>`:''}
         ${t.resumeAuthorized?'<span style="font-size:9px;color:var(--p2);font-family:var(--mono);">▶ Reanudación autorizada</span>':''}
+        ${t.earlyLeave&&t.earlyLeaveStatus==='pending_review'?`<button onclick="reviewEarlyLeave('${t.id}',true,this)" style="background:rgba(74,222,128,0.08);border:1px solid rgba(74,222,128,0.3);color:#4ade80;padding:2px 7px;border-radius:5px;font-size:9px;font-family:var(--mono);cursor:pointer;">✅ Justificar</button><button onclick="reviewEarlyLeave('${t.id}',false,this)" style="background:rgba(248,113,113,0.08);border:1px solid rgba(248,113,113,0.3);color:#f87171;padding:2px 7px;border-radius:5px;font-size:9px;font-family:var(--mono);cursor:pointer;margin-left:4px;">❌ No justificar</button>`:''}
+        ${t.earlyLeave&&t.earlyLeaveStatus==='justified'?'<span style="font-size:9px;color:#4ade80;font-family:var(--mono);">✅ Justificada</span>':''}
+        ${t.earlyLeave&&t.earlyLeaveStatus==='not_justified'?'<span style="font-size:9px;color:#f87171;font-family:var(--mono);">❌ No justificada</span>':''}
       </div>
       <div style="padding:10px 12px;display:flex;align-items:center;"><span class="cumpl-status ${t.cumplStatus.cls}">${t.cumplStatus.icon} ${t.cumplStatus.label}</span></div>
     </div>`;
@@ -2768,7 +2862,7 @@ async function sendPayrollReport(){
       checkOut:reportEnd?reportEnd.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—',
       hours:reportSecs?formatDuration(reportSecs):'—',
       novedad:mallaEntry?.novedad||'—',
-      extras:t.overtimeStatus?({approved:'✅ Aprobada',rejected:'❌ Rechazada',pending_review:'⏳ Pendiente',pending_super_admin:'⏳ En revisión'}[t.overtimeStatus]||'—'):'—'
+      extras:t.earlyLeave?(t.earlyLeaveStatus==='justified'?'🏁 Salida justificada':t.earlyLeaveStatus==='not_justified'?'❌ Salida no justificada':'🏁 Salida anticipada pendiente'):(t.overtimeStatus?({approved:'✅ Aprobada',rejected:'❌ Rechazada',pending_review:'⏳ Pendiente',pending_super_admin:'⏳ En revisión'}[t.overtimeStatus]||'—'):'—')
     };
   }).sort((a,b)=>a.name.localeCompare(b.name));
   if(!records.length){toast('Sin registros para la semana anterior');return;}
@@ -2808,6 +2902,21 @@ function callAppsScript(url){
       }
     },8000);
   });
+}
+
+// ── EARLY LEAVE REVIEW ──
+async function reviewEarlyLeave(turnoId, justified, btn){
+  btn.textContent='Guardando...';btn.disabled=true;
+  const status=justified?'justified':'not_justified';
+  try{
+    await window.updateTurnoInFirebase(turnoId,{earlyLeaveStatus:status});
+    toast(justified?'✅ Salida justificada — nómina no afectada':'❌ Salida marcada como no justificada');
+    setTimeout(()=>loadPanel2(),600);
+  }catch(e){
+    btn.textContent=justified?'✅ Justificar':'❌ No justificar';
+    btn.disabled=false;
+    toast('Error al guardar. Intenta de nuevo.');
+  }
 }
 
 // ── AUTHORIZE RESUME ──
