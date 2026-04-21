@@ -842,7 +842,7 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
           <button class="turno-filter-btn" onclick="setMallaFilter('custom',this)">Personalizado</button>
           <button class="turno-filter-btn" onclick="clearMallaFilters()" style="border-color:rgba(248,113,113,0.3);color:#f87171;">✕ Borrar filtros</button>
           <button class="turno-filter-btn" onclick="exportMallaXLSX()" style="border-color:rgba(74,222,128,0.3);color:#4ade80;">⬇ Exportar Excel</button>
-          <select id="malla-linea-filter" onchange="renderMallaPersonal()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text-muted);padding:4px 10px;border-radius:8px;font-size:11px;font-family:var(--mono);outline:none;">
+          <select id="malla-linea-filter" onchange="renderMallaPersonal()" style="display:none;background:var(--surface2);border:1px solid var(--border);color:var(--text-muted);padding:4px 10px;border-radius:8px;font-size:11px;font-family:var(--mono);outline:none;">
             <option value="">Todas las líneas</option>
           </select>
         </div>
@@ -877,7 +877,7 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
             <button class="turno-filter-btn" id="pf-month" onclick="setPanelFilter2('month',this)">Este mes</button>
             <button class="turno-filter-btn" id="pf-custom" onclick="setPanelFilter2('custom',this)">Personalizado</button>
             <button class="turno-filter-btn" onclick="clearPanel2()" style="border-color:rgba(248,113,113,0.3);color:#f87171;">✕ Borrar</button>
-            <select id="panel2-linea-filter" onchange="loadPanel2()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text-muted);padding:4px 10px;border-radius:8px;font-size:11px;font-family:var(--mono);outline:none;">
+            <select id="panel2-linea-filter" onchange="loadPanel2()" style="display:none;background:var(--surface2);border:1px solid var(--border);color:var(--text-muted);padding:4px 10px;border-radius:8px;font-size:11px;font-family:var(--mono);outline:none;">
               <option value="">Todas las líneas</option>
             </select>
           </div>
@@ -1085,7 +1085,7 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 </div>
 
 <script>
-const APP_VERSION='14.1';
+const APP_VERSION='14.2';
 const APP_CHANGELOG='Filtro por línea de negocio en Mi malla y Panel de control.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -2916,6 +2916,11 @@ function applyAdminUI(){
   if(subtabPanel)subtabPanel.style.display=isAdmin?'flex':'none';
   const anTab=document.getElementById('tab-an');
   if(anTab)anTab.style.display=isAdmin?'flex':'none';
+  // Line filter: admin only
+  const mallaLinea=document.getElementById('malla-linea-filter');
+  if(mallaLinea)mallaLinea.style.display=isAdmin?'inline-block':'none';
+  const panel2Linea=document.getElementById('panel2-linea-filter');
+  if(panel2Linea)panel2Linea.style.display=isAdmin?'inline-block':'none';
   initHomeView();
 }
 
