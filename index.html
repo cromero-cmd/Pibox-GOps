@@ -898,6 +898,7 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
       <!-- Action buttons row -->
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;">
         <button class="turno-filter-btn" onclick="showOvertimeRequests()" style="border-color:rgba(251,146,60,0.4);color:#fb923c;" id="btn-overtime-requests">⏰ Horas extras <span id="overtime-badge" style="display:none;background:#fb923c;color:white;border-radius:100px;padding:1px 6px;font-size:10px;margin-left:4px;"></span></button>
+        <button class="turno-filter-btn" onclick="showEarlyLeaveRequests()" style="border-color:rgba(96,165,250,0.4);color:#60a5fa;" id="btn-earlyleave-requests">🏁 Salidas anticipadas <span id="earlyleave-badge" style="display:none;background:#60a5fa;color:white;border-radius:100px;padding:1px 6px;font-size:10px;margin-left:4px;"></span></button>
         <button class="turno-filter-btn" onclick="sendPayrollReport()" style="border-color:rgba(74,222,128,0.3);color:#4ade80;">📋 Enviar reporte nómina</button>
       </div>
       <!-- Top row: active now + summary -->
@@ -1085,7 +1086,7 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 </div>
 
 <script>
-const APP_VERSION='14.3';
+const APP_VERSION='14.4';
 const APP_CHANGELOG='Salida anticipada justificada: popup de motivo, revisión admin y reflejo en nómina.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -2506,12 +2507,11 @@ async function loadPanel2(){
   if(window.loadOvertimeEvents){
     window.loadOvertimeEvents().then(events=>{
       const badge=document.getElementById('overtime-badge');
-      if(badge&&events.length>0){
-        badge.style.display='inline';
-        badge.textContent=events.length;
-      }
+      if(badge&&events.length>0){badge.style.display='inline';badge.textContent=events.length;}
     });
   }
+  // Load early leave badge
+  loadEarlyLeaveBadge();
   Object.values(panel2ActiveTimers).forEach(clearInterval);panel2ActiveTimers={};
   if(!activeNow.length){activeEl.innerHTML='<div style="color:var(--text-dim);font-size:12px;font-family:var(--mono);">Ningún usuario en turno ahora</div>';}
   else{
@@ -2905,6 +2905,55 @@ function callAppsScript(url){
 }
 
 // ── EARLY LEAVE REVIEW ──
+async function loadEarlyLeaveBadge(){
+  try{
+    const turnos=await window.getRecentTurnos();
+    const pending=turnos.filter(t=>t.earlyLeave&&t.earlyLeaveStatus==='pending_review');
+    const badge=document.getElementById('earlyleave-badge');
+    if(badge){badge.style.display=pending.length>0?'inline':'none';badge.textContent=pending.length;}
+  }catch(e){}
+}
+
+async function showEarlyLeaveRequests(){
+  const modal=document.createElement('div');
+  modal.style.cssText='position:fixed;inset:0;background:rgba(13,11,20,0.88);backdrop-filter:blur(8px);z-index:700;display:flex;align-items:center;justify-content:center;';
+  modal.innerHTML=`
+    <div style="background:var(--surface);border:1px solid rgba(96,165,250,0.3);border-radius:20px;padding:28px;width:min(600px,94vw);max-height:80vh;overflow-y:auto;position:relative;">
+      <div style="position:absolute;top:0;left:20px;right:20px;height:2px;background:linear-gradient(90deg,#60a5fa,#818cf8);border-radius:100px;"></div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
+        <div style="font-size:17px;font-weight:800;">🏁 Salidas anticipadas pendientes</div>
+        <button onclick="this.closest('div[style*=fixed]').remove()" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:20px;">×</button>
+      </div>
+      <div id="earlyleave-list">Cargando...</div>
+    </div>`;
+  document.body.appendChild(modal);
+  const el=modal.querySelector('#earlyleave-list');
+  const turnos=await window.getRecentTurnos();
+  const pending=turnos.filter(t=>t.earlyLeave&&t.earlyLeaveStatus==='pending_review');
+  if(!pending.length){
+    el.innerHTML='<div style="font-size:12px;color:var(--text-dim);text-align:center;padding:20px;font-family:var(--mono);">Sin salidas anticipadas pendientes ✓</div>';
+    return;
+  }
+  el.innerHTML=pending.map(t=>{
+    const start=t.startTime?.toDate?.();
+    const dateStr=start?start.toLocaleDateString('es-CO',{day:'2-digit',month:'short',year:'numeric'}):'—';
+    const name=t.userName||t.userEmail?.split('@')[0]||'—';
+    return`<div class="overtime-row" style="background:var(--surface2);border:1px solid rgba(96,165,250,0.2);border-radius:12px;padding:14px 16px;margin-bottom:10px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+        <div>
+          <div style="font-size:13px;font-weight:700;color:var(--text);">${esc(name)}</div>
+          <div style="font-size:11px;color:var(--text-dim);font-family:var(--mono);">${esc(t.userEmail||'—')} · ${dateStr}</div>
+          <div style="font-size:12px;color:#60a5fa;margin-top:4px;">🏁 ${t.earlyLeaveMins||0} min antes · Motivo: <strong>${esc(t.earlyLeaveReason||'—')}</strong></div>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button onclick="reviewEarlyLeave('${t.id}',true,this);this.closest('.overtime-row').style.opacity='0.4';loadEarlyLeaveBadge();" style="padding:7px 14px;border-radius:8px;border:1px solid rgba(74,222,128,0.4);background:rgba(74,222,128,0.08);color:#4ade80;font-family:var(--font);font-weight:600;font-size:12px;cursor:pointer;">✅ Justificar</button>
+          <button onclick="reviewEarlyLeave('${t.id}',false,this);this.closest('.overtime-row').style.opacity='0.4';loadEarlyLeaveBadge();" style="padding:7px 14px;border-radius:8px;border:1px solid rgba(248,113,113,0.4);background:rgba(248,113,113,0.08);color:#f87171;font-family:var(--font);font-weight:600;font-size:12px;cursor:pointer;">❌ No justificar</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
 async function reviewEarlyLeave(turnoId, justified, btn){
   btn.textContent='Guardando...';btn.disabled=true;
   const status=justified?'justified':'not_justified';
