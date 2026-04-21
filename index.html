@@ -1086,13 +1086,13 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 </div>
 
 <script>
-const APP_VERSION='14.4';
-const APP_CHANGELOG='Salida anticipada justificada: popup de motivo, revisión admin y reflejo en nómina.';
+const APP_VERSION='14.6';
+const APP_CHANGELOG='Notificaciones de asistencia: recordatorio 10 min antes y alertas de tardanza al admin y agente.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
 const SCRIPT_URL='https://script.google.com/macros/s/AKfycbyam6j2MG1NH11120KjvAfxU1f_z9BYh4uamQw8QgNeGsjpwoo394IeqzbDSPXSO9e5/exec';
 const MALLA_SCRIPT='https://script.google.com/macros/s/AKfycbyxBZWba6M1eXcwQUdBBUTqTrgGd8zwHiM6wwecXI3mUYOUP-RT9LnxSwqeXRy9prCm/exec';
-const NOTIF_SCRIPT='https://script.google.com/macros/s/AKfycbzpiMJgnOubWmuYBwJOUFsm5j_8a1Pl0LwTd7xPFsRmtYeb3jKGJkeWwq3FoWY2WUMDnw/exec';
+const NOTIF_SCRIPT='https://script.google.com/macros/s/AKfycbznwsCSsjpX6_PKWgYsdtj2q8_1jIYd4WczlfSJtelWw4J64z078E4G1fll9fxx50K-HA/exec';
 const TOLERANCE_MINS=5;
 
 let apiKey='',sheetUrl='',vidUrl='',faqUrl='',sysBase='Eres Pi GOps, el asistente inteligente de operaciones de Pibox. Tu rol es ayudar al equipo operativo a tomar decisiones rápidas y correctas en campo.\n\nTienes acceso a un manual de operaciones. Úsalo como tu fuente principal, pero también puedes razonar e interpretar cuando la pregunta no esté respondida textualmente.\n\nCómo debes responder:\n- Sé claro, directo y práctico. El equipo está en campo y necesita respuestas rápidas.\n- Si la respuesta está en el manual, úsala y explícala con tus propias palabras.\n- Si definitivamente no está en el manual, dilo con honestidad y sugiere a quién escalar.\n- Nunca te quedes en blanco. Siempre da una respuesta útil.\n- Habla en español colombiano, de forma cercana y profesional.',history=[],streaming=false,sheetData='',allVideos=[],activeCat='Todos',allFAQs=[],activeFAQCat='Todos';
@@ -1314,11 +1314,13 @@ async function saveConfig(){
   localStorage.setItem('pg_cut_hour',ch);
   window.saveConfigToFirebase&&window.saveConfigToFirebase({key:k,sheet:u,vid:vu,faq:fu,sys:sysBase,payrollEmails:pe,reminderEmails:re,cutDay:cd,cutHour:ch});
   // Save config to Apps Script
+  const adminEmailsForScript=(window.ADMINS||ADMINS).join(',');
   const cfgPayload=encodeURIComponent(JSON.stringify({
     payrollRecipients:pe,
     reminderRecipients:re||'cromero@pibox.app',
     cutDay:parseInt(cd),
-    cutHour:parseInt(ch)
+    cutHour:parseInt(ch),
+    adminEmails:adminEmailsForScript
   }));
   fetch(NOTIF_SCRIPT+'?type=save_config&data='+cfgPayload,{mode:'no-cors'}).catch(()=>{});
   document.getElementById('setup-banner').style.display='none';
