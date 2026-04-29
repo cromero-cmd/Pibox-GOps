@@ -1,0 +1,802 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Pipeline TADA → Trump · Pibox Liquidaciones</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap');
+*{box-sizing:border-box;margin:0;padding:0;}
+:root{
+  --bg:#0a0d14;--bg2:#111520;--bg3:#171d2e;--bg4:#1e2438;
+  --border:#252d44;--border2:#2e3a58;
+  --text:#dde3f5;--text2:#7a84a8;--text3:#444d6e;
+  --accent:#4f6ef7;--accent2:#3d5ce8;
+  --green:#1fcc7d;--green2:#145c3a;--greenBg:#071a12;
+  --yellow:#f0be35;--yellowBg:#211a06;--yellowBorder:#4a3d0a;
+  --red:#e84f4f;--redBg:#1e0808;--redBorder:#4a1515;
+  --blue:#4ec9f5;--blueBg:#050f1a;--blueBorder:#0f3050;
+  --purple:#9f7aea;--purpleBg:#130d24;--purpleBorder:#3a2460;
+  --mono:'IBM Plex Mono',monospace;--sans:'IBM Plex Sans',sans-serif;
+  --radius:10px;
+}
+html,body{height:100%;background:var(--bg);font-family:var(--sans);color:var(--text);font-size:13px;}
+
+/* LAYOUT */
+.layout{display:flex;flex-direction:column;height:100vh;}
+
+/* TOP NAV */
+nav{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 28px;display:flex;align-items:center;justify-content:space-between;height:52px;flex-shrink:0;}
+.nav-brand{display:flex;align-items:center;gap:10px;}
+.nav-logo{width:28px;height:28px;background:var(--accent);border-radius:6px;display:flex;align-items:center;justify-content:center;}
+.nav-title{font-size:14px;font-weight:600;letter-spacing:-.01em;}
+.nav-sub{font-size:11px;color:var(--text3);font-family:var(--mono);}
+.nav-right{display:flex;align-items:center;gap:10px;}
+#nav-version{font-size:11px;font-family:var(--mono);background:var(--blueBg);color:var(--blue);border:1px solid var(--blueBorder);padding:3px 10px;border-radius:4px;}
+
+/* STEPPER */
+.stepper{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 28px;display:flex;align-items:stretch;gap:0;overflow-x:auto;flex-shrink:0;}
+.step{display:flex;align-items:center;gap:8px;padding:14px 16px 14px 0;cursor:pointer;opacity:.32;transition:all .2s;border-bottom:2px solid transparent;flex-shrink:0;user-select:none;}
+.step.active{opacity:1;border-bottom-color:var(--accent);}
+.step.done{opacity:.6;}
+.step.done .sn{background:var(--green2);border-color:var(--green);color:var(--green);}
+.step.locked{cursor:default;}
+.sn{width:20px;height:20px;border-radius:50%;border:1px solid var(--border2);display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:10px;font-weight:500;color:var(--text2);flex-shrink:0;transition:all .2s;}
+.step.active .sn{border-color:var(--accent);color:var(--accent);}
+.sl{font-size:11.5px;font-weight:500;white-space:nowrap;}
+
+/* MAIN */
+main{flex:1;overflow-y:auto;padding:28px;}
+
+/* PANELS */
+.panel{display:none;}
+.panel.active{display:block;}
+
+/* SECTION */
+.sec{font-size:10px;font-family:var(--mono);color:var(--text3);letter-spacing:.1em;text-transform:uppercase;margin-bottom:12px;display:flex;align-items:center;gap:10px;}
+.sec::after{content:'';flex:1;height:1px;background:var(--border);}
+
+/* UPLOAD */
+.upload-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;}
+.dropzone{border:1px dashed var(--border2);border-radius:var(--radius);padding:24px 18px;text-align:center;cursor:pointer;transition:all .2s;position:relative;background:var(--bg2);}
+.dropzone:hover,.dropzone.drag{border-color:var(--accent);background:var(--bg3);}
+.dropzone.loaded{border-color:var(--green2);background:var(--greenBg);}
+.dropzone input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%;}
+.dz-tag{display:inline-block;font-size:9px;font-family:var(--mono);padding:2px 7px;border-radius:3px;margin-bottom:8px;font-weight:500;}
+.tag-tada{background:var(--greenBg);color:var(--green);border:1px solid var(--green2);}
+.tag-malla{background:var(--purpleBg);color:var(--purple);border:1px solid var(--purpleBorder);}
+.dz-title{font-size:13px;font-weight:600;margin-bottom:3px;}
+.dz-sub{font-size:11px;color:var(--text2);}
+
+/* BUTTONS */
+.btn{padding:8px 16px;border-radius:7px;font-family:var(--sans);font-size:12px;font-weight:500;cursor:pointer;transition:all .15s;border:1px solid var(--border2);background:transparent;color:var(--text2);}
+.btn:hover{background:var(--bg3);color:var(--text);}
+.btn-primary{background:var(--accent);border-color:var(--accent);color:#fff;}
+.btn-primary:hover{background:var(--accent2);}
+.btn-green{background:var(--greenBg);border-color:var(--green2);color:var(--green);}
+.btn-green:hover{filter:brightness(1.1);}
+.btn-sm{padding:5px 11px;font-size:11px;}
+.row-btns{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;}
+.panel-footer{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;padding-top:16px;border-top:1px solid var(--border);}
+
+/* STATS */
+.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:18px;}
+.stat{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:13px 15px;}
+.stat-l{font-size:10px;color:var(--text3);margin-bottom:5px;font-family:var(--mono);}
+.stat-v{font-size:20px;font-weight:600;font-family:var(--mono);}
+.g{color:var(--green);}.y{color:var(--yellow);}.r{color:var(--red);}.b{color:var(--blue);}
+
+/* TABLES */
+.tbl-wrap{overflow-x:auto;border-radius:8px;border:1px solid var(--border);max-height:260px;overflow-y:auto;margin-bottom:14px;}
+table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:11px;}
+th{background:var(--bg3);color:var(--text2);font-weight:500;padding:8px 10px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap;position:sticky;top:0;z-index:1;}
+td{padding:7px 10px;border-bottom:1px solid var(--border);color:var(--text);white-space:nowrap;}
+tr:last-child td{border-bottom:none;}
+tr:hover td{background:var(--bg3);}
+.num{text-align:right;}
+.cop{color:var(--green);}
+
+/* BADGES */
+.badge{display:inline-flex;align-items:center;font-size:10px;font-family:var(--mono);font-weight:500;padding:2px 8px;border-radius:3px;}
+.b-high{background:var(--greenBg);color:var(--green);border:1px solid var(--green2);}
+.b-med{background:var(--yellowBg);color:var(--yellow);border:1px solid var(--yellowBorder);}
+.b-low{background:var(--redBg);color:var(--red);border:1px solid var(--redBorder);}
+.b-sin{background:var(--bg3);color:var(--text3);border:1px solid var(--border);}
+.b-active{background:var(--greenBg);color:var(--green);border:1px solid var(--green2);}
+
+/* LOG */
+.log{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:11px 14px;font-family:var(--mono);font-size:11px;max-height:160px;overflow-y:auto;line-height:1.9;}
+.log .ok{color:var(--green);}.log .warn{color:var(--yellow);}.log .err{color:var(--red);}.log .info{color:var(--blue);}.log .dim{color:var(--text3);}
+
+/* TARIFF */
+.t-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px;}
+.t-item label{display:block;font-size:11px;color:var(--text2);margin-bottom:5px;font-family:var(--mono);}
+.t-item input{width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:6px;padding:8px 10px;color:var(--text);font-family:var(--mono);font-size:12px;}
+.t-item input:focus{outline:none;border-color:var(--accent);}
+
+/* VERSION CARD */
+.ver-card{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:12px 15px;margin-bottom:8px;}
+.ver-card.active-ver{border-color:var(--green2);}
+
+/* INFO BOX */
+.info-box{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:11px 15px;font-size:12px;color:var(--text2);margin-bottom:14px;line-height:1.6;}
+.info-box code{color:var(--accent);font-family:var(--mono);font-size:11px;}
+
+/* CASE CARDS */
+.case-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:18px;}
+.cc{border-radius:8px;padding:12px 14px;border:1px solid;}
+.cc-h{background:var(--greenBg);border-color:var(--green2);}
+.cc-m{background:var(--yellowBg);border-color:var(--yellowBorder);}
+.cc-l{background:var(--redBg);border-color:var(--redBorder);}
+.cc-title{font-size:11px;font-weight:600;margin-bottom:5px;}
+.cc-body{font-size:11px;color:var(--text2);line-height:1.5;}
+
+/* CITY TAG */
+.city{font-size:10px;background:var(--bg4);padding:2px 6px;border-radius:3px;font-family:var(--mono);}
+
+/* TOAST */
+.toast{position:fixed;bottom:20px;right:24px;background:var(--greenBg);border:1px solid var(--green2);color:var(--green);font-size:11px;font-family:var(--mono);padding:8px 16px;border-radius:6px;z-index:999;opacity:0;transition:opacity .25s;pointer-events:none;}
+.toast.show{opacity:1;}
+</style>
+</head>
+<body>
+<div class="layout">
+
+<!-- NAV -->
+<nav>
+  <div class="nav-brand">
+    <div class="nav-logo">
+      <svg width="15" height="15" fill="none" stroke="#fff" stroke-width="2" viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+    </div>
+    <div>
+      <div class="nav-title">Pipeline TADA → Trump</div>
+      <div class="nav-sub">Liquidaciones Pibox · fase validación</div>
+    </div>
+  </div>
+  <div class="nav-right">
+    <span id="nav-version">cargando tarifas...</span>
+  </div>
+</nav>
+
+<!-- STEPPER -->
+<div class="stepper">
+  <div class="step active" id="stp0" onclick="navStep(0)"><div class="sn">1</div><div class="sl">Cargar archivos</div></div>
+  <div class="step locked" id="stp1" onclick="navStep(1)"><div class="sn">2</div><div class="sl">Normalizar</div></div>
+  <div class="step locked" id="stp2" onclick="navStep(2)"><div class="sn">3</div><div class="sl">Conciliación</div></div>
+  <div class="step locked" id="stp3" onclick="navStep(3)"><div class="sn">4</div><div class="sl">Distribución</div></div>
+  <div class="step locked" id="stp4" onclick="navStep(4)"><div class="sn">5</div><div class="sl">Tarifas</div></div>
+  <div class="step locked" id="stp5" onclick="navStep(5)"><div class="sn">6</div><div class="sl">Template Trump</div></div>
+</div>
+
+<main>
+
+<!-- P0 -->
+<div class="panel active" id="p0">
+  <div class="sec">Fuentes de entrada — ambas requeridas</div>
+  <div class="upload-grid">
+    <div class="dropzone" id="dz-tada" ondragover="doDrag(event,'tada',1)" ondragleave="doDrag(event,'tada',0)" ondrop="doDrop(event,'tada')">
+      <input type="file" accept=".xlsx,.xls,.csv" onchange="loadFile(this.files[0],'tada')"/>
+      <div class="dz-tag tag-tada">TADA</div>
+      <div class="dz-title" id="lbl-tada">Excel TADA semanal</div>
+      <div class="dz-sub">Multi-header · paquetes · incentivos · cancelados</div>
+    </div>
+    <div class="dropzone" id="dz-malla" ondragover="doDrag(event,'malla',1)" ondragleave="doDrag(event,'malla',0)" ondrop="doDrop(event,'malla')">
+      <input type="file" accept=".xlsx,.xls,.csv" onchange="loadFile(this.files[0],'malla')"/>
+      <div class="dz-tag tag-malla">PIBOX</div>
+      <div class="dz-title" id="lbl-malla">Malla operativa Pibox</div>
+      <div class="dz-sub">booking_id · driver_id · seller · fecha · hora</div>
+    </div>
+  </div>
+  <div class="row-btns">
+    <button class="btn btn-primary" onclick="loadDemo()">Cargar datos de ejemplo</button>
+  </div>
+  <div id="load-status" style="font-size:11px;font-family:var(--mono);color:var(--text2);min-height:20px;"></div>
+</div>
+
+<!-- P1 -->
+<div class="panel" id="p1">
+  <div class="sec">TADA — long format</div>
+  <div class="tbl-wrap" id="tbl-tada-norm"></div>
+  <div class="sec">Malla Pibox</div>
+  <div class="tbl-wrap" id="tbl-malla-norm"></div>
+  <div class="sec">Log normalización</div>
+  <div class="log" id="log-norm"></div>
+  <div class="panel-footer">
+    <button class="btn" onclick="navStep(0)">← Atrás</button>
+    <button class="btn btn-primary" onclick="runConciliacion()">Ejecutar conciliación →</button>
+  </div>
+</div>
+
+<!-- P2 -->
+<div class="panel" id="p2">
+  <div class="case-cards">
+    <div class="cc cc-h"><div class="cc-title" style="color:var(--green)">CASO A · HIGH</div><div class="cc-body">Match único por<br><strong>piloto + fecha + seller</strong><br>→ asignación directa</div></div>
+    <div class="cc cc-m"><div class="cc-title" style="color:var(--yellow)">CASO B · MEDIUM</div><div class="cc-body">Múltiples bookings misma clave<br>→ franja horaria desambigua<br>→ distribución equitativa</div></div>
+    <div class="cc cc-l"><div class="cc-title" style="color:var(--red)">CASO C · LOW</div><div class="cc-body">Sin match por seller<br>Fallback: <strong>piloto + fecha</strong><br>→ requiere revisión manual</div></div>
+  </div>
+  <div class="stats" id="stats-conc"></div>
+  <div class="sec">Resultado por fila TADA</div>
+  <div class="tbl-wrap" id="tbl-conc"></div>
+  <div class="sec">Log de inconsistencias</div>
+  <div class="log" id="log-conc"></div>
+  <div class="panel-footer">
+    <button class="btn" onclick="navStep(1)">← Atrás</button>
+    <button class="btn btn-primary" onclick="runDistribucion()">Distribuir a bookings →</button>
+  </div>
+</div>
+
+<!-- P3 -->
+<div class="panel" id="p3">
+  <div class="info-box">
+    Distribución <code>equitativa</code> entre bookings del grupo ordenados por <code>hora_inicio</code>. Valores semanales (bonos, tareas, garantizado, ajustes) → <code>solo al primer booking</code>. <code>SIN_MALLA</code> → excluidos del output, solo en log.
+  </div>
+  <div class="stats" id="stats-dist"></div>
+  <div class="sec">Dataset a nivel de booking</div>
+  <div class="tbl-wrap" id="tbl-dist"></div>
+  <div class="panel-footer">
+    <button class="btn" onclick="navStep(2)">← Atrás</button>
+    <button class="btn btn-primary" onclick="navStep(4)">Configurar tarifas →</button>
+  </div>
+</div>
+
+<!-- P4 -->
+<div class="panel" id="p4">
+  <div class="info-box" id="tariff-info"></div>
+  <div class="sec">Tarifas TADA — únicas, sin variación por ciudad/servicio</div>
+  <div class="t-grid" id="tariff-fields"></div>
+  <div class="sec">Publicar nueva versión</div>
+  <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:16px;">
+    <div class="t-grid" style="margin-bottom:12px;">
+      <div class="t-item"><label>Autor</label><input type="text" id="t-autor" placeholder="ops@empresa.com"/></div>
+      <div class="t-item"><label>Nota de cambio</label><input type="text" id="t-nota" placeholder="ej: Ajuste paquete Q2"/></div>
+      <div class="t-item" style="display:flex;align-items:flex-end;gap:8px;">
+        <button class="btn" onclick="resetTarifas()" style="flex:1;">Descartar</button>
+        <button class="btn btn-primary" onclick="publishTariff()" style="flex:1;">Publicar</button>
+      </div>
+    </div>
+  </div>
+  <div class="sec" style="margin-top:16px;">Historial de versiones</div>
+  <div id="tariff-history"></div>
+  <div class="panel-footer">
+    <button class="btn" onclick="navStep(3)">← Atrás</button>
+    <button class="btn btn-primary" onclick="runTrump()">Generar template Trump →</button>
+  </div>
+</div>
+
+<!-- P5 -->
+<div class="panel" id="p5">
+  <div class="stats" id="stats-trump"></div>
+  <div class="sec">Template Trump — 1 fila por BOOKING_ID</div>
+  <div class="tbl-wrap" id="tbl-trump"></div>
+  <div class="sec">Log final</div>
+  <div class="log" id="log-trump"></div>
+  <div class="panel-footer">
+    <button class="btn" onclick="navStep(4)">← Atrás</button>
+    <button class="btn btn-green" onclick="downloadTrump()">↓ Descargar Excel Trump (3 hojas)</button>
+  </div>
+</div>
+
+</main>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+// ════════════════════════════════════════════
+// CONSTANTES
+// ════════════════════════════════════════════
+const DAYS=['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo'];
+const COMISION=0.15;
+const LS_TAR='pibox:tariff_v1';
+const LS_RUNS='pibox:runs_v1';
+
+const TARIFF_SCHEMA=[
+  {key:'valor_paquete',    label:'Valor paquete (COP)',            def:2500,step:100},
+  {key:'valor_incentivo',  label:'Valor incentivo unitario (COP)', def:5000,step:100},
+  {key:'valor_cancelado',  label:'Valor cancelado (COP)',          def:1200,step:100},
+  {key:'valor_tarea',      label:'Valor tarea adicional (COP)',    def:3500,step:100},
+  {key:'margen_cliente_pct',label:'Margen cobro cliente (%)',      def:22,  step:1},
+];
+
+// ════════════════════════════════════════════
+// ESTADO
+// ════════════════════════════════════════════
+let tadaNorm=[], mallaRaw=[], concResult=[], distResult=[], trumpRows=[];
+let loadedTada=false, loadedMalla=false, maxStep=0, curStep=0;
+let tariffStore=null, currentEdits={};
+
+// ════════════════════════════════════════════
+// UTILS
+// ════════════════════════════════════════════
+const normStr=s=>String(s||'').trim().replace(/\s+/g,' ').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+const cop=n=>{const r=Math.round(n);return(r<0?'-$':'$')+Math.abs(r).toLocaleString('es-CO');};
+const k3=(p,f,s)=>`${normStr(p)}||${normStr(f)}||${normStr(s)}`;
+const k2=(p,f)=>`${normStr(p)}||${normStr(f)}`;
+const fmtDate=iso=>{try{return new Date(iso).toLocaleString('es-CO',{dateStyle:'short',timeStyle:'short'});}catch{return iso;}};
+
+function addLog(id,msg,cls='info'){
+  const el=document.getElementById(id);
+  if(!el)return;
+  el.innerHTML+=`<div class="${cls}">${msg}</div>`;
+  el.scrollTop=el.scrollHeight;
+}
+
+function toast(msg){
+  const el=document.getElementById('toast');
+  el.textContent=msg;el.classList.add('show');
+  clearTimeout(el._t);el._t=setTimeout(()=>el.classList.remove('show'),2400);
+}
+
+function mkTable(containerId,rows,cols,heads,rowClass){
+  const el=document.getElementById(containerId);
+  if(!el)return;
+  if(!rows||!rows.length){el.innerHTML='<div style="padding:12px;color:var(--text3);font-size:11px;font-family:var(--mono);">Sin datos</div>';return;}
+  const copSet=new Set(['garantizado','bonos','ajustes','COMPANY_FINAL_COST','ADDITIONAL_COMPANY_FINAL_COST','FINAL_COST','ADDITIONAL_FINAL_COST']);
+  const numSet=new Set(['paquetes','incentivos','cancelados','tareas','paquetes_dist','incentivos_dist','cancelados_dist','tareas_dist','n_bookings','PACKAGES_COUNT','IS_PER_HOUR']);
+  let html=`<table><thead><tr>${heads.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>`;
+  rows.slice(0,25).forEach(r=>{
+    const rc=rowClass?rowClass(r):'';
+    html+=`<tr${rc}>${cols.map(c=>{
+      const v=r[c];
+      if(c==='nivel_confianza'||c==='CONFIANZA'){
+        const cl=v==='HIGH'?'b-high':v==='MEDIUM'?'b-med':v==='LOW'?'b-low':'b-sin';
+        return `<td><span class="badge ${cl}">${v||'—'}</span></td>`;
+      }
+      if(c==='ciudad')return `<td><span class="city">${v}</span></td>`;
+      if(copSet.has(c)&&typeof v==='number')return `<td class="num cop">${v!==0?cop(v):'—'}</td>`;
+      if(numSet.has(c)&&typeof v==='number')return `<td class="num">${v}</td>`;
+      return `<td>${v??'—'}</td>`;
+    }).join('')}</tr>`;
+  });
+  if(rows.length>25)html+=`<tr><td colspan="${cols.length}" style="color:var(--text3);text-align:center;padding:8px;font-size:10px;">··· ${rows.length-25} filas más</td></tr>`;
+  el.innerHTML=html+'</tbody></table>';
+}
+
+// ════════════════════════════════════════════
+// STEPPER
+// ════════════════════════════════════════════
+function navStep(i){
+  if(i>maxStep)return;
+  document.querySelectorAll('.panel').forEach((p,j)=>p.classList.toggle('active',j===i));
+  document.querySelectorAll('.step').forEach((s,j)=>{
+    s.classList.remove('active','done','locked');
+    if(j===i)s.classList.add('active');
+    else if(j<i)s.classList.add('done');
+    else s.classList.add('locked');
+  });
+  curStep=i;
+  if(i===4)renderTariffPanel();
+}
+function unlock(i){if(i>maxStep)maxStep=i;navStep(i);}
+
+// ════════════════════════════════════════════
+// TARIFAS — localStorage
+// ════════════════════════════════════════════
+function initTariffs(){
+  try{
+    const raw=localStorage.getItem(LS_TAR);
+    tariffStore=raw?JSON.parse(raw):null;
+  }catch{tariffStore=null;}
+  if(!tariffStore){
+    const defs={};TARIFF_SCHEMA.forEach(s=>defs[s.key]=s.def);
+    tariffStore={active_version:'v1',versions:[{version:'v1',fecha_creacion:new Date().toISOString(),autor:'sistema',nota:'Versión inicial',values:{...defs}}]};
+    saveTariffs();
+  }
+  currentEdits={...getAV().values};
+  updateNav();
+}
+function saveTariffs(){try{localStorage.setItem(LS_TAR,JSON.stringify(tariffStore));}catch(e){}}
+function getAV(){return tariffStore.versions.find(v=>v.version===tariffStore.active_version);}
+function getNextVer(){const n=tariffStore.versions.map(v=>parseInt(v.version.replace('v',''))||0);return 'v'+(Math.max(...n)+1);}
+function updateNav(){const av=getAV();document.getElementById('nav-version').textContent=`Tarifas ${av.version} · ${fmtDate(av.fecha_creacion)}`;}
+
+function renderTariffPanel(){
+  const av=getAV();
+  document.getElementById('tariff-info').innerHTML=`Versión activa: <code>${av.version}</code> · Creada: <code>${fmtDate(av.fecha_creacion)}</code> · Autor: <code>${av.autor}</code>${av.nota?' · '+av.nota:''}`;
+  document.getElementById('tariff-fields').innerHTML=TARIFF_SCHEMA.map(s=>`
+    <div class="t-item"><label>${s.label}</label>
+    <input type="number" value="${currentEdits[s.key]??s.def}" step="${s.step}" oninput="currentEdits['${s.key}']=parseFloat(this.value)||0"/></div>`).join('');
+  const hist=[...tariffStore.versions].reverse().slice(0,5);
+  document.getElementById('tariff-history').innerHTML=hist.map(v=>{
+    const isA=v.version===tariffStore.active_version;
+    return `<div class="ver-card${isA?' active-ver':''}">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+        <span style="font-family:var(--mono);font-size:12px;font-weight:600;">${v.version} ${isA?'<span class="badge b-active" style="margin-left:6px;font-size:9px;">ACTIVA</span>':''}</span>
+        <span style="font-size:10px;color:var(--text3);">${fmtDate(v.fecha_creacion)} · ${v.autor}${v.nota?' · '+v.nota:''}</span>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:5px;">
+        ${TARIFF_SCHEMA.map(s=>`<span style="font-size:10px;background:var(--bg3);padding:2px 8px;border-radius:3px;font-family:var(--mono);color:var(--text2);">${s.key}: <span style="color:var(--text);">${s.key.includes('pct')?v.values[s.key]+'%':cop(v.values[s.key])}</span></span>`).join('')}
+      </div>
+      ${!isA?`<div style="margin-top:8px;"><button class="btn btn-sm" onclick="activateVersion('${v.version}')">Activar esta versión</button></div>`:''}
+    </div>`;
+  }).join('');
+}
+
+function publishTariff(){
+  const av=getAV();
+  const changed=TARIFF_SCHEMA.some(s=>currentEdits[s.key]!==av.values[s.key]);
+  if(!changed){toast('Sin cambios respecto a la versión activa');return;}
+  const autor=document.getElementById('t-autor').value.trim()||'sin especificar';
+  const nota=document.getElementById('t-nota').value.trim()||'';
+  const nv=getNextVer();
+  tariffStore.versions.push({version:nv,fecha_creacion:new Date().toISOString(),autor,nota,values:{...currentEdits}});
+  tariffStore.active_version=nv;
+  saveTariffs();
+  document.getElementById('t-autor').value='';document.getElementById('t-nota').value='';
+  updateNav();renderTariffPanel();toast(`✓ ${nv} publicada y activa`);
+}
+function resetTarifas(){currentEdits={...getAV().values};renderTariffPanel();toast('Cambios descartados');}
+function activateVersion(ver){
+  tariffStore.active_version=ver;
+  currentEdits={...tariffStore.versions.find(v=>v.version===ver).values};
+  saveTariffs();updateNav();renderTariffPanel();toast(`✓ ${ver} activada`);
+}
+
+// ════════════════════════════════════════════
+// DRAG & DROP
+// ════════════════════════════════════════════
+function doDrag(e,src,on){e.preventDefault();document.getElementById('dz-'+src).classList.toggle('drag',!!on);}
+function doDrop(e,src){e.preventDefault();doDrag(e,src,0);if(e.dataTransfer.files[0])loadFile(e.dataTransfer.files[0],src);}
+
+function loadFile(file,src){
+  const r=new FileReader();
+  r.onload=e=>{
+    const wb=XLSX.read(e.target.result,{type:'array'});
+    const ws=wb.Sheets[wb.SheetNames[0]];
+    if(src==='tada'){
+      tadaNorm=parseMultiHeaderTADA(XLSX.utils.sheet_to_json(ws,{header:1,defval:''}));
+      loadedTada=true;
+      document.getElementById('lbl-tada').textContent=file.name+' ✓';
+      document.getElementById('dz-tada').classList.add('loaded');
+    } else {
+      mallaRaw=XLSX.utils.sheet_to_json(ws,{defval:''});
+      loadedMalla=true;
+      document.getElementById('lbl-malla').textContent=file.name+' ✓';
+      document.getElementById('dz-malla').classList.add('loaded');
+    }
+    checkReady();
+  };
+  r.readAsArrayBuffer(file);
+}
+function checkReady(){
+  if(loadedTada&&loadedMalla){
+    document.getElementById('load-status').innerHTML='<span style="color:var(--green)">✓ Ambos archivos listos — procesando...</span>';
+    setTimeout(runNorm,300);
+  } else {
+    document.getElementById('load-status').textContent='Falta: '+(loadedTada?'':'TADA ')+(loadedMalla?'':'Malla Pibox');
+  }
+}
+
+// ════════════════════════════════════════════
+// DEMO
+// ════════════════════════════════════════════
+function loadDemo(){
+  tadaNorm=DEMO_TADA();mallaRaw=DEMO_MALLA();
+  loadedTada=loadedMalla=true;
+  document.getElementById('lbl-tada').textContent='demo_tada_21-27abr.xlsx ✓';
+  document.getElementById('lbl-malla').textContent='demo_malla_pibox_21-27abr.xlsx ✓';
+  ['tada','malla'].forEach(s=>document.getElementById('dz-'+s).classList.add('loaded'));
+  document.getElementById('load-status').innerHTML='<span style="color:var(--green)">✓ Datos demo cargados</span>';
+  setTimeout(runNorm,300);
+}
+
+function DEMO_TADA(){
+  const rows=[];
+  const add=(p,ci,se,ex,dias)=>dias.forEach(d=>rows.push({piloto:p,ciudad:ci,seller:se,dia:d.d,fecha:d.f,paquetes:d.p,incentivos:d.i,cancelados:d.c,...ex}));
+  add('Carlos García','BOG','MercadoStore',{tareas:3,garantizado:0,bonos:10000,ajustes:0},[
+    {d:'Lunes',f:'21/04',p:12,i:2,c:1},{d:'Martes',f:'22/04',p:9,i:1,c:0},{d:'Miércoles',f:'23/04',p:14,i:3,c:0},
+    {d:'Jueves',f:'24/04',p:11,i:2,c:2},{d:'Viernes',f:'25/04',p:8,i:1,c:1},{d:'Sábado',f:'26/04',p:15,i:4,c:0},{d:'Domingo',f:'27/04',p:7,i:1,c:1}]);
+  add('Ana Martínez','BOG','FreshMarket',{tareas:0,garantizado:70000,bonos:0,ajustes:0},[
+    {d:'Lunes',f:'21/04',p:5,i:0,c:0},{d:'Martes',f:'22/04',p:6,i:0,c:1},{d:'Miércoles',f:'23/04',p:4,i:0,c:0},
+    {d:'Jueves',f:'24/04',p:7,i:1,c:0},{d:'Viernes',f:'25/04',p:5,i:0,c:2},{d:'Sábado',f:'26/04',p:8,i:1,c:0},{d:'Domingo',f:'27/04',p:9,i:2,c:0}]);
+  add('José Rodriguez','MDE','TechZone',{tareas:5,garantizado:0,bonos:20000,ajustes:-5000},[
+    {d:'Lunes',f:'21/04',p:18,i:3,c:0},{d:'Martes',f:'22/04',p:20,i:4,c:1},{d:'Miércoles',f:'23/04',p:17,i:2,c:0},
+    {d:'Jueves',f:'24/04',p:22,i:5,c:2},{d:'Viernes',f:'25/04',p:19,i:3,c:0},{d:'Sábado',f:'26/04',p:25,i:6,c:1},{d:'Domingo',f:'27/04',p:21,i:4,c:0}]);
+  add('Luis Pérez','BOG','QuickShop',{tareas:2,garantizado:0,bonos:8000,ajustes:0},[
+    {d:'Lunes',f:'21/04',p:10,i:1,c:0},{d:'Martes',f:'22/04',p:8,i:1,c:1}]);
+  add('María López','CAL','LocalStore',{tareas:1,garantizado:0,bonos:0,ajustes:0},[
+    {d:'Lunes',f:'21/04',p:10,i:2,c:1}]);
+  return rows;
+}
+function DEMO_MALLA(){
+  return [
+    {driver_id:'DRV-BOG-001',piloto:'Carlos García', ciudad:'BOG',seller:'MercadoStore',fecha:'21/04',hora_inicio:'08:00',booking_id:'BK-10001',pedidos:12},
+    {driver_id:'DRV-BOG-001',piloto:'Carlos García', ciudad:'BOG',seller:'MercadoStore',fecha:'22/04',hora_inicio:'08:00',booking_id:'BK-10002',pedidos:9},
+    {driver_id:'DRV-BOG-001',piloto:'Carlos García', ciudad:'BOG',seller:'MercadoStore',fecha:'23/04',hora_inicio:'08:00',booking_id:'BK-10003',pedidos:14},
+    {driver_id:'DRV-BOG-001',piloto:'Carlos García', ciudad:'BOG',seller:'MercadoStore',fecha:'24/04',hora_inicio:'08:00',booking_id:'BK-10004',pedidos:11},
+    {driver_id:'DRV-BOG-001',piloto:'Carlos García', ciudad:'BOG',seller:'MercadoStore',fecha:'25/04',hora_inicio:'08:00',booking_id:'BK-10005',pedidos:8},
+    {driver_id:'DRV-BOG-001',piloto:'Carlos García', ciudad:'BOG',seller:'MercadoStore',fecha:'26/04',hora_inicio:'08:00',booking_id:'BK-10006',pedidos:15},
+    {driver_id:'DRV-BOG-001',piloto:'Carlos García', ciudad:'BOG',seller:'MercadoStore',fecha:'27/04',hora_inicio:'08:00',booking_id:'BK-10007',pedidos:7},
+    {driver_id:'DRV-BOG-002',piloto:'Ana Martínez',  ciudad:'BOG',seller:'FreshMarket', fecha:'21/04',hora_inicio:'09:00',booking_id:'BK-10008',pedidos:5},
+    {driver_id:'DRV-BOG-002',piloto:'Ana Martínez',  ciudad:'BOG',seller:'FreshMarket', fecha:'22/04',hora_inicio:'09:00',booking_id:'BK-10009',pedidos:6},
+    {driver_id:'DRV-BOG-002',piloto:'Ana Martínez',  ciudad:'BOG',seller:'FreshMarket', fecha:'23/04',hora_inicio:'09:00',booking_id:'BK-10010',pedidos:4},
+    {driver_id:'DRV-BOG-002',piloto:'Ana Martínez',  ciudad:'BOG',seller:'FreshMarket', fecha:'24/04',hora_inicio:'09:00',booking_id:'BK-10011',pedidos:7},
+    {driver_id:'DRV-BOG-002',piloto:'Ana Martínez',  ciudad:'BOG',seller:'FreshMarket', fecha:'25/04',hora_inicio:'09:00',booking_id:'BK-10012',pedidos:5},
+    {driver_id:'DRV-BOG-002',piloto:'Ana Martínez',  ciudad:'BOG',seller:'FreshMarket', fecha:'26/04',hora_inicio:'09:00',booking_id:'BK-10013',pedidos:8},
+    {driver_id:'DRV-BOG-002',piloto:'Ana Martínez',  ciudad:'BOG',seller:'FreshMarket', fecha:'27/04',hora_inicio:'09:00',booking_id:'BK-10014',pedidos:9},
+    {driver_id:'DRV-MDE-001',piloto:'José Rodriguez',ciudad:'MDE',seller:'TechZone',    fecha:'21/04',hora_inicio:'07:30',booking_id:'BK-10015',pedidos:18},
+    {driver_id:'DRV-MDE-001',piloto:'José Rodriguez',ciudad:'MDE',seller:'TechZone',    fecha:'22/04',hora_inicio:'07:30',booking_id:'BK-10016',pedidos:20},
+    {driver_id:'DRV-MDE-001',piloto:'José Rodriguez',ciudad:'MDE',seller:'TechZone',    fecha:'23/04',hora_inicio:'07:30',booking_id:'BK-10017',pedidos:17},
+    {driver_id:'DRV-MDE-001',piloto:'José Rodriguez',ciudad:'MDE',seller:'TechZone',    fecha:'24/04',hora_inicio:'07:30',booking_id:'BK-10018',pedidos:22},
+    {driver_id:'DRV-MDE-001',piloto:'José Rodriguez',ciudad:'MDE',seller:'TechZone',    fecha:'25/04',hora_inicio:'07:30',booking_id:'BK-10019',pedidos:19},
+    {driver_id:'DRV-MDE-001',piloto:'José Rodriguez',ciudad:'MDE',seller:'TechZone',    fecha:'26/04',hora_inicio:'07:30',booking_id:'BK-10020',pedidos:25},
+    {driver_id:'DRV-MDE-001',piloto:'José Rodriguez',ciudad:'MDE',seller:'TechZone',    fecha:'27/04',hora_inicio:'07:30',booking_id:'BK-10021',pedidos:21},
+    {driver_id:'DRV-BOG-005',piloto:'Luis Pérez',    ciudad:'BOG',seller:'QuickShop',   fecha:'21/04',hora_inicio:'08:00',booking_id:'BK-10022',pedidos:5},
+    {driver_id:'DRV-BOG-005',piloto:'Luis Pérez',    ciudad:'BOG',seller:'QuickShop',   fecha:'21/04',hora_inicio:'14:00',booking_id:'BK-10023',pedidos:5},
+    {driver_id:'DRV-BOG-005',piloto:'Luis Pérez',    ciudad:'BOG',seller:'QuickShop',   fecha:'22/04',hora_inicio:'08:00',booking_id:'BK-10024',pedidos:8},
+    {driver_id:'DRV-BAQ-001',piloto:'Miguel Torres', ciudad:'BAQ',seller:'NorthStore',  fecha:'21/04',hora_inicio:'09:00',booking_id:'BK-10025',pedidos:6},
+  ];
+}
+
+// ════════════════════════════════════════════
+// PARSER MULTI-HEADER
+// ════════════════════════════════════════════
+function parseMultiHeaderTADA(raw){
+  if(raw.length<4)return[];
+  const h0=raw[0],h1=raw[1],h2=raw[2];
+  let lastDay='';
+  const cols=h0.map((v,i)=>{
+    const val=String(v).trim();if(val)lastDay=val;
+    const sub=String(h1[i]||'').trim();
+    if(/ciudad/i.test(val))return{t:'f',n:'ciudad'};
+    if(/seller|tienda/i.test(val))return{t:'f',n:'seller'};
+    if(/domicili|piloto|nombre/i.test(val))return{t:'f',n:'piloto'};
+    if(DAYS.includes(lastDay)&&sub){
+      const m=/paq/i.test(sub)?'paquetes':/inc/i.test(sub)?'incentivos':/can/i.test(sub)?'cancelados':sub;
+      return{t:'d',dia:lastDay,m,fecha:String(h2[i]||'').trim()};
+    }
+    return{t:'e',n:val.toLowerCase().replace(/\s+/g,'_')||`c${i}`};
+  });
+  const res=[];
+  raw.slice(3).forEach(row=>{
+    const f={},e={},d={};
+    cols.forEach((c,i)=>{
+      const v=row[i];
+      if(c.t==='f')f[c.n]=String(v||'').trim();
+      else if(c.t==='e')e[c.n]=v;
+      else if(c.t==='d'){if(!d[c.dia])d[c.dia]={fecha:c.fecha};d[c.dia][c.m]=parseInt(v)||0;}
+    });
+    if(!f.piloto?.trim())return;
+    DAYS.forEach(dia=>{
+      if(!d[dia])return;
+      res.push({piloto:f.piloto,ciudad:f.ciudad||'',seller:f.seller||'',dia,fecha:d[dia].fecha||'',
+        paquetes:d[dia].paquetes||0,incentivos:d[dia].incentivos||0,cancelados:d[dia].cancelados||0,
+        tareas:parseInt(e.tareas||0)||0,
+        garantizado:parseFloat(String(e.garantizado_basico||e.garantizado||'0').replace(/[$,.]/g,''))||0,
+        bonos:parseFloat(String(e.bonos||'0').replace(/[$,.]/g,''))||0,
+        ajustes:parseFloat(String(e.ajustes||e.novedades||'0').replace(/[$,.]/g,''))||0,
+      });
+    });
+  });
+  return res;
+}
+
+// ════════════════════════════════════════════
+// PASO 2: NORMALIZAR
+// ════════════════════════════════════════════
+function runNorm(){
+  document.getElementById('log-norm').innerHTML='';
+  const pilotos=[...new Set(tadaNorm.map(r=>r.piloto))];
+  addLog('log-norm',`[INFO] TADA: ${tadaNorm.length} filas · ${pilotos.length} pilotos únicos`,'info');
+  addLog('log-norm',`[INFO] Malla: ${mallaRaw.length} bookings · ${[...new Set(mallaRaw.map(r=>r.driver_id))].length} drivers`,'info');
+  addLog('log-norm','[OK] Multi-header aplanado · valores semanales propagados','ok');
+  mkTable('tbl-tada-norm',tadaNorm,['piloto','ciudad','seller','dia','fecha','paquetes','incentivos','cancelados','tareas','garantizado','bonos','ajustes'],['Piloto','Ciudad','Seller','Día','Fecha','Paq.','Inc.','Canc.','Tareas','Garantizado','Bonos','Ajustes']);
+  const mc=Object.keys(mallaRaw[0]||{});
+  mkTable('tbl-malla-norm',mallaRaw,mc,mc);
+  unlock(1);
+}
+
+// ════════════════════════════════════════════
+// PASO 3: CONCILIACIÓN
+// ════════════════════════════════════════════
+function runConciliacion(){
+  document.getElementById('log-conc').innerHTML='';
+  concResult=[];
+  const idx3={},idx2={};
+  mallaRaw.forEach(m=>{
+    const a=k3(m.piloto||'',m.fecha||'',m.seller||'');
+    const b=k2(m.piloto||'',m.fecha||'');
+    (idx3[a]||(idx3[a]=[])).push(m);
+    if(!(idx2[b]||[]).find(x=>x.booking_id===m.booking_id))(idx2[b]||(idx2[b]=[])).push(m);
+  });
+  const matchados=new Set();
+  tadaNorm.forEach(row=>{
+    const a=k3(row.piloto,row.fecha,row.seller);
+    const b=k2(row.piloto,row.fecha);
+    let matches=[],nivel='SIN_MALLA',nota='';
+    if(idx3[a]?.length){
+      matches=idx3[a];nivel=matches.length===1?'HIGH':'MEDIUM';
+      nota=nivel==='HIGH'?'Match único piloto+fecha+seller':`${matches.length} bookings → desambiguar por franja horaria`;
+      matches.forEach(m=>matchados.add(m.booking_id));
+    } else if(idx2[b]?.length){
+      matches=idx2[b];nivel='LOW';
+      nota=`Fallback piloto+fecha · seller TADA="${row.seller}" vs malla="${[...new Set(matches.map(m=>m.seller))].join('/')}"`;
+      matches.forEach(m=>matchados.add(m.booking_id));
+    }
+    concResult.push({...row,nivel_confianza:nivel,matches,nota,driver_id:matches[0]?.driver_id||'PENDIENTE'});
+    const cls=nivel==='HIGH'?'ok':nivel==='SIN_MALLA'?'err':'warn';
+    addLog('log-conc',`[${nivel}] ${row.piloto} · ${row.fecha} · ${row.seller} — ${nota||'Sin match en malla'}`,cls);
+  });
+  mallaRaw.filter(m=>!matchados.has(m.booking_id)).forEach(m=>
+    addLog('log-conc',`[WARN] Huérfano malla: ${m.booking_id} · ${m.piloto} · ${m.fecha} · ${m.seller}`,'warn'));
+  const h=concResult.filter(r=>r.nivel_confianza==='HIGH').length;
+  const md=concResult.filter(r=>r.nivel_confianza==='MEDIUM').length;
+  const lo=concResult.filter(r=>r.nivel_confianza==='LOW').length;
+  const sn=concResult.filter(r=>r.nivel_confianza==='SIN_MALLA').length;
+  document.getElementById('stats-conc').innerHTML=`
+    <div class="stat"><div class="stat-l">HIGH</div><div class="stat-v g">${h}</div></div>
+    <div class="stat"><div class="stat-l">MEDIUM</div><div class="stat-v y">${md}</div></div>
+    <div class="stat"><div class="stat-l">LOW</div><div class="stat-v r">${lo}</div></div>
+    <div class="stat"><div class="stat-l">SIN_MALLA</div><div class="stat-v" style="color:var(--text2)">${sn}</div></div>`;
+  mkTable('tbl-conc',
+    concResult.map(r=>({piloto:r.piloto,ciudad:r.ciudad,seller:r.seller,fecha:r.fecha,driver_id:r.driver_id,bookings:r.matches.length,nivel_confianza:r.nivel_confianza,nota:r.nota||'Sin match'})),
+    ['piloto','ciudad','seller','fecha','driver_id','bookings','nivel_confianza','nota'],
+    ['Piloto','Ciudad','Seller','Fecha','Driver ID','Bookings','Confianza','Nota']);
+  unlock(2);
+}
+
+// ════════════════════════════════════════════
+// PASO 4: DISTRIBUCIÓN
+// ════════════════════════════════════════════
+function runDistribucion(){
+  distResult=[];
+  concResult.filter(r=>r.nivel_confianza!=='SIN_MALLA').forEach(row=>{
+    const n=row.matches.length;
+    const sorted=[...row.matches].sort((a,b)=>String(a.hora_inicio||'').localeCompare(String(b.hora_inicio||'')));
+    sorted.forEach((m,i)=>{
+      const first=i===0;
+      distResult.push({
+        booking_id:m.booking_id,driver_id:m.driver_id,
+        piloto:row.piloto,ciudad:row.ciudad,seller:m.seller||row.seller,
+        fecha:row.fecha,hora_inicio:m.hora_inicio||'—',
+        paquetes_dist:Math.round(row.paquetes/n),
+        incentivos_dist:Math.round(row.incentivos/n),
+        cancelados_dist:Math.round(row.cancelados/n),
+        tareas_dist:first?row.tareas:0,
+        garantizado:first?row.garantizado:0,
+        bonos:first?row.bonos:0,
+        ajustes:first?row.ajustes:0,
+        nivel_confianza:row.nivel_confianza,n_bookings:n,
+      });
+    });
+  });
+  document.getElementById('stats-dist').innerHTML=`
+    <div class="stat"><div class="stat-l">Bookings generados</div><div class="stat-v">${distResult.length}</div></div>
+    <div class="stat"><div class="stat-l">Excluidos SIN_MALLA</div><div class="stat-v r">${concResult.filter(r=>r.nivel_confianza==='SIN_MALLA').length}</div></div>
+    <div class="stat"><div class="stat-l">HIGH</div><div class="stat-v g">${distResult.filter(r=>r.nivel_confianza==='HIGH').length}</div></div>
+    <div class="stat"><div class="stat-l">MEDIUM+LOW</div><div class="stat-v y">${distResult.filter(r=>['MEDIUM','LOW'].includes(r.nivel_confianza)).length}</div></div>`;
+  mkTable('tbl-dist',distResult,
+    ['booking_id','driver_id','piloto','ciudad','seller','fecha','hora_inicio','paquetes_dist','incentivos_dist','cancelados_dist','tareas_dist','garantizado','bonos','ajustes','nivel_confianza'],
+    ['Booking ID','Driver ID','Piloto','Ciudad','Seller','Fecha','Hora','Paq.','Inc.','Canc.','Tareas','Garantizado','Bonos','Ajustes','Confianza']);
+  unlock(3);
+}
+
+// ════════════════════════════════════════════
+// PASO 6: TRUMP
+// ════════════════════════════════════════════
+function runTrump(){
+  const t=currentEdits;
+  const av=getAV();
+  const runId=`LIQ-${new Date().toISOString().slice(0,10).replace(/-/g,'')}-${av.version}`;
+  const m=t.margen_cliente_pct/100;
+
+  trumpRows=distResult.map(r=>{
+    const vPaq=r.paquetes_dist  *t.valor_paquete;
+    const vInc=r.incentivos_dist*t.valor_incentivo;
+    const vCan=r.cancelados_dist*t.valor_cancelado; // SUMA
+    const vGar=r.garantizado||0;
+    const vTar=r.tareas_dist    *t.valor_tarea;
+    const vBon=r.bonos||0;
+    const vAj =r.ajustes||0;
+
+    // BASE: paquetes + incentivos + cancelados + garantizado
+    const base=vPaq+vInc+vCan+vGar;
+    // ADICIONAL: bonos + tareas + ajustes
+    const adicional=vBon+vTar+vAj;
+
+    // PAGO PILOTO
+    const finalCost   =Math.round(base/(1-COMISION)); // ÷0.85
+    const addFinalCost=adicional;                      // directo, sin comisión
+
+    // COBRO CLIENTE
+    const companyCost   =Math.round(base*(1+m));
+    const addCompanyCost=Math.round(adicional*(1+m));
+
+    const comments=`Paquetes: ${r.paquetes_dist} | Incentivos: ${r.incentivos_dist} | Cancelados: ${r.cancelados_dist} | Garantizado: ${cop(vGar)} | Bonos: ${cop(vBon)} | Tareas: ${r.tareas_dist} | Ajustes: ${cop(vAj)} | Conf: ${r.nivel_confianza}`;
+
+    return {
+      BOOKING_ID:r.booking_id,
+      COMPANY_FINAL_COST:companyCost,
+      ADDITIONAL_COMPANY_FINAL_COST:addCompanyCost,
+      DISPUTED_COMPANY_FINAL_COST:'',
+      FINAL_COST:finalCost,
+      ADDITIONAL_FINAL_COST:addFinalCost,
+      DISPUTED_FINAL_COST:'',
+      PACKAGES_COUNT:r.paquetes_dist,
+      IS_PER_HOUR:0,
+      COMMENTS:comments,
+      _driver_id:r.driver_id,_piloto:r.piloto,_ciudad:r.ciudad,_seller:r.seller,
+      _fecha:r.fecha,_confianza:r.nivel_confianza,_run_id:runId,_ver:av.version,
+    };
+  });
+
+  const tp=trumpRows.reduce((a,r)=>a+r.FINAL_COST+r.ADDITIONAL_FINAL_COST,0);
+  const tc=trumpRows.reduce((a,r)=>a+r.COMPANY_FINAL_COST+r.ADDITIONAL_COMPANY_FINAL_COST,0);
+  const rev=trumpRows.filter(r=>r._confianza!=='HIGH').length;
+  document.getElementById('stats-trump').innerHTML=`
+    <div class="stat"><div class="stat-l">Bookings en template</div><div class="stat-v">${trumpRows.length}</div></div>
+    <div class="stat"><div class="stat-l">Total pago pilotos</div><div class="stat-v g" style="font-size:14px;">${cop(tp)}</div></div>
+    <div class="stat"><div class="stat-l">Total cobro TaDa</div><div class="stat-v" style="font-size:14px;">${cop(tc)}</div></div>
+    <div class="stat"><div class="stat-l">Requieren revisión</div><div class="stat-v ${rev?'y':'g'}">${rev}</div></div>`;
+
+  const trumpCols=['BOOKING_ID','COMPANY_FINAL_COST','ADDITIONAL_COMPANY_FINAL_COST','DISPUTED_COMPANY_FINAL_COST','FINAL_COST','ADDITIONAL_FINAL_COST','DISPUTED_FINAL_COST','PACKAGES_COUNT','IS_PER_HOUR','COMMENTS'];
+  mkTable('tbl-trump',trumpRows,trumpCols,trumpCols,r=>r._confianza!=='HIGH'?' style="background:rgba(240,190,53,0.04)"':'');
+
+  document.getElementById('log-trump').innerHTML='';
+  addLog('log-trump',`[OK] run_id: ${runId} · version_tarifas: ${av.version} · ${trumpRows.length} bookings`,'ok');
+  addLog('log-trump',`[OK] Total pilotos: ${cop(tp)} · Total TaDa: ${cop(tc)} · Margen: ${cop(tc-tp)}`,'ok');
+  trumpRows.filter(r=>r._confianza==='MEDIUM').forEach(r=>addLog('log-trump',`[MED] ${r.BOOKING_ID} · ${r._piloto} — distribución equitativa`,'warn'));
+  trumpRows.filter(r=>r._confianza==='LOW').forEach(r=>addLog('log-trump',`[LOW] ${r.BOOKING_ID} · ${r._piloto} — fallback piloto+fecha`,'warn'));
+  concResult.filter(r=>r.nivel_confianza==='SIN_MALLA').forEach(r=>addLog('log-trump',`[EXCL] ${r.piloto} · ${r.fecha} · ${r.seller} — excluido (SIN_MALLA)`,'err'));
+
+  // Guardar en localStorage
+  try{
+    const runs=JSON.parse(localStorage.getItem(LS_RUNS)||'[]');
+    runs.push({run_id:runId,fecha_ejecucion:new Date().toISOString(),version_tarifas_usada:av.version,
+      snapshot_tarifas:{...av.values},bookings_generados:trumpRows.length,
+      sin_malla:concResult.filter(r=>r.nivel_confianza==='SIN_MALLA').length,requieren_revision:rev});
+    localStorage.setItem(LS_RUNS,JSON.stringify(runs.slice(-50)));
+  }catch(e){}
+
+  unlock(5);
+}
+
+// ════════════════════════════════════════════
+// DESCARGA — 3 HOJAS
+// ════════════════════════════════════════════
+function downloadTrump(){
+  if(!trumpRows.length)return;
+  const av=getAV();
+  const runId=trumpRows[0]?._run_id||'LIQ';
+  const trumpCols=['BOOKING_ID','COMPANY_FINAL_COST','ADDITIONAL_COMPANY_FINAL_COST','DISPUTED_COMPANY_FINAL_COST','FINAL_COST','ADDITIONAL_FINAL_COST','DISPUTED_FINAL_COST','PACKAGES_COUNT','IS_PER_HOUR','COMMENTS'];
+  const ws1=XLSX.utils.json_to_sheet(trumpRows.map(r=>Object.fromEntries(trumpCols.map(c=>[c,r[c]]))));
+  ws1['!cols']=trumpCols.map(c=>({wch:c==='COMMENTS'?65:c==='BOOKING_ID'?16:24}));
+
+  const inconRows=[];
+  concResult.filter(r=>r.nivel_confianza==='SIN_MALLA').forEach(r=>
+    inconRows.push({tipo:'SIN_MALLA',piloto:r.piloto,fecha:r.fecha,seller:r.seller,ciudad:r.ciudad,booking_id:'—',nota:'Piloto no encontrado en malla Pibox — excluido del output'}));
+  mallaRaw.filter(m=>!distResult.find(d=>d.booking_id===m.booking_id)).forEach(m=>
+    inconRows.push({tipo:'HUÉRFANO_MALLA',piloto:m.piloto||'',fecha:m.fecha||'',seller:m.seller||'',ciudad:m.ciudad||'',booking_id:m.booking_id,nota:'Booking en malla sin valores TADA'}));
+  concResult.filter(r=>r.nivel_confianza==='LOW').forEach(r=>
+    inconRows.push({tipo:'LOW_CONFIDENCE',piloto:r.piloto,fecha:r.fecha,seller:r.seller,ciudad:r.ciudad,booking_id:r.matches.map(m=>m.booking_id).join('/'),nota:'Fallback piloto+fecha — verificar seller'}));
+  const ws2=XLSX.utils.json_to_sheet(inconRows.length?inconRows:[{tipo:'Sin inconsistencias',piloto:'',fecha:'',seller:'',ciudad:'',booking_id:'',nota:''}]);
+  ws2['!cols']=[{wch:18},{wch:22},{wch:10},{wch:20},{wch:10},{wch:18},{wch:65}];
+
+  const auditRows=[
+    {campo:'run_id',valor:runId},
+    {campo:'fecha_ejecucion',valor:new Date().toLocaleString('es-CO')},
+    {campo:'version_tarifas_usada',valor:av.version},
+    {campo:'fecha_creacion_tarifa',valor:fmtDate(av.fecha_creacion)},
+    {campo:'autor_tarifa',valor:av.autor},
+    {campo:'bookings_generados',valor:trumpRows.length},
+    {campo:'sin_malla_excluidos',valor:concResult.filter(r=>r.nivel_confianza==='SIN_MALLA').length},
+    {campo:'requieren_revision',valor:trumpRows.filter(r=>r._confianza!=='HIGH').length},
+    {campo:'───────────────────',valor:'SNAPSHOT TARIFAS'},
+    ...TARIFF_SCHEMA.map(s=>({campo:s.label,valor:av.values[s.key]})),
+  ];
+  const ws3=XLSX.utils.json_to_sheet(auditRows);
+  ws3['!cols']=[{wch:32},{wch:44}];
+
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws1,'Template Trump');
+  XLSX.utils.book_append_sheet(wb,ws2,'Inconsistencias');
+  XLSX.utils.book_append_sheet(wb,ws3,'Auditoría');
+  XLSX.writeFile(wb,`${runId}.xlsx`);
+  toast(`✓ ${runId}.xlsx descargado`);
+}
+
+// BOOT
+initTariffs();
+</script>
+</body>
+</html>
