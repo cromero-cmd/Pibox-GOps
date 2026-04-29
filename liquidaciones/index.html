@@ -64,12 +64,10 @@ main{flex:1;overflow-y:auto;padding:24px 28px;}
 .stat-l{font-size:10px;color:var(--text3);margin-bottom:5px;font-family:var(--mono);}
 .stat-v{font-size:20px;font-weight:600;font-family:var(--mono);}
 .g{color:var(--green);}.y{color:var(--yellow);}.r{color:var(--red);}.b{color:var(--blue);}
-
-/* TABLA CON PAGINACIÓN */
 .tbl-container{border-radius:8px;border:1px solid var(--border);margin-bottom:14px;overflow:hidden;}
 .tbl-header{background:var(--bg3);padding:8px 12px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border);}
 .tbl-counter{font-size:11px;font-family:var(--mono);color:var(--text2);}
-.tbl-wrap{overflow-x:auto;max-height:280px;overflow-y:auto;}
+.tbl-wrap{overflow-x:auto;max-height:260px;overflow-y:auto;}
 table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:11px;}
 th{background:var(--bg3);color:var(--text2);font-weight:500;padding:8px 10px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap;position:sticky;top:0;z-index:1;}
 td{padding:7px 10px;border-bottom:1px solid var(--border);color:var(--text);white-space:nowrap;}
@@ -82,14 +80,13 @@ tr:hover td{background:var(--bg3);}
 .pag-btn{padding:3px 10px;font-size:11px;border-radius:4px;border:1px solid var(--border2);background:transparent;color:var(--text2);cursor:pointer;}
 .pag-btn:hover{background:var(--bg4);color:var(--text);}
 .pag-btn:disabled{opacity:.3;cursor:default;}
-
 .badge{display:inline-flex;align-items:center;font-size:10px;font-family:var(--mono);font-weight:500;padding:2px 8px;border-radius:3px;}
 .b-high{background:var(--greenBg);color:var(--green);border:1px solid var(--green2);}
 .b-med{background:var(--yellowBg);color:var(--yellow);border:1px solid var(--yellowBorder);}
 .b-low{background:var(--redBg);color:var(--red);border:1px solid var(--redBorder);}
 .b-sin{background:var(--bg3);color:var(--text3);border:1px solid var(--border);}
 .b-active{background:var(--greenBg);color:var(--green);border:1px solid var(--green2);}
-.log{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:11px 14px;font-family:var(--mono);font-size:11px;max-height:180px;overflow-y:auto;line-height:1.9;}
+.log{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:11px 14px;font-family:var(--mono);font-size:11px;max-height:200px;overflow-y:auto;line-height:1.9;}
 .log .ok{color:var(--green);}.log .warn{color:var(--yellow);}.log .err{color:var(--red);}.log .info{color:var(--blue);}.log .dim{color:var(--text3);}
 .t-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px;}
 .t-item label{display:block;font-size:11px;color:var(--text2);margin-bottom:5px;font-family:var(--mono);}
@@ -108,27 +105,27 @@ tr:hover td{background:var(--bg3);}
 .ver-card{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:12px 15px;margin-bottom:8px;}
 .ver-card.active-ver{border-color:var(--green2);}
 
-/* DEBUG PANEL */
-.debug-panel{background:var(--bg2);border:1px solid var(--yellowBorder);border-radius:8px;margin-bottom:16px;overflow:hidden;}
-.debug-header{background:var(--yellowBg);padding:8px 14px;display:flex;align-items:center;justify-content:space-between;}
-.debug-title{font-size:11px;font-family:var(--mono);color:var(--yellow);font-weight:500;}
-.debug-body{padding:12px 14px;}
-.debug-section{margin-bottom:12px;}
-.debug-section-title{font-size:10px;font-family:var(--mono);color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px;}
-.raw-grid{display:grid;gap:2px;overflow-x:auto;font-family:var(--mono);font-size:10px;}
-.raw-row{display:flex;gap:0;}
-.raw-cell{padding:3px 8px;border:1px solid var(--border);min-width:80px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.raw-cell.h0{background:#1a0d3a;color:#c4b5fd;}
-.raw-cell.h1{background:#0d1a2e;color:#7dd3fc;}
-.raw-cell.h2{background:#0d2218;color:#6ee7b7;}
-.raw-cell.data{color:var(--text2);}
-.raw-cell.empty{color:var(--text3);}
-.col-map-grid{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;}
+/* DIAGNÓSTICO */
+.diag-box{background:var(--bg2);border:1px solid var(--yellowBorder);border-radius:8px;margin-bottom:16px;overflow:hidden;}
+.diag-hdr{background:var(--yellowBg);padding:9px 14px;font-size:11px;font-family:var(--mono);color:var(--yellow);font-weight:500;display:flex;justify-content:space-between;align-items:center;}
+.diag-body{padding:14px;}
+.diag-sec{margin-bottom:14px;}
+.diag-sec-title{font-size:10px;font-family:var(--mono);color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;}
+.raw-scroll{overflow-x:auto;border-radius:6px;border:1px solid var(--border);}
+.raw-table{border-collapse:collapse;font-family:var(--mono);font-size:10px;}
+.raw-table td{padding:3px 8px;border:1px solid var(--border);white-space:nowrap;max-width:110px;overflow:hidden;text-overflow:ellipsis;}
+.rc-label{background:var(--bg4);color:var(--text3);font-weight:500;min-width:28px;}
+.rc-h0{background:#160d30;color:#c4b5fd;}
+.rc-h1{background:#071828;color:#7dd3fc;}
+.rc-h2{background:#071a0e;color:#6ee7b7;}
+.rc-data{color:var(--text2);}
+.rc-empty{color:var(--text3);}
+.col-tags{display:flex;flex-wrap:wrap;gap:5px;}
 .col-tag{font-size:10px;font-family:var(--mono);padding:2px 8px;border-radius:3px;}
-.col-fixed{background:#1a0d3a;color:#c4b5fd;border:1px solid #4c3a8a;}
-.col-day{background:#0d2218;color:var(--green);border:1px solid var(--green2);}
-.col-extra{background:var(--yellowBg);color:var(--yellow);border:1px solid var(--yellowBorder);}
-.col-unknown{background:var(--bg3);color:var(--text3);border:1px solid var(--border);}
+.ct-fixed{background:#1a0d3a;color:#c4b5fd;border:1px solid #4c3a8a;}
+.ct-day{background:#071a12;color:var(--green);border:1px solid var(--green2);}
+.ct-extra{background:var(--yellowBg);color:var(--yellow);border:1px solid var(--yellowBorder);}
+.ct-skip{background:var(--bg3);color:var(--text3);border:1px solid var(--border);}
 
 .toast{position:fixed;bottom:20px;right:24px;background:var(--greenBg);border:1px solid var(--green2);color:var(--green);font-size:11px;font-family:var(--mono);padding:8px 16px;border-radius:6px;z-index:999;opacity:0;transition:opacity .25s;pointer-events:none;}
 .toast.show{opacity:1;}
@@ -139,18 +136,18 @@ tr:hover td{background:var(--bg3);}
 <nav>
   <div class="nav-brand">
     <div class="nav-logo"><svg width="15" height="15" fill="none" stroke="#fff" stroke-width="2" viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div>
-    <div><div class="nav-title">Pipeline TADA → Trump</div><div class="nav-sub">Liquidaciones Pibox · v2</div></div>
+    <div><div class="nav-title">Pipeline TADA → Trump</div><div class="nav-sub">Liquidaciones Pibox · v3</div></div>
   </div>
   <span id="nav-version">cargando tarifas...</span>
 </nav>
 <div class="stepper">
-  <div class="step active" id="stp0" onclick="navStep(0)"><div class="sn">1</div><div class="sl">Cargar archivos</div></div>
-  <div class="step locked" id="stp1" onclick="navStep(1)"><div class="sn">2</div><div class="sl">Diagnóstico TADA</div></div>
-  <div class="step locked" id="stp2" onclick="navStep(2)"><div class="sn">3</div><div class="sl">Normalizar</div></div>
-  <div class="step locked" id="stp3" onclick="navStep(3)"><div class="sn">4</div><div class="sl">Conciliación</div></div>
-  <div class="step locked" id="stp4" onclick="navStep(4)"><div class="sn">5</div><div class="sl">Distribución</div></div>
-  <div class="step locked" id="stp5" onclick="navStep(5)"><div class="sn">6</div><div class="sl">Tarifas</div></div>
-  <div class="step locked" id="stp6" onclick="navStep(6)"><div class="sn">7</div><div class="sl">Template Trump</div></div>
+  <div class="step active"  id="stp0" onclick="navStep(0)"><div class="sn">1</div><div class="sl">Cargar archivos</div></div>
+  <div class="step locked"  id="stp1" onclick="navStep(1)"><div class="sn">2</div><div class="sl">Diagnóstico TADA</div></div>
+  <div class="step locked"  id="stp2" onclick="navStep(2)"><div class="sn">3</div><div class="sl">Normalizar</div></div>
+  <div class="step locked"  id="stp3" onclick="navStep(3)"><div class="sn">4</div><div class="sl">Conciliación</div></div>
+  <div class="step locked"  id="stp4" onclick="navStep(4)"><div class="sn">5</div><div class="sl">Distribución</div></div>
+  <div class="step locked"  id="stp5" onclick="navStep(5)"><div class="sn">6</div><div class="sl">Tarifas</div></div>
+  <div class="step locked"  id="stp6" onclick="navStep(6)"><div class="sn">7</div><div class="sl">Template Trump</div></div>
 </div>
 <main>
 
@@ -174,25 +171,29 @@ tr:hover td{background:var(--bg3);}
   <div id="load-status" style="font-size:11px;font-family:var(--mono);color:var(--text2);min-height:20px;"></div>
 </div>
 
-<!-- P1: DIAGNÓSTICO TADA -->
+<!-- P1: DIAGNÓSTICO -->
 <div class="panel" id="p1">
-  <div class="debug-panel">
-    <div class="debug-header">
-      <span class="debug-title">🔍 Diagnóstico — Estructura raw del archivo TADA</span>
-      <span style="font-size:10px;color:var(--yellow);font-family:var(--mono);">Primeras 5 filas · máx 15 columnas</span>
+  <div class="diag-box">
+    <div class="diag-hdr">
+      <span>🔍 Diagnóstico — estructura raw del Excel TADA</span>
+      <span style="font-size:10px;">primeras 5 filas · máx 16 columnas visibles</span>
     </div>
-    <div class="debug-body">
-      <div class="debug-section">
-        <div class="debug-section-title">Filas raw (F0=día · F1=subcolumna · F2=fecha · D=datos)</div>
-        <div id="raw-grid-view"></div>
+    <div class="diag-body">
+      <div class="diag-sec">
+        <div class="diag-sec-title">Filas raw (colores: F0=días · F1=subcolumnas · F2=fechas · D=datos)</div>
+        <div class="raw-scroll" id="raw-grid"></div>
       </div>
-      <div class="debug-section">
-        <div class="debug-section-title">Mapeo de columnas detectado</div>
-        <div class="col-map-grid" id="col-map-view"></div>
+      <div class="diag-sec">
+        <div class="diag-sec-title">Header después de forward-fill horizontal (F0 → F1 → F2)</div>
+        <div class="raw-scroll" id="ffill-grid"></div>
       </div>
-      <div class="debug-section">
-        <div class="debug-section-title">Columnas día reconstruidas (esperado: Lunes_Paquetes_YYYY-MM-DD...)</div>
-        <div class="col-map-grid" id="day-cols-view"></div>
+      <div class="diag-sec">
+        <div class="diag-sec-title">Mapeo de columnas detectado</div>
+        <div class="col-tags" id="col-map-tags"></div>
+      </div>
+      <div class="diag-sec" style="margin-bottom:0;">
+        <div class="diag-sec-title">Columnas de días reconstruidas (Día_Subcolumna_Fecha)</div>
+        <div class="col-tags" id="day-col-tags"></div>
       </div>
     </div>
   </div>
@@ -200,17 +201,17 @@ tr:hover td{background:var(--bg3);}
   <div class="log" id="log-diag"></div>
   <div class="panel-footer">
     <button class="btn" onclick="navStep(0)">← Atrás</button>
-    <button class="btn btn-primary" onclick="runNorm()">Confirmar y normalizar →</button>
+    <button class="btn btn-primary" id="btn-confirm-norm" onclick="runNorm()" disabled>Confirmar y normalizar →</button>
   </div>
 </div>
 
 <!-- P2: NORMALIZACIÓN -->
 <div class="panel" id="p2">
-  <div class="sec">TADA — long format (7 filas por piloto)</div>
+  <div class="sec">TADA — long format (una fila por piloto × día)</div>
   <div id="tbl-tada-norm"></div>
-  <div class="sec">Malla Pibox</div>
+  <div class="sec" style="margin-top:8px;">Malla Pibox</div>
   <div id="tbl-malla-norm"></div>
-  <div class="sec">Log normalización</div>
+  <div class="sec" style="margin-top:8px;">Log normalización</div>
   <div class="log" id="log-norm"></div>
   <div class="panel-footer">
     <button class="btn" onclick="navStep(1)">← Atrás</button>
@@ -228,7 +229,7 @@ tr:hover td{background:var(--bg3);}
   <div class="stats" id="stats-conc"></div>
   <div class="sec">Resultado por fila TADA</div>
   <div id="tbl-conc"></div>
-  <div class="sec">Log de inconsistencias</div>
+  <div class="sec" style="margin-top:8px;">Log de inconsistencias</div>
   <div class="log" id="log-conc"></div>
   <div class="panel-footer">
     <button class="btn" onclick="navStep(2)">← Atrás</button>
@@ -238,7 +239,7 @@ tr:hover td{background:var(--bg3);}
 
 <!-- P4: DISTRIBUCIÓN -->
 <div class="panel" id="p4">
-  <div class="info-box">Distribución <code>equitativa</code> entre bookings del grupo ordenados por <code>hora_inicio</code>. Valores semanales (bonos, tareas, garantizado, ajustes) → <code>solo al primer booking</code>. <code>SIN_MALLA</code> → excluidos.</div>
+  <div class="info-box">Distribución <code>equitativa</code> entre bookings del grupo, ordenados por <code>hora_inicio</code>. Valores semanales (bonos, tareas, garantizado, ajustes) → <code>solo primer booking</code> del grupo. <code>SIN_MALLA</code> → excluidos del output.</div>
   <div class="stats" id="stats-dist"></div>
   <div class="sec">Dataset a nivel de booking</div>
   <div id="tbl-dist"></div>
@@ -251,7 +252,7 @@ tr:hover td{background:var(--bg3);}
 <!-- P5: TARIFAS -->
 <div class="panel" id="p5">
   <div class="info-box" id="tariff-info"></div>
-  <div class="sec">Tarifas TADA</div>
+  <div class="sec">Tarifas TADA — únicas, sin variación por ciudad/servicio</div>
   <div class="t-grid" id="tariff-fields"></div>
   <div class="sec">Publicar nueva versión</div>
   <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:16px;">
@@ -264,7 +265,7 @@ tr:hover td{background:var(--bg3);}
       </div>
     </div>
   </div>
-  <div class="sec" style="margin-top:16px;">Historial</div>
+  <div class="sec" style="margin-top:16px;">Historial de versiones</div>
   <div id="tariff-history"></div>
   <div class="panel-footer">
     <button class="btn" onclick="navStep(4)">← Atrás</button>
@@ -277,7 +278,7 @@ tr:hover td{background:var(--bg3);}
   <div class="stats" id="stats-trump"></div>
   <div class="sec">Template Trump — 1 fila por BOOKING_ID</div>
   <div id="tbl-trump"></div>
-  <div class="sec">Log final</div>
+  <div class="sec" style="margin-top:8px;">Log final</div>
   <div class="log" id="log-trump"></div>
   <div class="panel-footer">
     <button class="btn" onclick="navStep(5)">← Atrás</button>
@@ -290,140 +291,321 @@ tr:hover td{background:var(--bg3);}
 <div class="toast" id="toast"></div>
 
 <script>
-// ══════════════════════════════════════════
+// ══════════════════════════════════════════════════
 // CONSTANTES
-// ══════════════════════════════════════════
-const DAYS=['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo'];
-const COMISION=0.15;
-const LS_TAR='pibox:tariff_v2';
-const LS_RUNS='pibox:runs_v2';
-const PAGE_SIZE=50;
+// ══════════════════════════════════════════════════
+const DAYS_ES = ['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo'];
+const SUBMETRICS = ['paquetes','incentivos','cancelados'];
+const COMISION = 0.15;
+const LS_TAR  = 'pibox:tariff_v3';
+const LS_RUNS = 'pibox:runs_v3';
+const PAGE_SIZE = 50;
 
-const TARIFF_SCHEMA=[
-  {key:'valor_paquete',    label:'Valor paquete (COP)',            def:2500,step:100},
-  {key:'valor_incentivo',  label:'Valor incentivo unitario (COP)', def:5000,step:100},
-  {key:'valor_cancelado',  label:'Valor cancelado (COP)',          def:1200,step:100},
-  {key:'valor_tarea',      label:'Valor tarea adicional (COP)',    def:3500,step:100},
-  {key:'margen_cliente_pct',label:'Margen cobro cliente (%)',      def:22,  step:1},
+const TARIFF_SCHEMA = [
+  {key:'valor_paquete',     label:'Valor paquete (COP)',            def:2500, step:100},
+  {key:'valor_incentivo',   label:'Valor incentivo unitario (COP)', def:5000, step:100},
+  {key:'valor_cancelado',   label:'Valor cancelado (COP)',          def:1200, step:100},
+  {key:'valor_tarea',       label:'Valor tarea adicional (COP)',    def:3500, step:100},
+  {key:'margen_cliente_pct',label:'Margen cobro cliente (%)',       def:22,   step:1},
 ];
 
-// ══════════════════════════════════════════
-// ESTADO
-// ══════════════════════════════════════════
-let tadaRaw=[], mallaRaw=[], colMap=[], tadaNorm=[], concResult=[], distResult=[], trumpRows=[];
-let loadedTada=false, loadedMalla=false, maxStep=0, curStep=0;
+// ══════════════════════════════════════════════════
+// ESTADO GLOBAL
+// ══════════════════════════════════════════════════
+let tadaRaw   = [];   // filas crudas del Excel TADA (array de arrays)
+let mallaRaw  = [];   // filas de la malla (array de objetos)
+let colMap    = [];   // mapeo de columnas construido por el parser
+let tadaNorm  = [];   // TADA normalizado a long format
+let concResult= [];
+let distResult= [];
+let trumpRows = [];
+let loadedTada=false, loadedMalla=false;
+let maxStep=0, curStep=0;
 let tariffStore=null, currentEdits={};
-let pageStates={}; // paginación por tabla
+let pageStates={};
 
-// ══════════════════════════════════════════
-// UTILS
-// ══════════════════════════════════════════
-const normStr=s=>String(s||'').trim().replace(/\s+/g,' ').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
-const cop=n=>{const r=Math.round(n);return(r<0?'-$':'$')+Math.abs(r).toLocaleString('es-CO');};
-const k3=(p,f,s)=>`${normStr(p)}||${f}||${normStr(s)}`;
-const k2=(p,f)=>`${normStr(p)}||${f}`;
+// ══════════════════════════════════════════════════
+// UTILIDADES GENERALES
+// ══════════════════════════════════════════════════
+const normStr = s =>
+  String(s||'').trim().replace(/\s+/g,' ')
+    .toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
 
-// ── Normalización de fechas → YYYY-MM-DD ──
-function parseDate(raw){
-  if(!raw&&raw!==0) return null;
-  // Si es número Excel serial
-  if(typeof raw==='number'){
-    const d=XLSX.SSF.parse_date_code(raw);
-    if(d) return `${d.y}-${String(d.m).padStart(2,'0')}-${String(d.d).padStart(2,'0')}`;
-  }
-  const s=String(raw).trim();
-  if(!s||s==='—') return null;
-  // YYYY-MM-DD ya correcto
-  if(/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-  // DD/MM/YYYY o DD/MM/YY
-  const m1=s.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})$/);
-  if(m1){
-    let y=parseInt(m1[3]);if(y<100)y+=2000;
-    return `${y}-${String(parseInt(m1[2])).padStart(2,'0')}-${String(parseInt(m1[1])).padStart(2,'0')}`;
-  }
-  // MM/DD/YYYY
-  const m2=s.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})$/);
-  if(m2){
-    // Heurística: si primer número >12 es DD
-    const a=parseInt(m2[1]),b=parseInt(m2[2]),y=parseInt(m2[3]);
-    if(a>12) return `${y}-${String(b).padStart(2,'0')}-${String(a).padStart(2,'0')}`;
-    return `${y}-${String(a).padStart(2,'0')}-${String(b).padStart(2,'0')}`;
-  }
-  // Solo DD/MM (sin año) — asumir año actual
-  const m3=s.match(/^(\d{1,2})[\/\-\.](\d{1,2})$/);
-  if(m3){
-    const y=new Date().getFullYear();
-    return `${y}-${String(parseInt(m3[2])).padStart(2,'0')}-${String(parseInt(m3[1])).padStart(2,'0')}`;
-  }
-  return s; // devolver tal cual si no se puede parsear
+const cop = n => {
+  const r = Math.round(n);
+  return (r<0?'-$':'$') + Math.abs(r).toLocaleString('es-CO');
+};
+
+const fmtDateDisplay = iso => {
+  try{ return new Date(iso).toLocaleString('es-CO',{dateStyle:'short',timeStyle:'short'}); }
+  catch{ return iso; }
+};
+
+function addLog(id, msg, cls='info'){
+  const el = document.getElementById(id);
+  if(!el) return;
+  el.innerHTML += `<div class="${cls}">${msg}</div>`;
+  el.scrollTop  = el.scrollHeight;
 }
 
-function fmtDate(iso){try{return new Date(iso).toLocaleString('es-CO',{dateStyle:'short',timeStyle:'short'});}catch{return iso;}}
+function clearLog(id){ const el=document.getElementById(id); if(el) el.innerHTML=''; }
 
-function addLog(id,msg,cls='info'){
-  const el=document.getElementById(id);
-  if(!el)return;
-  el.innerHTML+=`<div class="${cls}">${msg}</div>`;
-  el.scrollTop=el.scrollHeight;
-}
 function toast(msg){
-  const el=document.getElementById('toast');
-  el.textContent=msg;el.classList.add('show');
-  clearTimeout(el._t);el._t=setTimeout(()=>el.classList.remove('show'),2400);
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.classList.add('show');
+  clearTimeout(el._t); el._t = setTimeout(()=>el.classList.remove('show'), 2400);
 }
 
-// ══════════════════════════════════════════
-// TABLA CON PAGINACIÓN
-// ══════════════════════════════════════════
-function mkTablePaged(containerId, rows, cols, heads, rowClass, tableId){
-  const el=document.getElementById(containerId);
-  if(!el)return;
-  if(!rows||!rows.length){
+// ══════════════════════════════════════════════════
+// NORMALIZACIÓN DE FECHAS → YYYY-MM-DD
+// ══════════════════════════════════════════════════
+function parseDate(raw){
+  if(raw === null || raw === undefined || raw === '') return null;
+
+  // Número serial de Excel
+  if(typeof raw === 'number'){
+    try{
+      const d = XLSX.SSF.parse_date_code(raw);
+      if(d && d.y > 1900)
+        return `${d.y}-${String(d.m).padStart(2,'0')}-${String(d.d).padStart(2,'0')}`;
+    }catch{}
+  }
+
+  const s = String(raw).trim();
+  if(!s || s === '—') return null;
+
+  // Ya es YYYY-MM-DD
+  if(/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+
+  // DD/MM/YYYY  o  DD-MM-YYYY  o  DD.MM.YYYY
+  const m1 = s.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})$/);
+  if(m1){
+    let y = parseInt(m1[3]);
+    if(y < 100) y += 2000;
+    const d = parseInt(m1[1]), mo = parseInt(m1[2]);
+    // Si primer número > 12 → definitivamente DD/MM
+    if(d > 12)
+      return `${y}-${String(mo).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    // Asumir DD/MM (convención Colombia)
+    return `${y}-${String(mo).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+  }
+
+  // Solo DD/MM → asumir año actual
+  const m2 = s.match(/^(\d{1,2})[\/\-\.](\d{1,2})$/);
+  if(m2){
+    const y = new Date().getFullYear();
+    return `${y}-${String(parseInt(m2[2])).padStart(2,'0')}-${String(parseInt(m2[1])).padStart(2,'0')}`;
+  }
+
+  return s; // devolver tal cual si no se pudo parsear
+}
+
+// ══════════════════════════════════════════════════
+// FORWARD-FILL DE UNA FILA (horizontal)
+// Reemplaza celdas vacías con el último valor no vacío
+// ══════════════════════════════════════════════════
+function forwardFill(row){
+  const out = [...row];
+  let last = '';
+  for(let i=0; i<out.length; i++){
+    const v = String(out[i]||'').trim();
+    if(v) last = v;
+    else  out[i] = last;
+  }
+  return out;
+}
+
+// ══════════════════════════════════════════════════
+// DETECCIÓN DE DÍA VÁLIDO
+// ══════════════════════════════════════════════════
+function isValidDay(v){
+  return DAYS_ES.includes(String(v||'').trim());
+}
+
+// ══════════════════════════════════════════════════
+// DETECCIÓN DE SUBMETRICA VÁLIDA
+// ══════════════════════════════════════════════════
+function normalizeSubmetric(v){
+  const s = normStr(v||'');
+  if(s.startsWith('paq')) return 'paquetes';
+  if(s.startsWith('inc')) return 'incentivos';
+  if(s.startsWith('can')) return 'cancelados';
+  return null;
+}
+
+// ══════════════════════════════════════════════════
+// DETECCIÓN DE COLUMNA FIJA (por nombre)
+// ══════════════════════════════════════════════════
+function detectFixedCol(v0, v1){
+  // Buscar en f0 o f1, case-insensitive
+  for(const v of [v0, v1]){
+    const s = normStr(v||'');
+    if(s === 'ciudad' || s === 'city') return 'ciudad';
+    if(s.includes('seller') || s === 'tienda' || s.includes('punto de venta')) return 'seller';
+    if(s === 'domiciliario' || s === 'piloto' || s === 'nombre' || s === 'conductor' || s.includes('driver')) return 'piloto';
+  }
+  return null;
+}
+
+// ══════════════════════════════════════════════════
+// DETECCIÓN DE COLUMNA EXTRA (valores semanales)
+// ══════════════════════════════════════════════════
+function detectExtraCol(v0, v1){
+  for(const v of [v0, v1]){
+    const s = normStr(v||'');
+    if(!s) continue;
+    if(s.includes('tarea'))      return 'tareas';
+    if(s.includes('garantiza'))  return 'garantizado';
+    if(s.includes('bono'))       return 'bonos';
+    if(s.includes('ajuste') || s.includes('novedad')) return 'ajustes';
+  }
+  return null;
+}
+
+// ══════════════════════════════════════════════════
+// ★ PARSER CENTRAL — buildColMap
+//
+// Lógica:
+// 1. Leer filas 0,1,2 sin forward-fill → mostrar raw
+// 2. Aplicar forward-fill a cada fila → h0ff, h1ff, h2ff
+// 3. Recorrer columna por columna:
+//    a) Si h0ff es un día válido Y h1ff es paquetes/incentivos/cancelados
+//       → columna de día → registrar con fecha de h2ff
+//    b) Si detectFixedCol(h0raw, h1raw) → columna fija
+//    c) Si detectExtraCol(h0raw, h1raw) → columna extra
+//    d) Resto → ignorar
+// 4. No asumir ninguna posición fija
+// ══════════════════════════════════════════════════
+function buildColMap(raw){
+  if(!raw || raw.length < 3) return [];
+
+  const nCols = Math.max(...raw.slice(0,5).map(r=>r.length));
+
+  // Filas originales (sin ffill) — rellenadas a nCols
+  const h0raw = Array.from({length:nCols}, (_,i) => String(raw[0][i]||'').trim());
+  const h1raw = Array.from({length:nCols}, (_,i) => String(raw[1][i]||'').trim());
+  const h2raw = Array.from({length:nCols}, (_,i) => raw[2][i] !== undefined ? raw[2][i] : '');
+
+  // Forward-fill horizontal
+  const h0ff = forwardFill(h0raw);
+  const h1ff = forwardFill(h1raw);
+  // h2 NO hace forward-fill — cada subcolumna tiene su propia fecha (o están fusionadas)
+  // pero sí propagamos dentro del mismo grupo de día
+  // Construir h2ff: forward-fill SOLO dentro de bloques del mismo día en h0ff
+  const h2ff = [...h2raw.map(v => String(v||'').trim())];
+  let lastDayForDate = '', lastDate = '';
+  for(let i=0; i<nCols; i++){
+    const day = h0ff[i];
+    if(day !== lastDayForDate){ lastDayForDate=day; lastDate=''; }
+    const v = h2ff[i];
+    if(v) lastDate = v;
+    else  h2ff[i]  = lastDate;
+  }
+
+  const map = [];
+
+  for(let i=0; i<nCols; i++){
+    const v0ff = h0ff[i];
+    const v1ff = h1ff[i];
+    const v0r  = h0raw[i];
+    const v1r  = h1raw[i];
+    const v2   = h2ff[i];
+
+    // ── Columna de día ──────────────────────────────
+    if(isValidDay(v0ff)){
+      const metric = normalizeSubmetric(v1ff);
+      if(metric){
+        const fechaIso = parseDate(v2) || v2 || '';
+        map.push({t:'d', dia:v0ff, m:metric, fecha:fechaIso, i});
+        continue;
+      }
+      // Día detectado pero submetrica no reconocida → registrar como desconocida
+      if(v1ff){
+        map.push({t:'?', dia:v0ff, raw1:v1ff, i});
+      }
+      continue;
+    }
+
+    // ── Columna fija ────────────────────────────────
+    const fixedName = detectFixedCol(v0r, v1r);
+    if(fixedName){
+      map.push({t:'f', n:fixedName, i});
+      continue;
+    }
+
+    // ── Columna extra/semanal ───────────────────────
+    const extraName = detectExtraCol(v0r, v1r);
+    if(extraName){
+      map.push({t:'e', n:extraName, i});
+      continue;
+    }
+
+    // Ignorar columnas sin nombre o sin clasificar
+  }
+
+  return map;
+}
+
+// ══════════════════════════════════════════════════
+// TABLAS CON PAGINACIÓN
+// ══════════════════════════════════════════════════
+const COP_COLS = new Set(['garantizado','bonos','ajustes',
+  'COMPANY_FINAL_COST','ADDITIONAL_COMPANY_FINAL_COST',
+  'FINAL_COST','ADDITIONAL_FINAL_COST']);
+const NUM_COLS = new Set(['paquetes','incentivos','cancelados','tareas',
+  'paquetes_dist','incentivos_dist','cancelados_dist','tareas_dist',
+  'n_bookings','PACKAGES_COUNT','IS_PER_HOUR']);
+
+function mkTablePaged(containerId, rows, cols, heads, rowClassFn, tid){
+  const el = document.getElementById(containerId);
+  if(!el) return;
+  if(!rows || !rows.length){
     el.innerHTML='<div style="padding:12px;color:var(--text3);font-size:11px;font-family:var(--mono);">Sin datos</div>';
     return;
   }
-  const tid=tableId||containerId;
-  if(!pageStates[tid]) pageStates[tid]=0;
-  renderTablePage(el, rows, cols, heads, rowClass, tid);
+  if(!pageStates[tid]) pageStates[tid] = 0;
+  // Guardar datos para repaginación
+  el._data = {rows, cols, heads, rowClassFn, tid};
+  renderPage(el);
 }
 
-function renderTablePage(container, rows, cols, heads, rowClass, tid){
-  const page=pageStates[tid]||0;
-  const total=rows.length;
-  const start=page*PAGE_SIZE;
-  const end=Math.min(start+PAGE_SIZE,total);
-  const pageRows=rows.slice(start,end);
-  const totalPages=Math.ceil(total/PAGE_SIZE);
+function renderPage(el){
+  const {rows, cols, heads, rowClassFn, tid} = el._data;
+  const page  = pageStates[tid] || 0;
+  const total = rows.length;
+  const start = page * PAGE_SIZE;
+  const end   = Math.min(start + PAGE_SIZE, total);
+  const slice = rows.slice(start, end);
+  const totalPages = Math.ceil(total / PAGE_SIZE);
 
-  const copSet=new Set(['garantizado','bonos','ajustes','COMPANY_FINAL_COST','ADDITIONAL_COMPANY_FINAL_COST','FINAL_COST','ADDITIONAL_FINAL_COST']);
-  const numSet=new Set(['paquetes','incentivos','cancelados','tareas','paquetes_dist','incentivos_dist','cancelados_dist','tareas_dist','n_bookings','PACKAGES_COUNT','IS_PER_HOUR']);
-
-  let html=`<div class="tbl-container">
+  let html = `<div class="tbl-container">
     <div class="tbl-header">
       <span class="tbl-counter">Mostrando <strong>${start+1}–${end}</strong> de <strong>${total}</strong> filas</span>
     </div>
-    <div class="tbl-wrap">
-    <table><thead><tr>${heads.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>`;
+    <div class="tbl-wrap"><table>
+    <thead><tr>${heads.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>`;
 
-  pageRows.forEach(r=>{
-    const rc=rowClass?rowClass(r):'';
-    html+=`<tr${rc}>${cols.map(c=>{
-      const v=r[c];
-      if(c==='nivel_confianza'||c==='CONFIANZA'){
-        const cl=v==='HIGH'?'b-high':v==='MEDIUM'?'b-med':v==='LOW'?'b-low':'b-sin';
+  slice.forEach(r => {
+    const rc = rowClassFn ? rowClassFn(r) : '';
+    html += `<tr${rc}>${cols.map(c => {
+      const v = r[c];
+      if(c==='nivel_confianza'){
+        const cl = v==='HIGH'?'b-high':v==='MEDIUM'?'b-med':v==='LOW'?'b-low':'b-sin';
         return `<td><span class="badge ${cl}">${v||'—'}</span></td>`;
       }
-      if(c==='ciudad')return `<td><span class="city">${v}</span></td>`;
-      if(copSet.has(c)&&typeof v==='number')return `<td class="num cop">${v!==0?cop(v):'—'}</td>`;
-      if(numSet.has(c)&&typeof v==='number')return `<td class="num">${v}</td>`;
+      if(c==='ciudad') return `<td><span class="city">${v||'—'}</span></td>`;
+      if(COP_COLS.has(c) && typeof v==='number')
+        return `<td class="num cop">${v!==0?cop(v):'—'}</td>`;
+      if(NUM_COLS.has(c) && typeof v==='number')
+        return `<td class="num">${v}</td>`;
       return `<td>${v??'—'}</td>`;
     }).join('')}</tr>`;
   });
 
-  html+=`</tbody></table></div>`;
+  html += `</tbody></table></div>`;
 
-  if(totalPages>1){
-    html+=`<div class="tbl-pagination">
+  if(totalPages > 1){
+    html += `<div class="tbl-pagination">
       <span class="pag-info">Página ${page+1} de ${totalPages}</span>
       <div class="pag-btns">
         <button class="pag-btn" onclick="changePage('${tid}',${page-1})" ${page===0?'disabled':''}>← Anterior</button>
@@ -431,589 +613,658 @@ function renderTablePage(container, rows, cols, heads, rowClass, tid){
       </div>
     </div>`;
   }
-  html+='</div>';
-  container.innerHTML=html;
-  // guardar referencia para repaginación
-  container._rows=rows;container._cols=cols;container._heads=heads;container._rowClass=rowClass;container._tid=tid;
+  html += '</div>';
+  el.innerHTML = html;
 }
 
 function changePage(tid, newPage){
-  pageStates[tid]=newPage;
-  // encontrar el contenedor
-  const containers=['tbl-tada-norm','tbl-malla-norm','tbl-conc','tbl-dist','tbl-trump'];
-  for(const cid of containers){
-    const el=document.getElementById(cid);
-    if(el&&el._tid===tid){
-      renderTablePage(el,el._rows,el._cols,el._heads,el._rowClass,tid);
-      break;
-    }
+  pageStates[tid] = newPage;
+  const ids = ['tbl-tada-norm','tbl-malla-norm','tbl-conc','tbl-dist','tbl-trump'];
+  for(const cid of ids){
+    const el = document.getElementById(cid);
+    if(el && el._data && el._data.tid === tid){ renderPage(el); break; }
   }
 }
 
-// ══════════════════════════════════════════
+// ══════════════════════════════════════════════════
 // STEPPER
-// ══════════════════════════════════════════
+// ══════════════════════════════════════════════════
 function navStep(i){
-  if(i>maxStep)return;
-  document.querySelectorAll('.panel').forEach((p,j)=>p.classList.toggle('active',j===i));
-  document.querySelectorAll('.step').forEach((s,j)=>{
+  if(i > maxStep) return;
+  document.querySelectorAll('.panel').forEach((p,j) => p.classList.toggle('active', j===i));
+  document.querySelectorAll('.step').forEach((s,j) => {
     s.classList.remove('active','done','locked');
-    if(j===i)s.classList.add('active');
-    else if(j<i)s.classList.add('done');
+    if(j===i) s.classList.add('active');
+    else if(j<i) s.classList.add('done');
     else s.classList.add('locked');
   });
-  curStep=i;
-  if(i===5)renderTariffPanel();
+  curStep = i;
+  if(i===5) renderTariffPanel();
 }
-function unlock(i){if(i>maxStep)maxStep=i;navStep(i);}
+function unlock(i){ if(i>maxStep) maxStep=i; navStep(i); }
 
-// ══════════════════════════════════════════
+// ══════════════════════════════════════════════════
 // TARIFAS
-// ══════════════════════════════════════════
+// ══════════════════════════════════════════════════
 function initTariffs(){
-  try{const raw=localStorage.getItem(LS_TAR);tariffStore=raw?JSON.parse(raw):null;}catch{tariffStore=null;}
+  try{ const r=localStorage.getItem(LS_TAR); tariffStore=r?JSON.parse(r):null; }
+  catch{ tariffStore=null; }
   if(!tariffStore){
-    const defs={};TARIFF_SCHEMA.forEach(s=>defs[s.key]=s.def);
+    const defs={}; TARIFF_SCHEMA.forEach(s=>defs[s.key]=s.def);
     tariffStore={active_version:'v1',versions:[{version:'v1',fecha_creacion:new Date().toISOString(),autor:'sistema',nota:'Versión inicial',values:{...defs}}]};
     saveTariffs();
   }
-  currentEdits={...getAV().values};
+  currentEdits = {...getAV().values};
   updateNav();
 }
-function saveTariffs(){try{localStorage.setItem(LS_TAR,JSON.stringify(tariffStore));}catch(e){}}
-function getAV(){return tariffStore.versions.find(v=>v.version===tariffStore.active_version);}
-function getNextVer(){const n=tariffStore.versions.map(v=>parseInt(v.version.replace('v',''))||0);return 'v'+(Math.max(...n)+1);}
-function updateNav(){const av=getAV();document.getElementById('nav-version').textContent=`Tarifas ${av.version}`;}
+function saveTariffs(){ try{ localStorage.setItem(LS_TAR,JSON.stringify(tariffStore)); }catch(e){} }
+function getAV(){ return tariffStore.versions.find(v=>v.version===tariffStore.active_version); }
+function getNextVer(){ const n=tariffStore.versions.map(v=>parseInt(v.version.replace('v',''))||0); return 'v'+(Math.max(...n)+1); }
+function updateNav(){ document.getElementById('nav-version').textContent = `Tarifas ${getAV().version}`; }
+
 function renderTariffPanel(){
-  const av=getAV();
-  document.getElementById('tariff-info').innerHTML=`Versión activa: <code>${av.version}</code> · Creada: <code>${fmtDate(av.fecha_creacion)}</code> · Autor: <code>${av.autor}</code>${av.nota?' · '+av.nota:''}`;
-  document.getElementById('tariff-fields').innerHTML=TARIFF_SCHEMA.map(s=>`
+  const av = getAV();
+  document.getElementById('tariff-info').innerHTML =
+    `Versión activa: <code>${av.version}</code> · Creada: <code>${fmtDateDisplay(av.fecha_creacion)}</code> · Autor: <code>${av.autor}</code>${av.nota?' · '+av.nota:''}`;
+  document.getElementById('tariff-fields').innerHTML = TARIFF_SCHEMA.map(s=>`
     <div class="t-item"><label>${s.label}</label>
-    <input type="number" value="${currentEdits[s.key]??s.def}" step="${s.step}" oninput="currentEdits['${s.key}']=parseFloat(this.value)||0"/></div>`).join('');
-  const hist=[...tariffStore.versions].reverse().slice(0,5);
-  document.getElementById('tariff-history').innerHTML=hist.map(v=>{
-    const isA=v.version===tariffStore.active_version;
+    <input type="number" value="${currentEdits[s.key]??s.def}" step="${s.step}"
+      oninput="currentEdits['${s.key}']=parseFloat(this.value)||0"/></div>`).join('');
+  const hist = [...tariffStore.versions].reverse().slice(0,5);
+  document.getElementById('tariff-history').innerHTML = hist.map(v=>{
+    const isA = v.version===tariffStore.active_version;
     return `<div class="ver-card${isA?' active-ver':''}">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-        <span style="font-family:var(--mono);font-size:12px;font-weight:600;">${v.version} ${isA?'<span class="badge b-active" style="margin-left:6px;font-size:9px;">ACTIVA</span>':''}</span>
-        <span style="font-size:10px;color:var(--text3);">${fmtDate(v.fecha_creacion)} · ${v.autor}</span>
+        <span style="font-family:var(--mono);font-size:12px;font-weight:600;">${v.version}
+          ${isA?'<span class="badge b-active" style="margin-left:6px;font-size:9px;">ACTIVA</span>':''}</span>
+        <span style="font-size:10px;color:var(--text3);">${fmtDateDisplay(v.fecha_creacion)} · ${v.autor}</span>
       </div>
-      <div style="display:flex;flex-wrap:wrap;gap:5px;">${TARIFF_SCHEMA.map(s=>`<span style="font-size:10px;background:var(--bg3);padding:2px 8px;border-radius:3px;font-family:var(--mono);color:var(--text2);">${s.key}: <span style="color:var(--text);">${s.key.includes('pct')?v.values[s.key]+'%':cop(v.values[s.key])}</span></span>`).join('')}</div>
+      <div style="display:flex;flex-wrap:wrap;gap:5px;">${TARIFF_SCHEMA.map(s=>`
+        <span style="font-size:10px;background:var(--bg3);padding:2px 8px;border-radius:3px;font-family:var(--mono);color:var(--text2);">
+          ${s.key}: <span style="color:var(--text);">${s.key.includes('pct')?v.values[s.key]+'%':cop(v.values[s.key])}</span>
+        </span>`).join('')}</div>
       ${!isA?`<div style="margin-top:8px;"><button class="btn btn-sm" onclick="activateVersion('${v.version}')">Activar</button></div>`:''}
     </div>`;
   }).join('');
 }
+
 function publishTariff(){
   const av=getAV();
-  if(!TARIFF_SCHEMA.some(s=>currentEdits[s.key]!==av.values[s.key])){toast('Sin cambios');return;}
+  if(!TARIFF_SCHEMA.some(s=>currentEdits[s.key]!==av.values[s.key])){ toast('Sin cambios'); return; }
   const autor=document.getElementById('t-autor').value.trim()||'sin especificar';
   const nota=document.getElementById('t-nota').value.trim()||'';
   const nv=getNextVer();
   tariffStore.versions.push({version:nv,fecha_creacion:new Date().toISOString(),autor,nota,values:{...currentEdits}});
-  tariffStore.active_version=nv;saveTariffs();
-  document.getElementById('t-autor').value='';document.getElementById('t-nota').value='';
-  updateNav();renderTariffPanel();toast(`✓ ${nv} publicada`);
+  tariffStore.active_version=nv; saveTariffs();
+  document.getElementById('t-autor').value=''; document.getElementById('t-nota').value='';
+  updateNav(); renderTariffPanel(); toast(`✓ ${nv} publicada`);
 }
-function resetTarifas(){currentEdits={...getAV().values};renderTariffPanel();toast('Cambios descartados');}
+function resetTarifas(){ currentEdits={...getAV().values}; renderTariffPanel(); toast('Cambios descartados'); }
 function activateVersion(ver){
-  tariffStore.active_version=ver;currentEdits={...tariffStore.versions.find(v=>v.version===ver).values};
-  saveTariffs();updateNav();renderTariffPanel();toast(`✓ ${ver} activada`);
+  tariffStore.active_version=ver;
+  currentEdits={...tariffStore.versions.find(v=>v.version===ver).values};
+  saveTariffs(); updateNav(); renderTariffPanel(); toast(`✓ ${ver} activada`);
 }
 
-// ══════════════════════════════════════════
+// ══════════════════════════════════════════════════
 // DRAG & DROP
-// ══════════════════════════════════════════
-function doDrag(e,src,on){e.preventDefault();document.getElementById('dz-'+src).classList.toggle('drag',!!on);}
-function doDrop(e,src){e.preventDefault();doDrag(e,src,0);if(e.dataTransfer.files[0])loadFile(e.dataTransfer.files[0],src);}
+// ══════════════════════════════════════════════════
+function doDrag(e,src,on){ e.preventDefault(); document.getElementById('dz-'+src).classList.toggle('drag',!!on); }
+function doDrop(e,src){ e.preventDefault(); doDrag(e,src,0); if(e.dataTransfer.files[0]) loadFile(e.dataTransfer.files[0],src); }
 
-function loadFile(file,src){
-  const r=new FileReader();
-  r.onload=e=>{
-    const wb=XLSX.read(e.target.result,{type:'array',cellDates:false,raw:true});
-    const ws=wb.Sheets[wb.SheetNames[0]];
-    if(src==='tada'){
-      // Leer raw con header:1 para tener control total
-      tadaRaw=XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:true,blankrows:false});
-      loadedTada=true;
-      document.getElementById('lbl-tada').textContent=file.name+' ✓';
+function loadFile(file, src){
+  const reader = new FileReader();
+  reader.onload = e => {
+    const wb = XLSX.read(e.target.result, {type:'array', raw:true, cellDates:false});
+    const ws = wb.Sheets[wb.SheetNames[0]];
+
+    if(src === 'tada'){
+      // Leer como array de arrays con raw:true para preservar valores numéricos de fechas
+      tadaRaw = XLSX.utils.sheet_to_json(ws, {header:1, defval:'', raw:true, blankrows:false});
+      loadedTada = true;
+      document.getElementById('lbl-tada').textContent = file.name + ' ✓';
       document.getElementById('dz-tada').classList.add('loaded');
-      addLog('log-diag','','info'); // reset
     } else {
-      mallaRaw=XLSX.utils.sheet_to_json(ws,{defval:'',raw:false});
-      // Normalizar fechas en malla
-      mallaRaw=mallaRaw.map(r=>{
-        const nr={...r};
-        // buscar columna de fecha
+      // Malla: leer como objetos, normalizar fechas
+      mallaRaw = XLSX.utils.sheet_to_json(ws, {defval:'', raw:false});
+      mallaRaw = mallaRaw.map(row => {
+        const nr = {...row};
         for(const k of Object.keys(nr)){
-          if(/fecha/i.test(k)){nr[k]=parseDate(nr[k])||nr[k];}
+          if(/fecha/i.test(k)){
+            const parsed = parseDate(nr[k]);
+            if(parsed) nr[k] = parsed;
+          }
         }
         return nr;
       });
-      loadedMalla=true;
-      document.getElementById('lbl-malla').textContent=file.name+' ✓';
+      loadedMalla = true;
+      document.getElementById('lbl-malla').textContent = file.name + ' ✓';
       document.getElementById('dz-malla').classList.add('loaded');
     }
     checkReady();
   };
-  r.readAsArrayBuffer(file);
+  reader.readAsArrayBuffer(file);
 }
 
 function checkReady(){
-  if(loadedTada&&loadedMalla){
-    document.getElementById('load-status').innerHTML='<span style="color:var(--green)">✓ Ambos archivos listos — analizando TADA...</span>';
-    setTimeout(runDiagnostico,300);
+  if(loadedTada && loadedMalla){
+    document.getElementById('load-status').innerHTML =
+      '<span style="color:var(--green)">✓ Ambos archivos listos — ejecutando diagnóstico...</span>';
+    setTimeout(runDiagnostico, 300);
   } else {
-    document.getElementById('load-status').textContent='Falta: '+(loadedTada?'':'TADA ')+(loadedMalla?'':'Malla Pibox');
+    document.getElementById('load-status').textContent =
+      'Falta: ' + (loadedTada?'':'TADA ') + (loadedMalla?'':'Malla Pibox');
   }
 }
 
-// ══════════════════════════════════════════
-// PASO 1b: DIAGNÓSTICO TADA
-// ══════════════════════════════════════════
+// ══════════════════════════════════════════════════
+// PASO 1: DIAGNÓSTICO
+// ══════════════════════════════════════════════════
 function runDiagnostico(){
-  document.getElementById('log-diag').innerHTML='';
-  if(!tadaRaw||tadaRaw.length<1){addLog('log-diag','[ERR] Archivo TADA vacío o ilegible','err');return;}
+  clearLog('log-diag');
+  document.getElementById('btn-confirm-norm').disabled = true;
 
-  addLog('log-diag',`[INFO] Total filas raw: ${tadaRaw.length} · Total columnas: ${tadaRaw[0]?.length||0}`,'info');
+  if(!tadaRaw || tadaRaw.length < 1){
+    addLog('log-diag','[ERR] Archivo TADA vacío o ilegible','err'); return;
+  }
 
-  // Mostrar grid raw (primeras 5 filas, máx 15 cols)
-  const showRows=tadaRaw.slice(0,6);
-  const maxCols=Math.min(15, Math.max(...showRows.map(r=>r.length)));
-  const rowLabels=['F0','F1','F2','F3','F4','F5'];
-  let gridHtml='<div class="raw-grid">';
-  showRows.forEach((row,ri)=>{
-    const cls=ri===0?'h0':ri===1?'h1':ri===2?'h2':'data';
-    gridHtml+=`<div class="raw-row"><div class="raw-cell" style="background:var(--bg4);color:var(--text3);font-weight:500;">${rowLabels[ri]}</div>`;
-    for(let ci=0;ci<maxCols;ci++){
-      const v=row[ci];
-      const display=v===''||v===null||v===undefined?'·':String(v).slice(0,16);
-      const isEmpty=display==='·';
-      gridHtml+=`<div class="raw-cell ${cls} ${isEmpty?'empty':''}">${display}</div>`;
+  const totalRows = tadaRaw.length;
+  const totalCols = tadaRaw[0]?.length || 0;
+  addLog('log-diag',`[INFO] Dimensiones: ${totalRows} filas × ${totalCols} columnas`,'info');
+
+  // ── Grid raw (primeras 5 filas, máx 16 cols) ────────────────
+  const SHOW_ROWS = Math.min(6, tadaRaw.length);
+  const SHOW_COLS = Math.min(16, totalCols);
+  const rowLabels = ['F0','F1','F2','F3','F4','F5'];
+  const rowClasses= ['rc-h0','rc-h1','rc-h2','rc-data','rc-data','rc-data'];
+
+  let rawHtml = '<table class="raw-table"><tbody>';
+  for(let ri=0; ri<SHOW_ROWS; ri++){
+    rawHtml += `<tr><td class="rc-label">${rowLabels[ri]}</td>`;
+    for(let ci=0; ci<SHOW_COLS; ci++){
+      const v = tadaRaw[ri]?.[ci];
+      const display = (v===''||v===null||v===undefined) ? '·' : String(v).slice(0,14);
+      const isEmpty = display==='·';
+      rawHtml += `<td class="${rowClasses[ri]}${isEmpty?' rc-empty':''}">${display}</td>`;
     }
-    if(tadaRaw[0]?.length>maxCols) gridHtml+=`<div class="raw-cell empty">+${tadaRaw[0].length-maxCols}</div>`;
-    gridHtml+='</div>';
-  });
-  gridHtml+='</div>';
-  document.getElementById('raw-grid-view').innerHTML=gridHtml;
+    if(totalCols > SHOW_COLS) rawHtml += `<td class="rc-label">+${totalCols-SHOW_COLS}</td>`;
+    rawHtml += '</tr>';
+  }
+  rawHtml += '</tbody></table>';
+  document.getElementById('raw-grid').innerHTML = rawHtml;
 
-  // Construir mapeo de columnas con forward-fill robusto
-  colMap=buildColMap(tadaRaw, true);
+  // ── Aplicar forward-fill y mostrar resultado ─────────────────
+  const nCols = totalCols;
+  const h0raw = Array.from({length:nCols}, (_,i) => String(tadaRaw[0]?.[i]||'').trim());
+  const h1raw = Array.from({length:nCols}, (_,i) => String(tadaRaw[1]?.[i]||'').trim());
+  const h2raw = Array.from({length:nCols}, (_,i) => tadaRaw[2]?.[i] !== undefined ? tadaRaw[2][i] : '');
 
-  // Mostrar mapeo
-  const colMapHtml=colMap.map(c=>{
-    const cls=c.t==='f'?'col-fixed':c.t==='d'?'col-day':c.t==='e'?'col-extra':'col-unknown';
-    const label=c.t==='d'?`${c.dia}_${c.m}_${c.fecha}`:c.t==='f'?`FIJO:${c.n}`:c.t==='e'?`EXTRA:${c.n}`:`?:${c.n||''}`;
-    return `<span class="col-tag ${cls}">${label}</span>`;
+  const h0ff = forwardFill(h0raw);
+  const h1ff = forwardFill(h1raw);
+
+  let ffHtml = '<table class="raw-table"><tbody>';
+  ffHtml += '<tr><td class="rc-label">h0↓</td>' + h0ff.slice(0,SHOW_COLS).map(v=>`<td class="rc-h0">${v||'·'}</td>`).join('') + '</tr>';
+  ffHtml += '<tr><td class="rc-label">h1↓</td>' + h1ff.slice(0,SHOW_COLS).map(v=>`<td class="rc-h1">${v||'·'}</td>`).join('') + '</tr>';
+  ffHtml += '<tr><td class="rc-label">h2</td>'  + h2raw.slice(0,SHOW_COLS).map(v=>{
+    const parsed = parseDate(v);
+    return `<td class="rc-h2">${parsed||String(v||'·').slice(0,12)}</td>`;
+  }).join('') + '</tr>';
+  ffHtml += '</tbody></table>';
+  document.getElementById('ffill-grid').innerHTML = ffHtml;
+
+  // ── Construir colMap ─────────────────────────────────────────
+  colMap = buildColMap(tadaRaw);
+
+  // ── Mostrar mapeo ────────────────────────────────────────────
+  const mapHtml = colMap.map(c => {
+    if(c.t==='f')  return `<span class="col-tag ct-fixed">FIJO:${c.n} [col${c.i}]</span>`;
+    if(c.t==='d')  return `<span class="col-tag ct-day">${c.dia}_${c.m}_${c.fecha||'?'} [col${c.i}]</span>`;
+    if(c.t==='e')  return `<span class="col-tag ct-extra">EXTRA:${c.n} [col${c.i}]</span>`;
+    return `<span class="col-tag ct-skip">?:${c.raw1||c.n||''} [col${c.i}]</span>`;
   }).join('');
-  document.getElementById('col-map-view').innerHTML=colMapHtml||'<span style="color:var(--text3);font-size:11px;">Sin columnas detectadas</span>';
+  document.getElementById('col-map-tags').innerHTML =
+    mapHtml || '<span style="color:var(--red);font-size:11px;">Sin columnas detectadas</span>';
 
-  // Mostrar solo columnas día
-  const dayCols=colMap.filter(c=>c.t==='d');
-  const dayColsHtml=dayCols.map(c=>`<span class="col-tag col-day">${c.dia}_${c.m}_${c.fecha}</span>`).join('');
-  document.getElementById('day-cols-view').innerHTML=dayColsHtml||'<span style="color:var(--red);font-size:11px;">⚠ No se detectaron columnas de días — revisar estructura del archivo</span>';
+  // ── Mostrar solo columnas de día ─────────────────────────────
+  const dayCols  = colMap.filter(c=>c.t==='d');
+  const fixedCols= colMap.filter(c=>c.t==='f');
+  const extraCols= colMap.filter(c=>c.t==='e');
 
-  // Diagnóstico
-  const fixedCols=colMap.filter(c=>c.t==='f');
-  const extraCols=colMap.filter(c=>c.t==='e');
-  addLog('log-diag',`[INFO] Columnas fijas detectadas: ${fixedCols.map(c=>c.n).join(', ')||'ninguna'}`,'info');
-  addLog('log-diag',`[INFO] Columnas de días: ${dayCols.length} (esperado: 21 = 7 días × 3 subcolumnas)`,'info');
+  const dayHtml = dayCols.map(c =>
+    `<span class="col-tag ct-day">${c.dia}_${c.m}_${c.fecha||'sin-fecha'}</span>`).join('');
+  document.getElementById('day-col-tags').innerHTML =
+    dayHtml || '<span style="color:var(--red);font-size:11px;">⚠ No se detectaron columnas de días</span>';
+
+  // ── Log de diagnóstico ───────────────────────────────────────
+  addLog('log-diag',`[INFO] Columnas fijas: ${fixedCols.map(c=>c.n).join(', ')||'ninguna detectada'}`,'info');
+  addLog('log-diag',`[INFO] Columnas de días: ${dayCols.length} (esperado ≈ 21 = 7 días × 3 sub)`,'info');
   addLog('log-diag',`[INFO] Columnas extra/semanales: ${extraCols.map(c=>c.n).join(', ')||'ninguna'}`,'info');
 
-  if(dayCols.length===0){
-    addLog('log-diag','[ERR] No se detectaron columnas de días. El archivo puede tener una estructura diferente a la esperada.','err');
-    addLog('log-diag','[ERR] Verifica que las filas 1-2-3 del Excel sean: Día / Subcolumna / Fecha','err');
-  } else if(dayCols.length<21){
-    addLog('log-diag',`[WARN] Se detectaron ${dayCols.length} columnas de días en lugar de 21. Algunos días pueden faltar.`,'warn');
-  } else {
-    addLog('log-diag',`[OK] Estructura correcta — ${dayCols.length} columnas de días detectadas`,'ok');
-  }
-
-  if(fixedCols.length<3){
-    addLog('log-diag','[WARN] No se detectaron todas las columnas fijas (Ciudad, Seller, Domiciliario). Verifica los nombres de columna.','warn');
-  } else {
-    addLog('log-diag',`[OK] Columnas fijas OK: ${fixedCols.map(c=>c.n).join(', ')}`,'ok');
-  }
-
-  const dataRows=tadaRaw.slice(3).filter(r=>r.some(c=>c!==''));
+  const dataRows = tadaRaw.slice(3).filter(r=>r.some(c=>c!==''&&c!==null));
   addLog('log-diag',`[INFO] Filas de datos (pilotos): ${dataRows.length}`,'info');
+
+  let ok = true;
+  if(dayCols.length === 0){
+    addLog('log-diag','[ERR] No se detectaron columnas de días. Verifica que filas 1-3 del Excel contengan: Día / Subcolumna (Paquetes|Incentivos|Cancelados) / Fecha','err');
+    ok = false;
+  } else if(dayCols.length < 21){
+    addLog('log-diag',`[WARN] Solo ${dayCols.length} columnas de día detectadas (esperado 21). Puede faltar algún día o submetrica.`,'warn');
+  } else {
+    addLog('log-diag',`[OK] ${dayCols.length} columnas de días detectadas correctamente`,'ok');
+  }
+  if(fixedCols.length < 2){
+    addLog('log-diag','[WARN] Menos de 2 columnas fijas detectadas. Revisa los nombres de Ciudad/Seller/Domiciliario en el archivo.','warn');
+  } else {
+    addLog('log-diag',`[OK] Columnas fijas detectadas: ${fixedCols.map(c=>c.n).join(', ')}`,'ok');
+  }
+  if(extraCols.length === 0){
+    addLog('log-diag','[WARN] No se detectaron columnas semanales (Tareas/Garantizado/Bonos/Ajustes)','warn');
+  } else {
+    addLog('log-diag',`[OK] Columnas semanales: ${extraCols.map(c=>c.n).join(', ')}`,'ok');
+  }
+
+  if(ok || dayCols.length > 0){
+    document.getElementById('btn-confirm-norm').disabled = false;
+    addLog('log-diag','[OK] Diagnóstico completado — puedes confirmar y normalizar','ok');
+  } else {
+    addLog('log-diag','[ERR] Corrige los errores antes de continuar','err');
+  }
 
   unlock(1);
 }
 
-// ══════════════════════════════════════════
-// BUILDER DE COLUMNAS — ROBUSTO
-// ══════════════════════════════════════════
-function buildColMap(raw, debug=false){
-  if(!raw||raw.length<3) return [];
-  const h0=raw[0]||[], h1=raw[1]||[], h2=raw[2]||[];
-  const maxCols=Math.max(h0.length,h1.length,h2.length);
-  const map=[];
-  let lastDay='';
-
-  for(let i=0;i<maxCols;i++){
-    const v0=String(h0[i]||'').trim();
-    const v1=String(h1[i]||'').trim();
-    const v2=String(h2[i]||'').trim();
-
-    // Forward-fill fila 0 (días combinados)
-    if(v0) lastDay=v0;
-
-    // Detectar columnas fijas por nombre en f0 o f1
-    const checkFixed=(v)=>{
-      if(!v) return null;
-      const vl=v.toLowerCase();
-      if(/^ciudad$|^city$/.test(vl)) return 'ciudad';
-      if(/seller|tienda|punto.de.venta/.test(vl)) return 'seller';
-      if(/domicili|piloto|nombre|conductor/.test(vl)) return 'piloto';
-      return null;
-    };
-
-    const fixedName=checkFixed(v0)||checkFixed(v1);
-    if(fixedName&&!DAYS.includes(lastDay)){
-      map.push({t:'f',n:fixedName,i});
-      continue;
-    }
-
-    // Columnas de días
-    if(DAYS.includes(lastDay)&&v1){
-      const sub=v1.toLowerCase();
-      let metric='';
-      if(/^paq|paquete/.test(sub)) metric='paquetes';
-      else if(/^inc|incentivo/.test(sub)) metric='incentivos';
-      else if(/^can|cancel/.test(sub)) metric='cancelados';
-      else metric=v1; // usar tal cual si no coincide
-
-      // Parsear fecha de fila 2
-      const fechaIso=parseDate(v2)||v2||'sin-fecha';
-      map.push({t:'d',dia:lastDay,m:metric,fecha:fechaIso,i});
-      continue;
-    }
-
-    // Columnas extra/semanales (después de bloque días)
-    if(v0&&!DAYS.includes(v0)){
-      const n=v0.toLowerCase().replace(/\s+/g,'_').replace(/[^a-z0-9_]/g,'');
-      map.push({t:'e',n:n||`col_${i}`,labelOriginal:v0,i});
-      continue;
-    }
-
-    // Columna sin clasificar
-    if(v0||v1){
-      map.push({t:'?',n:v0||v1||`col_${i}`,i});
-    }
-  }
-  return map;
-}
-
-// ══════════════════════════════════════════
-// PASO 2: NORMALIZAR
-// ══════════════════════════════════════════
+// ══════════════════════════════════════════════════
+// PASO 2: NORMALIZACIÓN
+// ══════════════════════════════════════════════════
 function runNorm(){
-  document.getElementById('log-norm').innerHTML='';
-  tadaNorm=[];
+  clearLog('log-norm');
+  tadaNorm = [];
 
-  const dataRows=tadaRaw.slice(3).filter(r=>r.some(c=>c!==''));
+  const dataRows = tadaRaw.slice(3).filter(r => r.some(c => c!==''&&c!==null&&c!==undefined));
 
-  dataRows.forEach((row,ri)=>{
-    const fixed={}, extra={}, dayData={};
-    colMap.forEach(col=>{
-      const v=row[col.i];
-      if(col.t==='f') fixed[col.n]=String(v||'').trim();
-      else if(col.t==='e') extra[col.n]=v;
-      else if(col.t==='d'){
-        if(!dayData[col.dia]) dayData[col.dia]={fecha:col.fecha};
-        dayData[col.dia][col.m]=parseInt(v)||0;
-      }
+  const fixedCols = colMap.filter(c=>c.t==='f');
+  const dayCols   = colMap.filter(c=>c.t==='d');
+  const extraCols = colMap.filter(c=>c.t==='e');
+
+  dataRows.forEach((row, ri) => {
+    // Extraer columnas fijas
+    const fixed = {};
+    fixedCols.forEach(c => { fixed[c.n] = String(row[c.i]||'').trim(); });
+
+    // Extraer columnas extra
+    const extra = {};
+    extraCols.forEach(c => { extra[c.n] = row[c.i]; });
+
+    if(!fixed.piloto || !fixed.piloto.trim()) return;
+
+    // Agrupar columnas de día por (dia, fecha)
+    const dayGroups = {};
+    dayCols.forEach(c => {
+      const key = `${c.dia}||${c.fecha}`;
+      if(!dayGroups[key]) dayGroups[key] = {dia:c.dia, fecha:c.fecha, paquetes:0, incentivos:0, cancelados:0};
+      const val = parseInt(row[c.i]) || 0;
+      dayGroups[key][c.m] = val;
     });
 
-    if(!fixed.piloto||!fixed.piloto.trim()) return;
+    // Función para parsear valores monetarios
+    const parseMoney = v => {
+      if(typeof v === 'number') return v;
+      if(!v && v!==0) return 0;
+      return parseFloat(String(v).replace(/[$\s.]/g,'').replace(',','.')) || 0;
+    };
 
-    DAYS.forEach(dia=>{
-      if(!dayData[dia]) return;
-      const fechaIso=dayData[dia].fecha||'';
+    const tareas     = parseInt(extra.tareas||0) || 0;
+    const garantizado= parseMoney(extra.garantizado);
+    const bonos      = parseMoney(extra.bonos);
+    const ajustes    = parseMoney(extra.ajustes);
 
-      // Extraer campos extra (tolerante a variantes de nombres)
-      const getExtra=(keys,def=0)=>{
-        for(const k of keys){const v=extra[k];if(v!==undefined&&v!=='')return v;}
-        return def;
-      };
-      const tareasRaw=getExtra(['tareas','total_tareas','tarea'],0);
-      const garRaw=getExtra(['garantizado_basico','garantizado','garantia'],0);
-      const bonosRaw=getExtra(['bonos','bono'],0);
-      const ajustesRaw=getExtra(['ajustes','novedades','ajuste'],0);
-
-      const parseMoney=v=>{
-        if(typeof v==='number') return v;
-        return parseFloat(String(v).replace(/[$\s,.]/g,'').replace(',','.'))||0;
-      };
-
+    Object.values(dayGroups).forEach(dg => {
       tadaNorm.push({
-        piloto:fixed.piloto,
-        ciudad:fixed.ciudad||'',
-        seller:fixed.seller||'',
-        dia,
-        fecha:fechaIso,
-        paquetes:dayData[dia].paquetes||0,
-        incentivos:dayData[dia].incentivos||0,
-        cancelados:dayData[dia].cancelados||0,
-        tareas:parseInt(tareasRaw)||0,
-        garantizado:parseMoney(garRaw),
-        bonos:parseMoney(bonosRaw),
-        ajustes:parseMoney(ajustesRaw),
+        piloto:      fixed.piloto,
+        ciudad:      fixed.ciudad  || '',
+        seller:      fixed.seller  || '',
+        dia:         dg.dia,
+        fecha:       dg.fecha,
+        paquetes:    dg.paquetes,
+        incentivos:  dg.incentivos,
+        cancelados:  dg.cancelados,
+        tareas,
+        garantizado,
+        bonos,
+        ajustes,
       });
     });
   });
 
-  const pilotos=[...new Set(tadaNorm.map(r=>r.piloto))];
+  const pilotos = [...new Set(tadaNorm.map(r=>r.piloto))];
   addLog('log-norm',`[OK] TADA normalizado: ${tadaNorm.length} filas · ${pilotos.length} pilotos únicos`,'ok');
-  addLog('log-norm',`[INFO] Fechas estandarizadas a formato YYYY-MM-DD`,'info');
+  addLog('log-norm',`[INFO] Fechas estandarizadas a YYYY-MM-DD`,'info');
 
-  // Validar que malla y TADA tengan fechas en mismo formato
-  const mallaFechas=[...new Set(mallaRaw.map(r=>{const k=Object.keys(r).find(k=>/fecha/i.test(k));return k?r[k]:'';}).filter(Boolean))].slice(0,3);
-  const tadaFechas=[...new Set(tadaNorm.map(r=>r.fecha).filter(Boolean))].slice(0,3);
-  addLog('log-norm',`[INFO] Fechas TADA (muestra): ${tadaFechas.join(' · ')}`,'info');
-  addLog('log-norm',`[INFO] Fechas Malla (muestra): ${mallaFechas.join(' · ')}`,'info');
+  const sampleTada  = [...new Set(tadaNorm.map(r=>r.fecha).filter(Boolean))].slice(0,4);
+  const mallaFKey   = Object.keys(mallaRaw[0]||{}).find(k=>/fecha/i.test(k))||'fecha';
+  const sampleMalla = [...new Set(mallaRaw.map(r=>r[mallaFKey]).filter(Boolean))].slice(0,4);
+  addLog('log-norm',`[INFO] Fechas TADA  (muestra): ${sampleTada.join('  ·  ')}`,'info');
+  addLog('log-norm',`[INFO] Fechas Malla (muestra): ${sampleMalla.join('  ·  ')}`,'info');
 
-  if(tadaNorm.length===0){
-    addLog('log-norm','[ERR] No se generaron filas normalizadas. Revisa el diagnóstico del paso anterior.','err');
+  if(tadaNorm.length === 0){
+    addLog('log-norm','[ERR] No se generaron filas normalizadas. Revisa el diagnóstico.','err');
     return;
   }
 
-  mkTablePaged('tbl-tada-norm',tadaNorm,
+  // Tabla TADA
+  mkTablePaged('tbl-tada-norm', tadaNorm,
     ['piloto','ciudad','seller','dia','fecha','paquetes','incentivos','cancelados','tareas','garantizado','bonos','ajustes'],
     ['Piloto','Ciudad','Seller','Día','Fecha','Paq.','Inc.','Canc.','Tareas','Garantizado','Bonos','Ajustes'],
-    null,'tada-norm');
+    null, 'tada-norm');
 
-  const mallaCols=Object.keys(mallaRaw[0]||{});
-  mkTablePaged('tbl-malla-norm',mallaRaw,mallaCols,mallaCols,null,'malla-norm');
+  // Tabla Malla — detectar columnas dinámicamente
+  const mallaCols = Object.keys(mallaRaw[0]||{});
+  mkTablePaged('tbl-malla-norm', mallaRaw, mallaCols, mallaCols, null, 'malla-norm');
 
   unlock(2);
 }
 
-// ══════════════════════════════════════════
+// ══════════════════════════════════════════════════
 // PASO 3: CONCILIACIÓN
-// ══════════════════════════════════════════
+// ══════════════════════════════════════════════════
 function runConciliacion(){
-  document.getElementById('log-conc').innerHTML='';
-  concResult=[];
+  clearLog('log-conc');
+  concResult = [];
 
-  // Detectar nombre de columna de fecha en malla
-  const mallaFechaKey=Object.keys(mallaRaw[0]||{}).find(k=>/fecha/i.test(k))||'fecha';
-  const mallaSellerKey=Object.keys(mallaRaw[0]||{}).find(k=>/seller|punto|tienda/i.test(k))||'seller';
-  const mallaPilotoKey=Object.keys(mallaRaw[0]||{}).find(k=>/piloto|nombre|conductor|driver_name/i.test(k))||'piloto';
+  if(!mallaRaw.length){ addLog('log-conc','[ERR] Malla vacía','err'); return; }
 
-  addLog('log-conc',`[INFO] Columnas malla usadas — fecha: "${mallaFechaKey}" · seller: "${mallaSellerKey}" · piloto: "${mallaPilotoKey}"`,'info');
+  // Detectar nombres de columnas en malla dinámicamente
+  const mKeys = Object.keys(mallaRaw[0]);
+  const mFKey = mKeys.find(k=>/fecha/i.test(k))      || 'fecha';
+  const mSKey = mKeys.find(k=>/seller|punto|tienda/i.test(k))   || 'seller';
+  const mPKey = mKeys.find(k=>/piloto|nombre|conductor|driver_name/i.test(k)) || 'piloto';
+  const mBKey = mKeys.find(k=>/booking/i.test(k))    || 'booking_id';
 
+  addLog('log-conc',`[INFO] Columnas malla → fecha:"${mFKey}" seller:"${mSKey}" piloto:"${mPKey}" booking:"${mBKey}"`,'info');
+
+  // Construir índices
   const idx3={}, idx2={};
-  mallaRaw.forEach(m=>{
-    const mf=String(m[mallaFechaKey]||'').trim();
-    const ms=String(m[mallaSellerKey]||'').trim();
-    const mp=String(m[mallaPilotoKey]||'').trim();
-    const a=k3(mp,mf,ms);
-    const b=k2(mp,mf);
+  mallaRaw.forEach(m => {
+    const mf = String(m[mFKey]||'').trim();
+    const ms = String(m[mSKey]||'').trim();
+    const mp = String(m[mPKey]||'').trim();
+    const a  = `${normStr(mp)}||${mf}||${normStr(ms)}`;
+    const b  = `${normStr(mp)}||${mf}`;
     (idx3[a]||(idx3[a]=[])).push(m);
-    if(!(idx2[b]||[]).find(x=>x.booking_id===m.booking_id))(idx2[b]||(idx2[b]=[])).push(m);
+    const bk = m[mBKey];
+    if(!(idx2[b]||[]).find(x=>x[mBKey]===bk)) (idx2[b]||(idx2[b]=[])).push(m);
   });
 
-  const matchados=new Set();
-  tadaNorm.forEach(row=>{
-    const a=k3(row.piloto,row.fecha,row.seller);
-    const b=k2(row.piloto,row.fecha);
-    let matches=[],nivel='SIN_MALLA',nota='';
+  const matchados = new Set();
+
+  tadaNorm.forEach(row => {
+    const a = `${normStr(row.piloto)}||${row.fecha}||${normStr(row.seller)}`;
+    const b = `${normStr(row.piloto)}||${row.fecha}`;
+    let matches=[], nivel='SIN_MALLA', nota='';
 
     if(idx3[a]?.length){
-      matches=idx3[a];nivel=matches.length===1?'HIGH':'MEDIUM';
-      nota=nivel==='HIGH'?'Match único piloto+fecha+seller':`${matches.length} bookings → desambiguar por franja`;
-      matches.forEach(m=>matchados.add(m.booking_id));
+      matches = idx3[a];
+      nivel   = matches.length===1 ? 'HIGH' : 'MEDIUM';
+      nota    = nivel==='HIGH'
+        ? 'Match único piloto+fecha+seller'
+        : `${matches.length} bookings → desambiguar por franja horaria`;
+      matches.forEach(m => matchados.add(m[mBKey]));
     } else if(idx2[b]?.length){
-      matches=idx2[b];nivel='LOW';
-      const sellers=[...new Set(matches.map(m=>String(m[mallaSellerKey]||'')))];
-      nota=`Fallback piloto+fecha · seller TADA="${row.seller}" vs malla="${sellers.join('/')}"`;
-      matches.forEach(m=>matchados.add(m.booking_id));
+      matches = idx2[b];
+      nivel   = 'LOW';
+      const sellers = [...new Set(matches.map(m=>String(m[mSKey]||'')))];
+      nota = `Fallback piloto+fecha · seller TADA="${row.seller}" vs malla="${sellers.join('/')}"`;
+      matches.forEach(m => matchados.add(m[mBKey]));
     }
 
-    concResult.push({...row,nivel_confianza:nivel,matches,nota,
-      driver_id:matches[0]?.driver_id||'PENDIENTE'});
-    const cls=nivel==='HIGH'?'ok':nivel==='SIN_MALLA'?'err':'warn';
-    addLog('log-conc',`[${nivel}] ${row.piloto} · ${row.fecha} · ${row.seller} — ${nota||'Sin match'}`,cls);
+    concResult.push({
+      ...row, nivel_confianza:nivel, matches, nota,
+      driver_id: matches[0]?.driver_id || matches[0]?.DRIVER_ID || 'PENDIENTE',
+    });
+
+    const cls = nivel==='HIGH'?'ok': nivel==='SIN_MALLA'?'err':'warn';
+    addLog('log-conc',`[${nivel}] ${row.piloto} · ${row.fecha} · ${row.seller} — ${nota||'Sin match'}`, cls);
   });
 
-  mallaRaw.filter(m=>!matchados.has(m.booking_id)).forEach(m=>{
-    const bk=m.booking_id||m.BOOKING_ID||'?';
-    const mp=String(m[mallaPilotoKey]||'');
-    addLog('log-conc',`[WARN] Huérfano malla: ${bk} · ${mp} · ${m[mallaFechaKey]||''} · ${m[mallaSellerKey]||''}`,'warn');
+  // Huérfanos malla
+  mallaRaw.filter(m=>!matchados.has(m[mBKey])).forEach(m => {
+    addLog('log-conc',`[WARN] Huérfano malla: ${m[mBKey]||'?'} · ${m[mPKey]||''} · ${m[mFKey]||''} · ${m[mSKey]||''}`,'warn');
   });
 
-  const h=concResult.filter(r=>r.nivel_confianza==='HIGH').length;
-  const md=concResult.filter(r=>r.nivel_confianza==='MEDIUM').length;
-  const lo=concResult.filter(r=>r.nivel_confianza==='LOW').length;
-  const sn=concResult.filter(r=>r.nivel_confianza==='SIN_MALLA').length;
-  document.getElementById('stats-conc').innerHTML=`
+  const h  = concResult.filter(r=>r.nivel_confianza==='HIGH').length;
+  const md = concResult.filter(r=>r.nivel_confianza==='MEDIUM').length;
+  const lo = concResult.filter(r=>r.nivel_confianza==='LOW').length;
+  const sn = concResult.filter(r=>r.nivel_confianza==='SIN_MALLA').length;
+
+  document.getElementById('stats-conc').innerHTML = `
     <div class="stat"><div class="stat-l">HIGH</div><div class="stat-v g">${h}</div></div>
     <div class="stat"><div class="stat-l">MEDIUM</div><div class="stat-v y">${md}</div></div>
     <div class="stat"><div class="stat-l">LOW</div><div class="stat-v r">${lo}</div></div>
     <div class="stat"><div class="stat-l">SIN_MALLA</div><div class="stat-v" style="color:var(--text2)">${sn}</div></div>`;
 
-  const concRows=concResult.map(r=>({piloto:r.piloto,ciudad:r.ciudad,seller:r.seller,fecha:r.fecha,driver_id:r.driver_id,bookings:r.matches.length,nivel_confianza:r.nivel_confianza,nota:r.nota||'Sin match'}));
-  mkTablePaged('tbl-conc',concRows,
+  mkTablePaged('tbl-conc',
+    concResult.map(r=>({piloto:r.piloto,ciudad:r.ciudad,seller:r.seller,fecha:r.fecha,
+      driver_id:r.driver_id,bookings:r.matches.length,nivel_confianza:r.nivel_confianza,nota:r.nota||'Sin match'})),
     ['piloto','ciudad','seller','fecha','driver_id','bookings','nivel_confianza','nota'],
-    ['Piloto','Ciudad','Seller','Fecha','Driver ID','Bookings','Confianza','Nota'],null,'conc');
+    ['Piloto','Ciudad','Seller','Fecha','Driver ID','Bookings','Confianza','Nota'],
+    null, 'conc');
+
   unlock(3);
 }
 
-// ══════════════════════════════════════════
+// ══════════════════════════════════════════════════
 // PASO 4: DISTRIBUCIÓN
-// ══════════════════════════════════════════
+// ══════════════════════════════════════════════════
 function runDistribucion(){
-  distResult=[];
-  concResult.filter(r=>r.nivel_confianza!=='SIN_MALLA').forEach(row=>{
-    const n=row.matches.length;
-    const sorted=[...row.matches].sort((a,b)=>String(a.hora_inicio||'').localeCompare(String(b.hora_inicio||'')));
-    sorted.forEach((m,i)=>{
-      const first=i===0;
+  distResult = [];
+  const mKeys = Object.keys(mallaRaw[0]||{});
+  const mSKey = mKeys.find(k=>/seller|punto|tienda/i.test(k)) || 'seller';
+  const mBKey = mKeys.find(k=>/booking/i.test(k)) || 'booking_id';
+  const mHKey = mKeys.find(k=>/hora/i.test(k))    || 'hora_inicio';
+  const mDKey = mKeys.find(k=>/driver.?id|driver_id/i.test(k)) || 'driver_id';
+
+  concResult.filter(r=>r.nivel_confianza!=='SIN_MALLA').forEach(row => {
+    const n = row.matches.length;
+    const sorted = [...row.matches].sort((a,b)=>String(a[mHKey]||'').localeCompare(String(b[mHKey]||'')));
+
+    sorted.forEach((m, i) => {
+      const first = i===0;
       distResult.push({
-        booking_id:m.booking_id||m.BOOKING_ID,
-        driver_id:m.driver_id||m.DRIVER_ID,
-        piloto:row.piloto,ciudad:row.ciudad,
-        seller:m.seller||m[Object.keys(m).find(k=>/seller/i.test(k))||'seller']||row.seller,
-        fecha:row.fecha,hora_inicio:m.hora_inicio||m.HORA_INICIO||'—',
-        paquetes_dist:Math.round(row.paquetes/n),
-        incentivos_dist:Math.round(row.incentivos/n),
-        cancelados_dist:Math.round(row.cancelados/n),
-        tareas_dist:first?row.tareas:0,
-        garantizado:first?row.garantizado:0,
-        bonos:first?row.bonos:0,
-        ajustes:first?row.ajustes:0,
-        nivel_confianza:row.nivel_confianza,n_bookings:n,
+        booking_id:   m[mBKey] || m.booking_id || m.BOOKING_ID,
+        driver_id:    m[mDKey] || m.driver_id  || m.DRIVER_ID,
+        piloto:       row.piloto,
+        ciudad:       row.ciudad,
+        seller:       m[mSKey] || row.seller,
+        fecha:        row.fecha,
+        hora_inicio:  m[mHKey] || '—',
+        paquetes_dist:  Math.round(row.paquetes   / n),
+        incentivos_dist:Math.round(row.incentivos  / n),
+        cancelados_dist:Math.round(row.cancelados  / n),
+        tareas_dist:    first ? row.tareas      : 0,
+        garantizado:    first ? row.garantizado : 0,
+        bonos:          first ? row.bonos       : 0,
+        ajustes:        first ? row.ajustes     : 0,
+        nivel_confianza: row.nivel_confianza,
+        n_bookings:     n,
       });
     });
   });
-  document.getElementById('stats-dist').innerHTML=`
+
+  document.getElementById('stats-dist').innerHTML = `
     <div class="stat"><div class="stat-l">Bookings generados</div><div class="stat-v">${distResult.length}</div></div>
     <div class="stat"><div class="stat-l">Excluidos SIN_MALLA</div><div class="stat-v r">${concResult.filter(r=>r.nivel_confianza==='SIN_MALLA').length}</div></div>
     <div class="stat"><div class="stat-l">HIGH</div><div class="stat-v g">${distResult.filter(r=>r.nivel_confianza==='HIGH').length}</div></div>
-    <div class="stat"><div class="stat-l">MEDIUM+LOW</div><div class="stat-v y">${distResult.filter(r=>['MEDIUM','LOW'].includes(r.nivel_confianza)).length}</div></div>`;
-  mkTablePaged('tbl-dist',distResult,
-    ['booking_id','driver_id','piloto','ciudad','seller','fecha','hora_inicio','paquetes_dist','incentivos_dist','cancelados_dist','tareas_dist','garantizado','bonos','ajustes','nivel_confianza'],
-    ['Booking ID','Driver ID','Piloto','Ciudad','Seller','Fecha','Hora','Paq.','Inc.','Canc.','Tareas','Garantizado','Bonos','Ajustes','Confianza'],null,'dist');
+    <div class="stat"><div class="stat-l">MEDIUM + LOW</div><div class="stat-v y">${distResult.filter(r=>['MEDIUM','LOW'].includes(r.nivel_confianza)).length}</div></div>`;
+
+  mkTablePaged('tbl-dist', distResult,
+    ['booking_id','driver_id','piloto','ciudad','seller','fecha','hora_inicio',
+     'paquetes_dist','incentivos_dist','cancelados_dist','tareas_dist','garantizado','bonos','ajustes','nivel_confianza'],
+    ['Booking ID','Driver ID','Piloto','Ciudad','Seller','Fecha','Hora',
+     'Paq.','Inc.','Canc.','Tareas','Garantizado','Bonos','Ajustes','Confianza'],
+    null, 'dist');
+
   unlock(4);
 }
 
-// ══════════════════════════════════════════
-// PASO 6: TRUMP
-// ══════════════════════════════════════════
+// ══════════════════════════════════════════════════
+// PASO 6: TEMPLATE TRUMP
+// ══════════════════════════════════════════════════
 function runTrump(){
-  const t=currentEdits, av=getAV();
-  const runId=`LIQ-${new Date().toISOString().slice(0,10).replace(/-/g,'')}-${av.version}`;
-  const m=t.margen_cliente_pct/100;
+  const t  = currentEdits;
+  const av = getAV();
+  const runId = `LIQ-${new Date().toISOString().slice(0,10).replace(/-/g,'')}-${av.version}`;
+  const m = t.margen_cliente_pct / 100;
 
-  trumpRows=distResult.map(r=>{
-    const vPaq=r.paquetes_dist  *t.valor_paquete;
-    const vInc=r.incentivos_dist*t.valor_incentivo;
-    const vCan=r.cancelados_dist*t.valor_cancelado;
-    const vGar=r.garantizado||0;
-    const vTar=r.tareas_dist    *t.valor_tarea;
-    const vBon=r.bonos||0;
-    const vAj =r.ajustes||0;
-    const base=vPaq+vInc+vCan+vGar;
-    const adicional=vBon+vTar+vAj;
-    const finalCost=Math.round(base/(1-COMISION));
-    const addFinalCost=adicional;
-    const companyCost=Math.round(base*(1+m));
-    const addCompanyCost=Math.round(adicional*(1+m));
-    const comments=`Paquetes: ${r.paquetes_dist} | Incentivos: ${r.incentivos_dist} | Cancelados: ${r.cancelados_dist} | Garantizado: ${cop(vGar)} | Bonos: ${cop(vBon)} | Tareas: ${r.tareas_dist} | Ajustes: ${cop(vAj)} | Conf: ${r.nivel_confianza}`;
+  trumpRows = distResult.map(r => {
+    const vPaq = r.paquetes_dist   * t.valor_paquete;
+    const vInc = r.incentivos_dist * t.valor_incentivo;
+    const vCan = r.cancelados_dist * t.valor_cancelado; // cancelados SUMAN
+    const vGar = r.garantizado || 0;
+    const vTar = r.tareas_dist     * t.valor_tarea;
+    const vBon = r.bonos    || 0;
+    const vAj  = r.ajustes  || 0;
+
+    // BASE: paquetes + incentivos + cancelados + garantizado
+    const base     = vPaq + vInc + vCan + vGar;
+    // ADICIONAL: bonos + tareas + ajustes
+    const adicional = vBon + vTar + vAj;
+
+    // PAGO PILOTO
+    const finalCost    = Math.round(base / (1 - COMISION)); // ÷ 0.85
+    const addFinalCost = adicional;                          // sin comisión
+
+    // COBRO CLIENTE
+    const companyCost    = Math.round(base     * (1 + m));
+    const addCompanyCost = Math.round(adicional * (1 + m));
+
+    const comments =
+      `Paquetes: ${r.paquetes_dist} | Incentivos: ${r.incentivos_dist} | Cancelados: ${r.cancelados_dist}` +
+      ` | Garantizado: ${cop(vGar)} | Bonos: ${cop(vBon)} | Tareas: ${r.tareas_dist}` +
+      ` | Ajustes: ${cop(vAj)} | Conf: ${r.nivel_confianza}`;
+
     return {
-      BOOKING_ID:r.booking_id,
-      COMPANY_FINAL_COST:companyCost,
-      ADDITIONAL_COMPANY_FINAL_COST:addCompanyCost,
-      DISPUTED_COMPANY_FINAL_COST:'',
-      FINAL_COST:finalCost,
-      ADDITIONAL_FINAL_COST:addFinalCost,
-      DISPUTED_FINAL_COST:'',
-      PACKAGES_COUNT:r.paquetes_dist,
-      IS_PER_HOUR:0,
-      COMMENTS:comments,
-      _driver_id:r.driver_id,_piloto:r.piloto,_ciudad:r.ciudad,_seller:r.seller,
-      _fecha:r.fecha,_confianza:r.nivel_confianza,_run_id:runId,_ver:av.version,
+      BOOKING_ID:                    r.booking_id,
+      COMPANY_FINAL_COST:            companyCost,
+      ADDITIONAL_COMPANY_FINAL_COST: addCompanyCost,
+      DISPUTED_COMPANY_FINAL_COST:   '',
+      FINAL_COST:                    finalCost,
+      ADDITIONAL_FINAL_COST:         addFinalCost,
+      DISPUTED_FINAL_COST:           '',
+      PACKAGES_COUNT:                r.paquetes_dist,
+      IS_PER_HOUR:                   0,
+      COMMENTS:                      comments,
+      // Metadata interna (no va en la hoja Trump)
+      _driver_id: r.driver_id, _piloto: r.piloto, _ciudad: r.ciudad, _seller: r.seller,
+      _fecha: r.fecha, _confianza: r.nivel_confianza, _run_id: runId, _ver: av.version,
     };
   });
 
-  const tp=trumpRows.reduce((a,r)=>a+r.FINAL_COST+r.ADDITIONAL_FINAL_COST,0);
-  const tc=trumpRows.reduce((a,r)=>a+r.COMPANY_FINAL_COST+r.ADDITIONAL_COMPANY_FINAL_COST,0);
-  const rev=trumpRows.filter(r=>r._confianza!=='HIGH').length;
-  document.getElementById('stats-trump').innerHTML=`
+  const tp  = trumpRows.reduce((a,r)=>a+r.FINAL_COST+r.ADDITIONAL_FINAL_COST, 0);
+  const tc  = trumpRows.reduce((a,r)=>a+r.COMPANY_FINAL_COST+r.ADDITIONAL_COMPANY_FINAL_COST, 0);
+  const rev = trumpRows.filter(r=>r._confianza!=='HIGH').length;
+
+  document.getElementById('stats-trump').innerHTML = `
     <div class="stat"><div class="stat-l">Bookings en template</div><div class="stat-v">${trumpRows.length}</div></div>
     <div class="stat"><div class="stat-l">Total pago pilotos</div><div class="stat-v g" style="font-size:14px;">${cop(tp)}</div></div>
     <div class="stat"><div class="stat-l">Total cobro TaDa</div><div class="stat-v" style="font-size:14px;">${cop(tc)}</div></div>
     <div class="stat"><div class="stat-l">Requieren revisión</div><div class="stat-v ${rev?'y':'g'}">${rev}</div></div>`;
 
-  const trumpCols=['BOOKING_ID','COMPANY_FINAL_COST','ADDITIONAL_COMPANY_FINAL_COST','DISPUTED_COMPANY_FINAL_COST','FINAL_COST','ADDITIONAL_FINAL_COST','DISPUTED_FINAL_COST','PACKAGES_COUNT','IS_PER_HOUR','COMMENTS'];
-  mkTablePaged('tbl-trump',trumpRows,trumpCols,trumpCols,
-    r=>r._confianza!=='HIGH'?' style="background:rgba(240,190,53,0.04)"':'','trump');
+  const trumpCols = ['BOOKING_ID','COMPANY_FINAL_COST','ADDITIONAL_COMPANY_FINAL_COST',
+    'DISPUTED_COMPANY_FINAL_COST','FINAL_COST','ADDITIONAL_FINAL_COST',
+    'DISPUTED_FINAL_COST','PACKAGES_COUNT','IS_PER_HOUR','COMMENTS'];
 
-  document.getElementById('log-trump').innerHTML='';
+  mkTablePaged('tbl-trump', trumpRows, trumpCols, trumpCols,
+    r => r._confianza!=='HIGH' ? ' style="background:rgba(240,190,53,0.04)"' : '',
+    'trump');
+
+  clearLog('log-trump');
   addLog('log-trump',`[OK] run_id: ${runId} · tarifas: ${av.version} · ${trumpRows.length} bookings`,'ok');
   addLog('log-trump',`[OK] Pilotos: ${cop(tp)} · TaDa: ${cop(tc)} · Margen: ${cop(tc-tp)}`,'ok');
-  trumpRows.filter(r=>r._confianza==='MEDIUM').forEach(r=>addLog('log-trump',`[MED] ${r.BOOKING_ID} — distribución equitativa`,'warn'));
-  trumpRows.filter(r=>r._confianza==='LOW').forEach(r=>addLog('log-trump',`[LOW] ${r.BOOKING_ID} · ${r._piloto} — fallback piloto+fecha`,'warn'));
-  concResult.filter(r=>r.nivel_confianza==='SIN_MALLA').forEach(r=>addLog('log-trump',`[EXCL] ${r.piloto} · ${r.fecha} — excluido (SIN_MALLA)`,'err'));
+  trumpRows.filter(r=>r._confianza==='MEDIUM').forEach(r=>
+    addLog('log-trump',`[MED] ${r.BOOKING_ID} — distribución equitativa aplicada`,'warn'));
+  trumpRows.filter(r=>r._confianza==='LOW').forEach(r=>
+    addLog('log-trump',`[LOW] ${r.BOOKING_ID} · ${r._piloto} — fallback piloto+fecha`,'warn'));
+  concResult.filter(r=>r.nivel_confianza==='SIN_MALLA').forEach(r=>
+    addLog('log-trump',`[EXCL] ${r.piloto} · ${r.fecha} — excluido (SIN_MALLA)`,'err'));
 
+  // Persistir ejecución
   try{
-    const runs=JSON.parse(localStorage.getItem(LS_RUNS)||'[]');
-    runs.push({run_id:runId,fecha_ejecucion:new Date().toISOString(),version_tarifas_usada:av.version,snapshot_tarifas:{...av.values},bookings_generados:trumpRows.length,sin_malla:concResult.filter(r=>r.nivel_confianza==='SIN_MALLA').length,requieren_revision:rev});
-    localStorage.setItem(LS_RUNS,JSON.stringify(runs.slice(-50)));
+    const runs = JSON.parse(localStorage.getItem(LS_RUNS)||'[]');
+    runs.push({run_id:runId, fecha_ejecucion:new Date().toISOString(),
+      version_tarifas_usada:av.version, snapshot_tarifas:{...av.values},
+      bookings_generados:trumpRows.length,
+      sin_malla:concResult.filter(r=>r.nivel_confianza==='SIN_MALLA').length,
+      requieren_revision:rev});
+    localStorage.setItem(LS_RUNS, JSON.stringify(runs.slice(-50)));
   }catch(e){}
 
   unlock(6);
 }
 
-// ══════════════════════════════════════════
+// ══════════════════════════════════════════════════
 // DESCARGA — 3 HOJAS
-// ══════════════════════════════════════════
+// ══════════════════════════════════════════════════
 function downloadTrump(){
-  if(!trumpRows.length)return;
-  const av=getAV();
-  const runId=trumpRows[0]?._run_id||'LIQ';
-  const trumpCols=['BOOKING_ID','COMPANY_FINAL_COST','ADDITIONAL_COMPANY_FINAL_COST','DISPUTED_COMPANY_FINAL_COST','FINAL_COST','ADDITIONAL_FINAL_COST','DISPUTED_FINAL_COST','PACKAGES_COUNT','IS_PER_HOUR','COMMENTS'];
-  const ws1=XLSX.utils.json_to_sheet(trumpRows.map(r=>Object.fromEntries(trumpCols.map(c=>[c,r[c]]))));
-  ws1['!cols']=trumpCols.map(c=>({wch:c==='COMMENTS'?65:c==='BOOKING_ID'?16:24}));
+  if(!trumpRows.length) return;
+  const av    = getAV();
+  const runId = trumpRows[0]?._run_id || 'LIQ';
 
-  const inconRows=[];
+  // Hoja 1: Template Trump (solo columnas Trump)
+  const trumpCols = ['BOOKING_ID','COMPANY_FINAL_COST','ADDITIONAL_COMPANY_FINAL_COST',
+    'DISPUTED_COMPANY_FINAL_COST','FINAL_COST','ADDITIONAL_FINAL_COST',
+    'DISPUTED_FINAL_COST','PACKAGES_COUNT','IS_PER_HOUR','COMMENTS'];
+  const ws1 = XLSX.utils.json_to_sheet(
+    trumpRows.map(r => Object.fromEntries(trumpCols.map(c=>[c,r[c]]))));
+  ws1['!cols'] = trumpCols.map(c=>({wch: c==='COMMENTS'?70 : c==='BOOKING_ID'?18 : 26}));
+
+  // Hoja 2: Inconsistencias
+  const inconRows = [];
+  const mKeys = Object.keys(mallaRaw[0]||{});
+  const mBKey = mKeys.find(k=>/booking/i.test(k))||'booking_id';
+  const mFKey = mKeys.find(k=>/fecha/i.test(k))||'fecha';
+  const mSKey = mKeys.find(k=>/seller/i.test(k))||'seller';
+  const mPKey = mKeys.find(k=>/piloto|nombre/i.test(k))||'piloto';
+
   concResult.filter(r=>r.nivel_confianza==='SIN_MALLA').forEach(r=>
-    inconRows.push({tipo:'SIN_MALLA',piloto:r.piloto,fecha:r.fecha,seller:r.seller,ciudad:r.ciudad,booking_id:'—',nota:'Piloto no encontrado en malla Pibox — excluido del output'}));
-  mallaRaw.filter(m=>{const bk=m.booking_id||m.BOOKING_ID;return !distResult.find(d=>d.booking_id===bk);}).forEach(m=>{
-    const bk=m.booking_id||m.BOOKING_ID||'?';
-    const mallaFechaKey=Object.keys(m).find(k=>/fecha/i.test(k))||'fecha';
-    const mallaSellerKey=Object.keys(m).find(k=>/seller/i.test(k))||'seller';
-    const mallaPilotoKey=Object.keys(m).find(k=>/piloto|nombre/i.test(k))||'piloto';
-    inconRows.push({tipo:'HUÉRFANO_MALLA',piloto:m[mallaPilotoKey]||'',fecha:m[mallaFechaKey]||'',seller:m[mallaSellerKey]||'',booking_id:bk,nota:'Booking en malla sin valores TADA'});
-  });
+    inconRows.push({tipo:'SIN_MALLA',piloto:r.piloto,fecha:r.fecha,seller:r.seller,ciudad:r.ciudad,
+      booking_id:'—',nota:'Piloto no encontrado en malla Pibox — excluido del output'}));
+  mallaRaw.filter(m=>!distResult.find(d=>d.booking_id===m[mBKey])).forEach(m=>
+    inconRows.push({tipo:'HUÉRFANO_MALLA',piloto:m[mPKey]||'',fecha:m[mFKey]||'',
+      seller:m[mSKey]||'',ciudad:'',booking_id:m[mBKey]||'?',nota:'Booking en malla sin valores TADA'}));
   concResult.filter(r=>r.nivel_confianza==='LOW').forEach(r=>
-    inconRows.push({tipo:'LOW_CONFIDENCE',piloto:r.piloto,fecha:r.fecha,seller:r.seller,ciudad:r.ciudad,booking_id:r.matches.map(m=>m.booking_id||m.BOOKING_ID).join('/'),nota:'Fallback piloto+fecha — verificar seller'}));
-  const ws2=XLSX.utils.json_to_sheet(inconRows.length?inconRows:[{tipo:'Sin inconsistencias'}]);
-  ws2['!cols']=[{wch:18},{wch:22},{wch:12},{wch:22},{wch:10},{wch:18},{wch:65}];
+    inconRows.push({tipo:'LOW_CONFIDENCE',piloto:r.piloto,fecha:r.fecha,seller:r.seller,ciudad:r.ciudad,
+      booking_id:r.matches.map(m=>m[mBKey]).join('/'),nota:'Fallback piloto+fecha — verificar seller'}));
 
-  const auditRows=[
-    {campo:'run_id',valor:runId},
-    {campo:'fecha_ejecucion',valor:new Date().toLocaleString('es-CO')},
-    {campo:'version_tarifas_usada',valor:av.version},
-    {campo:'autor_tarifa',valor:av.autor},
-    {campo:'bookings_generados',valor:trumpRows.length},
-    {campo:'sin_malla_excluidos',valor:concResult.filter(r=>r.nivel_confianza==='SIN_MALLA').length},
-    {campo:'requieren_revision',valor:trumpRows.filter(r=>r._confianza!=='HIGH').length},
-    {campo:'───────────────────',valor:'SNAPSHOT TARIFAS'},
-    ...TARIFF_SCHEMA.map(s=>({campo:s.label,valor:av.values[s.key]})),
+  const ws2 = XLSX.utils.json_to_sheet(
+    inconRows.length ? inconRows : [{tipo:'Sin inconsistencias'}]);
+  ws2['!cols'] = [{wch:18},{wch:22},{wch:12},{wch:22},{wch:10},{wch:20},{wch:70}];
+
+  // Hoja 3: Auditoría
+  const auditRows = [
+    {campo:'run_id',                valor:runId},
+    {campo:'fecha_ejecucion',       valor:new Date().toLocaleString('es-CO')},
+    {campo:'version_tarifas_usada', valor:av.version},
+    {campo:'autor_tarifa',          valor:av.autor},
+    {campo:'bookings_generados',    valor:trumpRows.length},
+    {campo:'sin_malla_excluidos',   valor:concResult.filter(r=>r.nivel_confianza==='SIN_MALLA').length},
+    {campo:'requieren_revision',    valor:trumpRows.filter(r=>r._confianza!=='HIGH').length},
+    {campo:'───────────────────',   valor:'SNAPSHOT TARIFAS'},
+    ...TARIFF_SCHEMA.map(s=>({campo:s.label, valor:av.values[s.key]})),
   ];
-  const ws3=XLSX.utils.json_to_sheet(auditRows);
-  ws3['!cols']=[{wch:32},{wch:44}];
+  const ws3 = XLSX.utils.json_to_sheet(auditRows);
+  ws3['!cols'] = [{wch:34},{wch:46}];
 
-  const wb=XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb,ws1,'Template Trump');
-  XLSX.utils.book_append_sheet(wb,ws2,'Inconsistencias');
-  XLSX.utils.book_append_sheet(wb,ws3,'Auditoría');
-  XLSX.writeFile(wb,`${runId}.xlsx`);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws1, 'Template Trump');
+  XLSX.utils.book_append_sheet(wb, ws2, 'Inconsistencias');
+  XLSX.utils.book_append_sheet(wb, ws3, 'Auditoría');
+  XLSX.writeFile(wb, `${runId}.xlsx`);
   toast(`✓ ${runId}.xlsx descargado`);
 }
 
+// ══════════════════════════════════════════════════
+// BOOT
+// ══════════════════════════════════════════════════
 initTariffs();
 </script>
 </body>
