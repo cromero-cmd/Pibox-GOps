@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Pipeline TADA → Trump · Pibox Liquidaciones</title>
+<title>Pipeline TADA → Trump · Pibox</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap');
@@ -57,7 +57,6 @@ main{flex:1;overflow-y:auto;padding:24px 28px;}
 .btn-primary:hover{background:var(--accent2);}
 .btn-green{background:var(--greenBg);border-color:var(--green2);color:var(--green);}
 .btn-sm{padding:5px 11px;font-size:11px;}
-.row-btns{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;}
 .panel-footer{display:flex;justify-content:flex-end;gap:8px;margin-top:20px;padding-top:16px;border-top:1px solid var(--border);}
 .stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:18px;}
 .stat{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:13px 15px;}
@@ -104,29 +103,27 @@ tr:hover td{background:var(--bg3);}
 .city{font-size:10px;background:var(--bg4);padding:2px 6px;border-radius:3px;font-family:var(--mono);}
 .ver-card{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:12px 15px;margin-bottom:8px;}
 .ver-card.active-ver{border-color:var(--green2);}
-
 /* DIAGNÓSTICO */
 .diag-box{background:var(--bg2);border:1px solid var(--yellowBorder);border-radius:8px;margin-bottom:16px;overflow:hidden;}
 .diag-hdr{background:var(--yellowBg);padding:9px 14px;font-size:11px;font-family:var(--mono);color:var(--yellow);font-weight:500;display:flex;justify-content:space-between;align-items:center;}
 .diag-body{padding:14px;}
 .diag-sec{margin-bottom:14px;}
+.diag-sec:last-child{margin-bottom:0;}
 .diag-sec-title{font-size:10px;font-family:var(--mono);color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;}
 .raw-scroll{overflow-x:auto;border-radius:6px;border:1px solid var(--border);}
 .raw-table{border-collapse:collapse;font-family:var(--mono);font-size:10px;}
-.raw-table td{padding:3px 8px;border:1px solid var(--border);white-space:nowrap;max-width:110px;overflow:hidden;text-overflow:ellipsis;}
-.rc-label{background:var(--bg4);color:var(--text3);font-weight:500;min-width:28px;}
+.raw-table td{padding:3px 8px;border:1px solid var(--border);white-space:nowrap;max-width:120px;overflow:hidden;text-overflow:ellipsis;}
+.rc-label{background:var(--bg4);color:var(--text3);font-weight:500;min-width:28px;text-align:center;}
 .rc-h0{background:#160d30;color:#c4b5fd;}
 .rc-h1{background:#071828;color:#7dd3fc;}
 .rc-h2{background:#071a0e;color:#6ee7b7;}
 .rc-data{color:var(--text2);}
-.rc-empty{color:var(--text3);}
+.rc-empty{color:var(--border2);}
 .col-tags{display:flex;flex-wrap:wrap;gap:5px;}
 .col-tag{font-size:10px;font-family:var(--mono);padding:2px 8px;border-radius:3px;}
 .ct-fixed{background:#1a0d3a;color:#c4b5fd;border:1px solid #4c3a8a;}
 .ct-day{background:#071a12;color:var(--green);border:1px solid var(--green2);}
 .ct-extra{background:var(--yellowBg);color:var(--yellow);border:1px solid var(--yellowBorder);}
-.ct-skip{background:var(--bg3);color:var(--text3);border:1px solid var(--border);}
-
 .toast{position:fixed;bottom:20px;right:24px;background:var(--greenBg);border:1px solid var(--green2);color:var(--green);font-size:11px;font-family:var(--mono);padding:8px 16px;border-radius:6px;z-index:999;opacity:0;transition:opacity .25s;pointer-events:none;}
 .toast.show{opacity:1;}
 </style>
@@ -136,7 +133,7 @@ tr:hover td{background:var(--bg3);}
 <nav>
   <div class="nav-brand">
     <div class="nav-logo"><svg width="15" height="15" fill="none" stroke="#fff" stroke-width="2" viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div>
-    <div><div class="nav-title">Pipeline TADA → Trump</div><div class="nav-sub">Liquidaciones Pibox · v3</div></div>
+    <div><div class="nav-title">Pipeline TADA → Trump</div><div class="nav-sub">Liquidaciones Pibox · v4</div></div>
   </div>
   <span id="nav-version">cargando tarifas...</span>
 </nav>
@@ -159,7 +156,7 @@ tr:hover td{background:var(--bg3);}
       <input type="file" accept=".xlsx,.xls,.csv" onchange="loadFile(this.files[0],'tada')"/>
       <div class="dz-tag tag-tada">TADA</div>
       <div class="dz-title" id="lbl-tada">Excel TADA semanal</div>
-      <div class="dz-sub">Multi-header 3 filas · paquetes · incentivos · cancelados</div>
+      <div class="dz-sub">Multi-header · paquetes · incentivos · cancelados</div>
     </div>
     <div class="dropzone" id="dz-malla" ondragover="doDrag(event,'malla',1)" ondragleave="doDrag(event,'malla',0)" ondrop="doDrop(event,'malla')">
       <input type="file" accept=".xlsx,.xls,.csv" onchange="loadFile(this.files[0],'malla')"/>
@@ -175,23 +172,19 @@ tr:hover td{background:var(--bg3);}
 <div class="panel" id="p1">
   <div class="diag-box">
     <div class="diag-hdr">
-      <span>🔍 Diagnóstico — estructura raw del Excel TADA</span>
-      <span style="font-size:10px;">primeras 5 filas · máx 16 columnas visibles</span>
+      <span>🔍 Diagnóstico — estructura detectada del archivo TADA</span>
+      <span style="font-size:10px;">primeras 4 filas · máx 16 columnas visibles</span>
     </div>
     <div class="diag-body">
       <div class="diag-sec">
-        <div class="diag-sec-title">Filas raw (colores: F0=días · F1=subcolumnas · F2=fechas · D=datos)</div>
+        <div class="diag-sec-title">Filas raw (F0=días · F1=subcolumnas · F2=nombres/fechas · D0=primer dato)</div>
         <div class="raw-scroll" id="raw-grid"></div>
       </div>
       <div class="diag-sec">
-        <div class="diag-sec-title">Header después de forward-fill horizontal (F0 → F1 → F2)</div>
-        <div class="raw-scroll" id="ffill-grid"></div>
-      </div>
-      <div class="diag-sec">
-        <div class="diag-sec-title">Mapeo de columnas detectado</div>
+        <div class="diag-sec-title">Mapeo de columnas construido</div>
         <div class="col-tags" id="col-map-tags"></div>
       </div>
-      <div class="diag-sec" style="margin-bottom:0;">
+      <div class="diag-sec">
         <div class="diag-sec-title">Columnas de días reconstruidas (Día_Subcolumna_Fecha)</div>
         <div class="col-tags" id="day-col-tags"></div>
       </div>
@@ -201,17 +194,17 @@ tr:hover td{background:var(--bg3);}
   <div class="log" id="log-diag"></div>
   <div class="panel-footer">
     <button class="btn" onclick="navStep(0)">← Atrás</button>
-    <button class="btn btn-primary" id="btn-confirm-norm" onclick="runNorm()" disabled>Confirmar y normalizar →</button>
+    <button class="btn btn-primary" id="btn-norm" onclick="runNorm()" disabled>Confirmar y normalizar →</button>
   </div>
 </div>
 
 <!-- P2: NORMALIZACIÓN -->
 <div class="panel" id="p2">
-  <div class="sec">TADA — long format (una fila por piloto × día)</div>
+  <div class="sec">TADA — long format (7 filas por piloto)</div>
   <div id="tbl-tada-norm"></div>
-  <div class="sec" style="margin-top:8px;">Malla Pibox</div>
+  <div class="sec" style="margin-top:6px;">Malla Pibox</div>
   <div id="tbl-malla-norm"></div>
-  <div class="sec" style="margin-top:8px;">Log normalización</div>
+  <div class="sec" style="margin-top:6px;">Log</div>
   <div class="log" id="log-norm"></div>
   <div class="panel-footer">
     <button class="btn" onclick="navStep(1)">← Atrás</button>
@@ -229,7 +222,7 @@ tr:hover td{background:var(--bg3);}
   <div class="stats" id="stats-conc"></div>
   <div class="sec">Resultado por fila TADA</div>
   <div id="tbl-conc"></div>
-  <div class="sec" style="margin-top:8px;">Log de inconsistencias</div>
+  <div class="sec" style="margin-top:6px;">Log de inconsistencias</div>
   <div class="log" id="log-conc"></div>
   <div class="panel-footer">
     <button class="btn" onclick="navStep(2)">← Atrás</button>
@@ -239,7 +232,7 @@ tr:hover td{background:var(--bg3);}
 
 <!-- P4: DISTRIBUCIÓN -->
 <div class="panel" id="p4">
-  <div class="info-box">Distribución <code>equitativa</code> entre bookings del grupo, ordenados por <code>hora_inicio</code>. Valores semanales (bonos, tareas, garantizado, ajustes) → <code>solo primer booking</code> del grupo. <code>SIN_MALLA</code> → excluidos del output.</div>
+  <div class="info-box">Distribución <code>equitativa</code> entre bookings del grupo ordenados por <code>hora_inicio</code>. Valores semanales (bonos, tareas, garantizado, ajustes) → <code>solo primer booking</code> del grupo. <code>SIN_MALLA</code> → excluidos del output.</div>
   <div class="stats" id="stats-dist"></div>
   <div class="sec">Dataset a nivel de booking</div>
   <div id="tbl-dist"></div>
@@ -258,14 +251,14 @@ tr:hover td{background:var(--bg3);}
   <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:16px;">
     <div class="t-grid" style="margin-bottom:12px;">
       <div class="t-item"><label>Autor</label><input type="text" id="t-autor" placeholder="ops@empresa.com"/></div>
-      <div class="t-item"><label>Nota de cambio</label><input type="text" id="t-nota" placeholder="ej: Ajuste paquete Q2"/></div>
+      <div class="t-item"><label>Nota de cambio</label><input type="text" id="t-nota" placeholder="ej: Ajuste Q2"/></div>
       <div class="t-item" style="display:flex;align-items:flex-end;gap:8px;">
         <button class="btn" onclick="resetTarifas()" style="flex:1;">Descartar</button>
         <button class="btn btn-primary" onclick="publishTariff()" style="flex:1;">Publicar</button>
       </div>
     </div>
   </div>
-  <div class="sec" style="margin-top:16px;">Historial de versiones</div>
+  <div class="sec" style="margin-top:16px;">Historial</div>
   <div id="tariff-history"></div>
   <div class="panel-footer">
     <button class="btn" onclick="navStep(4)">← Atrás</button>
@@ -278,7 +271,7 @@ tr:hover td{background:var(--bg3);}
   <div class="stats" id="stats-trump"></div>
   <div class="sec">Template Trump — 1 fila por BOOKING_ID</div>
   <div id="tbl-trump"></div>
-  <div class="sec" style="margin-top:8px;">Log final</div>
+  <div class="sec" style="margin-top:6px;">Log final</div>
   <div class="log" id="log-trump"></div>
   <div class="panel-footer">
     <button class="btn" onclick="navStep(5)">← Atrás</button>
@@ -294,38 +287,28 @@ tr:hover td{background:var(--bg3);}
 // ══════════════════════════════════════════════════
 // CONSTANTES
 // ══════════════════════════════════════════════════
-const DAYS_ES = ['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo'];
-const SUBMETRICS = ['paquetes','incentivos','cancelados'];
+const DAYS_ES = new Set(['LUNES','MARTES','MIÉRCOLES','MIERCOLES','JUEVES','VIERNES','SÁBADO','SABADO','DOMINGO']);
 const COMISION = 0.15;
-const LS_TAR  = 'pibox:tariff_v3';
-const LS_RUNS = 'pibox:runs_v3';
+const LS_TAR   = 'pibox:tariff_v4';
+const LS_RUNS  = 'pibox:runs_v4';
 const PAGE_SIZE = 50;
-
 const TARIFF_SCHEMA = [
-  {key:'valor_paquete',     label:'Valor paquete (COP)',            def:2500, step:100},
-  {key:'valor_incentivo',   label:'Valor incentivo unitario (COP)', def:5000, step:100},
-  {key:'valor_cancelado',   label:'Valor cancelado (COP)',          def:1200, step:100},
-  {key:'valor_tarea',       label:'Valor tarea adicional (COP)',    def:3500, step:100},
-  {key:'margen_cliente_pct',label:'Margen cobro cliente (%)',       def:22,   step:1},
+  {key:'valor_paquete',    label:'Valor paquete (COP)',            def:2500,step:100},
+  {key:'valor_incentivo',  label:'Valor incentivo unitario (COP)', def:5000,step:100},
+  {key:'valor_cancelado',  label:'Valor cancelado (COP)',          def:1200,step:100},
+  {key:'valor_tarea',      label:'Valor tarea adicional (COP)',    def:3500,step:100},
+  {key:'margen_cliente_pct',label:'Margen cobro cliente (%)',      def:22,  step:1},
 ];
 
 // ══════════════════════════════════════════════════
-// ESTADO GLOBAL
+// ESTADO
 // ══════════════════════════════════════════════════
-let tadaRaw   = [];   // filas crudas del Excel TADA (array de arrays)
-let mallaRaw  = [];   // filas de la malla (array de objetos)
-let colMap    = [];   // mapeo de columnas construido por el parser
-let tadaNorm  = [];   // TADA normalizado a long format
-let concResult= [];
-let distResult= [];
-let trumpRows = [];
-let loadedTada=false, loadedMalla=false;
-let maxStep=0, curStep=0;
-let tariffStore=null, currentEdits={};
-let pageStates={};
+let tadaRaw=[], mallaRaw=[], colMap=[], tadaNorm=[], concResult=[], distResult=[], trumpRows=[];
+let loadedTada=false, loadedMalla=false, maxStep=0;
+let tariffStore=null, currentEdits={}, pageStates={};
 
 // ══════════════════════════════════════════════════
-// UTILIDADES GENERALES
+// UTILIDADES
 // ══════════════════════════════════════════════════
 const normStr = s =>
   String(s||'').trim().replace(/\s+/g,' ')
@@ -336,358 +319,285 @@ const cop = n => {
   return (r<0?'-$':'$') + Math.abs(r).toLocaleString('es-CO');
 };
 
-const fmtDateDisplay = iso => {
+const fmtDT = iso => {
   try{ return new Date(iso).toLocaleString('es-CO',{dateStyle:'short',timeStyle:'short'}); }
   catch{ return iso; }
 };
 
-function addLog(id, msg, cls='info'){
-  const el = document.getElementById(id);
+function addLog(id,msg,cls='info'){
+  const el=document.getElementById(id);
   if(!el) return;
-  el.innerHTML += `<div class="${cls}">${msg}</div>`;
-  el.scrollTop  = el.scrollHeight;
+  el.innerHTML+=`<div class="${cls}">${msg}</div>`;
+  el.scrollTop=el.scrollHeight;
 }
-
 function clearLog(id){ const el=document.getElementById(id); if(el) el.innerHTML=''; }
-
 function toast(msg){
-  const el = document.getElementById('toast');
-  el.textContent = msg; el.classList.add('show');
-  clearTimeout(el._t); el._t = setTimeout(()=>el.classList.remove('show'), 2400);
+  const el=document.getElementById('toast');
+  el.textContent=msg; el.classList.add('show');
+  clearTimeout(el._t); el._t=setTimeout(()=>el.classList.remove('show'),2400);
 }
 
 // ══════════════════════════════════════════════════
-// NORMALIZACIÓN DE FECHAS → YYYY-MM-DD
+// PARSER DE FECHAS → YYYY-MM-DD
+// Maneja: serial Excel, datetime string, DD/MM/YYYY, DD/MM
 // ══════════════════════════════════════════════════
 function parseDate(raw){
-  if(raw === null || raw === undefined || raw === '') return null;
-
-  // Número serial de Excel
-  if(typeof raw === 'number'){
+  if(raw===null||raw===undefined||raw==='') return null;
+  // Número serial Excel
+  if(typeof raw==='number'){
     try{
-      const d = XLSX.SSF.parse_date_code(raw);
-      if(d && d.y > 1900)
+      const d=XLSX.SSF.parse_date_code(raw);
+      if(d&&d.y>1900)
         return `${d.y}-${String(d.m).padStart(2,'0')}-${String(d.d).padStart(2,'0')}`;
     }catch{}
   }
-
-  const s = String(raw).trim();
-  if(!s || s === '—') return null;
-
-  // Ya es YYYY-MM-DD
-  if(/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-
-  // DD/MM/YYYY  o  DD-MM-YYYY  o  DD.MM.YYYY
-  const m1 = s.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})$/);
+  const s=String(raw).trim();
+  if(!s||s==='—') return null;
+  // Ya YYYY-MM-DD
+  if(/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10);
+  // DD/MM/YYYY o DD-MM-YYYY
+  const m1=s.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})$/);
   if(m1){
-    let y = parseInt(m1[3]);
-    if(y < 100) y += 2000;
-    const d = parseInt(m1[1]), mo = parseInt(m1[2]);
-    // Si primer número > 12 → definitivamente DD/MM
-    if(d > 12)
-      return `${y}-${String(mo).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-    // Asumir DD/MM (convención Colombia)
-    return `${y}-${String(mo).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    let y=parseInt(m1[3]); if(y<100) y+=2000;
+    return `${y}-${String(parseInt(m1[2])).padStart(2,'0')}-${String(parseInt(m1[1])).padStart(2,'0')}`;
   }
-
-  // Solo DD/MM → asumir año actual
-  const m2 = s.match(/^(\d{1,2})[\/\-\.](\d{1,2})$/);
+  // DD/MM sin año
+  const m2=s.match(/^(\d{1,2})[\/\-\.](\d{1,2})$/);
   if(m2){
-    const y = new Date().getFullYear();
+    const y=new Date().getFullYear();
     return `${y}-${String(parseInt(m2[2])).padStart(2,'0')}-${String(parseInt(m2[1])).padStart(2,'0')}`;
   }
-
-  return s; // devolver tal cual si no se pudo parsear
+  return s;
 }
 
 // ══════════════════════════════════════════════════
-// FORWARD-FILL DE UNA FILA (horizontal)
-// Reemplaza celdas vacías con el último valor no vacío
-// ══════════════════════════════════════════════════
-function forwardFill(row){
-  const out = [...row];
-  let last = '';
-  for(let i=0; i<out.length; i++){
-    const v = String(out[i]||'').trim();
-    if(v) last = v;
-    else  out[i] = last;
-  }
-  return out;
-}
-
-// ══════════════════════════════════════════════════
-// DETECCIÓN DE DÍA VÁLIDO
-// ══════════════════════════════════════════════════
-function isValidDay(v){
-  return DAYS_ES.includes(String(v||'').trim());
-}
-
-// ══════════════════════════════════════════════════
-// DETECCIÓN DE SUBMETRICA VÁLIDA
-// ══════════════════════════════════════════════════
-function normalizeSubmetric(v){
-  const s = normStr(v||'');
-  if(s.startsWith('paq')) return 'paquetes';
-  if(s.startsWith('inc')) return 'incentivos';
-  if(s.startsWith('can')) return 'cancelados';
-  return null;
-}
-
-// ══════════════════════════════════════════════════
-// DETECCIÓN DE COLUMNA FIJA (por nombre)
-// ══════════════════════════════════════════════════
-function detectFixedCol(v0, v1){
-  // Buscar en f0 o f1, case-insensitive
-  for(const v of [v0, v1]){
-    const s = normStr(v||'');
-    if(s === 'ciudad' || s === 'city') return 'ciudad';
-    if(s.includes('seller') || s === 'tienda' || s.includes('punto de venta')) return 'seller';
-    if(s === 'domiciliario' || s === 'piloto' || s === 'nombre' || s === 'conductor' || s.includes('driver')) return 'piloto';
-  }
-  return null;
-}
-
-// ══════════════════════════════════════════════════
-// DETECCIÓN DE COLUMNA EXTRA (valores semanales)
-// ══════════════════════════════════════════════════
-function detectExtraCol(v0, v1){
-  for(const v of [v0, v1]){
-    const s = normStr(v||'');
-    if(!s) continue;
-    if(s.includes('tarea'))      return 'tareas';
-    if(s.includes('garantiza'))  return 'garantizado';
-    if(s.includes('bono'))       return 'bonos';
-    if(s.includes('ajuste') || s.includes('novedad')) return 'ajustes';
-  }
-  return null;
-}
-
-// ══════════════════════════════════════════════════
-// ★ PARSER CENTRAL — buildColMap
+// ★ PARSER TADA — NÚCLEO DEL SISTEMA
 //
-// Lógica:
-// 1. Leer filas 0,1,2 sin forward-fill → mostrar raw
-// 2. Aplicar forward-fill a cada fila → h0ff, h1ff, h2ff
-// 3. Recorrer columna por columna:
-//    a) Si h0ff es un día válido Y h1ff es paquetes/incentivos/cancelados
-//       → columna de día → registrar con fecha de h2ff
-//    b) Si detectFixedCol(h0raw, h1raw) → columna fija
-//    c) Si detectExtraCol(h0raw, h1raw) → columna extra
-//    d) Resto → ignorar
-// 4. No asumir ninguna posición fija
+// Estructura real confirmada con archivo real:
+//   Fila 0: días (LUNES…DOMINGO) — solo en la 1ª col de cada grupo de 3
+//   Fila 1: subcolumnas (Paquetes/Incentivos/Cancelados) en cada col 3–23
+//           + nombres de extras (Tareas, etc.) al final
+//   Fila 2: CIUDAD/SELLER/DOMICILIARIOS en cols 0–(firstDayCol-1)
+//           + fechas datetime en cols del bloque días
+//           + nombres de extras semanales al final
+//   Fila 3+: datos de pilotos
+//
+// Algoritmo:
+//   1. Detectar dinámicamente la primera columna con un día válido (firstDayCol)
+//   2. Columnas 0..(firstDayCol-1): fijas — detectar por nombre en fila 2
+//   3. Columnas firstDayCol..(firstDayCol+20): bloque de días
+//      - El día de la columna i = fila0[ firstDayCol + floor((i-firstDayCol)/3)*3 ]
+//      - La submetrica = fila1[i]
+//      - La fecha = parseDate(fila2[i])
+//   4. Columnas (firstDayCol+21)..: extras semanales — nombre en fila 2
 // ══════════════════════════════════════════════════
 function buildColMap(raw){
-  if(!raw || raw.length < 3) return [];
+  if(!raw||raw.length<3) return {map:[], firstDayCol:-1, error:'Archivo con menos de 3 filas'};
 
-  const nCols = Math.max(...raw.slice(0,5).map(r=>r.length));
+  const maxCols = Math.max(...raw.slice(0,4).map(r=>Array.isArray(r)?r.length:0));
+  // Leer las 3 filas de header
+  const h0 = Array.from({length:maxCols},(_,i)=>raw[0]?.[i]??'');
+  const h1 = Array.from({length:maxCols},(_,i)=>raw[1]?.[i]??'');
+  const h2 = Array.from({length:maxCols},(_,i)=>raw[2]?.[i]??'');
 
-  // Filas originales (sin ffill) — rellenadas a nCols
-  const h0raw = Array.from({length:nCols}, (_,i) => String(raw[0][i]||'').trim());
-  const h1raw = Array.from({length:nCols}, (_,i) => String(raw[1][i]||'').trim());
-  const h2raw = Array.from({length:nCols}, (_,i) => raw[2][i] !== undefined ? raw[2][i] : '');
-
-  // Forward-fill horizontal
-  const h0ff = forwardFill(h0raw);
-  const h1ff = forwardFill(h1raw);
-  // h2 NO hace forward-fill — cada subcolumna tiene su propia fecha (o están fusionadas)
-  // pero sí propagamos dentro del mismo grupo de día
-  // Construir h2ff: forward-fill SOLO dentro de bloques del mismo día en h0ff
-  const h2ff = [...h2raw.map(v => String(v||'').trim())];
-  let lastDayForDate = '', lastDate = '';
-  for(let i=0; i<nCols; i++){
-    const day = h0ff[i];
-    if(day !== lastDayForDate){ lastDayForDate=day; lastDate=''; }
-    const v = h2ff[i];
-    if(v) lastDate = v;
-    else  h2ff[i]  = lastDate;
+  // ── PASO 1: Detectar firstDayCol dinámicamente ──────────────
+  let firstDayCol = -1;
+  for(let i=0;i<maxCols;i++){
+    const v = String(h0[i]||'').trim().toUpperCase()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+    // Comparar también sin acento
+    if(DAYS_ES.has(String(h0[i]||'').trim().toUpperCase()) ||
+       DAYS_ES.has(v)){
+      firstDayCol = i;
+      break;
+    }
   }
+  if(firstDayCol<0)
+    return {map:[], firstDayCol:-1, error:'No se encontró ningún día válido en la fila 0'};
 
   const map = [];
 
-  for(let i=0; i<nCols; i++){
-    const v0ff = h0ff[i];
-    const v1ff = h1ff[i];
-    const v0r  = h0raw[i];
-    const v1r  = h1raw[i];
-    const v2   = h2ff[i];
-
-    // ── Columna de día ──────────────────────────────
-    if(isValidDay(v0ff)){
-      const metric = normalizeSubmetric(v1ff);
-      if(metric){
-        const fechaIso = parseDate(v2) || v2 || '';
-        map.push({t:'d', dia:v0ff, m:metric, fecha:fechaIso, i});
-        continue;
-      }
-      // Día detectado pero submetrica no reconocida → registrar como desconocida
-      if(v1ff){
-        map.push({t:'?', dia:v0ff, raw1:v1ff, i});
-      }
-      continue;
-    }
-
-    // ── Columna fija ────────────────────────────────
-    const fixedName = detectFixedCol(v0r, v1r);
-    if(fixedName){
-      map.push({t:'f', n:fixedName, i});
-      continue;
-    }
-
-    // ── Columna extra/semanal ───────────────────────
-    const extraName = detectExtraCol(v0r, v1r);
-    if(extraName){
-      map.push({t:'e', n:extraName, i});
-      continue;
-    }
-
-    // Ignorar columnas sin nombre o sin clasificar
+  // ── PASO 2: Columnas fijas (antes del bloque de días) ───────
+  // Detectadas por nombre en fila 2 (case insensitive)
+  for(let i=0;i<firstDayCol;i++){
+    const v2 = normStr(String(h2[i]||''));
+    let name = null;
+    if(v2==='ciudad'||v2==='city')           name='ciudad';
+    else if(v2.includes('seller')||v2.includes('tienda')||v2.includes('punto')) name='seller';
+    else if(v2.includes('domicili')||v2==='piloto'||v2.includes('nombre')||v2.includes('conductor')) name='piloto';
+    if(name) map.push({t:'f', n:name, i});
   }
 
-  return map;
+  // ── PASO 3: Bloque de días (21 columnas: 7 días × 3 sub) ───
+  // El día aparece solo en la 1ª col de cada grupo de 3
+  // Para columna i: día = h0[ firstDayCol + floor((i-firstDayCol)/3)*3 ]
+  for(let i=firstDayCol; i<firstDayCol+21 && i<maxCols; i++){
+    const groupStart = firstDayCol + Math.floor((i-firstDayCol)/3)*3;
+    const diaRaw = String(h0[groupStart]||'').trim();
+    // Normalizar nombre del día (quitar tildes para consistencia interna)
+    const dia = diaRaw; // mantener original para display, normalizar al comparar
+    const subRaw = String(h1[i]||'').trim();
+    const sub = normStr(subRaw);
+    let metric = null;
+    if(sub.startsWith('paq')) metric='paquetes';
+    else if(sub.startsWith('inc')) metric='incentivos';
+    else if(sub.startsWith('can')) metric='cancelados';
+
+    if(!metric) continue; // submetrica no reconocida, ignorar
+
+    const fechaRaw = h2[i];
+    const fecha = parseDate(fechaRaw) || '';
+    map.push({t:'d', dia, metric, fecha, i});
+  }
+
+  // ── PASO 4: Columnas extra/semanales (después del bloque) ──
+  for(let i=firstDayCol+21; i<maxCols; i++){
+    // Nombre puede estar en h1 o h2
+    const v1 = normStr(String(h1[i]||''));
+    const v2 = normStr(String(h2[i]||''));
+    const v  = v1||v2;
+    if(!v) continue;
+    let name = null;
+    if(v.includes('tarea'))          name='tareas';
+    else if(v.includes('garantiza')) name='garantizado';
+    else if(v.includes('bono'))      name='bonos';
+    else if(v.includes('ajuste')||v.includes('novedad')) name='ajustes';
+    if(name) map.push({t:'e', n:name, i});
+  }
+
+  return {map, firstDayCol, error:null};
 }
 
 // ══════════════════════════════════════════════════
-// TABLAS CON PAGINACIÓN
+// TABLAS CON PAGINACIÓN — independientes entre sí
 // ══════════════════════════════════════════════════
-const COP_COLS = new Set(['garantizado','bonos','ajustes',
+const COP_SET = new Set(['garantizado','bonos','ajustes',
   'COMPANY_FINAL_COST','ADDITIONAL_COMPANY_FINAL_COST',
   'FINAL_COST','ADDITIONAL_FINAL_COST']);
-const NUM_COLS = new Set(['paquetes','incentivos','cancelados','tareas',
+const NUM_SET = new Set(['paquetes','incentivos','cancelados','tareas',
   'paquetes_dist','incentivos_dist','cancelados_dist','tareas_dist',
   'n_bookings','PACKAGES_COUNT','IS_PER_HOUR']);
 
-function mkTablePaged(containerId, rows, cols, heads, rowClassFn, tid){
-  const el = document.getElementById(containerId);
+function mkTable(containerId, rows, cols, heads, rowFn, tid){
+  const el=document.getElementById(containerId);
   if(!el) return;
-  if(!rows || !rows.length){
+  if(!rows||!rows.length){
     el.innerHTML='<div style="padding:12px;color:var(--text3);font-size:11px;font-family:var(--mono);">Sin datos</div>';
     return;
   }
-  if(!pageStates[tid]) pageStates[tid] = 0;
-  // Guardar datos para repaginación
-  el._data = {rows, cols, heads, rowClassFn, tid};
-  renderPage(el);
+  if(!pageStates[tid]) pageStates[tid]=0;
+  el._d={rows,cols,heads,rowFn,tid};
+  renderTblPage(el);
 }
 
-function renderPage(el){
-  const {rows, cols, heads, rowClassFn, tid} = el._data;
-  const page  = pageStates[tid] || 0;
-  const total = rows.length;
-  const start = page * PAGE_SIZE;
-  const end   = Math.min(start + PAGE_SIZE, total);
-  const slice = rows.slice(start, end);
-  const totalPages = Math.ceil(total / PAGE_SIZE);
+function renderTblPage(el){
+  const {rows,cols,heads,rowFn,tid}=el._d;
+  const page=pageStates[tid]||0, total=rows.length;
+  const start=page*PAGE_SIZE, end=Math.min(start+PAGE_SIZE,total);
+  const totalPages=Math.ceil(total/PAGE_SIZE);
 
-  let html = `<div class="tbl-container">
+  let html=`<div class="tbl-container">
     <div class="tbl-header">
       <span class="tbl-counter">Mostrando <strong>${start+1}–${end}</strong> de <strong>${total}</strong> filas</span>
     </div>
     <div class="tbl-wrap"><table>
     <thead><tr>${heads.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>`;
 
-  slice.forEach(r => {
-    const rc = rowClassFn ? rowClassFn(r) : '';
-    html += `<tr${rc}>${cols.map(c => {
-      const v = r[c];
+  rows.slice(start,end).forEach(r=>{
+    const rc=rowFn?rowFn(r):'';
+    html+=`<tr${rc}>${cols.map(c=>{
+      const v=r[c];
       if(c==='nivel_confianza'){
-        const cl = v==='HIGH'?'b-high':v==='MEDIUM'?'b-med':v==='LOW'?'b-low':'b-sin';
+        const cl=v==='HIGH'?'b-high':v==='MEDIUM'?'b-med':v==='LOW'?'b-low':'b-sin';
         return `<td><span class="badge ${cl}">${v||'—'}</span></td>`;
       }
       if(c==='ciudad') return `<td><span class="city">${v||'—'}</span></td>`;
-      if(COP_COLS.has(c) && typeof v==='number')
-        return `<td class="num cop">${v!==0?cop(v):'—'}</td>`;
-      if(NUM_COLS.has(c) && typeof v==='number')
-        return `<td class="num">${v}</td>`;
+      if(COP_SET.has(c)&&typeof v==='number') return `<td class="num cop">${v!==0?cop(v):'—'}</td>`;
+      if(NUM_SET.has(c)&&typeof v==='number') return `<td class="num">${v}</td>`;
       return `<td>${v??'—'}</td>`;
     }).join('')}</tr>`;
   });
 
-  html += `</tbody></table></div>`;
-
-  if(totalPages > 1){
-    html += `<div class="tbl-pagination">
+  html+=`</tbody></table></div>`;
+  if(totalPages>1){
+    html+=`<div class="tbl-pagination">
       <span class="pag-info">Página ${page+1} de ${totalPages}</span>
       <div class="pag-btns">
-        <button class="pag-btn" onclick="changePage('${tid}',${page-1})" ${page===0?'disabled':''}>← Anterior</button>
-        <button class="pag-btn" onclick="changePage('${tid}',${page+1})" ${page>=totalPages-1?'disabled':''}>Siguiente →</button>
-      </div>
-    </div>`;
+        <button class="pag-btn" onclick="chPage('${tid}',${page-1})" ${page===0?'disabled':''}>← Anterior</button>
+        <button class="pag-btn" onclick="chPage('${tid}',${page+1})" ${page>=totalPages-1?'disabled':''}>Siguiente →</button>
+      </div></div>`;
   }
-  html += '</div>';
-  el.innerHTML = html;
+  html+='</div>';
+  el.innerHTML=html;
 }
 
-function changePage(tid, newPage){
-  pageStates[tid] = newPage;
-  const ids = ['tbl-tada-norm','tbl-malla-norm','tbl-conc','tbl-dist','tbl-trump'];
-  for(const cid of ids){
-    const el = document.getElementById(cid);
-    if(el && el._data && el._data.tid === tid){ renderPage(el); break; }
-  }
+function chPage(tid,pg){
+  pageStates[tid]=pg;
+  ['tbl-tada-norm','tbl-malla-norm','tbl-conc','tbl-dist','tbl-trump'].forEach(cid=>{
+    const el=document.getElementById(cid);
+    if(el&&el._d&&el._d.tid===tid){ renderTblPage(el); }
+  });
 }
 
 // ══════════════════════════════════════════════════
 // STEPPER
 // ══════════════════════════════════════════════════
 function navStep(i){
-  if(i > maxStep) return;
-  document.querySelectorAll('.panel').forEach((p,j) => p.classList.toggle('active', j===i));
-  document.querySelectorAll('.step').forEach((s,j) => {
+  if(i>maxStep) return;
+  document.querySelectorAll('.panel').forEach((p,j)=>p.classList.toggle('active',j===i));
+  document.querySelectorAll('.step').forEach((s,j)=>{
     s.classList.remove('active','done','locked');
     if(j===i) s.classList.add('active');
     else if(j<i) s.classList.add('done');
     else s.classList.add('locked');
   });
-  curStep = i;
   if(i===5) renderTariffPanel();
 }
 function unlock(i){ if(i>maxStep) maxStep=i; navStep(i); }
 
 // ══════════════════════════════════════════════════
-// TARIFAS
+// TARIFAS — localStorage persistente
 // ══════════════════════════════════════════════════
 function initTariffs(){
-  try{ const r=localStorage.getItem(LS_TAR); tariffStore=r?JSON.parse(r):null; }
-  catch{ tariffStore=null; }
+  try{ const r=localStorage.getItem(LS_TAR); tariffStore=r?JSON.parse(r):null; }catch{ tariffStore=null; }
   if(!tariffStore){
     const defs={}; TARIFF_SCHEMA.forEach(s=>defs[s.key]=s.def);
-    tariffStore={active_version:'v1',versions:[{version:'v1',fecha_creacion:new Date().toISOString(),autor:'sistema',nota:'Versión inicial',values:{...defs}}]};
+    tariffStore={active_version:'v1',versions:[{version:'v1',fecha_creacion:new Date().toISOString(),
+      autor:'sistema',nota:'Versión inicial',values:{...defs}}]};
     saveTariffs();
   }
-  currentEdits = {...getAV().values};
-  updateNav();
+  currentEdits={...getAV().values};
+  document.getElementById('nav-version').textContent=`Tarifas ${getAV().version}`;
 }
 function saveTariffs(){ try{ localStorage.setItem(LS_TAR,JSON.stringify(tariffStore)); }catch(e){} }
 function getAV(){ return tariffStore.versions.find(v=>v.version===tariffStore.active_version); }
 function getNextVer(){ const n=tariffStore.versions.map(v=>parseInt(v.version.replace('v',''))||0); return 'v'+(Math.max(...n)+1); }
-function updateNav(){ document.getElementById('nav-version').textContent = `Tarifas ${getAV().version}`; }
 
 function renderTariffPanel(){
-  const av = getAV();
-  document.getElementById('tariff-info').innerHTML =
-    `Versión activa: <code>${av.version}</code> · Creada: <code>${fmtDateDisplay(av.fecha_creacion)}</code> · Autor: <code>${av.autor}</code>${av.nota?' · '+av.nota:''}`;
-  document.getElementById('tariff-fields').innerHTML = TARIFF_SCHEMA.map(s=>`
+  const av=getAV();
+  document.getElementById('tariff-info').innerHTML=
+    `Versión activa: <code>${av.version}</code> · <code>${fmtDT(av.fecha_creacion)}</code> · Autor: <code>${av.autor}</code>${av.nota?' · '+av.nota:''}`;
+  document.getElementById('tariff-fields').innerHTML=TARIFF_SCHEMA.map(s=>`
     <div class="t-item"><label>${s.label}</label>
     <input type="number" value="${currentEdits[s.key]??s.def}" step="${s.step}"
       oninput="currentEdits['${s.key}']=parseFloat(this.value)||0"/></div>`).join('');
-  const hist = [...tariffStore.versions].reverse().slice(0,5);
-  document.getElementById('tariff-history').innerHTML = hist.map(v=>{
-    const isA = v.version===tariffStore.active_version;
-    return `<div class="ver-card${isA?' active-ver':''}">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-        <span style="font-family:var(--mono);font-size:12px;font-weight:600;">${v.version}
-          ${isA?'<span class="badge b-active" style="margin-left:6px;font-size:9px;">ACTIVA</span>':''}</span>
-        <span style="font-size:10px;color:var(--text3);">${fmtDateDisplay(v.fecha_creacion)} · ${v.autor}</span>
-      </div>
-      <div style="display:flex;flex-wrap:wrap;gap:5px;">${TARIFF_SCHEMA.map(s=>`
-        <span style="font-size:10px;background:var(--bg3);padding:2px 8px;border-radius:3px;font-family:var(--mono);color:var(--text2);">
-          ${s.key}: <span style="color:var(--text);">${s.key.includes('pct')?v.values[s.key]+'%':cop(v.values[s.key])}</span>
-        </span>`).join('')}</div>
-      ${!isA?`<div style="margin-top:8px;"><button class="btn btn-sm" onclick="activateVersion('${v.version}')">Activar</button></div>`:''}
-    </div>`;
-  }).join('');
+  document.getElementById('tariff-history').innerHTML=
+    [...tariffStore.versions].reverse().slice(0,5).map(v=>{
+      const isA=v.version===tariffStore.active_version;
+      return `<div class="ver-card${isA?' active-ver':''}">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+          <span style="font-family:var(--mono);font-size:12px;font-weight:600;">${v.version}
+            ${isA?'<span class="badge b-active" style="margin-left:6px;font-size:9px;">ACTIVA</span>':''}</span>
+          <span style="font-size:10px;color:var(--text3);">${fmtDT(v.fecha_creacion)} · ${v.autor}</span>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:5px;">${TARIFF_SCHEMA.map(s=>`
+          <span style="font-size:10px;background:var(--bg3);padding:2px 8px;border-radius:3px;font-family:var(--mono);color:var(--text2);">
+            ${s.key}: <span style="color:var(--text);">${s.key.includes('pct')?v.values[s.key]+'%':cop(v.values[s.key])}</span>
+          </span>`).join('')}</div>
+        ${!isA?`<div style="margin-top:8px;"><button class="btn btn-sm" onclick="activateVersion('${v.version}')">Activar</button></div>`:''}
+      </div>`;
+    }).join('');
 }
-
 function publishTariff(){
   const av=getAV();
   if(!TARIFF_SCHEMA.some(s=>currentEdits[s.key]!==av.values[s.key])){ toast('Sin cambios'); return; }
@@ -697,13 +607,14 @@ function publishTariff(){
   tariffStore.versions.push({version:nv,fecha_creacion:new Date().toISOString(),autor,nota,values:{...currentEdits}});
   tariffStore.active_version=nv; saveTariffs();
   document.getElementById('t-autor').value=''; document.getElementById('t-nota').value='';
-  updateNav(); renderTariffPanel(); toast(`✓ ${nv} publicada`);
+  document.getElementById('nav-version').textContent=`Tarifas ${nv}`;
+  renderTariffPanel(); toast(`✓ ${nv} publicada`);
 }
 function resetTarifas(){ currentEdits={...getAV().values}; renderTariffPanel(); toast('Cambios descartados'); }
 function activateVersion(ver){
-  tariffStore.active_version=ver;
-  currentEdits={...tariffStore.versions.find(v=>v.version===ver).values};
-  saveTariffs(); updateNav(); renderTariffPanel(); toast(`✓ ${ver} activada`);
+  tariffStore.active_version=ver; currentEdits={...tariffStore.versions.find(v=>v.version===ver).values};
+  saveTariffs(); document.getElementById('nav-version').textContent=`Tarifas ${ver}`;
+  renderTariffPanel(); toast(`✓ ${ver} activada`);
 }
 
 // ══════════════════════════════════════════════════
@@ -712,222 +623,207 @@ function activateVersion(ver){
 function doDrag(e,src,on){ e.preventDefault(); document.getElementById('dz-'+src).classList.toggle('drag',!!on); }
 function doDrop(e,src){ e.preventDefault(); doDrag(e,src,0); if(e.dataTransfer.files[0]) loadFile(e.dataTransfer.files[0],src); }
 
-function loadFile(file, src){
-  const reader = new FileReader();
-  reader.onload = e => {
-    const wb = XLSX.read(e.target.result, {type:'array', raw:true, cellDates:false});
-    const ws = wb.Sheets[wb.SheetNames[0]];
-
-    if(src === 'tada'){
-      // Leer como array de arrays con raw:true para preservar valores numéricos de fechas
-      tadaRaw = XLSX.utils.sheet_to_json(ws, {header:1, defval:'', raw:true, blankrows:false});
-      loadedTada = true;
-      document.getElementById('lbl-tada').textContent = file.name + ' ✓';
+function loadFile(file,src){
+  const reader=new FileReader();
+  reader.onload=e=>{
+    const wb=XLSX.read(e.target.result,{type:'array',raw:true,cellDates:false});
+    const ws=wb.Sheets[wb.SheetNames[0]];
+    if(src==='tada'){
+      // raw:true → valores sin procesar; queremos strings para fechas numéricas → raw:false para h2
+      // Leemos dos veces: raw=true para h0/h1, raw=false para h2 (fechas legibles)
+      const rawTrue  = XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:true, blankrows:false});
+      const rawFalse = XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:false,blankrows:false});
+      // Combinar: usar rawFalse para fila 2 (fechas) y rawTrue para todo lo demás
+      tadaRaw = rawTrue.map((row,ri) =>
+        ri===2 ? (rawFalse[ri]||row) : row
+      );
+      loadedTada=true;
+      document.getElementById('lbl-tada').textContent=file.name+' ✓';
       document.getElementById('dz-tada').classList.add('loaded');
+      // Lanzar diagnóstico inmediatamente — independiente de la malla
+      setTimeout(runDiagnostico,200);
     } else {
       // Malla: leer como objetos, normalizar fechas
-      mallaRaw = XLSX.utils.sheet_to_json(ws, {defval:'', raw:false});
-      mallaRaw = mallaRaw.map(row => {
-        const nr = {...row};
+      const rawObj=XLSX.utils.sheet_to_json(ws,{defval:'',raw:false});
+      mallaRaw=rawObj.map(row=>{
+        const nr={...row};
         for(const k of Object.keys(nr)){
-          if(/fecha/i.test(k)){
-            const parsed = parseDate(nr[k]);
-            if(parsed) nr[k] = parsed;
-          }
+          if(/fecha/i.test(k)){ const p=parseDate(nr[k]); if(p) nr[k]=p; }
         }
         return nr;
       });
-      loadedMalla = true;
-      document.getElementById('lbl-malla').textContent = file.name + ' ✓';
+      loadedMalla=true;
+      document.getElementById('lbl-malla').textContent=file.name+' ✓';
       document.getElementById('dz-malla').classList.add('loaded');
     }
-    checkReady();
+    updateLoadStatus();
   };
   reader.readAsArrayBuffer(file);
 }
 
-function checkReady(){
-  if(loadedTada && loadedMalla){
-    document.getElementById('load-status').innerHTML =
-      '<span style="color:var(--green)">✓ Ambos archivos listos — ejecutando diagnóstico...</span>';
-    setTimeout(runDiagnostico, 300);
-  } else {
-    document.getElementById('load-status').textContent =
-      'Falta: ' + (loadedTada?'':'TADA ') + (loadedMalla?'':'Malla Pibox');
-  }
+function updateLoadStatus(){
+  const status=document.getElementById('load-status');
+  if(loadedTada&&loadedMalla)
+    status.innerHTML='<span style="color:var(--green)">✓ Ambos archivos listos</span>';
+  else
+    status.textContent='Falta: '+(loadedTada?'':'TADA ')+(loadedMalla?'':'Malla Pibox');
 }
 
 // ══════════════════════════════════════════════════
 // PASO 1: DIAGNÓSTICO
+// Independiente de la malla — se ejecuta en cuanto se carga TADA
 // ══════════════════════════════════════════════════
 function runDiagnostico(){
   clearLog('log-diag');
-  document.getElementById('btn-confirm-norm').disabled = true;
+  document.getElementById('btn-norm').disabled=true;
 
-  if(!tadaRaw || tadaRaw.length < 1){
-    addLog('log-diag','[ERR] Archivo TADA vacío o ilegible','err'); return;
+  if(!tadaRaw||tadaRaw.length<1){
+    addLog('log-diag','[ERR] Archivo TADA vacío','err'); return;
   }
 
-  const totalRows = tadaRaw.length;
-  const totalCols = tadaRaw[0]?.length || 0;
+  const totalRows=tadaRaw.length;
+  const totalCols=tadaRaw[0]?.length||0;
   addLog('log-diag',`[INFO] Dimensiones: ${totalRows} filas × ${totalCols} columnas`,'info');
 
-  // ── Grid raw (primeras 5 filas, máx 16 cols) ────────────────
-  const SHOW_ROWS = Math.min(6, tadaRaw.length);
-  const SHOW_COLS = Math.min(16, totalCols);
-  const rowLabels = ['F0','F1','F2','F3','F4','F5'];
-  const rowClasses= ['rc-h0','rc-h1','rc-h2','rc-data','rc-data','rc-data'];
-
-  let rawHtml = '<table class="raw-table"><tbody>';
-  for(let ri=0; ri<SHOW_ROWS; ri++){
-    rawHtml += `<tr><td class="rc-label">${rowLabels[ri]}</td>`;
-    for(let ci=0; ci<SHOW_COLS; ci++){
-      const v = tadaRaw[ri]?.[ci];
-      const display = (v===''||v===null||v===undefined) ? '·' : String(v).slice(0,14);
-      const isEmpty = display==='·';
-      rawHtml += `<td class="${rowClasses[ri]}${isEmpty?' rc-empty':''}">${display}</td>`;
+  // ── Grid raw (primeras 4 filas, máx 16 cols) ────────────────
+  const SHOW=Math.min(16,totalCols);
+  const RLAB=['F0','F1','F2','D0'];
+  const RCLS=['rc-h0','rc-h1','rc-h2','rc-data'];
+  let gridHtml='<table class="raw-table"><tbody>';
+  for(let ri=0;ri<Math.min(4,tadaRaw.length);ri++){
+    gridHtml+=`<tr><td class="rc-label">${RLAB[ri]}</td>`;
+    for(let ci=0;ci<SHOW;ci++){
+      const v=tadaRaw[ri]?.[ci];
+      const s=(v===''||v===null||v===undefined)?'·':String(v).slice(0,14);
+      gridHtml+=`<td class="${RCLS[ri]}${s==='·'?' rc-empty':''}">${s}</td>`;
     }
-    if(totalCols > SHOW_COLS) rawHtml += `<td class="rc-label">+${totalCols-SHOW_COLS}</td>`;
-    rawHtml += '</tr>';
+    if(totalCols>SHOW) gridHtml+=`<td class="rc-label">+${totalCols-SHOW}</td>`;
+    gridHtml+='</tr>';
   }
-  rawHtml += '</tbody></table>';
-  document.getElementById('raw-grid').innerHTML = rawHtml;
-
-  // ── Aplicar forward-fill y mostrar resultado ─────────────────
-  const nCols = totalCols;
-  const h0raw = Array.from({length:nCols}, (_,i) => String(tadaRaw[0]?.[i]||'').trim());
-  const h1raw = Array.from({length:nCols}, (_,i) => String(tadaRaw[1]?.[i]||'').trim());
-  const h2raw = Array.from({length:nCols}, (_,i) => tadaRaw[2]?.[i] !== undefined ? tadaRaw[2][i] : '');
-
-  const h0ff = forwardFill(h0raw);
-  const h1ff = forwardFill(h1raw);
-
-  let ffHtml = '<table class="raw-table"><tbody>';
-  ffHtml += '<tr><td class="rc-label">h0↓</td>' + h0ff.slice(0,SHOW_COLS).map(v=>`<td class="rc-h0">${v||'·'}</td>`).join('') + '</tr>';
-  ffHtml += '<tr><td class="rc-label">h1↓</td>' + h1ff.slice(0,SHOW_COLS).map(v=>`<td class="rc-h1">${v||'·'}</td>`).join('') + '</tr>';
-  ffHtml += '<tr><td class="rc-label">h2</td>'  + h2raw.slice(0,SHOW_COLS).map(v=>{
-    const parsed = parseDate(v);
-    return `<td class="rc-h2">${parsed||String(v||'·').slice(0,12)}</td>`;
-  }).join('') + '</tr>';
-  ffHtml += '</tbody></table>';
-  document.getElementById('ffill-grid').innerHTML = ffHtml;
+  gridHtml+='</tbody></table>';
+  document.getElementById('raw-grid').innerHTML=gridHtml;
 
   // ── Construir colMap ─────────────────────────────────────────
-  colMap = buildColMap(tadaRaw);
+  const result=buildColMap(tadaRaw);
+  colMap=result.map;
 
-  // ── Mostrar mapeo ────────────────────────────────────────────
-  const mapHtml = colMap.map(c => {
-    if(c.t==='f')  return `<span class="col-tag ct-fixed">FIJO:${c.n} [col${c.i}]</span>`;
-    if(c.t==='d')  return `<span class="col-tag ct-day">${c.dia}_${c.m}_${c.fecha||'?'} [col${c.i}]</span>`;
-    if(c.t==='e')  return `<span class="col-tag ct-extra">EXTRA:${c.n} [col${c.i}]</span>`;
-    return `<span class="col-tag ct-skip">?:${c.raw1||c.n||''} [col${c.i}]</span>`;
-  }).join('');
-  document.getElementById('col-map-tags').innerHTML =
-    mapHtml || '<span style="color:var(--red);font-size:11px;">Sin columnas detectadas</span>';
+  if(result.error){
+    addLog('log-diag',`[ERR] ${result.error}`,'err');
+    document.getElementById('col-map-tags').innerHTML=
+      `<span style="color:var(--red);font-size:11px;">${result.error}</span>`;
+    document.getElementById('day-col-tags').innerHTML='';
+    return;
+  }
 
-  // ── Mostrar solo columnas de día ─────────────────────────────
-  const dayCols  = colMap.filter(c=>c.t==='d');
-  const fixedCols= colMap.filter(c=>c.t==='f');
-  const extraCols= colMap.filter(c=>c.t==='e');
+  addLog('log-diag',`[INFO] Primera columna de días detectada: col ${result.firstDayCol}`,'info');
 
-  const dayHtml = dayCols.map(c =>
-    `<span class="col-tag ct-day">${c.dia}_${c.m}_${c.fecha||'sin-fecha'}</span>`).join('');
-  document.getElementById('day-col-tags').innerHTML =
-    dayHtml || '<span style="color:var(--red);font-size:11px;">⚠ No se detectaron columnas de días</span>';
+  // ── Mostrar mapeo completo ───────────────────────────────────
+  document.getElementById('col-map-tags').innerHTML=colMap.map(c=>{
+    if(c.t==='f') return `<span class="col-tag ct-fixed">FIJO:${c.n} [col${c.i}]</span>`;
+    if(c.t==='d') return `<span class="col-tag ct-day">${c.dia}/${c.metric}/${c.fecha||'?'} [col${c.i}]</span>`;
+    if(c.t==='e') return `<span class="col-tag ct-extra">EXTRA:${c.n} [col${c.i}]</span>`;
+    return '';
+  }).join('')||'<span style="color:var(--red);font-size:11px;">Sin columnas detectadas</span>';
 
-  // ── Log de diagnóstico ───────────────────────────────────────
-  addLog('log-diag',`[INFO] Columnas fijas: ${fixedCols.map(c=>c.n).join(', ')||'ninguna detectada'}`,'info');
-  addLog('log-diag',`[INFO] Columnas de días: ${dayCols.length} (esperado ≈ 21 = 7 días × 3 sub)`,'info');
+  // ── Solo columnas de día ──────────────────────────────────────
+  const dayCols  =colMap.filter(c=>c.t==='d');
+  const fixedCols=colMap.filter(c=>c.t==='f');
+  const extraCols=colMap.filter(c=>c.t==='e');
+
+  document.getElementById('day-col-tags').innerHTML=dayCols.map(c=>
+    `<span class="col-tag ct-day">${c.dia}_${c.metric}_${c.fecha||'sin-fecha'}</span>`
+  ).join('')||'<span style="color:var(--red);font-size:11px;">⚠ No se detectaron columnas de días</span>';
+
+  // ── Log detallado ─────────────────────────────────────────────
+  addLog('log-diag',`[INFO] Columnas fijas: ${fixedCols.map(c=>c.n).join(', ')||'ninguna'}`,'info');
+  addLog('log-diag',`[INFO] Columnas de días: ${dayCols.length} (esperado 21 = 7 días × 3 sub)`,'info');
   addLog('log-diag',`[INFO] Columnas extra/semanales: ${extraCols.map(c=>c.n).join(', ')||'ninguna'}`,'info');
 
-  const dataRows = tadaRaw.slice(3).filter(r=>r.some(c=>c!==''&&c!==null));
-  addLog('log-diag',`[INFO] Filas de datos (pilotos): ${dataRows.length}`,'info');
+  const dataRows=tadaRaw.slice(3).filter(r=>r.some(v=>v!==''&&v!==null&&v!==undefined));
+  addLog('log-diag',`[INFO] Filas de pilotos detectadas: ${dataRows.length}`,'info');
 
-  let ok = true;
-  if(dayCols.length === 0){
-    addLog('log-diag','[ERR] No se detectaron columnas de días. Verifica que filas 1-3 del Excel contengan: Día / Subcolumna (Paquetes|Incentivos|Cancelados) / Fecha','err');
-    ok = false;
-  } else if(dayCols.length < 21){
-    addLog('log-diag',`[WARN] Solo ${dayCols.length} columnas de día detectadas (esperado 21). Puede faltar algún día o submetrica.`,'warn');
-  } else {
-    addLog('log-diag',`[OK] ${dayCols.length} columnas de días detectadas correctamente`,'ok');
-  }
-  if(fixedCols.length < 2){
-    addLog('log-diag','[WARN] Menos de 2 columnas fijas detectadas. Revisa los nombres de Ciudad/Seller/Domiciliario en el archivo.','warn');
-  } else {
-    addLog('log-diag',`[OK] Columnas fijas detectadas: ${fixedCols.map(c=>c.n).join(', ')}`,'ok');
-  }
-  if(extraCols.length === 0){
-    addLog('log-diag','[WARN] No se detectaron columnas semanales (Tareas/Garantizado/Bonos/Ajustes)','warn');
-  } else {
-    addLog('log-diag',`[OK] Columnas semanales: ${extraCols.map(c=>c.n).join(', ')}`,'ok');
+  // Mostrar ejemplo de primera fila de datos
+  if(dataRows.length>0){
+    const fr=dataRows[0];
+    const pCol=fixedCols.find(c=>c.n==='piloto');
+    const piloto=pCol?fr[pCol.i]:'?';
+    const primer=dayCols[0];
+    addLog('log-diag',`[INFO] Primer piloto: "${piloto}" · primer día: ${primer?.dia} ${primer?.fecha} · valor: ${fr[primer?.i]??'?'}`,'info');
   }
 
-  if(ok || dayCols.length > 0){
-    document.getElementById('btn-confirm-norm').disabled = false;
+  let ok=true;
+  if(dayCols.length===0){ addLog('log-diag','[ERR] No se detectaron columnas de días','err'); ok=false; }
+  else if(dayCols.length<21){ addLog('log-diag',`[WARN] ${dayCols.length} columnas detectadas (esperado 21)`,'warn'); }
+  else addLog('log-diag',`[OK] ${dayCols.length} columnas de días correctas`,'ok');
+
+  if(fixedCols.length<2){ addLog('log-diag','[WARN] Menos de 2 columnas fijas detectadas','warn'); }
+  else addLog('log-diag',`[OK] Columnas fijas: ${fixedCols.map(c=>c.n).join(', ')}`,'ok');
+
+  if(ok||dayCols.length>0){
+    document.getElementById('btn-norm').disabled=false;
     addLog('log-diag','[OK] Diagnóstico completado — puedes confirmar y normalizar','ok');
-  } else {
-    addLog('log-diag','[ERR] Corrige los errores antes de continuar','err');
   }
 
-  unlock(1);
+  // Avanzar al paso de diagnóstico automáticamente
+  if(maxStep<1) maxStep=1;
+  navStep(1);
 }
 
 // ══════════════════════════════════════════════════
-// PASO 2: NORMALIZACIÓN
+// PASO 2: NORMALIZACIÓN → long format
 // ══════════════════════════════════════════════════
 function runNorm(){
   clearLog('log-norm');
-  tadaNorm = [];
+  tadaNorm=[];
 
-  const dataRows = tadaRaw.slice(3).filter(r => r.some(c => c!==''&&c!==null&&c!==undefined));
+  const fixedCols=colMap.filter(c=>c.t==='f');
+  const dayCols  =colMap.filter(c=>c.t==='d');
+  const extraCols=colMap.filter(c=>c.t==='e');
 
-  const fixedCols = colMap.filter(c=>c.t==='f');
-  const dayCols   = colMap.filter(c=>c.t==='d');
-  const extraCols = colMap.filter(c=>c.t==='e');
+  // Agrupar cols de día por (dia, fecha) — cada grupo tiene 3 cols (paq/inc/can)
+  const groups={};
+  dayCols.forEach(c=>{
+    const key=`${c.dia}||${c.fecha}`;
+    if(!groups[key]) groups[key]={dia:c.dia,fecha:c.fecha,cols:{}};
+    groups[key].cols[c.metric]=c.i;
+  });
 
-  dataRows.forEach((row, ri) => {
-    // Extraer columnas fijas
-    const fixed = {};
-    fixedCols.forEach(c => { fixed[c.n] = String(row[c.i]||'').trim(); });
+  const dataRows=tadaRaw.slice(3).filter(r=>r.some(v=>v!==''&&v!==null&&v!==undefined));
 
-    // Extraer columnas extra
-    const extra = {};
-    extraCols.forEach(c => { extra[c.n] = row[c.i]; });
+  const parseMoney=v=>{
+    if(typeof v==='number') return v;
+    if(!v&&v!==0) return 0;
+    return parseFloat(String(v).replace(/[$\s.]/g,'').replace(',','.'))||0;
+  };
 
-    if(!fixed.piloto || !fixed.piloto.trim()) return;
+  const getExtra=(row,name)=>{
+    const col=extraCols.find(c=>c.n===name);
+    return col ? row[col.i] : 0;
+  };
 
-    // Agrupar columnas de día por (dia, fecha)
-    const dayGroups = {};
-    dayCols.forEach(c => {
-      const key = `${c.dia}||${c.fecha}`;
-      if(!dayGroups[key]) dayGroups[key] = {dia:c.dia, fecha:c.fecha, paquetes:0, incentivos:0, cancelados:0};
-      const val = parseInt(row[c.i]) || 0;
-      dayGroups[key][c.m] = val;
-    });
+  dataRows.forEach((row,ri)=>{
+    // Columnas fijas
+    const fixed={};
+    fixedCols.forEach(c=>{ fixed[c.n]=String(row[c.i]||'').trim(); });
+    if(!fixed.piloto||!fixed.piloto.trim()) return;
 
-    // Función para parsear valores monetarios
-    const parseMoney = v => {
-      if(typeof v === 'number') return v;
-      if(!v && v!==0) return 0;
-      return parseFloat(String(v).replace(/[$\s.]/g,'').replace(',','.')) || 0;
-    };
+    // Valores semanales
+    const tareas     =parseInt(getExtra(row,'tareas'))||0;
+    const garantizado=parseMoney(getExtra(row,'garantizado'));
+    const bonos      =parseMoney(getExtra(row,'bonos'));
+    const ajustes    =parseMoney(getExtra(row,'ajustes'));
 
-    const tareas     = parseInt(extra.tareas||0) || 0;
-    const garantizado= parseMoney(extra.garantizado);
-    const bonos      = parseMoney(extra.bonos);
-    const ajustes    = parseMoney(extra.ajustes);
-
-    Object.values(dayGroups).forEach(dg => {
+    // Una fila por cada grupo (día+fecha) — SIEMPRE 7 filas, sin filtrar
+    Object.values(groups).forEach(g=>{
       tadaNorm.push({
         piloto:      fixed.piloto,
-        ciudad:      fixed.ciudad  || '',
-        seller:      fixed.seller  || '',
-        dia:         dg.dia,
-        fecha:       dg.fecha,
-        paquetes:    dg.paquetes,
-        incentivos:  dg.incentivos,
-        cancelados:  dg.cancelados,
+        ciudad:      fixed.ciudad ||'',
+        seller:      fixed.seller ||'',
+        dia:         g.dia,
+        fecha:       g.fecha,
+        paquetes:    parseInt(row[g.cols.paquetes])||0,
+        incentivos:  parseInt(row[g.cols.incentivos])||0,
+        cancelados:  parseInt(row[g.cols.cancelados])||0,
         tareas,
         garantizado,
         bonos,
@@ -936,30 +832,31 @@ function runNorm(){
     });
   });
 
-  const pilotos = [...new Set(tadaNorm.map(r=>r.piloto))];
-  addLog('log-norm',`[OK] TADA normalizado: ${tadaNorm.length} filas · ${pilotos.length} pilotos únicos`,'ok');
-  addLog('log-norm',`[INFO] Fechas estandarizadas a YYYY-MM-DD`,'info');
+  const pilotos=[...new Set(tadaNorm.map(r=>r.piloto))];
+  addLog('log-norm',`[OK] TADA normalizado: ${tadaNorm.length} filas · ${pilotos.length} pilotos · 7 días cada uno`,'ok');
+  addLog('log-norm',`[INFO] Fechas TADA (muestra): ${[...new Set(tadaNorm.map(r=>r.fecha))].slice(0,5).join(' · ')}`,'info');
 
-  const sampleTada  = [...new Set(tadaNorm.map(r=>r.fecha).filter(Boolean))].slice(0,4);
-  const mallaFKey   = Object.keys(mallaRaw[0]||{}).find(k=>/fecha/i.test(k))||'fecha';
-  const sampleMalla = [...new Set(mallaRaw.map(r=>r[mallaFKey]).filter(Boolean))].slice(0,4);
-  addLog('log-norm',`[INFO] Fechas TADA  (muestra): ${sampleTada.join('  ·  ')}`,'info');
-  addLog('log-norm',`[INFO] Fechas Malla (muestra): ${sampleMalla.join('  ·  ')}`,'info');
-
-  if(tadaNorm.length === 0){
-    addLog('log-norm','[ERR] No se generaron filas normalizadas. Revisa el diagnóstico.','err');
-    return;
+  if(tadaNorm.length===0){
+    addLog('log-norm','[ERR] Sin filas normalizadas — revisar diagnóstico','err'); return;
   }
 
-  // Tabla TADA
-  mkTablePaged('tbl-tada-norm', tadaNorm,
+  // Tabla TADA — independiente
+  mkTable('tbl-tada-norm',tadaNorm,
     ['piloto','ciudad','seller','dia','fecha','paquetes','incentivos','cancelados','tareas','garantizado','bonos','ajustes'],
     ['Piloto','Ciudad','Seller','Día','Fecha','Paq.','Inc.','Canc.','Tareas','Garantizado','Bonos','Ajustes'],
-    null, 'tada-norm');
+    null,'tada-norm');
 
-  // Tabla Malla — detectar columnas dinámicamente
-  const mallaCols = Object.keys(mallaRaw[0]||{});
-  mkTablePaged('tbl-malla-norm', mallaRaw, mallaCols, mallaCols, null, 'malla-norm');
+  // Tabla Malla — independiente, siempre se muestra
+  if(mallaRaw.length>0){
+    const mCols=Object.keys(mallaRaw[0]);
+    mkTable('tbl-malla-norm',mallaRaw,mCols,mCols,null,'malla-norm');
+    const mFKey=mCols.find(k=>/fecha/i.test(k))||'fecha';
+    addLog('log-norm',`[INFO] Malla: ${mallaRaw.length} bookings · Fechas (muestra): ${[...new Set(mallaRaw.map(r=>r[mFKey]))].slice(0,5).join(' · ')}`,'info');
+  } else {
+    document.getElementById('tbl-malla-norm').innerHTML=
+      '<div style="padding:12px;color:var(--text3);font-size:11px;font-family:var(--mono);">Malla no cargada aún</div>';
+    addLog('log-norm','[WARN] Malla Pibox no cargada — cárgala antes de conciliar','warn');
+  }
 
   unlock(2);
 }
@@ -969,85 +866,71 @@ function runNorm(){
 // ══════════════════════════════════════════════════
 function runConciliacion(){
   clearLog('log-conc');
-  concResult = [];
+  concResult=[];
 
-  if(!mallaRaw.length){ addLog('log-conc','[ERR] Malla vacía','err'); return; }
+  if(!mallaRaw.length){ addLog('log-conc','[ERR] Carga la malla Pibox antes de conciliar','err'); return; }
 
-  // Detectar nombres de columnas en malla dinámicamente
-  const mKeys = Object.keys(mallaRaw[0]);
-  const mFKey = mKeys.find(k=>/fecha/i.test(k))      || 'fecha';
-  const mSKey = mKeys.find(k=>/seller|punto|tienda/i.test(k))   || 'seller';
-  const mPKey = mKeys.find(k=>/piloto|nombre|conductor|driver_name/i.test(k)) || 'piloto';
-  const mBKey = mKeys.find(k=>/booking/i.test(k))    || 'booking_id';
+  const mKeys=Object.keys(mallaRaw[0]);
+  const mFKey=mKeys.find(k=>/fecha/i.test(k))||'fecha';
+  const mSKey=mKeys.find(k=>/seller|punto|tienda/i.test(k))||'seller';
+  const mPKey=mKeys.find(k=>/piloto|nombre|conductor|driver.?name/i.test(k))||'piloto';
+  const mBKey=mKeys.find(k=>/booking/i.test(k))||'booking_id';
+  const mDKey=mKeys.find(k=>/driver.?id/i.test(k))||'driver_id';
+  const mHKey=mKeys.find(k=>/hora/i.test(k))||'hora_inicio';
 
   addLog('log-conc',`[INFO] Columnas malla → fecha:"${mFKey}" seller:"${mSKey}" piloto:"${mPKey}" booking:"${mBKey}"`,'info');
 
-  // Construir índices
-  const idx3={}, idx2={};
-  mallaRaw.forEach(m => {
-    const mf = String(m[mFKey]||'').trim();
-    const ms = String(m[mSKey]||'').trim();
-    const mp = String(m[mPKey]||'').trim();
-    const a  = `${normStr(mp)}||${mf}||${normStr(ms)}`;
-    const b  = `${normStr(mp)}||${mf}`;
+  const idx3={},idx2={};
+  mallaRaw.forEach(m=>{
+    const mf=String(m[mFKey]||'').trim();
+    const ms=String(m[mSKey]||'').trim();
+    const mp=String(m[mPKey]||'').trim();
+    const a=`${normStr(mp)}||${mf}||${normStr(ms)}`;
+    const b=`${normStr(mp)}||${mf}`;
     (idx3[a]||(idx3[a]=[])).push(m);
-    const bk = m[mBKey];
+    const bk=m[mBKey];
     if(!(idx2[b]||[]).find(x=>x[mBKey]===bk)) (idx2[b]||(idx2[b]=[])).push(m);
   });
 
-  const matchados = new Set();
-
-  tadaNorm.forEach(row => {
-    const a = `${normStr(row.piloto)}||${row.fecha}||${normStr(row.seller)}`;
-    const b = `${normStr(row.piloto)}||${row.fecha}`;
-    let matches=[], nivel='SIN_MALLA', nota='';
-
+  const matchados=new Set();
+  tadaNorm.forEach(row=>{
+    const a=`${normStr(row.piloto)}||${row.fecha}||${normStr(row.seller)}`;
+    const b=`${normStr(row.piloto)}||${row.fecha}`;
+    let matches=[],nivel='SIN_MALLA',nota='';
     if(idx3[a]?.length){
-      matches = idx3[a];
-      nivel   = matches.length===1 ? 'HIGH' : 'MEDIUM';
-      nota    = nivel==='HIGH'
-        ? 'Match único piloto+fecha+seller'
-        : `${matches.length} bookings → desambiguar por franja horaria`;
-      matches.forEach(m => matchados.add(m[mBKey]));
+      matches=idx3[a]; nivel=matches.length===1?'HIGH':'MEDIUM';
+      nota=nivel==='HIGH'?'Match único piloto+fecha+seller':`${matches.length} bookings → franja horaria`;
+      matches.forEach(m=>matchados.add(m[mBKey]));
     } else if(idx2[b]?.length){
-      matches = idx2[b];
-      nivel   = 'LOW';
-      const sellers = [...new Set(matches.map(m=>String(m[mSKey]||'')))];
-      nota = `Fallback piloto+fecha · seller TADA="${row.seller}" vs malla="${sellers.join('/')}"`;
-      matches.forEach(m => matchados.add(m[mBKey]));
+      matches=idx2[b]; nivel='LOW';
+      nota=`Fallback piloto+fecha · seller TADA="${row.seller}" vs malla="${[...new Set(matches.map(m=>m[mSKey]))].join('/')}"`;
+      matches.forEach(m=>matchados.add(m[mBKey]));
     }
-
-    concResult.push({
-      ...row, nivel_confianza:nivel, matches, nota,
-      driver_id: matches[0]?.driver_id || matches[0]?.DRIVER_ID || 'PENDIENTE',
-    });
-
-    const cls = nivel==='HIGH'?'ok': nivel==='SIN_MALLA'?'err':'warn';
-    addLog('log-conc',`[${nivel}] ${row.piloto} · ${row.fecha} · ${row.seller} — ${nota||'Sin match'}`, cls);
+    concResult.push({...row,nivel_confianza:nivel,matches,nota,
+      driver_id:matches[0]?.[mDKey]||'PENDIENTE'});
+    addLog('log-conc',`[${nivel}] ${row.piloto} · ${row.fecha} · ${row.seller} — ${nota||'Sin match'}`,
+      nivel==='HIGH'?'ok':nivel==='SIN_MALLA'?'err':'warn');
   });
 
-  // Huérfanos malla
-  mallaRaw.filter(m=>!matchados.has(m[mBKey])).forEach(m => {
-    addLog('log-conc',`[WARN] Huérfano malla: ${m[mBKey]||'?'} · ${m[mPKey]||''} · ${m[mFKey]||''} · ${m[mSKey]||''}`,'warn');
-  });
+  mallaRaw.filter(m=>!matchados.has(m[mBKey])).forEach(m=>
+    addLog('log-conc',`[WARN] Huérfano malla: ${m[mBKey]||'?'} · ${m[mPKey]||''} · ${m[mFKey]||''}`,'warn'));
 
-  const h  = concResult.filter(r=>r.nivel_confianza==='HIGH').length;
-  const md = concResult.filter(r=>r.nivel_confianza==='MEDIUM').length;
-  const lo = concResult.filter(r=>r.nivel_confianza==='LOW').length;
-  const sn = concResult.filter(r=>r.nivel_confianza==='SIN_MALLA').length;
+  const h=concResult.filter(r=>r.nivel_confianza==='HIGH').length;
+  const md=concResult.filter(r=>r.nivel_confianza==='MEDIUM').length;
+  const lo=concResult.filter(r=>r.nivel_confianza==='LOW').length;
+  const sn=concResult.filter(r=>r.nivel_confianza==='SIN_MALLA').length;
 
-  document.getElementById('stats-conc').innerHTML = `
+  document.getElementById('stats-conc').innerHTML=`
     <div class="stat"><div class="stat-l">HIGH</div><div class="stat-v g">${h}</div></div>
     <div class="stat"><div class="stat-l">MEDIUM</div><div class="stat-v y">${md}</div></div>
     <div class="stat"><div class="stat-l">LOW</div><div class="stat-v r">${lo}</div></div>
     <div class="stat"><div class="stat-l">SIN_MALLA</div><div class="stat-v" style="color:var(--text2)">${sn}</div></div>`;
 
-  mkTablePaged('tbl-conc',
+  mkTable('tbl-conc',
     concResult.map(r=>({piloto:r.piloto,ciudad:r.ciudad,seller:r.seller,fecha:r.fecha,
       driver_id:r.driver_id,bookings:r.matches.length,nivel_confianza:r.nivel_confianza,nota:r.nota||'Sin match'})),
     ['piloto','ciudad','seller','fecha','driver_id','bookings','nivel_confianza','nota'],
-    ['Piloto','Ciudad','Seller','Fecha','Driver ID','Bookings','Confianza','Nota'],
-    null, 'conc');
+    ['Piloto','Ciudad','Seller','Fecha','Driver ID','Bookings','Confianza','Nota'],null,'conc');
 
   unlock(3);
 }
@@ -1056,52 +939,48 @@ function runConciliacion(){
 // PASO 4: DISTRIBUCIÓN
 // ══════════════════════════════════════════════════
 function runDistribucion(){
-  distResult = [];
-  const mKeys = Object.keys(mallaRaw[0]||{});
-  const mSKey = mKeys.find(k=>/seller|punto|tienda/i.test(k)) || 'seller';
-  const mBKey = mKeys.find(k=>/booking/i.test(k)) || 'booking_id';
-  const mHKey = mKeys.find(k=>/hora/i.test(k))    || 'hora_inicio';
-  const mDKey = mKeys.find(k=>/driver.?id|driver_id/i.test(k)) || 'driver_id';
+  distResult=[];
+  const mKeys=Object.keys(mallaRaw[0]||{});
+  const mBKey=mKeys.find(k=>/booking/i.test(k))||'booking_id';
+  const mDKey=mKeys.find(k=>/driver.?id/i.test(k))||'driver_id';
+  const mSKey=mKeys.find(k=>/seller|punto|tienda/i.test(k))||'seller';
+  const mHKey=mKeys.find(k=>/hora/i.test(k))||'hora_inicio';
 
-  concResult.filter(r=>r.nivel_confianza!=='SIN_MALLA').forEach(row => {
-    const n = row.matches.length;
-    const sorted = [...row.matches].sort((a,b)=>String(a[mHKey]||'').localeCompare(String(b[mHKey]||'')));
-
-    sorted.forEach((m, i) => {
-      const first = i===0;
+  concResult.filter(r=>r.nivel_confianza!=='SIN_MALLA').forEach(row=>{
+    const n=row.matches.length;
+    [...row.matches].sort((a,b)=>String(a[mHKey]||'').localeCompare(String(b[mHKey]||''))).forEach((m,i)=>{
+      const first=i===0;
       distResult.push({
-        booking_id:   m[mBKey] || m.booking_id || m.BOOKING_ID,
-        driver_id:    m[mDKey] || m.driver_id  || m.DRIVER_ID,
-        piloto:       row.piloto,
-        ciudad:       row.ciudad,
-        seller:       m[mSKey] || row.seller,
-        fecha:        row.fecha,
-        hora_inicio:  m[mHKey] || '—',
-        paquetes_dist:  Math.round(row.paquetes   / n),
-        incentivos_dist:Math.round(row.incentivos  / n),
-        cancelados_dist:Math.round(row.cancelados  / n),
-        tareas_dist:    first ? row.tareas      : 0,
-        garantizado:    first ? row.garantizado : 0,
-        bonos:          first ? row.bonos       : 0,
-        ajustes:        first ? row.ajustes     : 0,
-        nivel_confianza: row.nivel_confianza,
-        n_bookings:     n,
+        booking_id:     m[mBKey]||'?',
+        driver_id:      m[mDKey]||'PENDIENTE',
+        piloto:         row.piloto,
+        ciudad:         row.ciudad,
+        seller:         m[mSKey]||row.seller,
+        fecha:          row.fecha,
+        hora_inicio:    m[mHKey]||'—',
+        paquetes_dist:  Math.round(row.paquetes/n),
+        incentivos_dist:Math.round(row.incentivos/n),
+        cancelados_dist:Math.round(row.cancelados/n),
+        tareas_dist:    first?row.tareas:0,
+        garantizado:    first?row.garantizado:0,
+        bonos:          first?row.bonos:0,
+        ajustes:        first?row.ajustes:0,
+        nivel_confianza:row.nivel_confianza,n_bookings:n,
       });
     });
   });
 
-  document.getElementById('stats-dist').innerHTML = `
+  document.getElementById('stats-dist').innerHTML=`
     <div class="stat"><div class="stat-l">Bookings generados</div><div class="stat-v">${distResult.length}</div></div>
     <div class="stat"><div class="stat-l">Excluidos SIN_MALLA</div><div class="stat-v r">${concResult.filter(r=>r.nivel_confianza==='SIN_MALLA').length}</div></div>
     <div class="stat"><div class="stat-l">HIGH</div><div class="stat-v g">${distResult.filter(r=>r.nivel_confianza==='HIGH').length}</div></div>
-    <div class="stat"><div class="stat-l">MEDIUM + LOW</div><div class="stat-v y">${distResult.filter(r=>['MEDIUM','LOW'].includes(r.nivel_confianza)).length}</div></div>`;
+    <div class="stat"><div class="stat-l">MEDIUM+LOW</div><div class="stat-v y">${distResult.filter(r=>['MEDIUM','LOW'].includes(r.nivel_confianza)).length}</div></div>`;
 
-  mkTablePaged('tbl-dist', distResult,
+  mkTable('tbl-dist',distResult,
     ['booking_id','driver_id','piloto','ciudad','seller','fecha','hora_inicio',
      'paquetes_dist','incentivos_dist','cancelados_dist','tareas_dist','garantizado','bonos','ajustes','nivel_confianza'],
     ['Booking ID','Driver ID','Piloto','Ciudad','Seller','Fecha','Hora',
-     'Paq.','Inc.','Canc.','Tareas','Garantizado','Bonos','Ajustes','Confianza'],
-    null, 'dist');
+     'Paq.','Inc.','Canc.','Tareas','Garantizado','Bonos','Ajustes','Confianza'],null,'dist');
 
   unlock(4);
 }
@@ -1110,92 +989,70 @@ function runDistribucion(){
 // PASO 6: TEMPLATE TRUMP
 // ══════════════════════════════════════════════════
 function runTrump(){
-  const t  = currentEdits;
-  const av = getAV();
-  const runId = `LIQ-${new Date().toISOString().slice(0,10).replace(/-/g,'')}-${av.version}`;
-  const m = t.margen_cliente_pct / 100;
+  const t=currentEdits, av=getAV();
+  const runId=`LIQ-${new Date().toISOString().slice(0,10).replace(/-/g,'')}-${av.version}`;
+  const m=t.margen_cliente_pct/100;
 
-  trumpRows = distResult.map(r => {
-    const vPaq = r.paquetes_dist   * t.valor_paquete;
-    const vInc = r.incentivos_dist * t.valor_incentivo;
-    const vCan = r.cancelados_dist * t.valor_cancelado; // cancelados SUMAN
-    const vGar = r.garantizado || 0;
-    const vTar = r.tareas_dist     * t.valor_tarea;
-    const vBon = r.bonos    || 0;
-    const vAj  = r.ajustes  || 0;
-
-    // BASE: paquetes + incentivos + cancelados + garantizado
-    const base     = vPaq + vInc + vCan + vGar;
-    // ADICIONAL: bonos + tareas + ajustes
-    const adicional = vBon + vTar + vAj;
-
-    // PAGO PILOTO
-    const finalCost    = Math.round(base / (1 - COMISION)); // ÷ 0.85
-    const addFinalCost = adicional;                          // sin comisión
-
-    // COBRO CLIENTE
-    const companyCost    = Math.round(base     * (1 + m));
-    const addCompanyCost = Math.round(adicional * (1 + m));
-
-    const comments =
-      `Paquetes: ${r.paquetes_dist} | Incentivos: ${r.incentivos_dist} | Cancelados: ${r.cancelados_dist}` +
-      ` | Garantizado: ${cop(vGar)} | Bonos: ${cop(vBon)} | Tareas: ${r.tareas_dist}` +
-      ` | Ajustes: ${cop(vAj)} | Conf: ${r.nivel_confianza}`;
-
+  trumpRows=distResult.map(r=>{
+    const vPaq=r.paquetes_dist   *t.valor_paquete;
+    const vInc=r.incentivos_dist *t.valor_incentivo;
+    const vCan=r.cancelados_dist *t.valor_cancelado; // cancelados SUMAN
+    const vGar=r.garantizado||0;
+    const vTar=r.tareas_dist     *t.valor_tarea;
+    const vBon=r.bonos||0;
+    const vAj =r.ajustes||0;
+    const base    =vPaq+vInc+vCan+vGar;
+    const adicional=vBon+vTar+vAj;
+    const finalCost    =Math.round(base/(1-COMISION));   // ÷0.85
+    const addFinalCost =adicional;                        // sin comisión
+    const companyCost    =Math.round(base*(1+m));
+    const addCompanyCost =Math.round(adicional*(1+m));
     return {
-      BOOKING_ID:                    r.booking_id,
-      COMPANY_FINAL_COST:            companyCost,
-      ADDITIONAL_COMPANY_FINAL_COST: addCompanyCost,
-      DISPUTED_COMPANY_FINAL_COST:   '',
-      FINAL_COST:                    finalCost,
-      ADDITIONAL_FINAL_COST:         addFinalCost,
-      DISPUTED_FINAL_COST:           '',
-      PACKAGES_COUNT:                r.paquetes_dist,
-      IS_PER_HOUR:                   0,
-      COMMENTS:                      comments,
-      // Metadata interna (no va en la hoja Trump)
-      _driver_id: r.driver_id, _piloto: r.piloto, _ciudad: r.ciudad, _seller: r.seller,
-      _fecha: r.fecha, _confianza: r.nivel_confianza, _run_id: runId, _ver: av.version,
+      BOOKING_ID:r.booking_id,
+      COMPANY_FINAL_COST:companyCost,
+      ADDITIONAL_COMPANY_FINAL_COST:addCompanyCost,
+      DISPUTED_COMPANY_FINAL_COST:'',
+      FINAL_COST:finalCost,
+      ADDITIONAL_FINAL_COST:addFinalCost,
+      DISPUTED_FINAL_COST:'',
+      PACKAGES_COUNT:r.paquetes_dist,
+      IS_PER_HOUR:0,
+      COMMENTS:`Paquetes: ${r.paquetes_dist} | Incentivos: ${r.incentivos_dist} | Cancelados: ${r.cancelados_dist} | Garantizado: ${cop(vGar)} | Bonos: ${cop(vBon)} | Tareas: ${r.tareas_dist} | Ajustes: ${cop(vAj)} | Conf: ${r.nivel_confianza}`,
+      _driver_id:r.driver_id,_piloto:r.piloto,_ciudad:r.ciudad,_seller:r.seller,
+      _fecha:r.fecha,_confianza:r.nivel_confianza,_run_id:runId,_ver:av.version,
     };
   });
 
-  const tp  = trumpRows.reduce((a,r)=>a+r.FINAL_COST+r.ADDITIONAL_FINAL_COST, 0);
-  const tc  = trumpRows.reduce((a,r)=>a+r.COMPANY_FINAL_COST+r.ADDITIONAL_COMPANY_FINAL_COST, 0);
-  const rev = trumpRows.filter(r=>r._confianza!=='HIGH').length;
+  const tp=trumpRows.reduce((a,r)=>a+r.FINAL_COST+r.ADDITIONAL_FINAL_COST,0);
+  const tc=trumpRows.reduce((a,r)=>a+r.COMPANY_FINAL_COST+r.ADDITIONAL_COMPANY_FINAL_COST,0);
+  const rev=trumpRows.filter(r=>r._confianza!=='HIGH').length;
 
-  document.getElementById('stats-trump').innerHTML = `
+  document.getElementById('stats-trump').innerHTML=`
     <div class="stat"><div class="stat-l">Bookings en template</div><div class="stat-v">${trumpRows.length}</div></div>
     <div class="stat"><div class="stat-l">Total pago pilotos</div><div class="stat-v g" style="font-size:14px;">${cop(tp)}</div></div>
     <div class="stat"><div class="stat-l">Total cobro TaDa</div><div class="stat-v" style="font-size:14px;">${cop(tc)}</div></div>
     <div class="stat"><div class="stat-l">Requieren revisión</div><div class="stat-v ${rev?'y':'g'}">${rev}</div></div>`;
 
-  const trumpCols = ['BOOKING_ID','COMPANY_FINAL_COST','ADDITIONAL_COMPANY_FINAL_COST',
-    'DISPUTED_COMPANY_FINAL_COST','FINAL_COST','ADDITIONAL_FINAL_COST',
-    'DISPUTED_FINAL_COST','PACKAGES_COUNT','IS_PER_HOUR','COMMENTS'];
-
-  mkTablePaged('tbl-trump', trumpRows, trumpCols, trumpCols,
-    r => r._confianza!=='HIGH' ? ' style="background:rgba(240,190,53,0.04)"' : '',
-    'trump');
+  const TC=['BOOKING_ID','COMPANY_FINAL_COST','ADDITIONAL_COMPANY_FINAL_COST','DISPUTED_COMPANY_FINAL_COST',
+    'FINAL_COST','ADDITIONAL_FINAL_COST','DISPUTED_FINAL_COST','PACKAGES_COUNT','IS_PER_HOUR','COMMENTS'];
+  mkTable('tbl-trump',trumpRows,TC,TC,
+    r=>r._confianza!=='HIGH'?' style="background:rgba(240,190,53,0.04)"':'','trump');
 
   clearLog('log-trump');
   addLog('log-trump',`[OK] run_id: ${runId} · tarifas: ${av.version} · ${trumpRows.length} bookings`,'ok');
   addLog('log-trump',`[OK] Pilotos: ${cop(tp)} · TaDa: ${cop(tc)} · Margen: ${cop(tc-tp)}`,'ok');
-  trumpRows.filter(r=>r._confianza==='MEDIUM').forEach(r=>
-    addLog('log-trump',`[MED] ${r.BOOKING_ID} — distribución equitativa aplicada`,'warn'));
-  trumpRows.filter(r=>r._confianza==='LOW').forEach(r=>
-    addLog('log-trump',`[LOW] ${r.BOOKING_ID} · ${r._piloto} — fallback piloto+fecha`,'warn'));
-  concResult.filter(r=>r.nivel_confianza==='SIN_MALLA').forEach(r=>
-    addLog('log-trump',`[EXCL] ${r.piloto} · ${r.fecha} — excluido (SIN_MALLA)`,'err'));
+  trumpRows.filter(r=>r._confianza==='MEDIUM').forEach(r=>addLog('log-trump',`[MED] ${r.BOOKING_ID} — distribución equitativa`,'warn'));
+  trumpRows.filter(r=>r._confianza==='LOW').forEach(r=>addLog('log-trump',`[LOW] ${r.BOOKING_ID} · ${r._piloto} — fallback piloto+fecha`,'warn'));
+  concResult.filter(r=>r.nivel_confianza==='SIN_MALLA').forEach(r=>addLog('log-trump',`[EXCL] ${r.piloto} · ${r.fecha} — excluido`,'err'));
 
-  // Persistir ejecución
   try{
-    const runs = JSON.parse(localStorage.getItem(LS_RUNS)||'[]');
-    runs.push({run_id:runId, fecha_ejecucion:new Date().toISOString(),
-      version_tarifas_usada:av.version, snapshot_tarifas:{...av.values},
+    const runs=JSON.parse(localStorage.getItem(LS_RUNS)||'[]');
+    runs.push({run_id:runId,fecha_ejecucion:new Date().toISOString(),
+      version_tarifas_usada:av.version,snapshot_tarifas:{...av.values},
       bookings_generados:trumpRows.length,
       sin_malla:concResult.filter(r=>r.nivel_confianza==='SIN_MALLA').length,
       requieren_revision:rev});
-    localStorage.setItem(LS_RUNS, JSON.stringify(runs.slice(-50)));
+    localStorage.setItem(LS_RUNS,JSON.stringify(runs.slice(-50)));
   }catch(e){}
 
   unlock(6);
@@ -1206,65 +1063,50 @@ function runTrump(){
 // ══════════════════════════════════════════════════
 function downloadTrump(){
   if(!trumpRows.length) return;
-  const av    = getAV();
-  const runId = trumpRows[0]?._run_id || 'LIQ';
+  const av=getAV(), runId=trumpRows[0]?._run_id||'LIQ';
+  const TC=['BOOKING_ID','COMPANY_FINAL_COST','ADDITIONAL_COMPANY_FINAL_COST','DISPUTED_COMPANY_FINAL_COST',
+    'FINAL_COST','ADDITIONAL_FINAL_COST','DISPUTED_FINAL_COST','PACKAGES_COUNT','IS_PER_HOUR','COMMENTS'];
+  const ws1=XLSX.utils.json_to_sheet(trumpRows.map(r=>Object.fromEntries(TC.map(c=>[c,r[c]]))));
+  ws1['!cols']=TC.map(c=>({wch:c==='COMMENTS'?70:c==='BOOKING_ID'?18:26}));
 
-  // Hoja 1: Template Trump (solo columnas Trump)
-  const trumpCols = ['BOOKING_ID','COMPANY_FINAL_COST','ADDITIONAL_COMPANY_FINAL_COST',
-    'DISPUTED_COMPANY_FINAL_COST','FINAL_COST','ADDITIONAL_FINAL_COST',
-    'DISPUTED_FINAL_COST','PACKAGES_COUNT','IS_PER_HOUR','COMMENTS'];
-  const ws1 = XLSX.utils.json_to_sheet(
-    trumpRows.map(r => Object.fromEntries(trumpCols.map(c=>[c,r[c]]))));
-  ws1['!cols'] = trumpCols.map(c=>({wch: c==='COMMENTS'?70 : c==='BOOKING_ID'?18 : 26}));
+  const mKeys=Object.keys(mallaRaw[0]||{});
+  const mBKey=mKeys.find(k=>/booking/i.test(k))||'booking_id';
+  const mFKey=mKeys.find(k=>/fecha/i.test(k))||'fecha';
+  const mSKey=mKeys.find(k=>/seller/i.test(k))||'seller';
+  const mPKey=mKeys.find(k=>/piloto|nombre/i.test(k))||'piloto';
 
-  // Hoja 2: Inconsistencias
-  const inconRows = [];
-  const mKeys = Object.keys(mallaRaw[0]||{});
-  const mBKey = mKeys.find(k=>/booking/i.test(k))||'booking_id';
-  const mFKey = mKeys.find(k=>/fecha/i.test(k))||'fecha';
-  const mSKey = mKeys.find(k=>/seller/i.test(k))||'seller';
-  const mPKey = mKeys.find(k=>/piloto|nombre/i.test(k))||'piloto';
-
+  const incon=[];
   concResult.filter(r=>r.nivel_confianza==='SIN_MALLA').forEach(r=>
-    inconRows.push({tipo:'SIN_MALLA',piloto:r.piloto,fecha:r.fecha,seller:r.seller,ciudad:r.ciudad,
-      booking_id:'—',nota:'Piloto no encontrado en malla Pibox — excluido del output'}));
+    incon.push({tipo:'SIN_MALLA',piloto:r.piloto,fecha:r.fecha,seller:r.seller,booking_id:'—',nota:'Excluido del output'}));
   mallaRaw.filter(m=>!distResult.find(d=>d.booking_id===m[mBKey])).forEach(m=>
-    inconRows.push({tipo:'HUÉRFANO_MALLA',piloto:m[mPKey]||'',fecha:m[mFKey]||'',
-      seller:m[mSKey]||'',ciudad:'',booking_id:m[mBKey]||'?',nota:'Booking en malla sin valores TADA'}));
+    incon.push({tipo:'HUÉRFANO_MALLA',piloto:m[mPKey]||'',fecha:m[mFKey]||'',seller:m[mSKey]||'',booking_id:m[mBKey]||'?',nota:'Sin valores TADA'}));
   concResult.filter(r=>r.nivel_confianza==='LOW').forEach(r=>
-    inconRows.push({tipo:'LOW_CONFIDENCE',piloto:r.piloto,fecha:r.fecha,seller:r.seller,ciudad:r.ciudad,
-      booking_id:r.matches.map(m=>m[mBKey]).join('/'),nota:'Fallback piloto+fecha — verificar seller'}));
+    incon.push({tipo:'LOW_CONFIDENCE',piloto:r.piloto,fecha:r.fecha,seller:r.seller,booking_id:r.matches.map(m=>m[mBKey]).join('/'),nota:'Fallback piloto+fecha — verificar seller'}));
+  const ws2=XLSX.utils.json_to_sheet(incon.length?incon:[{tipo:'Sin inconsistencias'}]);
+  ws2['!cols']=[{wch:18},{wch:24},{wch:12},{wch:26},{wch:20},{wch:65}];
 
-  const ws2 = XLSX.utils.json_to_sheet(
-    inconRows.length ? inconRows : [{tipo:'Sin inconsistencias'}]);
-  ws2['!cols'] = [{wch:18},{wch:22},{wch:12},{wch:22},{wch:10},{wch:20},{wch:70}];
+  const ws3=XLSX.utils.json_to_sheet([
+    {campo:'run_id',valor:runId},
+    {campo:'fecha_ejecucion',valor:new Date().toLocaleString('es-CO')},
+    {campo:'version_tarifas_usada',valor:av.version},
+    {campo:'autor_tarifa',valor:av.autor},
+    {campo:'bookings_generados',valor:trumpRows.length},
+    {campo:'sin_malla_excluidos',valor:concResult.filter(r=>r.nivel_confianza==='SIN_MALLA').length},
+    {campo:'requieren_revision',valor:trumpRows.filter(r=>r._confianza!=='HIGH').length},
+    {campo:'───────────────',valor:'SNAPSHOT TARIFAS'},
+    ...TARIFF_SCHEMA.map(s=>({campo:s.label,valor:av.values[s.key]})),
+  ]);
+  ws3['!cols']=[{wch:34},{wch:46}];
 
-  // Hoja 3: Auditoría
-  const auditRows = [
-    {campo:'run_id',                valor:runId},
-    {campo:'fecha_ejecucion',       valor:new Date().toLocaleString('es-CO')},
-    {campo:'version_tarifas_usada', valor:av.version},
-    {campo:'autor_tarifa',          valor:av.autor},
-    {campo:'bookings_generados',    valor:trumpRows.length},
-    {campo:'sin_malla_excluidos',   valor:concResult.filter(r=>r.nivel_confianza==='SIN_MALLA').length},
-    {campo:'requieren_revision',    valor:trumpRows.filter(r=>r._confianza!=='HIGH').length},
-    {campo:'───────────────────',   valor:'SNAPSHOT TARIFAS'},
-    ...TARIFF_SCHEMA.map(s=>({campo:s.label, valor:av.values[s.key]})),
-  ];
-  const ws3 = XLSX.utils.json_to_sheet(auditRows);
-  ws3['!cols'] = [{wch:34},{wch:46}];
-
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws1, 'Template Trump');
-  XLSX.utils.book_append_sheet(wb, ws2, 'Inconsistencias');
-  XLSX.utils.book_append_sheet(wb, ws3, 'Auditoría');
-  XLSX.writeFile(wb, `${runId}.xlsx`);
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws1,'Template Trump');
+  XLSX.utils.book_append_sheet(wb,ws2,'Inconsistencias');
+  XLSX.utils.book_append_sheet(wb,ws3,'Auditoría');
+  XLSX.writeFile(wb,`${runId}.xlsx`);
   toast(`✓ ${runId}.xlsx descargado`);
 }
 
-// ══════════════════════════════════════════════════
 // BOOT
-// ══════════════════════════════════════════════════
 initTariffs();
 </script>
 </body>
