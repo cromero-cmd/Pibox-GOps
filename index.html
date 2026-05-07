@@ -1088,7 +1088,7 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 </div>
 
 <script>
-const APP_VERSION='14.8';
+const APP_VERSION='14.9';
 const APP_CHANGELOG='Notificaciones de asistencia: recordatorio 10 min antes y alertas de tardanza al admin y agente.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -1412,10 +1412,12 @@ function filterVideos(){
 }
 function getThumbnail(url){
   if(!url)return null;
-  const ytMatch=url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+  const u=url.trim().replace(/\s+/g,'');
+  const ytMatch=u.match(/(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
   if(ytMatch)return'https://img.youtube.com/vi/'+ytMatch[1]+'/hqdefault.jpg';
-  const driveMatch=url.match(/\/d\/([a-zA-Z0-9_-]{25,})/)||url.match(/[?&]id=([a-zA-Z0-9_-]{25,})/);
-  if(driveMatch)return'https://drive.google.com/thumbnail?id='+driveMatch[1]+'&sz=w400';
+  const driveMatch=u.match(/\/d\/([a-zA-Z0-9_-]{25,})/)||u.match(/[?&]id=([a-zA-Z0-9_-]{25,})/);
+  if(driveMatch){console.log('[Pi GOps] Drive thumbnail ID:',driveMatch[1]);return'https://drive.google.com/thumbnail?id='+driveMatch[1]+'&sz=w400';}
+  console.log('[Pi GOps] No thumbnail match para:',u);
   return null;
 }
 function buildThumbHtml(thumbSrc,title){
