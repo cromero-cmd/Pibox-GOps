@@ -417,9 +417,9 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 .video-grid{display:flex;flex-direction:column;gap:14px;}
 .video-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden;cursor:pointer;transition:all 0.22s;display:flex;flex-direction:row;text-decoration:none;align-items:stretch;}
 .video-card:hover{border-color:var(--p1);transform:translateY(-2px);box-shadow:0 8px 28px rgba(123,47,255,0.18);}
-.video-thumb{width:200px;min-width:200px;aspect-ratio:16/9;background:var(--surface2);display:grid;place-items:center;position:relative;overflow:hidden;border-radius:12px 0 0 12px;}
-@media(max-width:540px){.video-card{flex-direction:column;}.video-thumb{width:100%;min-width:unset;border-radius:12px 12px 0 0;}}
-.video-thumb img{width:100%;height:100%;object-fit:contain;display:block;background:var(--surface2);}
+.video-thumb{width:180px;min-width:180px;min-height:120px;background:var(--surface2);display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden;border-radius:12px 0 0 12px;flex-shrink:0;}
+@media(max-width:540px){.video-card{flex-direction:column;}.video-thumb{width:100%;min-width:unset;min-height:160px;border-radius:12px 12px 0 0;}}
+.video-thumb img{width:100%;height:100%;object-fit:cover;object-position:center top;display:block;position:absolute;inset:0;}
 .no-thumb{display:flex;flex-direction:column;align-items:center;gap:7px;color:var(--text-dim);}
 .no-thumb svg{width:32px;height:32px;}
 .play-overlay{position:absolute;inset:0;display:grid;place-items:center;transition:background 0.2s;}
@@ -1088,7 +1088,7 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 </div>
 
 <script>
-const APP_VERSION='14.11';
+const APP_VERSION='14.12';
 const APP_CHANGELOG='Notificaciones de asistencia: recordatorio 10 min antes y alertas de tardanza al admin y agente.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
