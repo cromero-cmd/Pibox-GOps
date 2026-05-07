@@ -1088,7 +1088,7 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 </div>
 
 <script>
-const APP_VERSION='14.12';
+const APP_VERSION='14.13';
 const APP_CHANGELOG='Notificaciones de asistencia: recordatorio 10 min antes y alertas de tardanza al admin y agente.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -1805,7 +1805,7 @@ async function checkTodayNovedad(){
     const resp=await fetch(MALLA_SCRIPT+'?sheet=Malla',{signal:AbortSignal.timeout(8000)});
     const csv=await resp.text();
     const lines=csv.trim().split('\n').slice(1);
-    const todayEntry=lines.map(l=>{const c=parseCSVLine(l);return{fecha:c[0]?.trim(),usuario:c[1]?.trim(),novedad:c[8]?.trim()};})
+    const todayEntry=lines.map(l=>{const c=parseCSVLine(l);return{fecha:c[1]?.trim(),usuario:c[2]?.trim(),novedad:c[9]?.trim()};})
       .find(m=>{
         if(!m.fecha||m.usuario!==userEmail)return false;
         const d=parseDate(m.fecha);
@@ -1843,7 +1843,7 @@ async function startTurno(){
     const resp=await fetch(MALLA_SCRIPT+'?sheet=Malla',{signal:AbortSignal.timeout(8000)});
     const csv=await resp.text();
     const lines=csv.trim().split('\n').slice(1);
-    const todayEntries=lines.map(l=>{const c=parseCSVLine(l);return{fecha:c[0]?.trim(),usuario:c[1]?.trim(),novedad:c[8]?.trim()};})
+    const todayEntries=lines.map(l=>{const c=parseCSVLine(l);return{fecha:c[1]?.trim(),usuario:c[2]?.trim(),novedad:c[9]?.trim()};})
       .filter(m=>{
         if(!m.fecha||m.usuario!==userEmail)return false;
         const d=parseDate(m.fecha);
@@ -1911,7 +1911,7 @@ async function checkOvertimeAndDiscrepancy(endTime,elapsedSecs){
     const resp=await fetch(MALLA_SCRIPT+'?sheet=Malla',{signal:AbortSignal.timeout(8000)});
     const csv=await resp.text();
     const lines=csv.trim().split('\n').slice(1);
-    const todayEntry=lines.map(l=>{const c=parseCSVLine(l);return{fecha:c[0]?.trim(),usuario:c[1]?.trim(),nombre:c[2]?.trim(),inicio:c[4]?.trim(),fin:c[5]?.trim(),novedad:c[8]?.trim()};})
+    const todayEntry=lines.map(l=>{const c=parseCSVLine(l);return{fecha:c[1]?.trim(),usuario:c[2]?.trim(),nombre:c[3]?.trim(),inicio:c[5]?.trim(),fin:c[6]?.trim(),novedad:c[9]?.trim()};})
       .find(m=>{
         if(!m.fecha||m.usuario!==userEmail)return false;
         const d=parseDate(m.fecha);
@@ -2183,7 +2183,7 @@ async function checkTodayNovedad(){
     const resp=await fetch(MALLA_SCRIPT+'?sheet=Malla',{signal:AbortSignal.timeout(8000)});
     const csv=await resp.text();
     const lines=csv.trim().split('\n').slice(1);
-    const todayEntry=lines.map(l=>{const c=parseCSVLine(l);return{fecha:c[0]?.trim(),usuario:c[1]?.trim(),novedad:c[8]?.trim()};})
+    const todayEntry=lines.map(l=>{const c=parseCSVLine(l);return{fecha:c[1]?.trim(),usuario:c[2]?.trim(),novedad:c[9]?.trim()};})
       .find(m=>{
         if(!m.fecha||m.usuario!==userEmail)return false;
         const d=parseDate(m.fecha);
@@ -2300,7 +2300,7 @@ async function loadMallaPersonal(){
     const isAdmin=(window.ADMINS||ADMINS).includes(userEmail)||userEmail===SUPER_ADMIN;
     const allTurnos=await window.getRecentTurnos();
     const now=new Date();
-    let allMalla=lines.map(l=>{const c=parseCSVLine(l);return{fecha:c[0]?.trim(),usuario:c[1]?.trim(),nombre:c[2]?.trim(),rol:c[3]?.trim(),inicio:c[4]?.trim(),fin:c[5]?.trim(),almuerzo:c[6]?.trim(),linea:c[7]?.trim(),novedad:c[8]?.trim()};}).filter(m=>m.fecha&&m.usuario);
+    let allMalla=lines.map(l=>{const c=parseCSVLine(l);return{fecha:c[1]?.trim(),usuario:c[2]?.trim(),nombre:c[3]?.trim(),rol:c[4]?.trim(),inicio:c[5]?.trim(),fin:c[6]?.trim(),almuerzo:c[7]?.trim(),linea:c[8]?.trim(),novedad:c[9]?.trim()};}).filter(m=>m.fecha&&m.usuario);
 
     // Populate line filter
     const lineaSel=document.getElementById('malla-linea-filter');
@@ -2585,7 +2585,7 @@ async function loadPanel2(){
   try{
     const resp=await fetch(MALLA_SCRIPT+'?sheet=Malla',{signal:AbortSignal.timeout(8000)});
     const csv=await resp.text();
-    mallaData=csv.trim().split('\n').slice(1).map(l=>{const c=parseCSVLine(l);return{fecha:c[0]?.trim(),usuario:c[1]?.trim(),inicio:c[4]?.trim(),novedad:c[8]?.trim()};}).filter(m=>m.fecha&&m.usuario);
+    mallaData=csv.trim().split('\n').slice(1).map(l=>{const c=parseCSVLine(l);return{fecha:c[1]?.trim(),usuario:c[2]?.trim(),inicio:c[5]?.trim(),novedad:c[9]?.trim()};}).filter(m=>m.fecha&&m.usuario);
   }catch(e){}
 
   // Build rows with cumplimiento
@@ -2867,7 +2867,7 @@ async function sendPayrollReport(){
   try{
     const resp=await fetch(MALLA_SCRIPT+'?sheet=Malla',{signal:AbortSignal.timeout(8000)});
     const csv=await resp.text();
-    mallaData=csv.trim().split('\n').slice(1).map(l=>{const c=parseCSVLine(l);return{fecha:c[0]?.trim(),usuario:c[1]?.trim(),nombre:c[2]?.trim(),novedad:c[8]?.trim()};});
+    mallaData=csv.trim().split('\n').slice(1).map(l=>{const c=parseCSVLine(l);return{fecha:c[1]?.trim(),usuario:c[2]?.trim(),nombre:c[3]?.trim(),novedad:c[9]?.trim()};});
   }catch(e){}
   const records=weekTurnos.map(t=>{
     const start=t.startTime?.toDate?.();const end=t.endTime?.toDate?.();
