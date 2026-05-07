@@ -1088,7 +1088,7 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 </div>
 
 <script>
-const APP_VERSION='14.7';
+const APP_VERSION='14.8';
 const APP_CHANGELOG='Notificaciones de asistencia: recordatorio 10 min antes y alertas de tardanza al admin y agente.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -1413,20 +1413,39 @@ function filterVideos(){
 function getThumbnail(url){
   if(!url)return null;
   const ytMatch=url.match(/(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
-  if(ytMatch)return`https://img.youtube.com/vi/${ytMatch[1]}/hqdefault.jpg`;
+  if(ytMatch)return'https://img.youtube.com/vi/'+ytMatch[1]+'/hqdefault.jpg';
   const driveMatch=url.match(/\/d\/([a-zA-Z0-9_-]{25,})/)||url.match(/[?&]id=([a-zA-Z0-9_-]{25,})/);
-  if(driveMatch)return`https://drive.google.com/thumbnail?id=${driveMatch[1]}&sz=w400`;
+  if(driveMatch)return'https://drive.google.com/thumbnail?id='+driveMatch[1]+'&sz=w400';
   return null;
+}
+function buildThumbHtml(thumbSrc,title){
+  const noThumb='<div class="no-thumb"><svg viewBox="0 0 24 24" fill="none"><path d="M15 10l4.553-2.069A1 1 0 0121 8.87v6.26a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h10a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z" stroke="currentColor" stroke-width="2"/></svg><span>Video</span></div>';
+  if(!thumbSrc)return noThumb;
+  return'<img class="vthumb-img" src="'+thumbSrc+'" alt="'+title.replace(/"/g,'&quot;')+'" style="width:100%;height:100%;object-fit:cover;display:block;"/>';
 }
 function renderVideos(vids){
   const wrap=document.getElementById('video-grid-wrap');
   if(!vids.length){wrap.innerHTML='<div style="padding:40px;text-align:center;color:var(--text-dim);">Sin resultados</div>';return;}
-  wrap.innerHTML='<div class="video-grid">'+vids.map(v=>{
+  wrap.innerHTML='<div class="video-grid">'+vids.map(function(v){
     const thumbSrc=v.thumb||getThumbnail(v.link);
-    const noThumbSvg=`<div class="no-thumb"><svg viewBox="0 0 24 24" fill="none"><path d="M15 10l4.553-2.069A1 1 0 0121 8.87v6.26a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h10a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z" stroke="currentColor" stroke-width="2"/></svg><span>Video</span></div>`;
-    const thumbContent=thumbSrc?`<img src="${esc(thumbSrc)}" alt="${esc(v.title)}" onerror="this.outerHTML='${noThumbSvg.replace(/'/g,"\\'")}'"  style="width:100%;height:100%;object-fit:cover;display:block;"/>`:noThumbSvg;
-    return`<a class="video-card" href="${esc(v.link)}" target="_blank" rel="noopener" onclick="window.trackEvent&&window.trackEvent('tutorial',{title:'${esc(v.title)}'})"><div class="video-thumb">${thumbContent}<div class="play-overlay"><div class="play-btn"><svg viewBox="0 0 24 24" fill="none"><path d="M5 3l14 9-14 9V3z" fill="#7B2FFF"/></svg></div></div></div><div class="video-info"><div class="video-cat">${esc(v.category)}</div><div class="video-title">${esc(v.title)}</div>${v.desc?`<div class="video-desc">${esc(v.desc)}</div>`:''}<span class="open-link">Ver video <svg viewBox="0 0 24 24" fill="none" width="12" height="12"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6M15 3h6v6M10 14L21 3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span></div></a>`;
+    const thumbHtml=buildThumbHtml(thumbSrc,v.title);
+    const descHtml=v.desc?'<div class="video-desc">'+v.desc+'</div>':'';
+    return'<a class="video-card" href="'+v.link+'" target="_blank" rel="noopener" onclick="window.trackEvent&&window.trackEvent(\'tutorial\',{title:\''+v.title.replace(/'/g,"\\'")+'\'})">'+
+      '<div class="video-thumb">'+thumbHtml+
+      '<div class="play-overlay"><div class="play-btn"><svg viewBox="0 0 24 24" fill="none"><path d="M5 3l14 9-14 9V3z" fill="#7B2FFF"/></svg></div></div></div>'+
+      '<div class="video-info">'+
+        '<div class="video-cat">'+v.category+'</div>'+
+        '<div class="video-title">'+v.title+'</div>'+
+        descHtml+
+        '<span class="open-link">Ver video <svg viewBox="0 0 24 24" fill="none" width="12" height="12"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6M15 3h6v6M10 14L21 3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>'+
+      '</div></a>';
   }).join('')+'</div>';
+  // fallback para imágenes rotas
+  wrap.querySelectorAll('.vthumb-img').forEach(function(img){
+    img.onerror=function(){
+      this.parentNode.innerHTML='<div class="no-thumb"><svg viewBox="0 0 24 24" fill="none"><path d="M15 10l4.553-2.069A1 1 0 0121 8.87v6.26a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h10a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z" stroke="currentColor" stroke-width="2"/></svg><span>Video</span></div>';
+    };
+  });
 }
 
 function newChat(){
