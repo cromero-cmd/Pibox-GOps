@@ -1088,7 +1088,7 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 </div>
 
 <script>
-const APP_VERSION='14.9';
+const APP_VERSION='14.10';
 const APP_CHANGELOG='Notificaciones de asistencia: recordatorio 10 min antes y alertas de tardanza al admin y agente.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -1396,7 +1396,7 @@ async function loadVideos(){
   document.getElementById('cat-filters').innerHTML='';
   try{
     const csv=await fetchSheetByName('Tutoriales');
-    allVideos=csv.trim().split('\n').slice(1).map(l=>{const c=parseCSVLine(l);return{title:c[0]?.trim()||'',category:c[1]?.trim()||'General',desc:c[2]?.trim()||'',link:c[3]?.trim()||'',thumb:c[4]?.trim()||''};}).filter(v=>v.title&&v.link);
+    allVideos=csv.trim().split('\n').slice(1).map(l=>{const c=parseCSVLine(l);return{title:c[0]?.trim()||'',category:c[1]?.trim()||'General',desc:c[2]?.trim()||'',link:c[3]?.trim()||''};}).filter(v=>v.title&&v.link);
     document.getElementById('vid-count').textContent=allVideos.length+' tutorial'+(allVideos.length!==1?'es':'')+' disponibles';
     renderCats();renderVideos(allVideos);
   }catch{wrap.innerHTML='<div style="padding:40px;text-align:center;color:var(--text-dim);">No se pudo cargar los tutoriales.</div>';}
@@ -1429,7 +1429,7 @@ function renderVideos(vids){
   const wrap=document.getElementById('video-grid-wrap');
   if(!vids.length){wrap.innerHTML='<div style="padding:40px;text-align:center;color:var(--text-dim);">Sin resultados</div>';return;}
   wrap.innerHTML='<div class="video-grid">'+vids.map(function(v){
-    const thumbSrc=v.thumb||getThumbnail(v.link);
+    const thumbSrc=getThumbnail(v.link);
     const thumbHtml=buildThumbHtml(thumbSrc,v.title);
     const descHtml=v.desc?'<div class="video-desc">'+v.desc+'</div>':'';
     return'<a class="video-card" href="'+v.link+'" target="_blank" rel="noopener" onclick="window.trackEvent&&window.trackEvent(\'tutorial\',{title:\''+v.title.replace(/'/g,"\\'")+'\'})">'+
