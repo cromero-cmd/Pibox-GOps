@@ -1097,7 +1097,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 
 <script>
-const APP_VERSION='14.18';
+const APP_VERSION='14.19';
 const APP_CHANGELOG='Notificaciones de asistencia: recordatorio 10 min antes y alertas de tardanza al admin y agente.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -2308,6 +2308,7 @@ async function loadMallaPersonal(){
     const userEmail=document.getElementById('user-email').textContent;
     const isAdmin=(window.ADMINS||ADMINS).includes(userEmail)||userEmail===SUPER_ADMIN;
     const allTurnos=await window.getRecentTurnos();
+    window._mallaTurnos=allTurnos;
     const now=new Date();
     let allMalla=lines.map(l=>{const c=parseCSVLine(l);return{fecha:c[1]?.trim(),usuario:c[2]?.trim(),nombre:c[3]?.trim(),rol:c[4]?.trim(),inicio:c[5]?.trim(),fin:c[6]?.trim(),almuerzo:c[7]?.trim(),linea:c[8]?.trim(),novedad:c[9]?.trim()};}).filter(m=>m.fecha&&m.usuario);
 
@@ -2317,16 +2318,21 @@ async function loadMallaPersonal(){
       const allLineas=[...new Set(allMalla.map(m=>m.linea).filter(Boolean))].sort();
       const curLinea=lineaSel.value;
       lineaSel.innerHTML='<option value="">Todas las líneas</option>'+allLineas.map(l=>`<option value="${esc(l)}"${l===curLinea?' selected':''}>${esc(l)}</option>`).join('');
+      lineaSel.style.display=isAdmin&&!window._agentPreviewMode?'':'none';
     }
-    // Show user filter for admins
+    // Show user filter only for admins (not in preview mode)
     const filterWrap=document.getElementById('malla-user-filter-wrap');
     const pillsEl=document.getElementById('malla-user-pills');
-    if(isAdmin&&filterWrap&&pillsEl){
-      filterWrap.style.display='block';
-      const allUsers=[...new Set(allMalla.map(m=>m.usuario).filter(Boolean))];
-      if(!window._mallaSelectedUsers)window._mallaSelectedUsers=new Set();
-      pillsEl.innerHTML=`<button class="turno-filter-btn${window._mallaSelectedUsers.size===0?' active':''}" onclick="setMallaUsers(null)" style="font-size:11px;padding:3px 10px;">Todos</button>`
-        +allUsers.map(u=>`<button class="turno-filter-btn${window._mallaSelectedUsers.has(u)?' active':''}" onclick="setMallaUsers('${u}')" style="font-size:11px;padding:3px 10px;">${u.split('@')[0]}</button>`).join('');
+    if(filterWrap&&pillsEl){
+      if(isAdmin&&!window._agentPreviewMode){
+        filterWrap.style.display='block';
+        const allUsers=[...new Set(allMalla.map(m=>m.usuario).filter(Boolean))];
+        if(!window._mallaSelectedUsers)window._mallaSelectedUsers=new Set();
+        pillsEl.innerHTML=`<button class="turno-filter-btn${window._mallaSelectedUsers.size===0?' active':''}" onclick="setMallaUsers(null)" style="font-size:11px;padding:3px 10px;">Todos</button>`
+          +allUsers.map(u=>`<button class="turno-filter-btn${window._mallaSelectedUsers.has(u)?' active':''}" onclick="setMallaUsers('${u}')" style="font-size:11px;padding:3px 10px;">${u.split('@')[0]}</button>`).join('');
+      } else {
+        filterWrap.style.display='none';
+      }
     }
 
     // Filter by user
@@ -2392,18 +2398,26 @@ function renderMallaPersonal(){
   if(hoursEl){
     const showHours=!isAdminView||(window._mallaSelectedUsers?.size===1&&[...window._mallaSelectedUsers][0]===userEmail);
     if(showHours){
-      function secsToHm(s){const h=Math.floor(s/3600),m=Math.floor((s%3600)/60);return h?`${h}h${m>0?' '+m+'m':''}`:`${m}m`;}
+      function secsToHm(s){const h=Math.floor(s/3600),m=Math.floor((s%3600)/60);if(h&&m)return`${h}h ${m}m`;if(h)return`${h}h`;return`${m}m`;}
       const todayRows=rows.filter(r=>{const d=parseDate(r.fecha);return d&&d>=sod&&d<=eod;});
       const todayProgSecs=todayRows.reduce((s,r)=>s+(r.scheduledStart&&r.scheduledEnd?Math.max(0,(r.scheduledEnd-r.scheduledStart)/1000):0),0);
       const todayRealSecs=todayRows.reduce((s,r)=>{if(!r.realStart)return s;return s+Math.max(0,((r.realEnd||now)-r.realStart)/1000);},0);
       const weekRows=mallaAllRows.filter(r=>{const d=parseDate(r.fecha);return d&&d>=sow&&d<=eow;});
       const weekProgSecs=weekRows.reduce((s,r)=>s+(r.scheduledStart&&r.scheduledEnd?Math.max(0,(r.scheduledEnd-r.scheduledStart)/1000):0),0);
       const weekRealSecs=weekRows.reduce((s,r)=>{if(!r.realStart)return s;return s+Math.max(0,((r.realEnd||now)-r.realStart)/1000);},0);
-      const extrasSecs=weekRows.reduce((s,r)=>{if(!r.realStart||!r.realEnd||!r.scheduledStart||!r.scheduledEnd)return s;const extra=(r.realEnd-r.realStart)/1000-(r.scheduledEnd-r.scheduledStart)/1000-(TOLERANCE_MINS*60);return s+Math.max(0,extra);},0);
-      const almSecs=weekRows.reduce((s,r)=>{if(!r.almuerzo)return s;const p=r.almuerzo.match(/(\d+)/g);return p&&p.length>=2?s+(parseInt(p[0])*60+parseInt(p[1]))*60:p&&p.length===1?s+parseInt(p[0])*60:s;},0);
+      // Extras: solo horas extras aprobadas (overtimeStatus === 'approved')
+      const allTurnos=window._mallaTurnos||[];
+      const extrasAprobSecs=weekRows.reduce((s,r)=>{
+        const ut=allTurnos.filter(t=>t.userEmail===userEmail);
+        const d=parseDate(r.fecha);
+        const mt=ut.find(t=>{const td=t.startTime?.toDate?.();return td&&d&&td.toDateString()===d.toDateString();});
+        if(!mt||mt.overtimeStatus!=='approved'||!mt.overtimeMinutes)return s;
+        return s+mt.overtimeMinutes*60;
+      },0);
       const tc=todayRealSecs>=todayProgSecs&&todayProgSecs>0?'#4ade80':'#fbbf24';
       const wc=weekRealSecs>=weekProgSecs&&weekProgSecs>0?'#4ade80':'#fbbf24';
       hoursEl.style.display='grid';
+      hoursEl.style.gridTemplateColumns='repeat(3,1fr)';
       hoursEl.innerHTML=`
         <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 14px;">
           <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;font-family:var(--mono);margin-bottom:4px;">⏱ Hoy</div>
@@ -2416,13 +2430,8 @@ function renderMallaPersonal(){
           <div style="font-size:10px;color:var(--text-dim);margin-top:3px;">de ${weekProgSecs>0?secsToHm(weekProgSecs):'—'} prog.</div>
         </div>
         <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 14px;">
-          <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;font-family:var(--mono);margin-bottom:4px;">⚡ Extras</div>
-          <div style="font-size:18px;font-weight:800;color:${extrasSecs>0?'#a78bfa':'var(--text-dim)'};line-height:1;">${extrasSecs>0?secsToHm(extrasSecs):'0m'}</div>
-          <div style="font-size:10px;color:var(--text-dim);margin-top:3px;">esta semana</div>
-        </div>
-        <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 14px;">
-          <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;font-family:var(--mono);margin-bottom:4px;">🍽 Almuerzo</div>
-          <div style="font-size:18px;font-weight:800;color:var(--text);line-height:1;">${almSecs>0?secsToHm(almSecs):'—'}</div>
+          <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;font-family:var(--mono);margin-bottom:4px;">⚡ Extras aprobadas</div>
+          <div style="font-size:18px;font-weight:800;color:${extrasAprobSecs>0?'#a78bfa':'var(--text-dim)'};line-height:1;">${extrasAprobSecs>0?secsToHm(extrasAprobSecs):'0m'}</div>
           <div style="font-size:10px;color:var(--text-dim);margin-top:3px;">esta semana</div>
         </div>`;
     } else {
@@ -3088,28 +3097,33 @@ async function authorizeResume(turnoId, btn){
 
 // ── EXPORT ──
 function exportToXLSX(headers, rows, filename){
-  // Build CSV content
-  const csvRows=[headers.join(','),...rows.map(r=>r.map(c=>'"'+String(c||'').replace(/"/g,'""')+'"').join(','))];
-  const csv=csvRows.join('\n');
-  const blob=new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8;'});
+  // Build TSV for Excel-compatible import (xlsx via SheetJS if available, else xls via HTML table)
+  let html='<html><head><meta charset="UTF-8"></head><body><table>';
+  html+='<tr>'+headers.map(h=>`<th>${h}</th>`).join('')+'</tr>';
+  html+=rows.map(r=>'<tr>'+r.map(c=>`<td>${String(c||'').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</td>`).join('')+'</tr>').join('');
+  html+='</table></body></html>';
+  const blob=new Blob([html],{type:'application/vnd.ms-excel;charset=utf-8;'});
   const url=URL.createObjectURL(blob);
-  const a=document.createElement('a');a.href=url;a.download=filename+'.csv';a.click();
+  const a=document.createElement('a');a.href=url;a.download=filename+'.xls';a.click();
   URL.revokeObjectURL(url);
-  toast('Exportado ✓ — '+filename+'.csv');
+  toast('Exportado ✓ — '+filename+'.xls');
 }
 
 function exportMallaXLSX(){
   if(!mallaAllRows||!mallaAllRows.length){toast('Sin datos para exportar');return;}
   const userEmail=document.getElementById('user-email').textContent;
   const isAdmin=(window.ADMINS||ADMINS).includes(userEmail)||userEmail===SUPER_ADMIN;
-  const headers=isAdmin
-    ?['Fecha','Usuario','Rol','Prog. Inicio','Prog. Fin','Real Inicio','Real Fin','Almuerzo','Línea','Novedad','Estado']
-    :['Fecha','Rol','Prog. Inicio','Prog. Fin','Real Inicio','Real Fin','Almuerzo','Línea','Novedad','Estado'];
   const fmt=t=>t?t.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
   const fmtD=d=>parseDate(d)?.toLocaleDateString('es-CO',{day:'2-digit',month:'short',year:'numeric'})||d||'—';
+  const DIAS=['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+  const headers=isAdmin&&!window._agentPreviewMode
+    ?['Día','Fecha','Usuario','Nombre','Rol','Prog. Inicio','Prog. Fin','Real Inicio','Real Fin','Almuerzo','Línea','Novedad','Estado']
+    :['Día','Fecha','Rol','Prog. Inicio','Prog. Fin','Real Inicio','Real Fin','Almuerzo','Línea','Novedad','Estado'];
   const rows=mallaAllRows.map(r=>{
-    const base=[fmtD(r.fecha),r.rol||'—',fmt(r.scheduledStart),fmt(r.scheduledEnd),fmt(r.realStart),fmt(r.realEnd),r.almuerzo||'—',r.linea||'—',r.novedad||'—',r.status.label];
-    return isAdmin?[r.usuario||'—',...base].map((v,i)=>i===1?v:v):base;
+    const d=parseDate(r.fecha);
+    const dia=d?DIAS[d.getDay()]:'—';
+    const base=[dia,fmtD(r.fecha),r.rol||'—',fmt(r.scheduledStart),fmt(r.scheduledEnd),fmt(r.realStart),fmt(r.realEnd),r.almuerzo||'—',r.linea||'—',r.novedad||'—',r.status.label];
+    return isAdmin&&!window._agentPreviewMode?[dia,fmtD(r.fecha),r.usuario||'—',r.nombre||'—',r.rol||'—',fmt(r.scheduledStart),fmt(r.scheduledEnd),fmt(r.realStart),fmt(r.realEnd),r.almuerzo||'—',r.linea||'—',r.novedad||'—',r.status.label]:base;
   });
   exportToXLSX(headers,rows,'malla_turnos_'+new Date().toISOString().split('T')[0]);
 }
