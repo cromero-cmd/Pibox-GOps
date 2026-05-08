@@ -1165,7 +1165,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 
 <script>
-const APP_VERSION='14.38';
+const APP_VERSION='14.39';
 const APP_CHANGELOG='Notificaciones de asistencia: recordatorio 10 min antes y alertas de tardanza al admin y agente.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -1906,9 +1906,10 @@ function showTurnoDoneToday(turno){
 
 async function checkTodayNovedad(){
   const userEmail=document.getElementById('user-email').textContent;
+  const isAdmin=(window.ADMINS||ADMINS).includes(userEmail)||userEmail===SUPER_ADMIN;
   const today=new Date();
-  // Only check if no active turno
   if(currentTurnoId)return;
+  if(isAdmin&&!window._agentPreviewMode)return;
   try{
     const resp=await fetch(MALLA_SCRIPT+'?sheet=Malla',{signal:AbortSignal.timeout(8000)});
     const csv=await resp.text();
@@ -1919,7 +1920,11 @@ async function checkTodayNovedad(){
         const d=parseDate(m.fecha);
         return d&&d.toDateString()===today.toDateString();
       });
-    if(todayEntry?.novedad)showTurnoBlocked(todayEntry.novedad);
+    if(!todayEntry){
+      showTurnoBlocked('No tienes un turno programado para hoy en la malla.');
+    } else if(todayEntry.novedad){
+      showTurnoBlocked(todayEntry.novedad);
+    }
   }catch(e){}
 }
 
@@ -2297,9 +2302,10 @@ function showTurnoDoneToday(turno){
 
 async function checkTodayNovedad(){
   const userEmail=document.getElementById('user-email').textContent;
+  const isAdmin=(window.ADMINS||ADMINS).includes(userEmail)||userEmail===SUPER_ADMIN;
   const today=new Date();
-  // Only check if no active turno
   if(currentTurnoId)return;
+  if(isAdmin&&!window._agentPreviewMode)return;
   try{
     const resp=await fetch(MALLA_SCRIPT+'?sheet=Malla',{signal:AbortSignal.timeout(8000)});
     const csv=await resp.text();
@@ -2310,7 +2316,11 @@ async function checkTodayNovedad(){
         const d=parseDate(m.fecha);
         return d&&d.toDateString()===today.toDateString();
       });
-    if(todayEntry?.novedad)showTurnoBlocked(todayEntry.novedad);
+    if(!todayEntry){
+      showTurnoBlocked('No tienes un turno programado para hoy en la malla.');
+    } else if(todayEntry.novedad){
+      showTurnoBlocked(todayEntry.novedad);
+    }
   }catch(e){}
 }
 
