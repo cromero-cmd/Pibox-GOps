@@ -1137,7 +1137,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 
 <script>
-const APP_VERSION='14.31';
+const APP_VERSION='14.32';
 const APP_CHANGELOG='Notificaciones de asistencia: recordatorio 10 min antes y alertas de tardanza al admin y agente.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -1257,6 +1257,7 @@ function initHomeView(){
     {id:'ext-superset',icon:'📈',title:'Superset',desc:'Centro de control de datos y dashboards de Business Intelligence.',color:'#20A7C9',grad:'linear-gradient(135deg,#20A7C9,#45D0E8)',roles:['admin','super'],url:'https://superset.picap.co/dashboard/list/?pageIndex=0&sortColumn=changed_on_delta_humanized&sortOrder=desc&viewMode=table'},
     {id:'ext-soporte',icon:'🎫',title:'Soporte de Activos',desc:'Abre tickets para fallas con equipos, celulares, licencias y activos de trabajo.',color:'#64748b',grad:'linear-gradient(135deg,#64748b,#94a3b8)',roles:['user','admin','super'],url:'https://consolidador.picap.app/help_desk_tickets/new'},
     {id:'ext-pikasso',icon:'🎯',title:'Pikasso',desc:'Control multiárea de OKRs corporativas. KRs, metas y resultados por área.',color:'#e11d48',grad:'linear-gradient(135deg,#e11d48,#f43f5e)',roles:['super'],url:'https://pikasso.codi.com.co/metas?owner_id=38&period_id=16&tab=configurar&team_id=19&year=2026'},
+    {id:'ext-limpiador',icon:'🗺️',title:'Limpiador de direcciones',desc:'Limpia y estandariza direcciones para mejorar el procesamiento de rutas.',color:'#0ea5e9',grad:'linear-gradient(135deg,#0ea5e9,#6366f1)',roles:['user','admin','super'],url:'https://andrealuceiro-hash.github.io/pibox-separador-direcciones/separador_direcciones_colombia.html'},
   ];
   const role=window._agentPreviewMode?'user':isSuperAdmin?'super':isAdmin?'admin':'user';
   const filtered=cards.filter(c=>c.roles.includes(role));
@@ -1294,6 +1295,7 @@ function applyStoredTheme(){
 }
 function switchTab(t){
   if(t!=='home')localStorage.setItem('pg_active_tab',t);
+  else localStorage.removeItem('pg_active_tab');
   // Show/hide tabs based on view
   const tabsEl=document.querySelector('.tabs');
   if(tabsEl)tabsEl.style.display=t==='home'?'none':'flex';
