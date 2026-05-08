@@ -1165,7 +1165,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 
 <script>
-const APP_VERSION='14.36';
+const APP_VERSION='14.37';
 const APP_CHANGELOG='Notificaciones de asistencia: recordatorio 10 min antes y alertas de tardanza al admin y agente.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -2456,6 +2456,7 @@ function setPanel2Lider(lider){
   });
   loadPanel2();
 }
+function toggleMallaUserDropdown(){
   const menu=document.getElementById('malla-user-dropdown-menu');
   if(menu)menu.style.display=menu.style.display==='none'?'block':'none';
 }
