@@ -819,13 +819,10 @@ body.agent-preview-mode header{margin-top:34px;}
             <div class="turno-history-header">
               <div class="turno-history-title">📊 Resumen de horas</div>
               <div class="turno-filters">
-                <button class="turno-filter-btn active" onclick="setTurnoFilter('today',this)">Hoy</button>
-                <button class="turno-filter-btn" onclick="setTurnoFilter('week',this)">Esta semana</button>
-                <button class="turno-filter-btn" onclick="setTurnoFilter('month',this)">Este mes</button>
-                <button class="turno-filter-btn" onclick="setTurnoFilter('custom',this)">Personalizado</button>
+                <button class="turno-filter-btn active" onclick="setTurnoFilter('custom',this)">📅 Personalizado</button>
               </div>
             </div>
-            <div id="turno-date-filters" style="display:none;padding:8px 18px;gap:6px;align-items:center;">
+            <div id="turno-date-filters" style="display:flex;padding:8px 18px;gap:6px;align-items:center;flex-wrap:wrap;">
               <span style="font-size:11px;color:var(--text-dim);font-family:var(--mono);">Desde</span>
               <input type="date" class="turno-date-input" id="turno-date-from" onchange="loadTurnoHistory()"/>
               <span style="font-size:11px;color:var(--text-dim);font-family:var(--mono);">Hasta</span>
@@ -862,7 +859,6 @@ body.agent-preview-mode header{margin-top:34px;}
           <input type="date" class="turno-date-input" id="malla-date-to" onchange="renderMallaPersonal()"/>
         </div>
         <div id="malla-summary-cards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px;margin-bottom:10px;"></div>
-        <div id="malla-hours-cards" style="display:none;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px;"></div>
         <div class="malla-table">
           <div class="malla-thead" id="malla-thead"></div>
           <div id="malla-table-body"><div style="padding:30px;text-align:center;color:var(--text-dim);font-size:12px;">Cargando malla...</div></div>
@@ -1093,7 +1089,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 
 <script>
-const APP_VERSION='14.20';
+const APP_VERSION='14.21';
 const APP_CHANGELOG='Notificaciones de asistencia: recordatorio 10 min antes y alertas de tardanza al admin y agente.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -1749,6 +1745,7 @@ async function initTurnoView(){
     // Turno already completed today - block re-start
     showTurnoDoneToday(existing);
   }
+  initTurnoFilters();
   loadTurnoHistory();
   // Pre-check malla for today
   checkTodayNovedad();
@@ -2121,15 +2118,20 @@ async function resumeTurno(){
 async function startFreshTurno(){if(window._resumePollId){clearInterval(window._resumePollId);window._resumePollId=null;}document.getElementById('resume-banner').style.display='none';window._interruptedTurno=null;await startTurno();}
 
 function setTurnoFilter(f,btn){
-  turnoFilter=f;
-  document.querySelectorAll('#subview-miturno .turno-filter-btn').forEach(b=>b.classList.remove('active'));
-  btn.classList.add('active');
-  const df=document.getElementById('turno-date-filters');
-  if(df)df.style.display=f==='custom'?'flex':'none';
-  if(f==='custom'){const today=new Date().toISOString().split('T')[0];if(!document.getElementById('turno-date-from').value)document.getElementById('turno-date-from').value=today;if(!document.getElementById('turno-date-to').value)document.getElementById('turno-date-to').value=today;}
+  turnoFilter='custom';
+  const today=new Date().toISOString().split('T')[0];
+  if(!document.getElementById('turno-date-from').value)document.getElementById('turno-date-from').value=today;
+  if(!document.getElementById('turno-date-to').value)document.getElementById('turno-date-to').value=today;
   loadTurnoHistory();
-  // Pre-check malla for today
   checkTodayNovedad();
+}
+function initTurnoFilters(){
+  turnoFilter='custom';
+  const today=new Date().toISOString().split('T')[0];
+  const fromEl=document.getElementById('turno-date-from');
+  const toEl=document.getElementById('turno-date-to');
+  if(fromEl&&!fromEl.value)fromEl.value=today;
+  if(toEl&&!toEl.value)toEl.value=today;
 }
 
 function showTurnoDoneToday(turno){
@@ -2403,7 +2405,6 @@ async function loadMallaPersonal(){
 function renderMallaPersonal(){
   const body=document.getElementById('malla-table-body');
   const summaryEl=document.getElementById('malla-summary-cards');
-  const hoursEl=document.getElementById('malla-hours-cards');
   if(!body)return;
   const userEmail=document.getElementById('user-email').textContent;
   const isAdminView=!window._agentPreviewMode&&((window.ADMINS||ADMINS).includes(userEmail)||userEmail===SUPER_ADMIN&&(window._mallaSelectedUsers?.size!==1||[...window._mallaSelectedUsers][0]!==userEmail));
@@ -2442,53 +2443,6 @@ function renderMallaPersonal(){
   const total=rows.length,cumplió=rows.filter(r=>r.status.cls==='cumplió').length,tardanza=rows.filter(r=>r.status.cls==='tardanza').length,ausente=rows.filter(r=>r.status.cls==='ausente').length,pendiente=rows.filter(r=>r.status.cls==='pendiente').length,novedad=rows.filter(r=>r.status.cls==='novedad').length;
   const pct=total?Math.round(((cumplió+novedad)/total)*100):0;
   let mallaStatusFilter=window._mallaStatusFilter||null;
-
-  // ── Tarjetas de horas (solo vista personal) ──
-  if(hoursEl){
-    const showHours=!isAdminView||(window._mallaSelectedUsers?.size===1&&[...window._mallaSelectedUsers][0]===userEmail);
-    if(showHours){
-      function secsToHm(s){const h=Math.floor(s/3600),m=Math.floor((s%3600)/60);if(h&&m)return`${h}h ${m}m`;if(h)return`${h}h`;return`${m}m`;}
-      const todayRows=rows.filter(r=>{const d=parseDate(r.fecha);return d&&d>=sod&&d<=eod;});
-      const todayProgSecs=todayRows.reduce((s,r)=>s+(r.scheduledStart&&r.scheduledEnd?Math.max(0,(r.scheduledEnd-r.scheduledStart)/1000):0),0);
-      const todayRealSecs=todayRows.reduce((s,r)=>{if(!r.realStart)return s;return s+Math.max(0,((r.realEnd||now)-r.realStart)/1000);},0);
-      const weekRows=mallaAllRows.filter(r=>{const d=parseDate(r.fecha);return d&&d>=sow&&d<=eow;});
-      const weekProgSecs=weekRows.reduce((s,r)=>s+(r.scheduledStart&&r.scheduledEnd?Math.max(0,(r.scheduledEnd-r.scheduledStart)/1000):0),0);
-      const weekRealSecs=weekRows.reduce((s,r)=>{if(!r.realStart)return s;return s+Math.max(0,((r.realEnd||now)-r.realStart)/1000);},0);
-      // Extras: solo horas extras aprobadas (overtimeStatus === 'approved')
-      const allTurnos=window._mallaTurnos||[];
-      const extrasAprobSecs=weekRows.reduce((s,r)=>{
-        const ut=allTurnos.filter(t=>t.userEmail===userEmail);
-        const d=parseDate(r.fecha);
-        const mt=ut.find(t=>{const td=t.startTime?.toDate?.();return td&&d&&td.toDateString()===d.toDateString();});
-        if(!mt||mt.overtimeStatus!=='approved'||!mt.overtimeMinutes)return s;
-        return s+mt.overtimeMinutes*60;
-      },0);
-      const tc=todayRealSecs>=todayProgSecs&&todayProgSecs>0?'#4ade80':'#fbbf24';
-      const wc=weekRealSecs>=weekProgSecs&&weekProgSecs>0?'#4ade80':'#fbbf24';
-      hoursEl.style.display='grid';
-      hoursEl.style.gridTemplateColumns='repeat(3,1fr)';
-      hoursEl.innerHTML=`
-        <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 14px;">
-          <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;font-family:var(--mono);margin-bottom:4px;">⏱ Hoy</div>
-          <div style="font-size:18px;font-weight:800;color:${tc};line-height:1;">${todayRealSecs>0?secsToHm(todayRealSecs):'—'}</div>
-          <div style="font-size:10px;color:var(--text-dim);margin-top:3px;">de ${todayProgSecs>0?secsToHm(todayProgSecs):'—'} prog.</div>
-        </div>
-        <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 14px;">
-          <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;font-family:var(--mono);margin-bottom:4px;">📊 Semana</div>
-          <div style="font-size:18px;font-weight:800;color:${wc};line-height:1;">${weekRealSecs>0?secsToHm(weekRealSecs):'—'}</div>
-          <div style="font-size:10px;color:var(--text-dim);margin-top:3px;">de ${weekProgSecs>0?secsToHm(weekProgSecs):'—'} prog.</div>
-        </div>
-        <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 14px;">
-          <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;font-family:var(--mono);margin-bottom:4px;">⚡ Extras aprobadas</div>
-          <div style="font-size:18px;font-weight:800;color:${extrasAprobSecs>0?'#a78bfa':'var(--text-dim)'};line-height:1;">${extrasAprobSecs>0?secsToHm(extrasAprobSecs):'0m'}</div>
-          <div style="font-size:10px;color:var(--text-dim);margin-top:3px;">esta semana</div>
-        </div>`;
-    } else {
-      hoursEl.style.display='none';
-      hoursEl.innerHTML='';
-    }
-  }
-
   if(summaryEl)summaryEl.innerHTML=`
     <div class="cumpl-card purple" onclick="setMallaStatusFilter(null)" style="cursor:pointer;" title="Ver todos"><div class="cumpl-card-num">${pct}%</div><div class="cumpl-card-label">Cumplimiento</div></div>
     <div class="cumpl-card green" onclick="setMallaStatusFilter('cumplió')" style="cursor:pointer;${mallaStatusFilter==='cumplió'?'border:1px solid #4ade80;':''}" title="Filtrar"><div class="cumpl-card-num">${cumplió}</div><div class="cumpl-card-label">🟢 Cumplió</div></div>
