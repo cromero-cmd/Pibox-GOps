@@ -1137,7 +1137,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 
 <script>
-const APP_VERSION='14.29';
+const APP_VERSION='14.30';
 const APP_CHANGELOG='Notificaciones de asistencia: recordatorio 10 min antes y alertas de tardanza al admin y agente.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -1252,19 +1252,25 @@ function initHomeView(){
     {id:'library',icon:'🎬',title:'Tutoriales',desc:'Biblioteca de videos de capacitación y guías para el equipo de operaciones.',color:'#8b5cf6',grad:'linear-gradient(135deg,#8b5cf6,#ec4899)',roles:['user','admin','super']},
     {id:'analytics',icon:'📊',title:'Métricas',desc:'Indicadores de uso del asistente, tasa de resolución y tiempos de respuesta.',color:'#10b981',grad:'linear-gradient(135deg,#10b981,#06b6d4)',roles:['admin','super']},
     {id:'turno-panel',icon:'👥',title:'Panel de control',desc:'Historial de turnos del equipo, gestión de extras y reportes de nómina.',color:'#f59e0b',grad:'linear-gradient(135deg,#f59e0b,#ef4444)',roles:['admin','super']},
+    {id:'ext-tracker',icon:'🔍',title:'Pibox Tracker',desc:'Control de errores en transacciones de bookings y corrección de registros.',color:'#ef4444',grad:'linear-gradient(135deg,#ef4444,#f97316)',roles:['admin','super'],url:'https://pibox-facturacion-gtprw9awrj9qnmi684577t.streamlit.app/'},
+    {id:'ext-trello',icon:'📋',title:'Trello',desc:'Gestión de tareas entre áreas: Marketing, Growth, Onboarding, BI y Tecnología.',color:'#0052CC',grad:'linear-gradient(135deg,#0052CC,#2684FF)',roles:['admin','super'],url:'https://trello.codi.com.co/'},
+    {id:'ext-superset',icon:'📈',title:'Superset',desc:'Centro de control de datos y dashboards de Business Intelligence.',color:'#20A7C9',grad:'linear-gradient(135deg,#20A7C9,#45D0E8)',roles:['admin','super'],url:'https://superset.picap.co/dashboard/list/?pageIndex=0&sortColumn=changed_on_delta_humanized&sortOrder=desc&viewMode=table'},
+    {id:'ext-soporte',icon:'🎫',title:'Soporte de Activos',desc:'Abre tickets para fallas con equipos, celulares, licencias y activos de trabajo.',color:'#64748b',grad:'linear-gradient(135deg,#64748b,#94a3b8)',roles:['user','admin','super'],url:'https://consolidador.picap.app/help_desk_tickets/new'},
   ];
   const role=window._agentPreviewMode?'user':isSuperAdmin?'super':isAdmin?'admin':'user';
   const filtered=cards.filter(c=>c.roles.includes(role));
   const wrap=document.getElementById('home-cards');
   if(!wrap)return;
   wrap.innerHTML=filtered.map(c=>{
-    return '<div class="home-card" data-cardid="'+c.id+'" style="cursor:pointer;"><div style="position:absolute;top:0;left:0;right:0;height:3px;background:'+c.grad+';border-radius:18px 18px 0 0;"></div><div class="home-card-icon" style="background:'+c.color+'20;border:1px solid '+c.color+'30;"><span style="font-size:22px;">'+c.icon+'</span></div><div><div class="home-card-title">'+c.title+'</div><div class="home-card-desc">'+c.desc+'</div></div></div>';
+    const externalBadge=c.url?'<div style="position:absolute;top:10px;right:10px;font-size:9px;font-family:var(--mono);color:var(--text-dim);background:var(--surface2);border:1px solid var(--border);padding:2px 6px;border-radius:4px;">↗ externo</div>':'';
+    return '<div class="home-card" data-cardid="'+c.id+'" style="cursor:pointer;">'+externalBadge+'<div style="position:absolute;top:0;left:0;right:0;height:3px;background:'+c.grad+';border-radius:18px 18px 0 0;"></div><div class="home-card-icon" style="background:'+c.color+'20;border:1px solid '+c.color+'30;"><span style="font-size:22px;">'+c.icon+'</span></div><div><div class="home-card-title">'+c.title+'</div><div class="home-card-desc">'+c.desc+'</div></div></div>';
   }).join('');
-  // Add click handlers after DOM is updated
   wrap.querySelectorAll('.home-card').forEach(el=>{
     el.addEventListener('click',()=>{
       const id=el.dataset.cardid;
-      if(id==='turno-panel'){switchTab('turno');setTimeout(()=>switchTurnoTab('panel'),300);}
+      const card=cards.find(c=>c.id===id);
+      if(card?.url){window.open(card.url,'_blank','noopener');}
+      else if(id==='turno-panel'){switchTab('turno');setTimeout(()=>switchTurnoTab('panel'),300);}
       else if(id==='turno'){switchTab('turno');setTimeout(()=>switchTurnoTab('miturno'),100);}
       else{switchTab(id);}
     });
