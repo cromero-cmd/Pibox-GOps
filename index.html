@@ -929,27 +929,57 @@ body.agent-preview-mode header{margin-top:34px;}
       </div>
 
       <!-- Full width table -->
-      <div class="turno-history-wrap">
-        <div class="turno-history-header"><div class="turno-history-title">📋 Historial de turnos</div></div>
-        <div id="panel2-user-pills" style="display:flex;flex-wrap:wrap;gap:6px;padding:10px 14px;border-bottom:1px solid var(--border);background:var(--surface2);"></div>
+      <div class="turno-history-wrap" style="margin-bottom:16px;">
+        <div class="turno-history-header"><div class="turno-history-title">📋 Malla + Turnos reales</div></div>
         <div id="panel2-status-cards" style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px;padding:12px 14px;border-bottom:1px solid var(--border);"></div>
-        <div style="display:grid;grid-template-columns:160px 65px 120px 85px 85px 90px 110px;gap:0;background:var(--surface2);border-bottom:1px solid var(--border);font-size:10px;font-weight:700;color:var(--text-dim);text-transform:uppercase;font-family:var(--mono);">
-          <div style="padding:10px 12px;border-right:1px solid var(--border);">Usuario</div>
-          <div style="padding:10px 12px;border-right:1px solid var(--border);">Fecha</div>
-          <div style="padding:10px 12px;border-right:1px solid var(--border);">Inicio → Fin</div>
-          <div style="padding:10px 12px;border-right:1px solid var(--border);">Duración</div>
-          <div style="padding:10px 12px;border-right:1px solid var(--border);">Dispositivo</div>
-          <div style="padding:10px 12px;border-right:1px solid var(--border);">Fichaje</div>
-          <div style="padding:10px 12px;">Cumplimiento</div>
+        <div style="padding:10px 14px;border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <div style="position:relative;">
+            <div onclick="togglePanel2UserDropdown()" style="display:inline-flex;align-items:center;gap:8px;background:var(--surface2);border:1px solid var(--border);border-radius:9px;padding:6px 12px;cursor:pointer;font-size:12px;color:var(--text-muted);font-family:var(--mono);user-select:none;">
+              <svg viewBox="0 0 24 24" fill="none" width="14" height="14"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="9" cy="7" r="4" stroke="currentColor" stroke-width="2"/></svg>
+              <span id="panel2-user-dropdown-label">Todos los agentes</span>
+              <svg viewBox="0 0 24 24" fill="none" width="12" height="12"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </div>
+            <div id="panel2-user-dropdown-menu" style="display:none;position:absolute;top:calc(100% + 4px);left:0;min-width:240px;background:var(--surface);border:1px solid var(--border);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,0.3);z-index:200;overflow:hidden;">
+              <div style="padding:8px;border-bottom:1px solid var(--border);display:flex;gap:6px;">
+                <button onclick="setPanel2Users(null)" style="flex:1;background:var(--surface2);border:1px solid var(--border);color:var(--text-muted);padding:4px 8px;border-radius:6px;font-size:11px;cursor:pointer;font-family:var(--mono);">Todos</button>
+                <button onclick="panel2SelectedUsers.clear();updatePanel2UserDropdownLabel();loadPanel2();" style="flex:1;background:rgba(248,113,113,0.1);border:1px solid rgba(248,113,113,0.3);color:#f87171;padding:4px 8px;border-radius:6px;font-size:11px;cursor:pointer;font-family:var(--mono);">✕ Limpiar</button>
+              </div>
+              <div id="panel2-user-pills" style="max-height:220px;overflow-y:auto;padding:6px;"></div>
+            </div>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:40px 140px 70px 90px 90px 90px 80px 90px 120px;gap:0;background:var(--surface2);border-bottom:1px solid var(--border);font-size:10px;font-weight:700;color:var(--text-dim);text-transform:uppercase;font-family:var(--mono);">
+          <div style="padding:10px 6px;border-right:1px solid var(--border);text-align:center;">Día</div>
+          <div style="padding:10px 10px;border-right:1px solid var(--border);">Agente</div>
+          <div style="padding:10px 10px;border-right:1px solid var(--border);">Fecha</div>
+          <div style="padding:10px 10px;border-right:1px solid var(--border);">Prog.</div>
+          <div style="padding:10px 10px;border-right:1px solid var(--border);">Real</div>
+          <div style="padding:10px 10px;border-right:1px solid var(--border);">Duración</div>
+          <div style="padding:10px 10px;border-right:1px solid var(--border);">Disp.</div>
+          <div style="padding:10px 10px;border-right:1px solid var(--border);">Acciones</div>
+          <div style="padding:10px 10px;">Cumplimiento</div>
         </div>
         <div id="panel2-table" style="max-height:420px;overflow-y:auto;">
           <div style="padding:20px;text-align:center;color:var(--text-dim);font-size:12px;">Cargando...</div>
         </div>
-    </div>
+      </div>
+
+      <!-- Extras -->
+      <div class="turno-history-wrap" style="margin-bottom:16px;">
+        <div class="turno-history-header"><div class="turno-history-title">⚡ Horas extras del período</div></div>
+        <div id="panel2-extras" style="padding:14px;"><div style="padding:16px;font-size:12px;color:var(--text-dim);text-align:center;">Cargando...</div></div>
+      </div>
+
+      <!-- Insights -->
+      <div class="turno-history-wrap" style="margin-bottom:16px;">
+        <div class="turno-history-header"><div class="turno-history-title">🏆 Insights del equipo</div></div>
+        <div id="panel2-insights" style="padding:14px;"><div style="padding:16px;font-size:12px;color:var(--text-dim);text-align:center;">Cargando...</div></div>
+      </div>
 
   </div>
 
   </div>
+
 
   <!-- CHAT VIEW -->
   <div class="view" id="chat-view">
@@ -1101,7 +1131,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 
 <script>
-const APP_VERSION='14.24';
+const APP_VERSION='14.25';
 const APP_CHANGELOG='Notificaciones de asistencia: recordatorio 10 min antes y alertas de tardanza al admin y agente.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -2340,6 +2370,11 @@ document.addEventListener('click',function(e){
     const menu=document.getElementById('malla-user-dropdown-menu');
     if(menu)menu.style.display='none';
   }
+  const p2wrap=document.getElementById('panel2-user-dropdown-menu')?.parentElement;
+  if(p2wrap&&!p2wrap.contains(e.target)){
+    const menu=document.getElementById('panel2-user-dropdown-menu');
+    if(menu)menu.style.display='none';
+  }
 });
 function clearMallaUserFilter(){
   if(window._mallaSelectedUsers)window._mallaSelectedUsers.clear();
@@ -2651,15 +2686,7 @@ async function loadPanel2(){
   const activeNow=allTurnos.filter(t=>t.status==='active');
   const activeEl=document.getElementById('panel2-active');
   if(!activeEl){setTimeout(()=>loadPanel2(),200);return;}
-
-  // Load overtime badge
-  if(window.loadOvertimeEvents){
-    window.loadOvertimeEvents().then(events=>{
-      const badge=document.getElementById('overtime-badge');
-      if(badge&&events.length>0){badge.style.display='inline';badge.textContent=events.length;}
-    });
-  }
-  // Load early leave badge
+  if(window.loadOvertimeEvents){window.loadOvertimeEvents().then(events=>{const badge=document.getElementById('overtime-badge');if(badge&&events.length>0){badge.style.display='inline';badge.textContent=events.length;}});}
   loadEarlyLeaveBadge();
   Object.values(panel2ActiveTimers).forEach(clearInterval);panel2ActiveTimers={};
   if(!activeNow.length){activeEl.innerHTML='<div style="color:var(--text-dim);font-size:12px;font-family:var(--mono);">Ningún usuario en turno ahora</div>';}
@@ -2669,13 +2696,7 @@ async function loadPanel2(){
       const since=t.startTime?.toDate?.();
       const sinceStr=since?since.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
       const id='p2a_'+t.id;
-      return`<div style="background:rgba(74,222,128,0.06);border:1px solid rgba(74,222,128,0.2);border-radius:12px;padding:14px 16px;position:relative;">
-        ${t.isMobile?'<div style="position:absolute;top:8px;right:8px;background:rgba(251,146,60,0.15);border:1px solid rgba(251,146,60,0.3);border-radius:6px;padding:2px 6px;font-size:9px;color:#fb923c;font-family:var(--mono);">⚠ Móvil</div>':`<div style="position:absolute;top:12px;right:12px;font-size:16px;">💻</div>`}
-        <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:2px;">${esc(name)}</div>
-        <div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);margin-bottom:8px;">${esc(t.userEmail||'')}</div>
-        <div style="font-size:18px;font-weight:800;font-family:var(--mono);color:#4ade80;" id="${id}">00:00:00</div>
-        <div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);">desde las ${sinceStr}</div>
-      </div>`;
+      return`<div style="background:rgba(74,222,128,0.06);border:1px solid rgba(74,222,128,0.2);border-radius:12px;padding:14px 16px;position:relative;">${t.isMobile?'<div style="position:absolute;top:8px;right:8px;background:rgba(251,146,60,0.15);border:1px solid rgba(251,146,60,0.3);border-radius:6px;padding:2px 6px;font-size:9px;color:#fb923c;font-family:var(--mono);">⚠ Móvil</div>':`<div style="position:absolute;top:12px;right:12px;font-size:16px;">💻</div>`}<div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:2px;">${name}</div><div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);margin-bottom:8px;">${t.userEmail||''}</div><div style="font-size:18px;font-weight:800;font-family:var(--mono);color:#4ade80;" id="${id}">00:00:00</div><div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);">desde las ${sinceStr}</div></div>`;
     }).join('');
     activeNow.forEach(t=>{
       const id='p2a_'+t.id;const start=t.startTime?.toDate?.();const acc=t.accumulatedSeconds||0;
@@ -2684,158 +2705,224 @@ async function loadPanel2(){
     });
   }
 
-  // Filter by period
-  let turnos=[...allTurnos];
-  if(panel2Filter==='today')turnos=turnos.filter(t=>t.startTime?.toDate?.()>=sod&&t.startTime?.toDate?.()<=eod);
-  else if(panel2Filter==='week')turnos=turnos.filter(t=>t.startTime?.toDate?.()>=sow&&t.startTime?.toDate?.()<=eow);
-  else if(panel2Filter==='month')turnos=turnos.filter(t=>t.startTime?.toDate?.()>=som&&t.startTime?.toDate?.()<=eom);
-  else if(panel2Filter==='custom'){const f=document.getElementById('panel2-date-from')?.value;const to=document.getElementById('panel2-date-to')?.value;if(f)turnos=turnos.filter(t=>t.startTime?.toDate?.()>=new Date(f+'T00:00:00'));if(to)turnos=turnos.filter(t=>t.startTime?.toDate?.()<=new Date(to+'T23:59:59'));}
-
-  // Load malla for cumplimiento cross-reference
+  // Load malla completa
   let mallaData=[];
   try{
-    const resp=await fetch(MALLA_SCRIPT+'?sheet=Malla',{signal:AbortSignal.timeout(8000)});
+    const resp=await fetch(MALLA_SCRIPT+'?sheet=Malla',{signal:AbortSignal.timeout(10000)});
     const csv=await resp.text();
-    mallaData=csv.trim().split('\n').slice(1).map(l=>{const c=parseCSVLine(l);return{fecha:c[1]?.trim(),usuario:c[2]?.trim(),inicio:c[5]?.trim(),novedad:c[9]?.trim()};}).filter(m=>m.fecha&&m.usuario);
+    mallaData=csv.trim().split('\n').slice(1).map(l=>{const c=parseCSVLine(l);return{fecha:c[1]?.trim(),usuario:c[2]?.trim(),nombre:c[3]?.trim(),rol:c[4]?.trim(),inicio:c[5]?.trim(),fin:c[6]?.trim(),linea:c[8]?.trim(),novedad:c[9]?.trim()};}).filter(m=>m.fecha&&m.usuario);
   }catch(e){}
 
-  // Build rows with cumplimiento
-  panel2AllRows=turnos.map(t=>{
-    const start=t.startTime?.toDate?.();
-    const mallaEntry=mallaData.find(m=>{
-      if(m.usuario!==t.userEmail)return false;
-      const md=parseDate(m.fecha);
-      return md&&start&&md.toDateString()===start.toDateString();
-    });
-    let cumplStatus={label:'Sin malla',cls:'pendiente',icon:'—'};
-    if(mallaEntry){
-      const ss=parseTime(mallaEntry.fecha,mallaEntry.inicio);
-      cumplStatus=getStatus(ss,start,mallaEntry.novedad,now);
-    }
-    return{...t,cumplStatus};
+  // Rango de fechas
+  let fromDate=null,toDate=null;
+  if(panel2Filter==='today'){fromDate=sod;toDate=eod;}
+  else if(panel2Filter==='week'){fromDate=sow;toDate=eow;}
+  else if(panel2Filter==='month'){fromDate=som;toDate=eom;}
+  else if(panel2Filter==='custom'){const f=document.getElementById('panel2-date-from')?.value;const to=document.getElementById('panel2-date-to')?.value;fromDate=f?new Date(f+'T00:00:00'):null;toDate=to?new Date(to+'T23:59:59'):null;}
+
+  // Filtrar malla por rango y cruzar con turnos reales
+  const mallaFiltrada=mallaData.filter(m=>{const d=parseDate(m.fecha);if(!d)return false;if(fromDate&&d<fromDate)return false;if(toDate&&d>toDate)return false;return true;});
+  panel2AllRows=mallaFiltrada.map(m=>{
+    const ss=parseTime(m.fecha,m.inicio),se=parseTime(m.fecha,m.fin);
+    const mt=allTurnos.find(t=>{if(t.userEmail!==m.usuario)return false;const td=t.startTime?.toDate?.();const md=parseDate(m.fecha);return td&&md&&td.toDateString()===md.toDateString();});
+    const rs=mt?mt.startTime.toDate():null;
+    const re=mt?.endTime?.toDate?mt.endTime.toDate():null;
+    const cumplStatus=getStatus(ss,rs,m.novedad,now);
+    return{...m,scheduledStart:ss,scheduledEnd:se,realStart:rs,realEnd:re,turnoId:mt?.id||null,turno:mt||null,cumplStatus};
   });
 
-  // Populate panel2 line filter from malla data
+  // Filtros linea y usuario
   const panel2LineaSel=document.getElementById('panel2-linea-filter');
-  if(panel2LineaSel&&mallaData.length){
-    const allLineas=[...new Set(mallaData.map(m=>m.linea).filter(Boolean))].sort();
-    const curLinea=panel2LineaSel.value;
-    panel2LineaSel.innerHTML='<option value="">Todas las líneas</option>'+allLineas.map(l=>`<option value="${esc(l)}"${l===curLinea?' selected':''}>${esc(l)}</option>`).join('');
-  }
-  // Build user pills
-  const allUsers=[...new Set(turnos.map(t=>t.userEmail).filter(Boolean))];
+  if(panel2LineaSel){const allLineas=[...new Set(mallaData.map(m=>m.linea).filter(Boolean))].sort();const cur=panel2LineaSel.value;panel2LineaSel.innerHTML='<option value="">Todas las líneas</option>'+allLineas.map(l=>`<option value="${l}"${l===cur?' selected':''}>${l}</option>`).join('');panel2LineaSel.style.display='';}
+  const allUsers=[...new Set(mallaFiltrada.map(m=>m.usuario).filter(Boolean))].sort();
   const pillsEl=document.getElementById('panel2-user-pills');
-  if(pillsEl){
-    pillsEl.innerHTML=`<button class="turno-filter-btn${panel2SelectedUsers.size===0?' active':''}" onclick="setPanel2Users(null)" style="font-size:11px;padding:3px 10px;">Todos</button>`
-      +allUsers.map(u=>`<button class="turno-filter-btn${panel2SelectedUsers.has(u)?' active':''}" onclick="setPanel2Users('${u}')" style="font-size:11px;padding:3px 10px;">${u.split('@')[0]}</button>`).join('');
-  }
+  if(pillsEl){pillsEl.innerHTML=allUsers.map(u=>{const checked=panel2SelectedUsers.has(u);return`<div class="malla-user-item" data-user="${u}" onclick="setPanel2Users('${u}')" style="display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:7px;cursor:pointer;font-size:12px;color:var(--text-muted);font-family:var(--mono);${checked?'background:rgba(123,47,255,0.12);':''}"><span class="panel2-user-check" style="width:14px;color:var(--p2);font-weight:700;">${checked?'✓':''}</span><span>${u.split('@')[0]}</span></div>`;}).join('');updatePanel2UserDropdownLabel();}
 
   // Apply filters
   const panel2Linea=document.getElementById('panel2-linea-filter')?.value||'';
   let filtered=[...panel2AllRows];
-  if(panel2SelectedUsers.size>0)filtered=filtered.filter(r=>panel2SelectedUsers.has(r.userEmail));
+  if(panel2SelectedUsers.size>0)filtered=filtered.filter(r=>panel2SelectedUsers.has(r.usuario));
   if(panel2StatusFilter)filtered=filtered.filter(r=>r.cumplStatus.cls===panel2StatusFilter);
-  if(panel2Linea)filtered=filtered.filter(r=>{
-    const start=r.startTime?.toDate?.();
-    if(!start)return false;
-    const me=mallaData.find(m=>m.usuario===r.userEmail&&parseDate(m.fecha)?.toDateString()===start.toDateString());
-    return me?.linea===panel2Linea;
-  });
+  if(panel2Linea)filtered=filtered.filter(r=>r.linea===panel2Linea);
 
-  // Summary + status cards
-  const totalSecs=filtered.reduce((s,t)=>s+(t.accumulatedSeconds||0),0);
-  const uniqueUsers=[...new Set(filtered.map(t=>t.userEmail).filter(Boolean))];
-  const mobileCount=filtered.filter(t=>t.isMobile).length;
+  // Conteos
   const cumplió=panel2AllRows.filter(r=>r.cumplStatus.cls==='cumplió').length;
   const tardanza=panel2AllRows.filter(r=>r.cumplStatus.cls==='tardanza').length;
   const ausente=panel2AllRows.filter(r=>r.cumplStatus.cls==='ausente').length;
   const pendiente=panel2AllRows.filter(r=>r.cumplStatus.cls==='pendiente').length;
   const novedad=panel2AllRows.filter(r=>r.cumplStatus.cls==='novedad').length;
+  function secsToHm(s){const h=Math.floor(s/3600),m=Math.floor((s%3600)/60);if(h&&m)return`${h}h ${m}m`;if(h)return`${h}h`;return`${m}m`;}
+  const totalSecs=panel2AllRows.filter(r=>r.realStart&&r.realEnd).reduce((s,r)=>s+Math.max(0,(r.realEnd-r.realStart)/1000),0);
+  const uniqueUsers=[...new Set(panel2AllRows.map(r=>r.usuario).filter(Boolean))];
+  const mobileCount=allTurnos.filter(t=>t.isMobile&&t.startTime?.toDate?.()>=(fromDate||new Date(0))&&t.startTime?.toDate?.()<=(toDate||new Date())).length;
 
+  // Summary cards
   document.getElementById('panel2-summary').innerHTML=`
-    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px;position:relative;overflow:hidden;"><div style="position:absolute;top:0;left:0;right:0;height:2px;background:var(--grad);"></div><div style="font-size:20px;font-weight:800;background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;">${formatDuration(totalSecs)}</div><div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);margin-top:2px;">Horas acumuladas</div></div>
-    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px;position:relative;overflow:hidden;"><div style="position:absolute;top:0;left:0;right:0;height:2px;background:var(--grad);"></div><div style="font-size:20px;font-weight:800;background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;">${filtered.length}</div><div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);margin-top:2px;">Turnos</div></div>
-    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px;position:relative;overflow:hidden;"><div style="position:absolute;top:0;left:0;right:0;height:2px;background:var(--grad);"></div><div style="font-size:20px;font-weight:800;background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;">${uniqueUsers.length}</div><div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);margin-top:2px;">Usuarios</div></div>
-    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px;position:relative;overflow:hidden;cursor:pointer;" onclick="setPanel2MobileFilter()"><div style="position:absolute;top:0;left:0;right:0;height:2px;background:var(--grad);"></div><div style="font-size:20px;font-weight:800;${mobileCount>0?'color:#fb923c;-webkit-text-fill-color:#fb923c':''}">${mobileCount}</div><div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);margin-top:2px;">📱 Móvil</div></div>`;
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px;position:relative;overflow:hidden;"><div style="position:absolute;top:0;left:0;right:0;height:2px;background:var(--grad);"></div><div style="font-size:18px;font-weight:800;background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;">${secsToHm(totalSecs)}</div><div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);margin-top:2px;">Horas trabajadas</div></div>
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px;position:relative;overflow:hidden;"><div style="position:absolute;top:0;left:0;right:0;height:2px;background:var(--grad);"></div><div style="font-size:18px;font-weight:800;background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;">${panel2AllRows.length}</div><div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);margin-top:2px;">Turnos programados</div></div>
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px;position:relative;overflow:hidden;"><div style="position:absolute;top:0;left:0;right:0;height:2px;background:var(--grad);"></div><div style="font-size:18px;font-weight:800;background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;">${uniqueUsers.length}</div><div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);margin-top:2px;">Agentes</div></div>
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px;position:relative;overflow:hidden;"><div style="position:absolute;top:0;left:0;right:0;height:2px;background:var(--grad);"></div><div style="font-size:18px;font-weight:800;color:${mobileCount>0?'#fb923c':'var(--text-dim)'};-webkit-text-fill-color:${mobileCount>0?'#fb923c':'unset'};">${mobileCount}</div><div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);margin-top:2px;">📱 Conexiones móvil</div></div>`;
 
+  // Status cards con toggle
   const statusCards=document.getElementById('panel2-status-cards');
-  if(statusCards){
-    const cards=[
-      {cls:'cumplió',icon:'🟢',label:'Cumplió',count:cumplió,color:'#4ade80',bg:'rgba(74,222,128,0.08)',border:'rgba(74,222,128,0.2)'},
-      {cls:'tardanza',icon:'🟡',label:'Tardanza',count:tardanza,color:'#fbbf24',bg:'rgba(251,191,36,0.08)',border:'rgba(251,191,36,0.2)'},
-      {cls:'ausente',icon:'🔴',label:'Ausente',count:ausente,color:'#f87171',bg:'rgba(248,113,113,0.08)',border:'rgba(248,113,113,0.2)'},
-      {cls:'pendiente',icon:'⏳',label:'Pendiente',count:pendiente,color:'var(--text-dim)',bg:'rgba(90,82,112,0.1)',border:'rgba(90,82,112,0.2)'},
-      {cls:'novedad',icon:'📋',label:'Novedad',count:novedad,color:'var(--p2)',bg:'rgba(123,47,255,0.08)',border:'rgba(123,47,255,0.2)'},
-      {cls:null,icon:'📋',label:'Todos',count:panel2AllRows.length,color:'var(--text-muted)',bg:'var(--surface2)',border:'var(--border)'},
-    ];
-    statusCards.innerHTML=cards.map(c=>`<div onclick="setPanel2StatusFilter('${c.cls}')" style="background:${c.bg};border:1px solid ${panel2StatusFilter===c.cls?c.color:c.border};border-radius:10px;padding:10px 12px;cursor:pointer;text-align:center;transition:all 0.2s;">
-      <div style="font-size:18px;font-weight:800;color:${c.color};${c.color.startsWith('var')?'':'-webkit-text-fill-color:'+c.color+';'}">${c.count}</div>
-      <div style="font-size:10px;color:${c.color};font-family:var(--mono);margin-top:2px;">${c.icon} ${c.label}</div>
-    </div>`).join('');
-  }
+  if(statusCards){const cards=[{cls:'cumplió',icon:'🟢',label:'Cumplió',count:cumplió,color:'#4ade80'},{cls:'tardanza',icon:'🟡',label:'Tardanza',count:tardanza,color:'#fbbf24'},{cls:'ausente',icon:'🔴',label:'Ausente',count:ausente,color:'#f87171'},{cls:'pendiente',icon:'⏳',label:'Pendiente',count:pendiente,color:'#9ca3af'},{cls:'novedad',icon:'📋',label:'Novedad',count:novedad,color:'#a78bfa'},{cls:null,icon:'📋',label:'Todos',count:panel2AllRows.length,color:'var(--text-muted)'}];statusCards.innerHTML=cards.map(c=>{const isActive=panel2StatusFilter===c.cls;const opacity=panel2StatusFilter&&!isActive?'opacity:0.45;':'';return`<div onclick="setPanel2StatusFilter('${c.cls}')" style="background:var(--surface2);border:1px solid ${isActive?c.color:'var(--border)'};border-radius:10px;padding:10px 12px;cursor:pointer;text-align:center;transition:all 0.2s;${opacity}"><div style="font-size:18px;font-weight:800;color:${c.color};${c.color.startsWith('var')?'':'-webkit-text-fill-color:'+c.color+';'}">${c.count}</div><div style="font-size:10px;color:${c.color};font-family:var(--mono);margin-top:2px;">${c.icon} ${c.label}</div></div>`;}).join('');}
 
-  // Render table
+  // Extras e Insights
+  renderPanel2Extras(allTurnos,fromDate,toDate,mallaData);
+  renderPanel2Insights(panel2AllRows,allTurnos,fromDate,toDate);
+
+  // Tabla principal
   const tbody=document.getElementById('panel2-table');
   if(!filtered.length){tbody.innerHTML='<div style="padding:20px;text-align:center;color:var(--text-dim);font-size:12px;">Sin registros en este período</div>';return;}
-  tbody.innerHTML=filtered.map(t=>{
-    const start=t.startTime?.toDate?.();const end=t.endTime?.toDate?.();
-    const dur=t.accumulatedSeconds?formatDuration(t.accumulatedSeconds):'—';
-    const ss=start?start.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
-    const es=end?end.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
-    const ds=start?start.toLocaleDateString('es-CO',{day:'2-digit',month:'short'}):'—';
-    const fc=t.status==='active'?'active':t.status==='interrupted'?'interrupted':'ended';
-    const fl=t.status==='active'?'En turno':t.status==='interrupted'?'Interrumpido':'Finalizado';
-    const name=t.userName||t.userEmail?.split('@')[0]||'—';
-    return`<div style="display:grid;grid-template-columns:160px 65px 120px 85px 85px 90px 110px;gap:0;border-bottom:1px solid var(--border);font-size:12px;align-items:stretch;">
-      <div style="padding:10px 12px;border-right:1px solid var(--border);overflow:hidden;display:flex;flex-direction:column;justify-content:center;"><div style="font-weight:600;color:var(--text);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${esc(t.userEmail||'')}">${esc(name)}</div><div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(t.userEmail||'')}</div></div>
-      <div style="padding:10px 12px;border-right:1px solid var(--border);font-family:var(--mono);font-size:11px;color:var(--text-muted);display:flex;align-items:center;">${ds}</div>
-      <div style="padding:10px 12px;border-right:1px solid var(--border);font-family:var(--mono);font-size:11px;color:var(--text-muted);display:flex;align-items:center;">${ss} → ${es}</div>
-      <div style="padding:10px 12px;border-right:1px solid var(--border);font-family:var(--mono);font-size:11px;color:var(--p2);font-weight:700;display:flex;align-items:center;">${dur}</div>
-      <div style="padding:10px 12px;border-right:1px solid var(--border);display:flex;align-items:center;"><span style="font-size:10px;font-family:var(--mono);padding:2px 7px;border-radius:4px;${t.isMobile?'background:rgba(251,146,60,0.1);color:#fb923c;':'background:rgba(74,222,128,0.08);color:#4ade80;'}">${t.isMobile?'📱 Móvil':'💻 Desktop'}</span></div>
-      <div style="padding:10px 12px;border-right:1px solid var(--border);display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-        <span class="turno-row-status ${fc}">${fl}</span>
-        ${t.status==='ended'&&!t.resumeAuthorized?`<button onclick="authorizeResume('${t.id}',this)" style="background:rgba(123,47,255,0.1);border:1px solid rgba(123,47,255,0.3);color:var(--p2);padding:2px 7px;border-radius:5px;font-size:9px;font-family:var(--mono);cursor:pointer;">▶ Autorizar reanudación</button>`:''}
-        ${t.resumeAuthorized?'<span style="font-size:9px;color:var(--p2);font-family:var(--mono);">▶ Reanudación autorizada</span>':''}
-        ${t.earlyLeave&&t.earlyLeaveStatus==='pending_review'?`<button onclick="reviewEarlyLeave('${t.id}',true,this)" style="background:rgba(74,222,128,0.08);border:1px solid rgba(74,222,128,0.3);color:#4ade80;padding:2px 7px;border-radius:5px;font-size:9px;font-family:var(--mono);cursor:pointer;">✅ Justificar</button><button onclick="reviewEarlyLeave('${t.id}',false,this)" style="background:rgba(248,113,113,0.08);border:1px solid rgba(248,113,113,0.3);color:#f87171;padding:2px 7px;border-radius:5px;font-size:9px;font-family:var(--mono);cursor:pointer;margin-left:4px;">❌ No justificar</button>`:''}
-        ${t.earlyLeave&&t.earlyLeaveStatus==='justified'?'<span style="font-size:9px;color:#4ade80;font-family:var(--mono);">✅ Justificada</span>':''}
-        ${t.earlyLeave&&t.earlyLeaveStatus==='not_justified'?'<span style="font-size:9px;color:#f87171;font-family:var(--mono);">❌ No justificada</span>':''}
+  const DIAS=['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+  tbody.innerHTML=filtered.map(r=>{
+    const d=parseDate(r.fecha);const dia=d?DIAS[d.getDay()]:'—';
+    const ds=d?d.toLocaleDateString('es-CO',{day:'2-digit',month:'short'}):'—';
+    const ss=r.scheduledStart?r.scheduledStart.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
+    const se=r.scheduledEnd?r.scheduledEnd.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
+    const rs=r.realStart?r.realStart.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
+    const re=r.realEnd?r.realEnd.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
+    const dur=r.realStart&&r.realEnd?secsToHm(Math.max(0,(r.realEnd-r.realStart)/1000)):'—';
+    const t=r.turno;
+    return`<div style="display:grid;grid-template-columns:40px 140px 70px 90px 90px 90px 80px 90px 120px;gap:0;border-bottom:1px solid var(--border);font-size:11px;align-items:stretch;">
+      <div style="padding:8px 6px;border-right:1px solid var(--border);font-weight:700;color:var(--p2);font-family:var(--mono);display:flex;align-items:center;justify-content:center;">${dia}</div>
+      <div style="padding:8px 10px;border-right:1px solid var(--border);display:flex;flex-direction:column;justify-content:center;overflow:hidden;"><div style="font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${r.nombre||r.usuario?.split('@')[0]||'—'}</div><div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);">${r.linea||'—'}</div></div>
+      <div style="padding:8px 10px;border-right:1px solid var(--border);font-family:var(--mono);color:var(--text-muted);display:flex;align-items:center;">${ds}</div>
+      <div style="padding:8px 10px;border-right:1px solid var(--border);font-family:var(--mono);color:var(--text-dim);display:flex;flex-direction:column;justify-content:center;"><div style="font-size:9px;color:var(--text-dim);margin-bottom:1px;">Prog.</div><div>${ss}→${se}</div></div>
+      <div style="padding:8px 10px;border-right:1px solid var(--border);font-family:var(--mono);color:${r.realStart&&r.cumplStatus.cls==='tardanza'?'#fbbf24':r.cumplStatus.cls==='cumplió'?'#4ade80':'var(--text-muted)'};display:flex;flex-direction:column;justify-content:center;"><div style="font-size:9px;color:var(--text-dim);margin-bottom:1px;">Real</div><div>${rs}→${re}</div></div>
+      <div style="padding:8px 10px;border-right:1px solid var(--border);font-family:var(--mono);font-weight:700;color:var(--p2);display:flex;align-items:center;">${dur}</div>
+      <div style="padding:8px 10px;border-right:1px solid var(--border);display:flex;align-items:center;">${t?`<span style="font-size:10px;font-family:var(--mono);padding:2px 6px;border-radius:4px;${t.isMobile?'background:rgba(251,146,60,0.1);color:#fb923c;':'background:rgba(74,222,128,0.08);color:#4ade80;'}">${t.isMobile?'📱':'💻'}</span>`:'<span style="color:var(--text-dim);">—</span>'}</div>
+      <div style="padding:8px 10px;border-right:1px solid var(--border);display:flex;align-items:center;gap:4px;flex-wrap:wrap;">
+        ${r.turnoId&&t?.status==='ended'&&!t?.resumeAuthorized?`<button onclick="authorizeResume('${r.turnoId}',this)" style="background:rgba(123,47,255,0.1);border:1px solid rgba(123,47,255,0.3);color:var(--p2);padding:2px 6px;border-radius:5px;font-size:9px;font-family:var(--mono);cursor:pointer;">▶</button>`:''}
+        ${r.turnoId&&t?.resumeAuthorized?'<span style="font-size:9px;color:var(--p2);font-family:var(--mono);">▶ Auth</span>':''}
+        ${r.turnoId&&t?.earlyLeave&&t?.earlyLeaveStatus==='pending_review'?`<button onclick="reviewEarlyLeave('${r.turnoId}',true,this)" style="background:rgba(74,222,128,0.08);border:1px solid rgba(74,222,128,0.3);color:#4ade80;padding:2px 6px;border-radius:5px;font-size:9px;font-family:var(--mono);cursor:pointer;">✅</button><button onclick="reviewEarlyLeave('${r.turnoId}',false,this)" style="background:rgba(248,113,113,0.08);border:1px solid rgba(248,113,113,0.3);color:#f87171;padding:2px 6px;border-radius:5px;font-size:9px;font-family:var(--mono);cursor:pointer;margin-left:2px;">❌</button>`:''}
+        ${r.turnoId&&t?.earlyLeave&&t?.earlyLeaveStatus==='justified'?'<span style="font-size:9px;color:#4ade80;">✅</span>':''}
+        ${r.turnoId&&t?.earlyLeave&&t?.earlyLeaveStatus==='not_justified'?'<span style="font-size:9px;color:#f87171;">❌</span>':''}
+        ${!r.turnoId?'<span style="font-size:10px;color:var(--text-dim);">—</span>':''}
       </div>
-      <div style="padding:10px 12px;display:flex;align-items:center;"><span class="cumpl-status ${t.cumplStatus.cls}">${t.cumplStatus.icon} ${t.cumplStatus.label}</span></div>
+      <div style="padding:8px 10px;display:flex;align-items:center;"><span class="cumpl-status ${r.cumplStatus.cls}">${r.cumplStatus.icon} ${r.cumplStatus.label}</span></div>
     </div>`;
   }).join('');
 }
 
+function updatePanel2UserDropdownLabel(){
+  const label=document.getElementById('panel2-user-dropdown-label');
+  if(!label)return;
+  if(!panel2SelectedUsers||panel2SelectedUsers.size===0){label.textContent='Todos los agentes';}
+  else if(panel2SelectedUsers.size===1){label.textContent=[...panel2SelectedUsers][0].split('@')[0];}
+  else{label.textContent=`${panel2SelectedUsers.size} agentes`;}
+}
+function togglePanel2UserDropdown(){
+  const menu=document.getElementById('panel2-user-dropdown-menu');
+  if(menu)menu.style.display=menu.style.display==='none'?'block':'none';
+}
 function setPanel2Users(user){
   if(user===null){panel2SelectedUsers.clear();}
   else{panel2SelectedUsers.has(user)?panel2SelectedUsers.delete(user):panel2SelectedUsers.add(user);}
-  renderPanel2Table();
-  // Re-render pills
-  const pillsEl=document.getElementById('panel2-user-pills');
-  if(pillsEl){
-    const btns=pillsEl.querySelectorAll('button');
-    btns[0].classList.toggle('active',panel2SelectedUsers.size===0);
-    btns.forEach((b,i)=>{if(i>0){const u=Array.from(panel2SelectedUsers);b.classList.toggle('active',u.some(x=>b.textContent.trim()===x.split('@')[0]));}});
-  }
+  updatePanel2UserDropdownLabel();
+  document.querySelectorAll('#panel2-user-pills .malla-user-item').forEach(el=>{
+    const u=el.dataset.user;
+    const checked=panel2SelectedUsers.has(u);
+    el.style.background=checked?'rgba(123,47,255,0.12)':'';
+    el.querySelector('.panel2-user-check').textContent=checked?'✓':'';
+  });
+  loadPanel2();
 }
 
 function setPanel2StatusFilter(cls){
   panel2StatusFilter=cls==='null'||cls===panel2StatusFilter?null:cls;
-  renderPanel2Table();
   loadPanel2();
 }
 
 function setPanel2MobileFilter(){
-  panel2StatusFilter=null;
-  panel2SelectedUsers.clear();
-  loadPanel2().then(()=>{
-    panel2AllRows=panel2AllRows.filter(r=>r.isMobile);
-    renderPanel2Table();
+  panel2StatusFilter=null;panel2SelectedUsers.clear();loadPanel2();
+}
+
+function renderPanel2Extras(allTurnos,fromDate,toDate,mallaData){
+  const el=document.getElementById('panel2-extras');
+  if(!el)return;
+  const extTurnos=allTurnos.filter(t=>{
+    if(!t.overtimeStatus||t.overtimeStatus==='pending_review')return false;
+    const d=t.startTime?.toDate?.();
+    return d&&(!fromDate||d>=fromDate)&&(!toDate||d<=toDate);
   });
+  if(!extTurnos.length){el.innerHTML='<div style="padding:16px;font-size:12px;color:var(--text-dim);text-align:center;">Sin extras en este período</div>';return;}
+  const approved=extTurnos.filter(t=>t.overtimeStatus==='approved');
+  const rejected=extTurnos.filter(t=>t.overtimeStatus==='rejected');
+  const pending=extTurnos.filter(t=>t.overtimeStatus==='pending_super_admin');
+  // Quién aprobó más
+  const byApprover={};
+  approved.forEach(t=>{const a=t.overtimeApprovedBy||'—';byApprover[a]=(byApprover[a]||0)+1;});
+  const topApprover=Object.entries(byApprover).sort((a,b)=>b[1]-a[1])[0];
+  el.innerHTML=`<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px;">
+    <div style="background:rgba(74,222,128,0.08);border:1px solid rgba(74,222,128,0.2);border-radius:10px;padding:12px;text-align:center;"><div style="font-size:22px;font-weight:800;color:#4ade80;">${approved.length}</div><div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);">✅ Aprobadas</div></div>
+    <div style="background:rgba(248,113,113,0.08);border:1px solid rgba(248,113,113,0.2);border-radius:10px;padding:12px;text-align:center;"><div style="font-size:22px;font-weight:800;color:#f87171;">${rejected.length}</div><div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);">❌ Rechazadas</div></div>
+    <div style="background:rgba(251,146,60,0.08);border:1px solid rgba(251,146,60,0.2);border-radius:10px;padding:12px;text-align:center;"><div style="font-size:22px;font-weight:800;color:#fb923c;">${pending.length}</div><div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);">⏳ En revisión</div></div>
+  </div>
+  ${topApprover?`<div style="font-size:11px;color:var(--text-dim);font-family:var(--mono);margin-bottom:10px;">Admin con más aprobaciones: <span style="color:var(--p2);font-weight:700;">${topApprover[0].split('@')[0]}</span> (${topApprover[1]})</div>`:''}
+  <div style="max-height:200px;overflow-y:auto;">
+    ${extTurnos.map(t=>{
+      const d=t.startTime?.toDate?.();
+      const ds=d?d.toLocaleDateString('es-CO',{day:'2-digit',month:'short'}):'—';
+      const name=t.userName||t.userEmail?.split('@')[0]||'—';
+      const statusColor=t.overtimeStatus==='approved'?'#4ade80':t.overtimeStatus==='rejected'?'#f87171':'#fb923c';
+      const statusLabel=t.overtimeStatus==='approved'?'✅ Aprobada':t.overtimeStatus==='rejected'?'❌ Rechazada':'⏳ Revisión';
+      const approvedBy=t.overtimeApprovedBy?t.overtimeApprovedBy.split('@')[0]:'—';
+      return`<div style="display:grid;grid-template-columns:120px 70px 80px 120px;gap:0;border-bottom:1px solid var(--border);font-size:11px;align-items:center;">
+        <div style="padding:7px 10px;border-right:1px solid var(--border);font-weight:600;color:var(--text);">${name}</div>
+        <div style="padding:7px 10px;border-right:1px solid var(--border);font-family:var(--mono);color:var(--text-muted);">${ds}</div>
+        <div style="padding:7px 10px;border-right:1px solid var(--border);font-family:var(--mono);color:var(--p2);font-weight:700;">${t.overtimeMinutes||0}m</div>
+        <div style="padding:7px 10px;display:flex;flex-direction:column;gap:2px;"><span style="font-size:10px;color:${statusColor};">${statusLabel}</span><span style="font-size:9px;color:var(--text-dim);font-family:var(--mono);">por ${approvedBy}</span></div>
+      </div>`;
+    }).join('')}
+  </div>`;
+}
+
+function renderPanel2Insights(rows,allTurnos,fromDate,toDate){
+  const el=document.getElementById('panel2-insights');
+  if(!el||!rows.length)return;
+  // Contar por usuario
+  const userStats={};
+  rows.forEach(r=>{
+    const u=r.usuario||'—';
+    if(!userStats[u])userStats[u]={nombre:r.nombre||u.split('@')[0],tardanza:0,ausente:0,novedad:0,cumplió:0};
+    if(r.cumplStatus.cls==='tardanza')userStats[u].tardanza++;
+    else if(r.cumplStatus.cls==='ausente')userStats[u].ausente++;
+    else if(r.cumplStatus.cls==='novedad')userStats[u].novedad++;
+    else if(r.cumplStatus.cls==='cumplió')userStats[u].cumplió++;
+  });
+  // Extras por usuario
+  const extrasReq={},extrasAppr={};
+  allTurnos.filter(t=>{const d=t.startTime?.toDate?.();return t.overtimeStatus&&d&&(!fromDate||d>=fromDate)&&(!toDate||d<=toDate);}).forEach(t=>{
+    const u=t.userEmail||'—';
+    extrasReq[u]=(extrasReq[u]||0)+1;
+    if(t.overtimeStatus==='approved')extrasAppr[u]=(extrasAppr[u]||0)+1;
+  });
+  function top3(obj,key){return Object.entries(obj).filter(([,v])=>v[key]>0).sort((a,b)=>b[1][key]-a[1][key]).slice(0,3);}
+  function topExtras(obj){return Object.entries(obj).sort((a,b)=>b[1]-a[1]).slice(0,3);}
+  const topTardanza=top3(userStats,'tardanza');
+  const topAusente=top3(userStats,'ausente');
+  const topNovedad=top3(userStats,'novedad');
+  const topExtrasReq=topExtras(extrasReq);
+  const topExtrasAppr=topExtras(extrasAppr);
+  function rankBlock(title,color,items,key,suffix=''){
+    if(!items.length)return`<div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:14px;"><div style="font-size:11px;font-weight:700;color:${color};margin-bottom:8px;">${title}</div><div style="font-size:11px;color:var(--text-dim);">Sin registros</div></div>`;
+    return`<div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:14px;"><div style="font-size:11px;font-weight:700;color:${color};margin-bottom:8px;">${title}</div>${items.map(([u,v],i)=>`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;"><div style="display:flex;align-items:center;gap:6px;"><span style="font-size:11px;color:var(--text-dim);font-family:var(--mono);width:14px;">${i+1}.</span><span style="font-size:12px;color:var(--text);">${key?v.nombre:u.split('@')[0]}</span></div><span style="font-size:12px;font-weight:700;color:${color};">${key?v[key]:v}${suffix}</span></div>`).join('')}</div>`;
+  }
+  el.innerHTML=`
+    <div style="font-size:12px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:12px;font-family:var(--mono);">📊 Rankings del período</div>
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;">
+      ${rankBlock('🟡 Más tardanzas','#fbbf24',topTardanza,'tardanza')}
+      ${rankBlock('🔴 Más ausencias','#f87171',topAusente,'ausente')}
+      ${rankBlock('📋 Más novedades','#a78bfa',topNovedad,'novedad')}
+      ${rankBlock('⚡ Más extras solicita','#fb923c',topExtrasReq,null)}
+      ${rankBlock('✅ Más extras aprobadas','#4ade80',topExtrasAppr,null)}
+    </div>`;
 }
 
 function renderPanel2Table(){
   let filtered=[...panel2AllRows];
-  if(panel2SelectedUsers.size>0)filtered=filtered.filter(r=>panel2SelectedUsers.has(r.userEmail));
+  if(panel2SelectedUsers.size>0)filtered=filtered.filter(r=>panel2SelectedUsers.has(r.usuario));
   if(panel2StatusFilter)filtered=filtered.filter(r=>r.cumplStatus.cls===panel2StatusFilter);
   const tbody=document.getElementById('panel2-table');
   if(!tbody)return;
@@ -2928,7 +3015,7 @@ async function approveOvertime(eventId,approved,btn,turnoId){
     await window.updateOvertimeEvent(eventId,{status:newStatus,decidedBy:userEmail,decidedAt:new Date().toISOString()});
     // Update turno record with final overtime status
     if(turnoId){
-      await window.updateTurnoInFirebase(turnoId,{overtimeStatus:newStatus});
+      await window.updateTurnoInFirebase(turnoId,{overtimeStatus:newStatus,overtimeApprovedBy:userEmail,overtimeDecidedAt:new Date().toISOString()});
     }
     toast(approved?(isSuperAdmin?'✅ Aprobado definitivamente':'✅ Aprobado — pendiente super admin'):'❌ Rechazado');
     // Mark row as processed
