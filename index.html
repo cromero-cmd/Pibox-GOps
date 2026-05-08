@@ -1089,7 +1089,7 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 </div>
 
 <script>
-const APP_VERSION='14.15';
+const APP_VERSION='14.16';
 const APP_CHANGELOG='Notificaciones de asistencia: recordatorio 10 min antes y alertas de tardanza al admin y agente.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -2382,7 +2382,8 @@ function renderMallaPersonal(){
 
   // ── Tarjetas de horas (solo vista personal) ──
   if(hoursEl){
-    if(!isAdminView){
+    const showHours=!isAdminView||(window._mallaSelectedUsers?.size===1&&[...window._mallaSelectedUsers][0]===userEmail);
+    if(showHours){
       function secsToHm(s){const h=Math.floor(s/3600),m=Math.floor((s%3600)/60);return h?`${h}h${m>0?' '+m+'m':''}`:`${m}m`;}
       const todayRows=rows.filter(r=>{const d=parseDate(r.fecha);return d&&d>=sod&&d<=eod;});
       const todayProgSecs=todayRows.reduce((s,r)=>s+(r.scheduledStart&&r.scheduledEnd?Math.max(0,(r.scheduledEnd-r.scheduledStart)/1000):0),0);
