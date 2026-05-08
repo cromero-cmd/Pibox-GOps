@@ -817,7 +817,7 @@ body.agent-preview-mode header{margin-top:34px;}
           </div>
           <div class="turno-history-wrap">
             <div class="turno-history-header">
-              <div class="turno-history-title">📋 Mi historial</div>
+              <div class="turno-history-title">📊 Resumen de horas</div>
               <div class="turno-filters">
                 <button class="turno-filter-btn active" onclick="setTurnoFilter('today',this)">Hoy</button>
                 <button class="turno-filter-btn" onclick="setTurnoFilter('week',this)">Esta semana</button>
@@ -825,18 +825,14 @@ body.agent-preview-mode header{margin-top:34px;}
                 <button class="turno-filter-btn" onclick="setTurnoFilter('custom',this)">Personalizado</button>
               </div>
             </div>
-            <div id="turno-date-filters" style="display:none;padding:8px 18px;display:none;gap:6px;align-items:center;">
+            <div id="turno-date-filters" style="display:none;padding:8px 18px;gap:6px;align-items:center;">
               <span style="font-size:11px;color:var(--text-dim);font-family:var(--mono);">Desde</span>
               <input type="date" class="turno-date-input" id="turno-date-from" onchange="loadTurnoHistory()"/>
               <span style="font-size:11px;color:var(--text-dim);font-family:var(--mono);">Hasta</span>
               <input type="date" class="turno-date-input" id="turno-date-to" onchange="loadTurnoHistory()"/>
             </div>
-            <div class="turno-summary" id="turno-summary" style="display:none;">
-              <div><div class="turno-summary-label">Total acumulado</div><div class="turno-summary-sub" id="turno-summary-sub"></div></div>
-              <div class="turno-summary-value" id="turno-summary-value">00:00:00</div>
-            </div>
-            <div class="turno-history-list" id="turno-history-list">
-              <div style="padding:20px;text-align:center;color:var(--text-dim);font-size:12px;">Cargando...</div>
+            <div id="turno-hours-cards" style="padding:14px 16px;display:grid;grid-template-columns:repeat(2,1fr);gap:10px;">
+              <div style="padding:20px;text-align:center;color:var(--text-dim);font-size:12px;grid-column:span 2;">Cargando...</div>
             </div>
           </div>
         </div>
@@ -1097,7 +1093,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 
 <script>
-const APP_VERSION='14.19';
+const APP_VERSION='14.20';
 const APP_CHANGELOG='Notificaciones de asistencia: recordatorio 10 min antes y alertas de tardanza al admin y agente.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -2203,49 +2199,101 @@ async function checkTodayNovedad(){
 }
 
 async function loadTurnoHistory(){
-  const list=document.getElementById('turno-history-list');
-  const summary=document.getElementById('turno-summary');
-  list.innerHTML='<div style="padding:16px;text-align:center;color:var(--text-dim);font-size:12px;">Cargando...</div>';
+  const cardsEl=document.getElementById('turno-hours-cards');
+  if(!cardsEl)return;
+  cardsEl.innerHTML='<div style="padding:20px;text-align:center;color:var(--text-dim);font-size:12px;grid-column:span 2;">Cargando...</div>';
+
   const allTurnos=await window.getRecentTurnos();
   const userEmail=document.getElementById('user-email').textContent;
-  const isAdmin=(window.ADMINS||ADMINS).includes(userEmail)||userEmail===SUPER_ADMIN;
-  let turnos=isAdmin?allTurnos:allTurnos.filter(t=>t.userEmail===userEmail);
+  const isAdminRole=(window.ADMINS||ADMINS).includes(userEmail)||userEmail===SUPER_ADMIN;
+  const myTurnos=isAdminRole&&!window._agentPreviewMode?allTurnos:allTurnos.filter(t=>t.userEmail===userEmail);
+  const mallaTurnos=window._mallaTurnos||myTurnos;
+  const myMalla=window.mallaAllRows||[];
+
   const now=new Date();
-  const sod=new Date(now.getFullYear(),now.getMonth(),now.getDate());
-  const eod=new Date(now.getFullYear(),now.getMonth(),now.getDate(),23,59,59);
-  const sow=new Date(now);sow.setDate(now.getDate()-now.getDay()+1);sow.setHours(0,0,0,0);
-  const eow=new Date(sow);eow.setDate(sow.getDate()+6);eow.setHours(23,59,59);
-  const som=new Date(now.getFullYear(),now.getMonth(),1);
-  const eom=new Date(now.getFullYear(),now.getMonth()+1,0,23,59,59);
-  if(turnoFilter==='today')turnos=turnos.filter(t=>t.startTime?.toDate?.()>=sod&&t.startTime?.toDate?.()<=eod);
-  else if(turnoFilter==='week')turnos=turnos.filter(t=>t.startTime?.toDate?.()>=sow&&t.startTime?.toDate?.()<=eow);
-  else if(turnoFilter==='month')turnos=turnos.filter(t=>t.startTime?.toDate?.()>=som&&t.startTime?.toDate?.()<=eom);
-  else if(turnoFilter==='custom'){const f=document.getElementById('turno-date-from')?.value;const to=document.getElementById('turno-date-to')?.value;if(f)turnos=turnos.filter(t=>t.startTime?.toDate?.()>=new Date(f+'T00:00:00'));if(to)turnos=turnos.filter(t=>t.startTime?.toDate?.()<=new Date(to+'T23:59:59'));}
-  const totalSecs=turnos.reduce((s,t)=>s+(t.accumulatedSeconds||0),0);
-  if(summary&&turnos.length){summary.style.display='flex';document.getElementById('turno-summary-value').textContent=formatDuration(totalSecs);document.getElementById('turno-summary-sub').textContent=`${turnos.length} turno${turnos.length!==1?'s':''}`;}
-  else if(summary)summary.style.display='none';
-  if(!turnos.length){list.innerHTML='<div style="padding:20px;text-align:center;color:var(--text-dim);font-size:12px;">Sin registros en este período</div>';return;}
-  list.innerHTML=turnos.map(t=>{
-    const start=t.startTime?.toDate?.();const end=t.endTime?.toDate?.();
-    const dur=t.accumulatedSeconds?formatDuration(t.accumulatedSeconds):'—';
-    const startStr=start?start.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
-    const endStr=end?end.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
-    const dateStr=start?start.toLocaleDateString('es-CO',{day:'2-digit',month:'short'}):'—';
-    const sc=t.status==='active'?'active':t.status==='interrupted'?'interrupted':'ended';
-    const sl=t.status==='active'?'En turno':t.status==='interrupted'?'Interrumpido':'Finalizado';
-    const elBadge=t.earlyLeave?{
-      'pending_review':'<span style="background:rgba(96,165,250,0.1);border:1px solid rgba(96,165,250,0.3);color:#60a5fa;padding:1px 6px;border-radius:4px;font-size:9px;font-family:var(--mono);margin-left:4px;">🏁 Salida anticipada pendiente</span>',
-      'justified':'<span style="background:rgba(74,222,128,0.1);border:1px solid rgba(74,222,128,0.3);color:#4ade80;padding:1px 6px;border-radius:4px;font-size:9px;font-family:var(--mono);margin-left:4px;">✅ Salida justificada</span>',
-      'not_justified':'<span style="background:rgba(248,113,113,0.1);border:1px solid rgba(248,113,113,0.3);color:#f87171;padding:1px 6px;border-radius:4px;font-size:9px;font-family:var(--mono);margin-left:4px;">❌ Salida no justificada</span>'
-    }[t.earlyLeaveStatus||'pending_review']||'':'';
-    const otBadge=t.overtimeStatus?{
-      'pending_review':'<span title="Extra pendiente de aprobación" style="background:rgba(251,146,60,0.15);border:1px solid rgba(251,146,60,0.4);color:#fb923c;padding:1px 6px;border-radius:4px;font-size:9px;font-family:var(--mono);margin-left:4px;cursor:default;">⏳ Extra pend. aprobación</span>',
-      'pending_super_admin':'<span title="Extra pendiente aprobación final (super admin)" style="background:rgba(251,146,60,0.15);border:1px solid rgba(251,146,60,0.4);color:#fb923c;padding:1px 6px;border-radius:4px;font-size:9px;font-family:var(--mono);margin-left:4px;cursor:default;">⏳ Extra en revisión final</span>',
-      'approved':'<span style="background:rgba(74,222,128,0.1);border:1px solid rgba(74,222,128,0.3);color:#4ade80;padding:1px 6px;border-radius:4px;font-size:9px;font-family:var(--mono);margin-left:4px;">✅ Extra aprobada</span>',
-      'rejected':'<span style="background:rgba(248,113,113,0.1);border:1px solid rgba(248,113,113,0.3);color:#f87171;padding:1px 6px;border-radius:4px;font-size:9px;font-family:var(--mono);margin-left:4px;">❌ Extra rechazada</span>'
-    }[t.overtimeStatus]||'':'';
-    return`<div class="turno-row"><div class="turno-row-date">${dateStr}</div>${isAdmin?`<div class="turno-row-user">${t.userEmail||'—'}</div>`:''}<div class="turno-row-time">${startStr} → ${endStr}</div><div class="turno-row-dur">${dur}</div><div class="turno-row-device">${t.isMobile?'📱':'💻'}</div><div class="turno-row-status ${sc}">${sl}${elBadge}${otBadge}</div></div>`;
-  }).join('');
+  function dateRange(filter){
+    const sod=new Date(now.getFullYear(),now.getMonth(),now.getDate());
+    const eod=new Date(now.getFullYear(),now.getMonth(),now.getDate(),23,59,59);
+    const sow=new Date(now);sow.setDate(now.getDate()-now.getDay()+1);sow.setHours(0,0,0,0);
+    const eow=new Date(sow);eow.setDate(sow.getDate()+6);eow.setHours(23,59,59);
+    const som=new Date(now.getFullYear(),now.getMonth(),1);
+    const eom=new Date(now.getFullYear(),now.getMonth()+1,0,23,59,59);
+    if(filter==='today')return[sod,eod];
+    if(filter==='week')return[sow,eow];
+    if(filter==='month')return[som,eom];
+    if(filter==='custom'){
+      const f=document.getElementById('turno-date-from')?.value;
+      const to=document.getElementById('turno-date-to')?.value;
+      return[f?new Date(f+'T00:00:00'):null, to?new Date(to+'T23:59:59'):null];
+    }
+    return[null,null];
+  }
+  function secsToHm(s){const h=Math.floor(s/3600),m=Math.floor((s%3600)/60);if(h&&m)return`${h}h ${m}m`;if(h)return`${h}h`;return`${m}m`;}
+  function calcReal(turnos,from,to){
+    return turnos.filter(t=>{const d=t.startTime?.toDate?.();return d&&(!from||d>=from)&&(!to||d<=to);})
+      .reduce((s,t)=>s+(t.accumulatedSeconds||0),0);
+  }
+  function calcProg(mallaRows,from,to){
+    return mallaRows.filter(r=>{const d=parseDate(r.fecha);return d&&(!from||d>=from)&&(!to||d<=to);})
+      .reduce((s,r)=>s+(r.scheduledStart&&r.scheduledEnd?Math.max(0,(r.scheduledEnd-r.scheduledStart)/1000):0),0);
+  }
+  function calcExtras(turnos,from,to){
+    return turnos.filter(t=>{const d=t.startTime?.toDate?.();return d&&(!from||d>=from)&&(!to||d<=to)&&t.overtimeStatus==='approved'&&t.overtimeMinutes;})
+      .reduce((s,t)=>s+t.overtimeMinutes*60,0);
+  }
+  function card(label, realSecs, progSecs, extrasSecs, isCustom){
+    const color=realSecs>0&&realSecs>=progSecs?'#4ade80':'#fbbf24';
+    const extrasColor=extrasSecs>0?'#a78bfa':'var(--text-dim)';
+    return`<div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:10px;">
+      <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;font-family:var(--mono);font-weight:700;">${label}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        <div>
+          <div style="font-size:11px;color:var(--text-dim);margin-bottom:2px;">Trabajadas</div>
+          <div style="font-size:20px;font-weight:800;color:${color};line-height:1;">${realSecs>0?secsToHm(realSecs):'0m'}</div>
+        </div>
+        <div>
+          <div style="font-size:11px;color:var(--text-dim);margin-bottom:2px;">Programadas</div>
+          <div style="font-size:20px;font-weight:800;color:var(--text);line-height:1;">${progSecs>0?secsToHm(progSecs):'—'}</div>
+        </div>
+      </div>
+      <div style="border-top:1px solid var(--border);padding-top:8px;display:flex;align-items:center;justify-content:space-between;">
+        <span style="font-size:10px;color:var(--text-dim);font-family:var(--mono);">⚡ Extras aprobadas</span>
+        <span style="font-size:13px;font-weight:700;color:${extrasColor};">${extrasSecs>0?secsToHm(extrasSecs):'0m'}</span>
+      </div>
+    </div>`;
+  }
+
+  const isCustom=turnoFilter==='custom';
+  const[cf,ct]=dateRange('custom');
+  const[tf,tt]=dateRange('today');
+  const[wf,wt]=dateRange('week');
+  const[mf,mt]=dateRange('month');
+
+  let html='';
+  if(isCustom){
+    // Solo tarjeta de período seleccionado
+    const r=calcReal(myTurnos,cf,ct),p=calcProg(myMalla,cf,ct),e=calcExtras(myTurnos,cf,ct);
+    const label=cf&&ct?`📅 ${cf.toLocaleDateString('es-CO',{day:'2-digit',month:'short'})} — ${ct.toLocaleDateString('es-CO',{day:'2-digit',month:'short'})}`:' Período seleccionado';
+    html=`<div style="grid-column:span 2;">${card(label,r,p,e,true)}</div>`;
+  } else {
+    // Tarjetas fijas: Hoy, Semana, Mes + Período seleccionado (igual al filtro activo)
+    const filters=[
+      {label:'⏱ Hoy', from:tf, to:tt},
+      {label:'📊 Esta semana', from:wf, to:wt},
+      {label:'🗓 Este mes', from:mf, to:mt},
+    ];
+    html=filters.map(({label,from,to})=>{
+      const r=calcReal(myTurnos,from,to),p=calcProg(myMalla,from,to),e=calcExtras(myTurnos,from,to);
+      const isActive=(turnoFilter==='today'&&label.includes('Hoy'))||(turnoFilter==='week'&&label.includes('semana'))||(turnoFilter==='month'&&label.includes('mes'));
+      return`<div style="${isActive?'border:1px solid var(--p1);border-radius:12px;':''}">${card(label,r,p,e,false)}</div>`;
+    }).join('');
+    // Cuarta tarjeta: período activo resaltado al fondo
+    const[af,at]=dateRange(turnoFilter);
+    const activeLabel=turnoFilter==='today'?'⏱ Hoy':turnoFilter==='week'?'📊 Esta semana':'🗓 Este mes';
+    const r=calcReal(myTurnos,af,at),p=calcProg(myMalla,af,at),e=calcExtras(myTurnos,af,at);
+    html+=`<div style="grid-column:span 2;opacity:0.0;height:0;overflow:hidden;"></div>`;
+  }
+  cardsEl.innerHTML=html;
 }
 
 window.addEventListener('beforeunload',()=>{
@@ -2347,6 +2395,7 @@ async function loadMallaPersonal(){
       const status=getStatus(ss,rs,m.novedad,now);
       return{...m,scheduledStart:ss,scheduledEnd:se,realStart:rs,realEnd:re,status};
     });
+    window.mallaAllRows=mallaAllRows;
     renderMallaPersonal();
   }catch(e){document.getElementById('malla-table-body').innerHTML='<div style="padding:30px;text-align:center;color:var(--text-dim);font-size:12px;">Error al cargar la malla.</div>';}
 }
