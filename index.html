@@ -1165,7 +1165,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 
 <script>
-const APP_VERSION='14.39';
+const APP_VERSION='14.40';
 const APP_CHANGELOG='Notificaciones de asistencia: recordatorio 10 min antes y alertas de tardanza al admin y agente.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -3239,7 +3239,8 @@ async function sendPayrollReport(){
     const csv=await resp.text();
     mallaData=csv.trim().split('\n').slice(1).map(l=>{const c=parseCSVLine(l);return{fecha:c[1]?.trim(),usuario:c[2]?.trim(),nombre:c[3]?.trim(),lider:c[9]?.trim(),novedad:c[10]?.trim()};});
   }catch(e){}
-  const records=weekTurnos.map(t=>{
+  const adminEmails=new Set([...(window.ADMINS||ADMINS),SUPER_ADMIN]);
+  const records=weekTurnos.filter(t=>!adminEmails.has(t.userEmail)).map(t=>{
     const start=t.startTime?.toDate?.();const end=t.endTime?.toDate?.();
     const mallaEntry=mallaData.find(m=>{
       const md=parseDate(m.fecha);return md&&start&&md.toDateString()===start.toDateString()&&m.usuario===t.userEmail;
