@@ -857,7 +857,8 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
           <span style="font-size:11px;color:var(--text-dim);font-family:var(--mono);">Hasta</span>
           <input type="date" class="turno-date-input" id="malla-date-to" onchange="renderMallaPersonal()"/>
         </div>
-        <div id="malla-summary-cards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px;margin-bottom:14px;"></div>
+        <div id="malla-summary-cards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px;margin-bottom:10px;"></div>
+        <div id="malla-hours-cards" style="display:none;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px;"></div>
         <div class="malla-table">
           <div class="malla-thead" id="malla-thead"></div>
           <div id="malla-table-body"><div style="padding:30px;text-align:center;color:var(--text-dim);font-size:12px;">Cargando malla...</div></div>
@@ -1088,7 +1089,7 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 </div>
 
 <script>
-const APP_VERSION='14.14';
+const APP_VERSION='14.15';
 const APP_CHANGELOG='Notificaciones de asistencia: recordatorio 10 min antes y alertas de tardanza al admin y agente.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -2339,6 +2340,7 @@ async function loadMallaPersonal(){
 function renderMallaPersonal(){
   const body=document.getElementById('malla-table-body');
   const summaryEl=document.getElementById('malla-summary-cards');
+  const hoursEl=document.getElementById('malla-hours-cards');
   if(!body)return;
   const userEmail=document.getElementById('user-email').textContent;
   const isAdminView=(window.ADMINS||ADMINS).includes(userEmail)||userEmail===SUPER_ADMIN&&(window._mallaSelectedUsers?.size!==1||[...window._mallaSelectedUsers][0]!==userEmail);
@@ -2378,70 +2380,46 @@ function renderMallaPersonal(){
   const pct=total?Math.round(((cumplió+novedad)/total)*100):0;
   let mallaStatusFilter=window._mallaStatusFilter||null;
 
-  // ── Calcular tarjetas de horas (solo vista personal) ──
-  let horasHtml='';
-  if(!isAdminView){
-    function secsToHm(s){const h=Math.floor(s/3600),m=Math.floor((s%3600)/60);return h?`${h}h ${m>0?m+'m':''}`:`${m}m`;}
-    // Horas programadas hoy
-    const todayRows=rows.filter(r=>{const d=parseDate(r.fecha);return d&&d>=sod&&d<=eod;});
-    const todayProgSecs=todayRows.reduce((s,r)=>{
-      if(!r.scheduledStart||!r.scheduledEnd)return s;
-      return s+Math.max(0,(r.scheduledEnd-r.scheduledStart)/1000);
-    },0);
-    const todayRealSecs=todayRows.reduce((s,r)=>{
-      if(!r.realStart)return s;
-      const end=r.realEnd||now;
-      return s+Math.max(0,(end-r.realStart)/1000);
-    },0);
-    // Horas semana (del período visible si es semana, sino calcular sobre semana actual)
-    const weekRows=mallaAllRows.filter(r=>{const d=parseDate(r.fecha);return d&&d>=sow&&d<=eow;});
-    const weekProgSecs=weekRows.reduce((s,r)=>{
-      if(!r.scheduledStart||!r.scheduledEnd)return s;
-      return s+Math.max(0,(r.scheduledEnd-r.scheduledStart)/1000);
-    },0);
-    const weekRealSecs=weekRows.reduce((s,r)=>{
-      if(!r.realStart)return s;
-      const end=r.realEnd||now;
-      return s+Math.max(0,(end-r.realStart)/1000);
-    },0);
-    // Extras: tiempo real > programado por día
-    const extrasSecs=weekRows.reduce((s,r)=>{
-      if(!r.realStart||!r.realEnd||!r.scheduledStart||!r.scheduledEnd)return s;
-      const real=(r.realEnd-r.realStart)/1000,prog=(r.scheduledEnd-r.scheduledStart)/1000;
-      return s+Math.max(0,real-prog-(TOLERANCE_MINS*60));
-    },0);
-    // Almuerzo acumulado semana
-    const almSecs=weekRows.reduce((s,r)=>{
-      if(!r.almuerzo)return s;
-      const parts=r.almuerzo.match(/(\d+)/g);
-      if(parts&&parts.length>=2)return s+(parseInt(parts[0])*60+parseInt(parts[1]))*60;
-      if(parts&&parts.length===1)return s+parseInt(parts[0])*60;
-      return s;
-    },0);
-    const todayColor=todayRealSecs>=todayProgSecs?'#4ade80':'#fbbf24';
-    const weekColor=weekRealSecs>=weekProgSecs?'#4ade80':'#fbbf24';
-    horasHtml=`<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:8px;margin-bottom:14px;">
-      <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 14px;">
-        <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;font-family:var(--mono);margin-bottom:4px;">⏱ Hoy</div>
-        <div style="font-size:18px;font-weight:800;color:${todayColor};line-height:1;">${todayRealSecs>0?secsToHm(todayRealSecs):'—'}</div>
-        <div style="font-size:10px;color:var(--text-dim);margin-top:3px;">de ${todayProgSecs>0?secsToHm(todayProgSecs):'—'} prog.</div>
-      </div>
-      <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 14px;">
-        <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;font-family:var(--mono);margin-bottom:4px;">📊 Semana</div>
-        <div style="font-size:18px;font-weight:800;color:${weekColor};line-height:1;">${weekRealSecs>0?secsToHm(weekRealSecs):'—'}</div>
-        <div style="font-size:10px;color:var(--text-dim);margin-top:3px;">de ${weekProgSecs>0?secsToHm(weekProgSecs):'—'} prog.</div>
-      </div>
-      <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 14px;">
-        <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;font-family:var(--mono);margin-bottom:4px;">⚡ Extras</div>
-        <div style="font-size:18px;font-weight:800;color:${extrasSecs>0?'#a78bfa':'var(--text-dim)'};line-height:1;">${extrasSecs>0?secsToHm(extrasSecs):'0m'}</div>
-        <div style="font-size:10px;color:var(--text-dim);margin-top:3px;">esta semana</div>
-      </div>
-      <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 14px;">
-        <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;font-family:var(--mono);margin-bottom:4px;">🍽 Almuerzo</div>
-        <div style="font-size:18px;font-weight:800;color:var(--text);line-height:1;">${almSecs>0?secsToHm(almSecs):'—'}</div>
-        <div style="font-size:10px;color:var(--text-dim);margin-top:3px;">esta semana</div>
-      </div>
-    </div>`;
+  // ── Tarjetas de horas (solo vista personal) ──
+  if(hoursEl){
+    if(!isAdminView){
+      function secsToHm(s){const h=Math.floor(s/3600),m=Math.floor((s%3600)/60);return h?`${h}h${m>0?' '+m+'m':''}`:`${m}m`;}
+      const todayRows=rows.filter(r=>{const d=parseDate(r.fecha);return d&&d>=sod&&d<=eod;});
+      const todayProgSecs=todayRows.reduce((s,r)=>s+(r.scheduledStart&&r.scheduledEnd?Math.max(0,(r.scheduledEnd-r.scheduledStart)/1000):0),0);
+      const todayRealSecs=todayRows.reduce((s,r)=>{if(!r.realStart)return s;return s+Math.max(0,((r.realEnd||now)-r.realStart)/1000);},0);
+      const weekRows=mallaAllRows.filter(r=>{const d=parseDate(r.fecha);return d&&d>=sow&&d<=eow;});
+      const weekProgSecs=weekRows.reduce((s,r)=>s+(r.scheduledStart&&r.scheduledEnd?Math.max(0,(r.scheduledEnd-r.scheduledStart)/1000):0),0);
+      const weekRealSecs=weekRows.reduce((s,r)=>{if(!r.realStart)return s;return s+Math.max(0,((r.realEnd||now)-r.realStart)/1000);},0);
+      const extrasSecs=weekRows.reduce((s,r)=>{if(!r.realStart||!r.realEnd||!r.scheduledStart||!r.scheduledEnd)return s;const extra=(r.realEnd-r.realStart)/1000-(r.scheduledEnd-r.scheduledStart)/1000-(TOLERANCE_MINS*60);return s+Math.max(0,extra);},0);
+      const almSecs=weekRows.reduce((s,r)=>{if(!r.almuerzo)return s;const p=r.almuerzo.match(/(\d+)/g);return p&&p.length>=2?s+(parseInt(p[0])*60+parseInt(p[1]))*60:p&&p.length===1?s+parseInt(p[0])*60:s;},0);
+      const tc=todayRealSecs>=todayProgSecs&&todayProgSecs>0?'#4ade80':'#fbbf24';
+      const wc=weekRealSecs>=weekProgSecs&&weekProgSecs>0?'#4ade80':'#fbbf24';
+      hoursEl.style.display='grid';
+      hoursEl.innerHTML=`
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 14px;">
+          <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;font-family:var(--mono);margin-bottom:4px;">⏱ Hoy</div>
+          <div style="font-size:18px;font-weight:800;color:${tc};line-height:1;">${todayRealSecs>0?secsToHm(todayRealSecs):'—'}</div>
+          <div style="font-size:10px;color:var(--text-dim);margin-top:3px;">de ${todayProgSecs>0?secsToHm(todayProgSecs):'—'} prog.</div>
+        </div>
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 14px;">
+          <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;font-family:var(--mono);margin-bottom:4px;">📊 Semana</div>
+          <div style="font-size:18px;font-weight:800;color:${wc};line-height:1;">${weekRealSecs>0?secsToHm(weekRealSecs):'—'}</div>
+          <div style="font-size:10px;color:var(--text-dim);margin-top:3px;">de ${weekProgSecs>0?secsToHm(weekProgSecs):'—'} prog.</div>
+        </div>
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 14px;">
+          <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;font-family:var(--mono);margin-bottom:4px;">⚡ Extras</div>
+          <div style="font-size:18px;font-weight:800;color:${extrasSecs>0?'#a78bfa':'var(--text-dim)'};line-height:1;">${extrasSecs>0?secsToHm(extrasSecs):'0m'}</div>
+          <div style="font-size:10px;color:var(--text-dim);margin-top:3px;">esta semana</div>
+        </div>
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 14px;">
+          <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;font-family:var(--mono);margin-bottom:4px;">🍽 Almuerzo</div>
+          <div style="font-size:18px;font-weight:800;color:var(--text);line-height:1;">${almSecs>0?secsToHm(almSecs):'—'}</div>
+          <div style="font-size:10px;color:var(--text-dim);margin-top:3px;">esta semana</div>
+        </div>`;
+    } else {
+      hoursEl.style.display='none';
+      hoursEl.innerHTML='';
+    }
   }
 
   if(summaryEl)summaryEl.innerHTML=`
@@ -2450,8 +2428,7 @@ function renderMallaPersonal(){
     <div class="cumpl-card yellow" onclick="setMallaStatusFilter('tardanza')" style="cursor:pointer;${mallaStatusFilter==='tardanza'?'border:1px solid #fbbf24;':''}" title="Filtrar"><div class="cumpl-card-num">${tardanza}</div><div class="cumpl-card-label">🟡 Tardanza</div></div>
     <div class="cumpl-card red" onclick="setMallaStatusFilter('ausente')" style="cursor:pointer;${mallaStatusFilter==='ausente'?'border:1px solid #f87171;':''}" title="Filtrar"><div class="cumpl-card-num">${ausente}</div><div class="cumpl-card-label">🔴 Ausente</div></div>
     <div class="cumpl-card gray" onclick="setMallaStatusFilter('pendiente')" style="cursor:pointer;${mallaStatusFilter==='pendiente'?'border:1px solid var(--text-dim);':''}" title="Filtrar"><div class="cumpl-card-num">${pendiente}</div><div class="cumpl-card-label">⏳ Pendiente</div></div>
-    <div class="cumpl-card purple" onclick="setMallaStatusFilter('novedad')" style="cursor:pointer;${mallaStatusFilter==='novedad'?'border:1px solid var(--p1);':''}" title="Filtrar"><div class="cumpl-card-num">${novedad}</div><div class="cumpl-card-label">📋 Novedad</div></div>
-    ${horasHtml}`;
+    <div class="cumpl-card purple" onclick="setMallaStatusFilter('novedad')" style="cursor:pointer;${mallaStatusFilter==='novedad'?'border:1px solid var(--p1);':''}" title="Filtrar"><div class="cumpl-card-num">${novedad}</div><div class="cumpl-card-label">📋 Novedad</div></div>`;
   if(!rows.length){body.innerHTML='<div style="padding:30px;text-align:center;color:var(--text-dim);font-size:12px;">Sin registros en este período</div>';return;}
   const cols=isAdminView
     ?['0.55fr','1.2fr','0.65fr','1fr','0.9fr','0.9fr','0.9fr','0.9fr','1fr','0.85fr','1fr','1.2fr']
