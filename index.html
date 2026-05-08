@@ -41,6 +41,8 @@ onAuthStateChanged(auth, async user => {
     const isAdmin = window.ADMINS.includes(user.email) || isSuperAdmin;
     const cfgBtn = document.getElementById('btn-config');
     if (cfgBtn) cfgBtn.style.display = isSuperAdmin ? 'flex' : 'none';
+    const previewBtn = document.getElementById('btn-agent-preview');
+    if (previewBtn) previewBtn.style.display = isSuperAdmin ? 'flex' : 'none';
     const clearBtn = document.getElementById('btn-clear-metrics');
     if (clearBtn) clearBtn.style.display = isAdmin ? 'flex' : 'none';
 
@@ -626,9 +628,13 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 
 .toast{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:var(--grad);color:white;padding:8px 20px;border-radius:100px;font-weight:700;font-size:13px;z-index:999;box-shadow:0 4px 20px rgba(123,47,255,0.5);animation:msgIn 0.3s ease both;}
 @media(max-width:640px){.faq-sidebar{display:none;}}
-</style>
+#agent-preview-banner{display:none;position:fixed;top:0;left:0;right:0;z-index:9999;background:linear-gradient(90deg,#f59e0b,#ef4444);color:#fff;padding:7px 16px;font-size:12px;font-weight:700;font-family:var(--mono);text-align:center;letter-spacing:0.04em;box-shadow:0 2px 12px rgba(0,0,0,0.3);}
+#agent-preview-banner button{margin-left:14px;background:rgba(255,255,255,0.25);border:1px solid rgba(255,255,255,0.5);color:#fff;padding:3px 12px;border-radius:20px;font-size:11px;font-weight:700;cursor:pointer;font-family:var(--mono);}
+#agent-preview-banner button:hover{background:rgba(255,255,255,0.4);}
+body.agent-preview-mode header{margin-top:34px;}
 </head>
 <body>
+<div id="agent-preview-banner">👁 Modo vista de agente — estás viendo la app como un usuario básico <button onclick="exitAgentPreview()">✕ Salir y volver a Super Admin</button></div>
 
 <!-- Login -->
 <div id="login-screen">
@@ -680,6 +686,7 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
       <div class="status-pill"><div class="sdot" id="sdot"></div><span id="stext">Sin conectar</span></div>
       <button class="btn-new" id="btn-new-chat" onclick="newChat()" style="display:none;"><svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>Nueva consulta</button>
       <button class="btn-cfg" id="btn-config" onclick="openConfig()" style="display:none;"><svg viewBox="0 0 24 24" fill="none"><path d="M12 15a3 3 0 100-6 3 3 0 000 6z" stroke="currentColor" stroke-width="2"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" stroke="currentColor" stroke-width="2"/></svg>Configurar</button>
+      <button class="btn-cfg" id="btn-agent-preview" onclick="enterAgentPreview()" style="display:none;" title="Vista de agente"><svg viewBox="0 0 24 24" fill="none"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/></svg>Vista agente</button>
       <div class="user-pill" onclick="window.logoutUser()" title="Cerrar sesión">
         <img id="user-avatar" src="" alt=""/>
         <div><div class="user-pill-name" id="user-name"></div><div class="user-pill-email" id="user-email"></div></div>
@@ -1089,7 +1096,7 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 </div>
 
 <script>
-const APP_VERSION='14.16';
+const APP_VERSION='14.17';
 const APP_CHANGELOG='Notificaciones de asistencia: recordatorio 10 min antes y alertas de tardanza al admin y agente.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -1199,7 +1206,7 @@ function initHomeView(){
     {id:'analytics',icon:'📊',title:'Métricas',desc:'Indicadores de uso del asistente, tasa de resolución y tiempos de respuesta.',color:'#10b981',grad:'linear-gradient(135deg,#10b981,#06b6d4)',roles:['admin','super']},
     {id:'turno-panel',icon:'👥',title:'Panel de control',desc:'Historial de turnos del equipo, gestión de extras y reportes de nómina.',color:'#f59e0b',grad:'linear-gradient(135deg,#f59e0b,#ef4444)',roles:['admin','super']},
   ];
-  const role=isSuperAdmin?'super':isAdmin?'admin':'user';
+  const role=window._agentPreviewMode?'user':isSuperAdmin?'super':isAdmin?'admin':'user';
   const filtered=cards.filter(c=>c.roles.includes(role));
   const wrap=document.getElementById('home-cards');
   if(!wrap)return;
@@ -2343,7 +2350,7 @@ function renderMallaPersonal(){
   const hoursEl=document.getElementById('malla-hours-cards');
   if(!body)return;
   const userEmail=document.getElementById('user-email').textContent;
-  const isAdminView=(window.ADMINS||ADMINS).includes(userEmail)||userEmail===SUPER_ADMIN&&(window._mallaSelectedUsers?.size!==1||[...window._mallaSelectedUsers][0]!==userEmail);
+  const isAdminView=!window._agentPreviewMode&&((window.ADMINS||ADMINS).includes(userEmail)||userEmail===SUPER_ADMIN&&(window._mallaSelectedUsers?.size!==1||[...window._mallaSelectedUsers][0]!==userEmail));
   const DIAS=['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
   // Set dynamic header
   const thead=document.getElementById('malla-thead');
@@ -3215,6 +3222,34 @@ function initFAQResizer(){
     document.addEventListener('mousemove',onMove);document.addEventListener('mouseup',onUp);
   });
 }
-</script>
+
+// ── MODO VISTA DE AGENTE (solo Super Admin) ──
+function enterAgentPreview(){
+  sessionStorage.setItem('pg_agent_preview','1');
+  window._agentPreviewMode=true;
+  document.getElementById('agent-preview-banner').style.display='block';
+  document.body.classList.add('agent-preview-mode');
+  // Ocultar botones de admin
+  const cfgBtn=document.getElementById('btn-config');if(cfgBtn)cfgBtn.style.display='none';
+  const previewBtn=document.getElementById('btn-agent-preview');if(previewBtn)previewBtn.style.display='none';
+  const subtabPanel=document.getElementById('subtab-panel');if(subtabPanel)subtabPanel.style.display='none';
+  const clearBtn=document.getElementById('btn-clear-metrics');if(clearBtn)clearBtn.style.display='none';
+  // Volver a home y re-renderizar como agente
+  switchTab('home');
+  toast('👁 Vista de agente activada');
+}
+function exitAgentPreview(){
+  sessionStorage.removeItem('pg_agent_preview');
+  window._agentPreviewMode=false;
+  document.getElementById('agent-preview-banner').style.display='none';
+  document.body.classList.remove('agent-preview-mode');
+  // Restaurar botones de Super Admin
+  const cfgBtn=document.getElementById('btn-config');if(cfgBtn)cfgBtn.style.display='flex';
+  const previewBtn=document.getElementById('btn-agent-preview');if(previewBtn)previewBtn.style.display='flex';
+  const subtabPanel=document.getElementById('subtab-panel');if(subtabPanel)subtabPanel.style.display='flex';
+  // Volver a home como Super Admin
+  switchTab('home');
+  toast('✅ Vista de Super Admin restaurada');
+}
 </body>
 </html>
