@@ -632,6 +632,7 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 #agent-preview-banner button{margin-left:14px;background:rgba(255,255,255,0.25);border:1px solid rgba(255,255,255,0.5);color:#fff;padding:3px 12px;border-radius:20px;font-size:11px;font-weight:700;cursor:pointer;font-family:var(--mono);}
 #agent-preview-banner button:hover{background:rgba(255,255,255,0.4);}
 body.agent-preview-mode header{margin-top:34px;}
+</style>
 </head>
 <body>
 <div id="agent-preview-banner">👁 Modo vista de agente — estás viendo la app como un usuario básico <button onclick="exitAgentPreview()">✕ Salir y volver a Super Admin</button></div>
@@ -1096,7 +1097,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 
 <script>
-const APP_VERSION='14.17';
+const APP_VERSION='14.18';
 const APP_CHANGELOG='Notificaciones de asistencia: recordatorio 10 min antes y alertas de tardanza al admin y agente.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
