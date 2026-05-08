@@ -1089,7 +1089,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 
 <script>
-const APP_VERSION='14.21';
+const APP_VERSION='14.22';
 const APP_CHANGELOG='Notificaciones de asistencia: recordatorio 10 min antes y alertas de tardanza al admin y agente.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -2209,49 +2209,32 @@ async function loadTurnoHistory(){
   const userEmail=document.getElementById('user-email').textContent;
   const isAdminRole=(window.ADMINS||ADMINS).includes(userEmail)||userEmail===SUPER_ADMIN;
   const myTurnos=isAdminRole&&!window._agentPreviewMode?allTurnos:allTurnos.filter(t=>t.userEmail===userEmail);
-  const mallaTurnos=window._mallaTurnos||myTurnos;
   const myMalla=window.mallaAllRows||[];
 
   const now=new Date();
-  function dateRange(filter){
-    const sod=new Date(now.getFullYear(),now.getMonth(),now.getDate());
-    const eod=new Date(now.getFullYear(),now.getMonth(),now.getDate(),23,59,59);
-    const sow=new Date(now);sow.setDate(now.getDate()-now.getDay()+1);sow.setHours(0,0,0,0);
-    const eow=new Date(sow);eow.setDate(sow.getDate()+6);eow.setHours(23,59,59);
-    const som=new Date(now.getFullYear(),now.getMonth(),1);
-    const eom=new Date(now.getFullYear(),now.getMonth()+1,0,23,59,59);
-    if(filter==='today')return[sod,eod];
-    if(filter==='week')return[sow,eow];
-    if(filter==='month')return[som,eom];
-    if(filter==='custom'){
-      const f=document.getElementById('turno-date-from')?.value;
-      const to=document.getElementById('turno-date-to')?.value;
-      return[f?new Date(f+'T00:00:00'):null, to?new Date(to+'T23:59:59'):null];
-    }
-    return[null,null];
-  }
+  const sod=new Date(now.getFullYear(),now.getMonth(),now.getDate());
+  const eod=new Date(now.getFullYear(),now.getMonth(),now.getDate(),23,59,59);
+  const sow=new Date(now);sow.setDate(now.getDate()-now.getDay()+1);sow.setHours(0,0,0,0);
+  const eow=new Date(sow);eow.setDate(sow.getDate()+6);eow.setHours(23,59,59);
+  const som=new Date(now.getFullYear(),now.getMonth(),1);
+  const eom=new Date(now.getFullYear(),now.getMonth()+1,0,23,59,59);
+
   function secsToHm(s){const h=Math.floor(s/3600),m=Math.floor((s%3600)/60);if(h&&m)return`${h}h ${m}m`;if(h)return`${h}h`;return`${m}m`;}
-  function calcReal(turnos,from,to){
-    return turnos.filter(t=>{const d=t.startTime?.toDate?.();return d&&(!from||d>=from)&&(!to||d<=to);})
-      .reduce((s,t)=>s+(t.accumulatedSeconds||0),0);
-  }
-  function calcProg(mallaRows,from,to){
-    return mallaRows.filter(r=>{const d=parseDate(r.fecha);return d&&(!from||d>=from)&&(!to||d<=to);})
-      .reduce((s,r)=>s+(r.scheduledStart&&r.scheduledEnd?Math.max(0,(r.scheduledEnd-r.scheduledStart)/1000):0),0);
-  }
-  function calcExtras(turnos,from,to){
-    return turnos.filter(t=>{const d=t.startTime?.toDate?.();return d&&(!from||d>=from)&&(!to||d<=to)&&t.overtimeStatus==='approved'&&t.overtimeMinutes;})
-      .reduce((s,t)=>s+t.overtimeMinutes*60,0);
-  }
-  function card(label, realSecs, progSecs, extrasSecs, isCustom){
-    const color=realSecs>0&&realSecs>=progSecs?'#4ade80':'#fbbf24';
-    const extrasColor=extrasSecs>0?'#a78bfa':'var(--text-dim)';
-    return`<div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:10px;">
+  function calcReal(from,to){return myTurnos.filter(t=>{const d=t.startTime?.toDate?.();return d&&(!from||d>=from)&&(!to||d<=to);}).reduce((s,t)=>s+(t.accumulatedSeconds||0),0);}
+  function calcProg(from,to){return myMalla.filter(r=>{const d=parseDate(r.fecha);return d&&(!from||d>=from)&&(!to||d<=to);}).reduce((s,r)=>s+(r.scheduledStart&&r.scheduledEnd?Math.max(0,(r.scheduledEnd-r.scheduledStart)/1000):0),0);}
+  function calcExtras(from,to){return myTurnos.filter(t=>{const d=t.startTime?.toDate?.();return d&&(!from||d>=from)&&(!to||d<=to)&&t.overtimeStatus==='approved'&&t.overtimeMinutes;}).reduce((s,t)=>s+t.overtimeMinutes*60,0);}
+
+  function card(label,realSecs,progSecs,extrasSecs,highlight){
+    const hasData=progSecs>0||realSecs>0;
+    const workColor=!hasData?'var(--text-dim)':realSecs>=progSecs&&progSecs>0?'#4ade80':'#fbbf24';
+    const extColor=extrasSecs>0?'#a78bfa':'var(--text-dim)';
+    const border=highlight?'border:1px solid var(--p1);':'border:1px solid var(--border);';
+    return`<div style="background:var(--surface2);${border}border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:10px;">
       <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;font-family:var(--mono);font-weight:700;">${label}</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
         <div>
           <div style="font-size:11px;color:var(--text-dim);margin-bottom:2px;">Trabajadas</div>
-          <div style="font-size:20px;font-weight:800;color:${color};line-height:1;">${realSecs>0?secsToHm(realSecs):'0m'}</div>
+          <div style="font-size:20px;font-weight:800;color:${workColor};line-height:1;">${realSecs>0?secsToHm(realSecs):'0m'}</div>
         </div>
         <div>
           <div style="font-size:11px;color:var(--text-dim);margin-bottom:2px;">Programadas</div>
@@ -2260,42 +2243,34 @@ async function loadTurnoHistory(){
       </div>
       <div style="border-top:1px solid var(--border);padding-top:8px;display:flex;align-items:center;justify-content:space-between;">
         <span style="font-size:10px;color:var(--text-dim);font-family:var(--mono);">⚡ Extras aprobadas</span>
-        <span style="font-size:13px;font-weight:700;color:${extrasColor};">${extrasSecs>0?secsToHm(extrasSecs):'0m'}</span>
+        <span style="font-size:13px;font-weight:700;color:${extColor};">${extrasSecs>0?secsToHm(extrasSecs):'0m'}</span>
       </div>
     </div>`;
   }
 
-  const isCustom=turnoFilter==='custom';
-  const[cf,ct]=dateRange('custom');
-  const[tf,tt]=dateRange('today');
-  const[wf,wt]=dateRange('week');
-  const[mf,mt]=dateRange('month');
+  // Tarjetas fijas
+  const todayCard=card('⏱ Hoy',calcReal(sod,eod),calcProg(sod,eod),calcExtras(sod,eod),false);
+  const weekCard=card('📊 Esta semana',calcReal(sow,eow),calcProg(sow,eow),calcExtras(sow,eow),false);
+  const monthCard=card('🗓 Este mes',calcReal(som,eom),calcProg(som,eom),calcExtras(som,eom),false);
 
-  let html='';
-  if(isCustom){
-    // Solo tarjeta de período seleccionado
-    const r=calcReal(myTurnos,cf,ct),p=calcProg(myMalla,cf,ct),e=calcExtras(myTurnos,cf,ct);
-    const label=cf&&ct?`📅 ${cf.toLocaleDateString('es-CO',{day:'2-digit',month:'short'})} — ${ct.toLocaleDateString('es-CO',{day:'2-digit',month:'short'})}`:' Período seleccionado';
-    html=`<div style="grid-column:span 2;">${card(label,r,p,e,true)}</div>`;
-  } else {
-    // Tarjetas fijas: Hoy, Semana, Mes + Período seleccionado (igual al filtro activo)
-    const filters=[
-      {label:'⏱ Hoy', from:tf, to:tt},
-      {label:'📊 Esta semana', from:wf, to:wt},
-      {label:'🗓 Este mes', from:mf, to:mt},
-    ];
-    html=filters.map(({label,from,to})=>{
-      const r=calcReal(myTurnos,from,to),p=calcProg(myMalla,from,to),e=calcExtras(myTurnos,from,to);
-      const isActive=(turnoFilter==='today'&&label.includes('Hoy'))||(turnoFilter==='week'&&label.includes('semana'))||(turnoFilter==='month'&&label.includes('mes'));
-      return`<div style="${isActive?'border:1px solid var(--p1);border-radius:12px;':''}">${card(label,r,p,e,false)}</div>`;
-    }).join('');
-    // Cuarta tarjeta: período activo resaltado al fondo
-    const[af,at]=dateRange(turnoFilter);
-    const activeLabel=turnoFilter==='today'?'⏱ Hoy':turnoFilter==='week'?'📊 Esta semana':'🗓 Este mes';
-    const r=calcReal(myTurnos,af,at),p=calcProg(myMalla,af,at),e=calcExtras(myTurnos,af,at);
-    html+=`<div style="grid-column:span 2;opacity:0.0;height:0;overflow:hidden;"></div>`;
-  }
-  cardsEl.innerHTML=html;
+  // Tarjeta período seleccionado — siempre visible
+  const fromVal=document.getElementById('turno-date-from')?.value;
+  const toVal=document.getElementById('turno-date-to')?.value;
+  const cf=fromVal?new Date(fromVal+'T00:00:00'):null;
+  const ct=toVal?new Date(toVal+'T23:59:59'):null;
+  const customLabel=cf&&ct
+    ?`📅 ${cf.toLocaleDateString('es-CO',{day:'2-digit',month:'short'})} — ${ct.toLocaleDateString('es-CO',{day:'2-digit',month:'short'})}`
+    :'📅 Período seleccionado';
+  const customCard=cf&&ct
+    ?card(customLabel,calcReal(cf,ct),calcProg(cf,ct),calcExtras(cf,ct),true)
+    :`<div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:8px;">
+        <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;font-family:var(--mono);font-weight:700;">📅 Período seleccionado</div>
+        <div style="font-size:12px;color:var(--text-dim);text-align:center;padding:16px 0;">Selecciona un rango de fechas arriba</div>
+      </div>`;
+
+  // Layout: 3 tarjetas fijas en fila, período seleccionado debajo a ancho completo
+  cardsEl.style.gridTemplateColumns='repeat(3,1fr)';
+  cardsEl.innerHTML=todayCard+weekCard+monthCard+`<div style="grid-column:span 3;">${customCard}</div>`;
 }
 
 window.addEventListener('beforeunload',()=>{
