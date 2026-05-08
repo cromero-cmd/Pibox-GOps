@@ -224,6 +224,10 @@ window.clearAllMetrics = async () => {
 </script>
 <style>
 :root{--p1:#7B2FFF;--p2:#C83FE8;--p3:#FF4ECD;--grad:linear-gradient(135deg,var(--p1) 0%,var(--p2) 50%,var(--p3) 100%);--bg:#0D0B14;--surface:#151221;--surface2:#1E1A2E;--surface3:#261F3A;--border:rgba(255,255,255,0.08);--border-p:rgba(123,47,255,0.35);--text:#F0EDF8;--text-muted:#9B94B8;--text-dim:#5A5270;--font:'Plus Jakarta Sans',sans-serif;--mono:'DM Mono',monospace;--glow:0 0 40px rgba(123,47,255,0.2);--shadow:0 4px 24px rgba(0,0,0,0.4);}
+body.light-mode{--bg:#F4F2FA;--surface:#FFFFFF;--surface2:#EDE9F8;--surface3:#E0D8F5;--border:rgba(123,47,255,0.12);--border-p:rgba(123,47,255,0.35);--text:#1A1626;--text-muted:#5A4E7A;--text-dim:#9B94B8;--glow:0 0 40px rgba(123,47,255,0.08);--shadow:0 4px 24px rgba(123,47,255,0.08);}
+body.light-mode::before{background:radial-gradient(ellipse 60% 50% at 15% 15%,rgba(123,47,255,0.06) 0%,transparent 60%),radial-gradient(ellipse 50% 40% at 85% 85%,rgba(200,63,232,0.04) 0%,transparent 60%);}
+body.light-mode header{background:rgba(244,242,250,0.92);}
+body.light-mode .chat-input-wrap{background:rgba(244,242,250,0.95);}
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
 body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14px;height:100dvh;overflow:hidden;}
 body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;background:radial-gradient(ellipse 60% 50% at 15% 15%,rgba(123,47,255,0.15) 0%,transparent 60%),radial-gradient(ellipse 50% 40% at 85% 85%,rgba(200,63,232,0.1) 0%,transparent 60%);}
@@ -689,6 +693,7 @@ body.agent-preview-mode header{margin-top:34px;}
       <button class="btn-new" id="btn-new-chat" onclick="newChat()" style="display:none;"><svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>Nueva consulta</button>
       <button class="btn-cfg" id="btn-config" onclick="openConfig()" style="display:none;"><svg viewBox="0 0 24 24" fill="none"><path d="M12 15a3 3 0 100-6 3 3 0 000 6z" stroke="currentColor" stroke-width="2"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" stroke="currentColor" stroke-width="2"/></svg>Configurar</button>
       <button class="btn-cfg" id="btn-agent-preview" onclick="enterAgentPreview()" style="display:none;" title="Vista de agente"><svg viewBox="0 0 24 24" fill="none"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/></svg>Vista agente</button>
+      <button class="btn-cfg" id="btn-theme" onclick="toggleTheme()" title="Cambiar tema"><span id="theme-icon">☀️</span></button>
       <div class="user-pill" onclick="window.logoutUser()" title="Cerrar sesión">
         <img id="user-avatar" src="" alt=""/>
         <div><div class="user-pill-name" id="user-name"></div><div class="user-pill-email" id="user-email"></div></div>
@@ -1132,7 +1137,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 
 <script>
-const APP_VERSION='14.28';
+const APP_VERSION='14.29';
 const APP_CHANGELOG='Notificaciones de asistencia: recordatorio 10 min antes y alertas de tardanza al admin y agente.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -1151,6 +1156,7 @@ let mallaAllRows=[],panelActiveTimers={};
 function softReload(){window.location.href=window.location.pathname+'?r='+Date.now();}
 
 window._loadAppConfig=()=>{
+  applyStoredTheme();
   apiKey=localStorage.getItem('pg_key')||'';
   sheetUrl=localStorage.getItem('pg_sheet')||'';
   vidUrl=localStorage.getItem('pg_vid')||'';
@@ -1165,6 +1171,11 @@ window._loadAppConfig=()=>{
     document.getElementById('setup-banner').style.display='none';
     fetchSheet();loadFAQs();
     if(vidUrl)loadVideos();
+  }
+  // Restaurar tab activa
+  const savedTab=localStorage.getItem('pg_active_tab');
+  if(savedTab&&savedTab!=='home'){
+    setTimeout(()=>switchTab(savedTab),300);
   }
 };
 
@@ -1260,7 +1271,22 @@ function initHomeView(){
   });
 }
 
+function toggleTheme(){
+  const isLight=document.body.classList.toggle('light-mode');
+  localStorage.setItem('pg_theme',isLight?'light':'dark');
+  const icon=document.getElementById('theme-icon');
+  if(icon)icon.textContent=isLight?'🌙':'☀️';
+}
+function applyStoredTheme(){
+  const stored=localStorage.getItem('pg_theme');
+  if(stored==='light'){
+    document.body.classList.add('light-mode');
+    const icon=document.getElementById('theme-icon');
+    if(icon)icon.textContent='🌙';
+  }
+}
 function switchTab(t){
+  if(t!=='home')localStorage.setItem('pg_active_tab',t);
   // Show/hide tabs based on view
   const tabsEl=document.querySelector('.tabs');
   if(tabsEl)tabsEl.style.display=t==='home'?'none':'flex';
