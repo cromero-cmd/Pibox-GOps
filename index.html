@@ -827,6 +827,7 @@ body.agent-preview-mode header{margin-top:34px;}
               <input type="date" class="turno-date-input" id="turno-date-from" onchange="loadTurnoHistory()"/>
               <span style="font-size:11px;color:var(--text-dim);font-family:var(--mono);">Hasta</span>
               <input type="date" class="turno-date-input" id="turno-date-to" onchange="loadTurnoHistory()"/>
+              <button class="turno-filter-btn" onclick="clearTurnoDateFilter()" style="border-color:rgba(248,113,113,0.3);color:#f87171;">✕ Borrar</button>
             </div>
             <div id="turno-hours-cards" style="padding:14px 16px;display:grid;grid-template-columns:repeat(2,1fr);gap:10px;">
               <div style="padding:20px;text-align:center;color:var(--text-dim);font-size:12px;grid-column:span 2;">Cargando...</div>
@@ -1089,7 +1090,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 
 <script>
-const APP_VERSION='14.22';
+const APP_VERSION='14.23';
 const APP_CHANGELOG='Notificaciones de asistencia: recordatorio 10 min antes y alertas de tardanza al admin y agente.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -2132,6 +2133,13 @@ function initTurnoFilters(){
   const toEl=document.getElementById('turno-date-to');
   if(fromEl&&!fromEl.value)fromEl.value=today;
   if(toEl&&!toEl.value)toEl.value=today;
+}
+function clearTurnoDateFilter(){
+  const fromEl=document.getElementById('turno-date-from');
+  const toEl=document.getElementById('turno-date-to');
+  if(fromEl)fromEl.value='';
+  if(toEl)toEl.value='';
+  loadTurnoHistory();
 }
 
 function showTurnoDoneToday(turno){
