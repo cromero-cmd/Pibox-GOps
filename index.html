@@ -758,6 +758,13 @@ body.agent-preview-mode header{margin-top:34px;}
         </div>
       </div>
       <hr/>
+      <div class="msec">🔔 Notificaciones de cambios en malla</div>
+      <div class="field">
+        <label>Delay antes de notificar cambios (minutos)</label>
+        <input type="number" id="inp-malla-notif-delay" min="10" max="480" step="10" value="60" style="width:100%;"/>
+        <div style="font-size:10px;color:var(--text-dim);margin-top:4px;font-family:var(--mono);">Tiempo de espera antes de enviar aviso al agente cuando se modifica su horario. Permite corregir errores antes de notificar. Mínimo 10 min.</div>
+      </div>
+      <hr/>
       <div class="msec">👥 Gestión de administradores</div>
       <div id="admin-list-wrap">
         <div style="font-size:12px;color:var(--text-dim);margin-bottom:10px;">Usuarios con rol admin (pueden ver Panel de control y Mi malla de todos)</div>
@@ -1165,13 +1172,13 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 
 <script>
-const APP_VERSION='14.40';
+const APP_VERSION='14.42';
 const APP_CHANGELOG='Notificaciones de asistencia: recordatorio 10 min antes y alertas de tardanza al admin y agente.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
 const SCRIPT_URL='https://script.google.com/macros/s/AKfycbyam6j2MG1NH11120KjvAfxU1f_z9BYh4uamQw8QgNeGsjpwoo394IeqzbDSPXSO9e5/exec';
 const MALLA_SCRIPT='https://script.google.com/macros/s/AKfycbyxBZWba6M1eXcwQUdBBUTqTrgGd8zwHiM6wwecXI3mUYOUP-RT9LnxSwqeXRy9prCm/exec';
-const NOTIF_SCRIPT='https://script.google.com/macros/s/AKfycbw5STN3_J7EdldhZKZYnLcrsJvQukGzXFgXiDv52HTJsLUvRPHvKqnG7OzIXv9jATDrBA/exec';
+const NOTIF_SCRIPT='https://script.google.com/macros/s/AKfycby50cD4PTmDOaxwX-HMIXshcE97_aH94cdp_AjIRVcvJBr5aogLJepoqUhy7tPgsniCmw/exec';
 const TOLERANCE_MINS=5;
 
 let apiKey='',sheetUrl='',vidUrl='',faqUrl='',sysBase='Eres Pi GOps, el asistente inteligente de operaciones de Pibox. Tu rol es ayudar al equipo operativo a tomar decisiones rápidas y correctas en campo.\n\nTienes acceso a un manual de operaciones. Úsalo como tu fuente principal, pero también puedes razonar e interpretar cuando la pregunta no esté respondida textualmente.\n\nCómo debes responder:\n- Sé claro, directo y práctico. El equipo está en campo y necesita respuestas rápidas.\n- Si la respuesta está en el manual, úsala y explícala con tus propias palabras.\n- Si definitivamente no está en el manual, dilo con honestidad y sugiere a quién escalar.\n- Nunca te quedes en blanco. Siempre da una respuesta útil.\n- Habla en español colombiano, de forma cercana y profesional.',history=[],streaming=false,sheetData='',allVideos=[],activeCat='Todos',allFAQs=[],activeFAQCat='Todos';
@@ -1396,10 +1403,12 @@ function openConfig(){
   const re=localStorage.getItem('pg_reminder_emails')||'cromero@pibox.app';
   const cd=localStorage.getItem('pg_cut_day')||'1';
   const ch=localStorage.getItem('pg_cut_hour')||'12';
+  const md=localStorage.getItem('pg_malla_notif_delay')||'60';
   const inp=document.getElementById('inp-payroll-emails');if(inp)inp.value=pe;
   const inpR=document.getElementById('inp-reminder-emails');if(inpR)inpR.value=re;
   const inpCD=document.getElementById('inp-cut-day');if(inpCD)inpCD.value=cd;
   const inpCH=document.getElementById('inp-cut-hour');if(inpCH)inpCH.value=ch;
+  const inpMD=document.getElementById('inp-malla-notif-delay');if(inpMD)inpMD.value=md;
 }
 function closeConfig(){document.getElementById('overlay').classList.remove('open');}
 async function saveConfig(){
@@ -1417,11 +1426,14 @@ async function saveConfig(){
   const re=document.getElementById('inp-reminder-emails')?.value.trim()||'';
   const cd=document.getElementById('inp-cut-day')?.value||'1';
   const ch=document.getElementById('inp-cut-hour')?.value||'12';
+  const md=parseInt(document.getElementById('inp-malla-notif-delay')?.value||'60');
+  const mallaDelay=Math.max(10,isNaN(md)?60:md);
   if(pe)localStorage.setItem('pg_payroll_emails',pe);
   if(re)localStorage.setItem('pg_reminder_emails',re);
   localStorage.setItem('pg_cut_day',cd);
   localStorage.setItem('pg_cut_hour',ch);
-  window.saveConfigToFirebase&&window.saveConfigToFirebase({key:k,sheet:u,vid:vu,faq:fu,sys:sysBase,payrollEmails:pe,reminderEmails:re,cutDay:cd,cutHour:ch});
+  localStorage.setItem('pg_malla_notif_delay',mallaDelay.toString());
+  window.saveConfigToFirebase&&window.saveConfigToFirebase({key:k,sheet:u,vid:vu,faq:fu,sys:sysBase,payrollEmails:pe,reminderEmails:re,cutDay:cd,cutHour:ch,mallaNotifDelay:mallaDelay});
   // Save config to Apps Script
   const adminEmailsForScript=(window.ADMINS||ADMINS).join(',');
   const cfgPayload=encodeURIComponent(JSON.stringify({
@@ -1429,7 +1441,8 @@ async function saveConfig(){
     reminderRecipients:re||'cromero@pibox.app',
     cutDay:parseInt(cd),
     cutHour:parseInt(ch),
-    adminEmails:adminEmailsForScript
+    adminEmails:adminEmailsForScript,
+    mallaNotifDelay:mallaDelay
   }));
   fetch(NOTIF_SCRIPT+'?type=save_config&data='+cfgPayload,{mode:'no-cors'}).catch(()=>{});
   document.getElementById('setup-banner').style.display='none';
