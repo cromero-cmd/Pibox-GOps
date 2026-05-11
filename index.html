@@ -165,11 +165,17 @@ window.getTodayTurno = async () => {
   if (!auth.currentUser) return null;
   try {
     const today = new Date(); today.setHours(0,0,0,0);
-    const snap = await getDocs(collection(db, 'turnos'));
+    const snap = await getDocs(query(collection(db, 'turnos'), orderBy('startTime', 'desc'), limit(50)));
     const mine = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-      .filter(t => t.userId === auth.currentUser.uid && t.startTime?.toDate() >= today)
-      .sort((a,b) => b.startTime?.toDate() - a.startTime?.toDate());
-    return mine[0] || null;
+      .filter(t => t.userId === auth.currentUser.uid && t.startTime?.toDate() >= today);
+    if(!mine.length) return null;
+    // Priorizar ended > interrupted > active (para evitar huérfanos activos)
+    const ended = mine.find(t => t.status === 'ended');
+    if(ended) return ended;
+    const interrupted = mine.find(t => t.status === 'interrupted');
+    if(interrupted) return interrupted;
+    // Solo retornar active si no hay ended ni interrupted
+    return mine.sort((a,b) => b.startTime?.toDate() - a.startTime?.toDate())[0] || null;
   } catch(e) { return null; }
 };
 
@@ -1189,7 +1195,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 
 <script>
-const APP_VERSION='14.49';
+const APP_VERSION='14.50';
 const APP_CHANGELOG='Notificaciones de asistencia: recordatorio 10 min antes y alertas de tardanza al admin y agente.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -1858,10 +1864,8 @@ function startTimer(){
 }
 
 async function initTurnoView(){
-  const device=getDeviceInfo();
-  document.getElementById('turno-device-icon').textContent=device.icon;
-  document.getElementById('turno-device-label').textContent=device.label;
-  document.getElementById('turno-date').textContent=new Date().toLocaleDateString('es-CO',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+  const deviceDateEl=document.getElementById('turno-date');
+  if(deviceDateEl)deviceDateEl.textContent=new Date().toLocaleDateString('es-CO',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
   // Wait for Firebase auth to be ready
   if(!window._fbReady){
     setTimeout(()=>initTurnoView(),500);
@@ -2320,52 +2324,6 @@ function clearTurnoDateFilter(){
   loadTurnoHistory();
 }
 
-function showTurnoDoneToday(turno){
-  const endTime=turno.endTime?.toDate?.();
-  const endStr=endTime?endTime.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
-  const dur=turno.accumulatedSeconds?formatDuration(turno.accumulatedSeconds):'—';
-  document.getElementById('turno-status').textContent='Turno completado hoy';
-  document.getElementById('turno-timer').textContent=dur;
-  document.getElementById('btn-turno-start').style.display='none';
-  document.getElementById('btn-turno-end').style.display='none';
-
-  // Check if admin authorized resumption
-  if(turno.resumeAuthorized){
-    // Show resume banner instead
-    const t=turno.endTime?.toDate?.();
-    const ts=t?t.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'';
-    const banner=document.getElementById('resume-banner');
-    banner.querySelector('h4').textContent='✅ Reanudación autorizada';
-    document.getElementById('resume-msg').textContent=`Tu líder inmediato autorizó que retomes tu turno (finalizado a las ${ts}). El tiempo se acumulará sobre tu registro de hoy.`;
-    banner.style.background='rgba(74,222,128,0.06)';
-    banner.style.borderColor='rgba(74,222,128,0.25)';
-    banner.querySelector('h4').style.color='#4ade80';
-    document.getElementById('resume-banner').style.display='block';
-    window._interruptedTurno=turno;
-    return;
-  }
-
-  let doneEl=document.getElementById('turno-done-msg');
-  if(!doneEl){
-    doneEl=document.createElement('div');
-    doneEl.id='turno-done-msg';
-    doneEl.style.cssText='background:rgba(74,222,128,0.06);border:1px solid rgba(74,222,128,0.2);border-radius:12px;padding:14px 18px;margin-top:12px;text-align:center;';
-    document.getElementById('btn-turno-start').parentNode.appendChild(doneEl);
-  }
-  doneEl.innerHTML=`
-    <div style="font-size:22px;margin-bottom:8px;">✅</div>
-    <div style="font-size:13px;font-weight:700;color:#4ade80;margin-bottom:6px;">Turno finalizado</div>
-    <div style="font-size:12px;color:var(--text-muted);line-height:1.6;">Tu turno de hoy ya fue registrado.<br/>Finalizaste a las <strong>${endStr}</strong> con una duración de <strong>${dur}</strong>.</div>
-    <div style="font-size:11px;color:var(--text-dim);margin-top:8px;font-family:var(--mono);">Si necesitas registrar tiempo adicional, contacta a tu líder inmediato.</div>`;
-  // Poll every 15s to check if admin authorized resumption
-  window._resumePollId=setInterval(async()=>{
-    const t=await window.getTodayTurno();
-    if(t?.resumeAuthorized){
-      clearInterval(window._resumePollId);
-      initTurnoView();
-    }
-  },15000);
-}
 
 async function checkTodayNovedad(){
   const userEmail=document.getElementById('user-email').textContent;
