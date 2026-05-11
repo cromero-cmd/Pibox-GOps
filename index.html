@@ -1174,7 +1174,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 
 <script>
-const APP_VERSION='14.43';
+const APP_VERSION='14.44';
 const APP_CHANGELOG='Notificaciones de asistencia: recordatorio 10 min antes y alertas de tardanza al admin y agente.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -2694,7 +2694,7 @@ function renderMallaPersonal(){
     colFilterEl.innerHTML=cells.join('');
   }
   if(window._mallaColFilters.estado)rows=rows.filter(r=>r.status.cls===window._mallaColFilters.estado);
-  if(window._mallaColFilters.novedad)rows=rows.filter(r=>r.novedad===window._mallaColFilters.novedad); (para que las tarjetas siempre muestren el total real)
+  if(window._mallaColFilters.novedad)rows=rows.filter(r=>r.novedad===window._mallaColFilters.novedad);
   const total=rows.length,cumplió=rows.filter(r=>r.status.cls==='cumplió').length,tardanza=rows.filter(r=>r.status.cls==='tardanza').length,ausente=rows.filter(r=>r.status.cls==='ausente').length,pendiente=rows.filter(r=>r.status.cls==='pendiente').length,novedad=rows.filter(r=>r.status.cls==='novedad').length;
   const pct=total?Math.round(((cumplió+novedad)/total)*100):0;
   // Aplicar filtro de status DESPUÉS de calcular conteos
