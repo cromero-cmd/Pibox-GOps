@@ -1174,7 +1174,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 
 <script>
-const APP_VERSION='14.45';
+const APP_VERSION='14.47';
 const APP_CHANGELOG='Notificaciones de asistencia: recordatorio 10 min antes y alertas de tardanza al admin y agente.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -2896,6 +2896,7 @@ async function loadPanel2(){
   Object.values(panel2ActiveTimers).forEach(clearInterval);panel2ActiveTimers={};
   if(!activeNow.length){activeEl.innerHTML='<div style="color:var(--text-dim);font-size:12px;font-family:var(--mono);">Ningún usuario en turno ahora</div>';}
   else{
+    const userEmail=document.getElementById('user-email').textContent;
     activeEl.innerHTML=activeNow.map(t=>{
       const name=t.userName||t.userEmail?.split('@')[0]||'—';
       const since=t.startTime?.toDate?.();
@@ -2908,8 +2909,8 @@ async function loadPanel2(){
         <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:2px;">${name}</div>
         <div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);margin-bottom:8px;">${t.userEmail||''}</div>
         <div style="font-size:18px;font-weight:800;font-family:var(--mono);color:${isStuck?'#f87171':'#4ade80'};" id="${id}">00:00:00</div>
-        <div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);margin-bottom:${isStuck?'10px':'0'};">desde las ${sinceStr}</div>
-        ${isStuck?`<button onclick="forceCloseTurno('${t.id}',this)" style="width:100%;margin-top:4px;background:rgba(248,113,113,0.12);border:1px solid rgba(248,113,113,0.4);color:#f87171;padding:5px 8px;border-radius:7px;font-size:11px;font-family:var(--mono);font-weight:700;cursor:pointer;">⚠ Forzar cierre</button>`:''}
+        <div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);margin-bottom:10px;">desde las ${sinceStr}</div>
+        ${userEmail===SUPER_ADMIN?`<button onclick="forceCloseTurno('${t.id}',this)" style="width:100%;background:rgba(248,113,113,0.12);border:1px solid rgba(248,113,113,0.4);color:#f87171;padding:5px 8px;border-radius:7px;font-size:11px;font-family:var(--mono);font-weight:700;cursor:pointer;">⚠ Forzar cierre</button>`:''}
       </div>`;
     }).join('');
     activeNow.forEach(t=>{
