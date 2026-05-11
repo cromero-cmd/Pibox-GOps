@@ -115,6 +115,19 @@ window.loadAdmins = async () => {
   } catch(e) { return [window.SUPER_ADMIN]; }
 };
 
+window.saveAbsenceToFirebase = async (data) => {
+  const id = data.userEmail.replace('@','_at_') + '_' + data.fecha.replace(/\//g,'-');
+  await setDoc(doc(db, 'absences', id), data);
+  return id;
+};
+
+window.getAbsences = async () => {
+  try{
+    const snap = await getDocs(collection(db, 'absences'));
+    return snap.docs.map(d => ({id: d.id, ...d.data()}));
+  }catch(e){return[];}
+};
+
 window.setAdmin = async (email, isAdmin) => {
   try {
     if(isAdmin) {
@@ -629,6 +642,8 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 .ft-time{font-size:16px;font-weight:800;font-family:var(--mono);background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
 .ft-label{font-size:10px;color:var(--text-dim);font-family:var(--mono);}
 .ft-end{background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:18px;padding:0 2px;margin-left:4px;}
+.cumpl-status.ausente_justificada{background:rgba(74,222,128,0.1);color:#4ade80;border-color:rgba(74,222,128,0.3);}
+.cumpl-status.ausente_injustificada{background:rgba(248,113,113,0.1);color:#f87171;border-color:rgba(248,113,113,0.3);}
 .ft-end:hover{color:#f87171;}
 
 .toast{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:var(--grad);color:white;padding:8px 20px;border-radius:100px;font-weight:700;font-size:13px;z-index:999;box-shadow:0 4px 20px rgba(123,47,255,0.5);animation:msgIn 0.3s ease both;}
@@ -818,7 +833,7 @@ body.agent-preview-mode header{margin-top:34px;}
             <div class="turno-status" id="turno-status">Sin turno activo</div>
             <div class="turno-timer" id="turno-timer">00:00:00</div>
             <div class="turno-date" id="turno-date"></div>
-            <div class="turno-device"><span id="turno-device-icon">💻</span><span id="turno-device-label">Desktop</span></div>
+            
             <div>
               <button class="btn-turno-start" id="btn-turno-start" onclick="startTurno()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/><path d="M12 6v6l4 2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>Iniciar turno</button>
               <button class="btn-turno-end" id="btn-turno-end" onclick="endTurno()" style="display:none;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="18" height="18" rx="3" stroke="currentColor" stroke-width="2"/></svg>Finalizar turno</button>
@@ -990,18 +1005,18 @@ body.agent-preview-mode header{margin-top:34px;}
             </div>
           </div>
         </div>
-        <div style="display:grid;grid-template-columns:40px 180px 70px 90px 90px 90px 80px 90px 120px;gap:0;background:var(--surface2);border-bottom:1px solid var(--border);font-size:10px;font-weight:700;color:var(--text-dim);text-transform:uppercase;font-family:var(--mono);">
+        <div style="display:grid;grid-template-columns:40px 180px 70px 90px 90px 90px 90px 120px;gap:0;background:var(--surface2);border-bottom:1px solid var(--border);font-size:10px;font-weight:700;color:var(--text-dim);text-transform:uppercase;font-family:var(--mono);">
           <div style="padding:10px 6px;border-right:1px solid var(--border);text-align:center;">Día</div>
           <div style="padding:10px 10px;border-right:1px solid var(--border);">Agente</div>
           <div style="padding:10px 10px;border-right:1px solid var(--border);">Fecha</div>
           <div style="padding:10px 10px;border-right:1px solid var(--border);">Prog.</div>
           <div style="padding:10px 10px;border-right:1px solid var(--border);">Real</div>
           <div style="padding:10px 10px;border-right:1px solid var(--border);">Duración</div>
-          <div style="padding:10px 10px;border-right:1px solid var(--border);">Disp.</div>
+          
           <div style="padding:10px 10px;border-right:1px solid var(--border);">Acciones</div>
           <div style="padding:10px 10px;">Cumplimiento</div>
         </div>
-        <div id="panel2-col-filters" style="display:grid;grid-template-columns:40px 180px 70px 90px 90px 90px 80px 90px 120px;gap:0;background:var(--surface3);border-bottom:1px solid var(--border);"></div>
+        <div id="panel2-col-filters" style="display:grid;grid-template-columns:40px 180px 70px 90px 90px 90px 90px 120px;gap:0;background:var(--surface3);border-bottom:1px solid var(--border);"></div>
         <div id="panel2-table" style="max-height:420px;overflow-y:auto;">
           <div style="padding:20px;text-align:center;color:var(--text-dim);font-size:12px;">Cargando...</div>
         </div>
@@ -1174,7 +1189,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 
 <script>
-const APP_VERSION='14.47';
+const APP_VERSION='14.48';
 const APP_CHANGELOG='Notificaciones de asistencia: recordatorio 10 min antes y alertas de tardanza al admin y agente.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -2467,11 +2482,15 @@ function parseTime(dateStr,timeStr){
   const p=String(timeStr).trim().split(':').map(Number);const d=parseDate(String(dateStr));
   if(!d)return null;d.setHours(p[0]||0,p[1]||0,0,0);return d;
 }
-function getStatus(scheduledStart,realStart,novedad,now){
+function getStatus(scheduledStart,realStart,novedad,now,absenceStatus,absenceMotivo){
   if(novedad&&novedad.trim())return{label:novedad.trim(),cls:'novedad',icon:'📋'};
   if(!scheduledStart)return{label:'Sin programar',cls:'pendiente',icon:'—'};
   if(now<scheduledStart)return{label:'Pendiente por iniciar',cls:'pendiente',icon:'⏳'};
-  if(!realStart)return{label:'Ausente',cls:'ausente',icon:'🔴'};
+  if(!realStart){
+    if(absenceStatus==='justified')return{label:'Ausencia justificada',cls:'ausente_justificada',icon:'✅'};
+    if(absenceStatus==='not_justified')return{label:'Ausencia injustificada',cls:'ausente_injustificada',icon:'❌'};
+    return{label:'Ausente',cls:'ausente',icon:'🔴'};
+  }
   const diff=Math.round((realStart-scheduledStart)/60000);
   if(diff<=TOLERANCE_MINS)return{label:'Cumplió',cls:'cumplió',icon:'🟢'};
   return{label:`Tardanza +${diff} min`,cls:'tardanza',icon:'🟡'};
@@ -2873,6 +2892,7 @@ function clearPanel2(){
 
 async function loadPanel2(){
   const allTurnos=await window.getRecentTurnos();
+  const allAbsences=await (window.getAbsences?window.getAbsences():[]);
   const now=new Date();
   const sod=new Date(now.getFullYear(),now.getMonth(),now.getDate());
   const eod=new Date(now.getFullYear(),now.getMonth(),now.getDate(),23,59,59);
@@ -2905,7 +2925,7 @@ async function loadPanel2(){
       const hoursActive=since?(Date.now()-since.getTime())/3600000:0;
       const isStuck=hoursActive>12;
       return`<div style="background:${isStuck?'rgba(248,113,113,0.06)':'rgba(74,222,128,0.06)'};border:1px solid ${isStuck?'rgba(248,113,113,0.3)':'rgba(74,222,128,0.2)'};border-radius:12px;padding:14px 16px;position:relative;">
-        ${t.isMobile?'<div style="position:absolute;top:8px;right:8px;background:rgba(251,146,60,0.15);border:1px solid rgba(251,146,60,0.3);border-radius:6px;padding:2px 6px;font-size:9px;color:#fb923c;font-family:var(--mono);">⚠ Móvil</div>':`<div style="position:absolute;top:12px;right:12px;font-size:16px;">💻</div>`}
+        
         <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:2px;">${name}</div>
         <div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);margin-bottom:8px;">${t.userEmail||''}</div>
         <div style="font-size:18px;font-weight:800;font-family:var(--mono);color:${isStuck?'#f87171':'#4ade80'};" id="${id}">00:00:00</div>
@@ -2942,8 +2962,13 @@ async function loadPanel2(){
     const mt=allTurnos.find(t=>{if(t.userEmail!==m.usuario)return false;const td=t.startTime?.toDate?.();const md=parseDate(m.fecha);return td&&md&&td.toDateString()===md.toDateString();});
     const rs=mt?mt.startTime.toDate():null;
     const re=mt?.endTime?.toDate?mt.endTime.toDate():null;
-    const cumplStatus=getStatus(ss,rs,m.novedad,now);
-    return{...m,scheduledStart:ss,scheduledEnd:se,realStart:rs,realEnd:re,turnoId:mt?.id||null,turno:mt||null,cumplStatus};
+    // Check absence record
+    const absKey=(m.usuario||'').replace('@','_at_')+'_'+(m.fecha||'').replace(/\//g,'-');
+    const absRecord=allAbsences.find(a=>a.id===absKey);
+    const absenceStatus=absRecord?.status||null;
+    const absenceMotivo=absRecord?.motivo||'';
+    const cumplStatus=getStatus(ss,rs,m.novedad,now,absenceStatus,absenceMotivo);
+    return{...m,scheduledStart:ss,scheduledEnd:se,realStart:rs,realEnd:re,turnoId:mt?.id||null,turno:mt||null,cumplStatus,absenceStatus,absenceMotivo};
   });
 
   // Filtros linea y usuario
@@ -2990,7 +3015,7 @@ async function loadPanel2(){
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px;position:relative;overflow:hidden;"><div style="position:absolute;top:0;left:0;right:0;height:2px;background:var(--grad);"></div><div style="font-size:18px;font-weight:800;background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;">${secsToHm(totalSecs)}</div><div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);margin-top:2px;">Horas trabajadas</div></div>
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px;position:relative;overflow:hidden;"><div style="position:absolute;top:0;left:0;right:0;height:2px;background:var(--grad);"></div><div style="font-size:18px;font-weight:800;background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;">${panel2AllRows.length}</div><div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);margin-top:2px;">Turnos programados</div></div>
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px;position:relative;overflow:hidden;"><div style="position:absolute;top:0;left:0;right:0;height:2px;background:var(--grad);"></div><div style="font-size:18px;font-weight:800;background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;">${uniqueUsers.length}</div><div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);margin-top:2px;">Agentes</div></div>
-    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px;position:relative;overflow:hidden;"><div style="position:absolute;top:0;left:0;right:0;height:2px;background:var(--grad);"></div><div style="font-size:18px;font-weight:800;color:${mobileCount>0?'#fb923c':'var(--text-dim)'};-webkit-text-fill-color:${mobileCount>0?'#fb923c':'unset'};">${mobileCount}</div><div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);margin-top:2px;">📱 Conexiones móvil</div></div>`;
+`;
 
   // Status cards con toggle
   const statusCards=document.getElementById('panel2-status-cards');
@@ -3005,7 +3030,7 @@ async function loadPanel2(){
   const p2ColFilterEl=document.getElementById('panel2-col-filters');
   if(p2ColFilterEl){
     const allNovedadesP2=[...new Set(panel2AllRows.map(r=>r.novedad).filter(Boolean))].sort();
-    const estadoOptsP2=['cumplió','tardanza','ausente','pendiente','novedad'].map(s=>`<option value="${s}"${window._panel2ColFilters.estado===s?' selected':''}>${s.charAt(0).toUpperCase()+s.slice(1)}</option>`).join('');
+    const estadoOptsP2=['cumplió','tardanza','ausente','ausente_justificada','ausente_injustificada','pendiente','novedad'].map(s=>`<option value="${s}"${window._panel2ColFilters.estado===s?' selected':''}>${s==='ausente_justificada'?'Ausencia justificada':s==='ausente_injustificada'?'Ausencia injustificada':s.charAt(0).toUpperCase()+s.slice(1)}</option>`).join('');
     const novedadOptsP2=allNovedadesP2.map(n=>`<option value="${n}"${window._panel2ColFilters.novedad===n?' selected':''}>${n}</option>`).join('');
     const emptyCells=Array(7).fill('<div style="padding:4px 6px;border-right:1px solid var(--border);"></div>').join('');
     p2ColFilterEl.innerHTML=emptyCells+
@@ -3036,14 +3061,17 @@ async function loadPanel2(){
       <div style="padding:8px 10px;border-right:1px solid var(--border);font-family:var(--mono);color:var(--text-dim);display:flex;flex-direction:column;justify-content:center;"><div style="font-size:9px;color:var(--text-dim);margin-bottom:1px;">Prog.</div><div>${ss}→${se}</div></div>
       <div style="padding:8px 10px;border-right:1px solid var(--border);font-family:var(--mono);color:${r.realStart&&r.cumplStatus.cls==='tardanza'?'#fbbf24':r.cumplStatus.cls==='cumplió'?'#4ade80':'var(--text-muted)'};display:flex;flex-direction:column;justify-content:center;"><div style="font-size:9px;color:var(--text-dim);margin-bottom:1px;">Real</div><div>${rs}→${re}</div></div>
       <div style="padding:8px 10px;border-right:1px solid var(--border);font-family:var(--mono);font-weight:700;color:var(--p2);display:flex;align-items:center;">${dur}</div>
-      <div style="padding:8px 10px;border-right:1px solid var(--border);display:flex;align-items:center;">${t?`<span style="font-size:10px;font-family:var(--mono);padding:2px 6px;border-radius:4px;${t.isMobile?'background:rgba(251,146,60,0.1);color:#fb923c;':'background:rgba(74,222,128,0.08);color:#4ade80;'}">${t.isMobile?'📱':'💻'}</span>`:'<span style="color:var(--text-dim);">—</span>'}</div>
+
       <div style="padding:8px 10px;border-right:1px solid var(--border);display:flex;align-items:center;gap:4px;flex-wrap:wrap;">
         ${r.turnoId&&t?.status==='ended'&&!t?.resumeAuthorized?`<button onclick="authorizeResume('${r.turnoId}',this)" style="background:rgba(123,47,255,0.1);border:1px solid rgba(123,47,255,0.3);color:var(--p2);padding:2px 6px;border-radius:5px;font-size:9px;font-family:var(--mono);cursor:pointer;">▶</button>`:''}
         ${r.turnoId&&t?.resumeAuthorized?'<span style="font-size:9px;color:var(--p2);font-family:var(--mono);">▶ Auth</span>':''}
         ${r.turnoId&&t?.earlyLeave&&t?.earlyLeaveStatus==='pending_review'?`<button onclick="reviewEarlyLeave('${r.turnoId}',true,this)" style="background:rgba(74,222,128,0.08);border:1px solid rgba(74,222,128,0.3);color:#4ade80;padding:2px 6px;border-radius:5px;font-size:9px;font-family:var(--mono);cursor:pointer;">✅</button><button onclick="reviewEarlyLeave('${r.turnoId}',false,this)" style="background:rgba(248,113,113,0.08);border:1px solid rgba(248,113,113,0.3);color:#f87171;padding:2px 6px;border-radius:5px;font-size:9px;font-family:var(--mono);cursor:pointer;margin-left:2px;">❌</button>`:''}
         ${r.turnoId&&t?.earlyLeave&&t?.earlyLeaveStatus==='justified'?'<span style="font-size:9px;color:#4ade80;">✅</span>':''}
         ${r.turnoId&&t?.earlyLeave&&t?.earlyLeaveStatus==='not_justified'?'<span style="font-size:9px;color:#f87171;">❌</span>':''}
-        ${!r.turnoId?'<span style="font-size:10px;color:var(--text-dim);">—</span>':''}
+        ${!r.turnoId&&r.cumplStatus.cls==='ausente'?`<button onclick="reviewAbsence('${r.usuario}','${r.fecha}',this)" style="background:rgba(96,165,250,0.08);border:1px solid rgba(96,165,250,0.3);color:#60a5fa;padding:2px 6px;border-radius:5px;font-size:9px;font-family:var(--mono);cursor:pointer;">📋 Justificar</button>`:''}
+        ${!r.turnoId&&r.cumplStatus.cls==='ausente_justificada'?`<span style="font-size:9px;color:#4ade80;font-family:var(--mono);">✅ ${r.absenceMotivo||'Justificada'}</span>`:''}
+        ${!r.turnoId&&r.cumplStatus.cls==='ausente_injustificada'?'<span style="font-size:9px;color:#f87171;font-family:var(--mono);">❌ Injustificada</span>':''}
+        ${r.turnoId&&!t?.earlyLeave&&t?.status==='ended'?'':''}
       </div>
       <div style="padding:8px 10px;display:flex;align-items:center;"><span class="cumpl-status ${r.cumplStatus.cls}">${r.cumplStatus.icon} ${r.cumplStatus.label}</span></div>
     </div>`;
@@ -3112,7 +3140,9 @@ function renderPanel2Extras(allTurnos,fromDate,toDate,mallaData){
       const name=t.userName||t.userEmail?.split('@')[0]||'—';
       const statusColor=t.overtimeStatus==='approved'?'#4ade80':t.overtimeStatus==='rejected'?'#f87171':'#fb923c';
       const statusLabel=t.overtimeStatus==='approved'?'✅ Aprobada':t.overtimeStatus==='rejected'?'❌ Rechazada':'⏳ Revisión';
-      const approvedBy=t.overtimeApprovedBy?t.overtimeApprovedBy.split('@')[0]:'—';
+      const approvedBy=t.overtimeApprovedBy
+        ?t.overtimeApprovedBy.split('@')[0]
+        :(t.overtimeStatus==='rejected'?'el agente':'—');
       return`<div style="display:grid;grid-template-columns:120px 70px 80px 120px;gap:0;border-bottom:1px solid var(--border);font-size:11px;align-items:center;">
         <div style="padding:7px 10px;border-right:1px solid var(--border);font-weight:600;color:var(--text);">${name}</div>
         <div style="padding:7px 10px;border-right:1px solid var(--border);font-family:var(--mono);color:var(--text-muted);">${ds}</div>
@@ -3456,6 +3486,58 @@ async function showEarlyLeaveRequests(){
   }).join('');
 }
 
+async function reviewAbsence(userEmail,fecha,btn){
+  // Mostrar modal de justificación
+  const motivos=['Incapacidad','Licencia','Calamidad doméstica','Calamidad familiar','Otro'];
+  const motivoHtml=motivos.map((m,i)=>`<label style="display:flex;align-items:center;gap:8px;padding:6px 0;cursor:pointer;font-size:13px;color:var(--text);"><input type="radio" name="abs_motivo" value="${m}" style="accent-color:var(--p1);"/> ${m}</label>`).join('');
+  const result=await new Promise(resolve=>{
+    const overlay=document.createElement('div');
+    overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;';
+    overlay.innerHTML=`<div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:28px;max-width:380px;width:90%;box-shadow:var(--shadow);">
+      <div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:6px;">📋 Justificar ausencia</div>
+      <div style="font-size:12px;color:var(--text-dim);margin-bottom:16px;">${userEmail.split('@')[0]} · ${fecha}</div>
+      <div style="margin-bottom:16px;">
+        ${motivoHtml}
+        <div id="abs-otro-wrap" style="display:none;margin-top:8px;"><input type="text" id="abs-otro-text" placeholder="Describe el motivo..." style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-size:12px;"/></div>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button id="abs-no-btn" style="flex:1;background:rgba(248,113,113,0.1);border:1px solid rgba(248,113,113,0.3);color:#f87171;padding:8px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;">❌ Injustificada</button>
+        <button id="abs-yes-btn" style="flex:1;background:rgba(74,222,128,0.1);border:1px solid rgba(74,222,128,0.3);color:#4ade80;padding:8px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;">✅ Justificada</button>
+      </div>
+    </div>`;
+    document.body.appendChild(overlay);
+    // Mostrar campo libre si selecciona Otro
+    overlay.querySelectorAll('input[name="abs_motivo"]').forEach(r=>{
+      r.addEventListener('change',()=>{
+        document.getElementById('abs-otro-wrap').style.display=r.value==='Otro'?'block':'none';
+      });
+    });
+    overlay.querySelector('#abs-yes-btn').onclick=()=>{
+      const sel=overlay.querySelector('input[name="abs_motivo"]:checked');
+      const motivo=sel?(sel.value==='Otro'?document.getElementById('abs-otro-text').value||'Otro':sel.value):'';
+      document.body.removeChild(overlay);resolve({justified:true,motivo});
+    };
+    overlay.querySelector('#abs-no-btn').onclick=()=>{document.body.removeChild(overlay);resolve({justified:false,motivo:''});};
+  });
+  if(!result)return;
+  btn.textContent='Guardando...';btn.disabled=true;
+  try{
+    const adminEmail=document.getElementById('user-email').textContent;
+    // Guardar en Firestore colección absences
+    await window.saveAbsenceToFirebase({
+      userEmail,fecha,
+      status:result.justified?'justified':'not_justified',
+      motivo:result.motivo||'',
+      reviewedBy:adminEmail,
+      reviewedAt:new Date().toISOString()
+    });
+    toast(result.justified?'✅ Ausencia justificada':'❌ Ausencia marcada como injustificada');
+    setTimeout(()=>loadPanel2(),600);
+  }catch(e){
+    btn.textContent='📋 Justificar';btn.disabled=false;
+    toast('❌ Error al guardar');
+  }
+}
 async function reviewEarlyLeave(turnoId, justified, btn){
   btn.textContent='Guardando...';btn.disabled=true;
   const status=justified?'justified':'not_justified';
