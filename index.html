@@ -1239,7 +1239,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 
 <script>
-const APP_VERSION='14.51';
+const APP_VERSION='14.52';
 const APP_CHANGELOG='Notificaciones de asistencia: recordatorio 10 min antes y alertas de tardanza al admin y agente.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -3148,6 +3148,7 @@ function setPanel2LiderTop(lider){
   });
   loadPanel2();
 }
+function updatePanel2UserDropdownLabel(){
   const label=document.getElementById('panel2-user-dropdown-label');
   if(!label)return;
   if(!panel2SelectedUsers||panel2SelectedUsers.size===0){label.textContent='Todos los agentes';}
