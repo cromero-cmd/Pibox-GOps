@@ -1227,7 +1227,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 
 <script>
-const APP_VERSION='14.53';
+const APP_VERSION='14.54';
 const APP_CHANGELOG='Notificaciones de asistencia: recordatorio 10 min antes y alertas de tardanza al admin y agente.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -2908,18 +2908,15 @@ async function loadPanel2(){
   if(window.loadOvertimeEvents){window.loadOvertimeEvents().then(events=>{const badge=document.getElementById('overtime-badge');if(badge&&events.length>0){badge.style.display='inline';badge.textContent=events.length;}});}
   loadEarlyLeaveBadge();
   Object.values(panel2ActiveTimers).forEach(clearInterval);panel2ActiveTimers={};
-  // Filtros superiores (línea y líder) sobre activos
+  // Filtros superiores (línea y líder) sobre activos — usar malla ya cargada
   const topLinea=document.getElementById('panel2-linea-filter-top')?.value||'';
   const topLider=window._panel2LiderFilterTop||'';
   let activeFiltered=[...activeNow];
-  if(topLinea)activeFiltered=activeFiltered.filter(t=>{
-    const m=mallaData.find(m=>m.usuario===t.userEmail);
-    return m?.linea===topLinea;
-  });
-  if(topLider)activeFiltered=activeFiltered.filter(t=>{
-    const m=mallaData.find(m=>m.usuario===t.userEmail);
-    return m?.lider===topLider;
-  });
+  if(topLinea||topLider){
+    const md=window._panel2MallaData||[];
+    if(topLinea)activeFiltered=activeFiltered.filter(t=>{const m=md.find(m=>m.usuario===t.userEmail);return m?.linea===topLinea;});
+    if(topLider)activeFiltered=activeFiltered.filter(t=>{const m=md.find(m=>m.usuario===t.userEmail);return m?.lider===topLider;});
+  }
 
   if(!activeFiltered.length){activeEl.innerHTML='<div style="color:var(--text-dim);font-size:12px;font-family:var(--mono);">Ningún usuario en turno ahora</div>';}
   else{
@@ -2954,6 +2951,7 @@ async function loadPanel2(){
     const csv=await resp.text();
     mallaData=csv.trim().split('\n').slice(1).map(l=>{const c=parseCSVLine(l);return{fecha:c[1]?.trim(),usuario:c[2]?.trim(),nombre:c[3]?.trim(),rol:c[4]?.trim(),inicio:c[5]?.trim(),fin:c[6]?.trim(),linea:c[8]?.trim(),lider:c[9]?.trim(),novedad:c[10]?.trim()};}).filter(m=>m.fecha&&m.usuario);
   }catch(e){}
+  window._panel2MallaData=mallaData;
 
   // Rango de fechas
   let fromDate=null,toDate=null;
@@ -3079,7 +3077,7 @@ async function loadPanel2(){
     const re=r.realEnd?r.realEnd.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
     const dur=r.realStart&&r.realEnd?secsToHm(Math.max(0,(r.realEnd-r.realStart)/1000)):'—';
     const t=r.turno;
-    const gridCols='40px 180px 70px 90px 90px 90px 80px 90px 120px';
+    const gridCols='40px 180px 70px 90px 90px 90px 90px 120px';
     return`<div style="display:grid;grid-template-columns:${gridCols};gap:0;border-bottom:1px solid var(--border);font-size:11px;align-items:stretch;">
       <div style="padding:8px 6px;border-right:1px solid var(--border);font-weight:700;color:var(--p2);font-family:var(--mono);display:flex;align-items:center;justify-content:center;">${dia}</div>
       <div style="padding:8px 10px;border-right:1px solid var(--border);display:flex;flex-direction:column;justify-content:center;min-width:0;"><div style="font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${r.nombre||r.usuario||''}">${r.nombre||r.usuario?.split('@')[0]||'—'}</div><div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${r.linea||'—'}</div></div>
@@ -3242,41 +3240,6 @@ function renderPanel2Insights(rows,allTurnos,fromDate,toDate){
     </div>`;
 }
 
-function renderPanel2Table(){
-  let filtered=[...panel2AllRows];
-  if(panel2SelectedUsers.size>0)filtered=filtered.filter(r=>panel2SelectedUsers.has(r.usuario));
-  if(panel2StatusFilter)filtered=filtered.filter(r=>r.cumplStatus.cls===panel2StatusFilter);
-  if(window._panel2LiderFilter)filtered=filtered.filter(r=>r.lider===window._panel2LiderFilter);
-  const tbody=document.getElementById('panel2-table');
-  if(!tbody)return;
-  if(!filtered.length){tbody.innerHTML='<div style="padding:20px;text-align:center;color:var(--text-dim);font-size:12px;">Sin registros para este filtro</div>';return;}
-  tbody.innerHTML=filtered.map(t=>{
-    const start=t.startTime?.toDate?.();const end=t.endTime?.toDate?.();
-    const dur=t.accumulatedSeconds?formatDuration(t.accumulatedSeconds):'—';
-    const ss=start?start.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
-    const es=end?end.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
-    const ds=start?start.toLocaleDateString('es-CO',{day:'2-digit',month:'short'}):'—';
-    const fc=t.status==='active'?'active':t.status==='interrupted'?'interrupted':'ended';
-    const fl=t.status==='active'?'En turno':t.status==='interrupted'?'Interrumpido':'Finalizado';
-    const name=t.userName||t.userEmail?.split('@')[0]||'—';
-    return`<div style="display:grid;grid-template-columns:160px 65px 120px 85px 85px 90px 110px;gap:0;border-bottom:1px solid var(--border);font-size:12px;align-items:stretch;">
-      <div style="padding:10px 12px;border-right:1px solid var(--border);overflow:hidden;display:flex;flex-direction:column;justify-content:center;"><div style="font-weight:600;color:var(--text);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(name)}</div><div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(t.userEmail||'')}</div></div>
-      <div style="padding:10px 12px;border-right:1px solid var(--border);font-family:var(--mono);font-size:11px;color:var(--text-muted);display:flex;align-items:center;">${ds}</div>
-      <div style="padding:10px 12px;border-right:1px solid var(--border);font-family:var(--mono);font-size:11px;color:var(--text-muted);display:flex;align-items:center;">${ss} → ${es}</div>
-      <div style="padding:10px 12px;border-right:1px solid var(--border);font-family:var(--mono);font-size:11px;color:var(--p2);font-weight:700;display:flex;align-items:center;">${dur}</div>
-      <div style="padding:10px 12px;border-right:1px solid var(--border);display:flex;align-items:center;"><span style="font-size:10px;font-family:var(--mono);padding:2px 7px;border-radius:4px;${t.isMobile?'background:rgba(251,146,60,0.1);color:#fb923c;':'background:rgba(74,222,128,0.08);color:#4ade80;'}">${t.isMobile?'📱 Móvil':'💻 Desktop'}</span></div>
-      <div style="padding:10px 12px;border-right:1px solid var(--border);display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-        <span class="turno-row-status ${fc}">${fl}</span>
-        ${t.status==='ended'&&!t.resumeAuthorized?`<button onclick="authorizeResume('${t.id}',this)" style="background:rgba(123,47,255,0.1);border:1px solid rgba(123,47,255,0.3);color:var(--p2);padding:2px 7px;border-radius:5px;font-size:9px;font-family:var(--mono);cursor:pointer;">▶ Autorizar reanudación</button>`:''}
-        ${t.resumeAuthorized?'<span style="font-size:9px;color:var(--p2);font-family:var(--mono);">▶ Reanudación autorizada</span>':''}
-        ${t.earlyLeave&&t.earlyLeaveStatus==='pending_review'?`<button onclick="reviewEarlyLeave('${t.id}',true,this)" style="background:rgba(74,222,128,0.08);border:1px solid rgba(74,222,128,0.3);color:#4ade80;padding:2px 7px;border-radius:5px;font-size:9px;font-family:var(--mono);cursor:pointer;">✅ Justificar</button><button onclick="reviewEarlyLeave('${t.id}',false,this)" style="background:rgba(248,113,113,0.08);border:1px solid rgba(248,113,113,0.3);color:#f87171;padding:2px 7px;border-radius:5px;font-size:9px;font-family:var(--mono);cursor:pointer;margin-left:4px;">❌ No justificar</button>`:''}
-        ${t.earlyLeave&&t.earlyLeaveStatus==='justified'?'<span style="font-size:9px;color:#4ade80;font-family:var(--mono);">✅ Justificada</span>':''}
-        ${t.earlyLeave&&t.earlyLeaveStatus==='not_justified'?'<span style="font-size:9px;color:#f87171;font-family:var(--mono);">❌ No justificada</span>':''}
-      </div>
-      <div style="padding:10px 12px;display:flex;align-items:center;"><span class="cumpl-status ${t.cumplStatus.cls}">${t.cumplStatus.icon} ${t.cumplStatus.label}</span></div>
-    </div>`;
-  }).join('');
-}
 // ── OVERTIME & PAYROLL ──
 async function showOvertimeRequests(){
   const allEvents=await new Promise(resolve=>{
