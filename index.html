@@ -901,6 +901,7 @@ body.agent-preview-mode header{margin-top:34px;}
         <div id="malla-summary-cards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px;margin-bottom:10px;"></div>
         <div class="malla-table">
           <div class="malla-thead" id="malla-thead"></div>
+          <div id="malla-col-filters" style="display:grid;gap:0;background:var(--surface3);border-bottom:1px solid var(--border);"></div>
           <div id="malla-table-body"><div style="padding:30px;text-align:center;color:var(--text-dim);font-size:12px;">Cargando malla...</div></div>
         </div>
       </div>
@@ -989,7 +990,7 @@ body.agent-preview-mode header{margin-top:34px;}
             </div>
           </div>
         </div>
-        <div style="display:grid;grid-template-columns:40px 140px 70px 90px 90px 90px 80px 90px 120px;gap:0;background:var(--surface2);border-bottom:1px solid var(--border);font-size:10px;font-weight:700;color:var(--text-dim);text-transform:uppercase;font-family:var(--mono);">
+        <div style="display:grid;grid-template-columns:40px 180px 70px 90px 90px 90px 80px 90px 120px;gap:0;background:var(--surface2);border-bottom:1px solid var(--border);font-size:10px;font-weight:700;color:var(--text-dim);text-transform:uppercase;font-family:var(--mono);">
           <div style="padding:10px 6px;border-right:1px solid var(--border);text-align:center;">Día</div>
           <div style="padding:10px 10px;border-right:1px solid var(--border);">Agente</div>
           <div style="padding:10px 10px;border-right:1px solid var(--border);">Fecha</div>
@@ -1000,6 +1001,7 @@ body.agent-preview-mode header{margin-top:34px;}
           <div style="padding:10px 10px;border-right:1px solid var(--border);">Acciones</div>
           <div style="padding:10px 10px;">Cumplimiento</div>
         </div>
+        <div id="panel2-col-filters" style="display:grid;grid-template-columns:40px 180px 70px 90px 90px 90px 80px 90px 120px;gap:0;background:var(--surface3);border-bottom:1px solid var(--border);"></div>
         <div id="panel2-table" style="max-height:420px;overflow-y:auto;">
           <div style="padding:20px;text-align:center;color:var(--text-dim);font-size:12px;">Cargando...</div>
         </div>
@@ -1172,7 +1174,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 
 <script>
-const APP_VERSION='14.42';
+const APP_VERSION='14.43';
 const APP_CHANGELOG='Notificaciones de asistencia: recordatorio 10 min antes y alertas de tardanza al admin y agente.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -1288,7 +1290,7 @@ function initHomeView(){
     {id:'analytics',icon:'📊',title:'Métricas',desc:'Indicadores de uso del asistente, tasa de resolución y tiempos de respuesta.',color:'#10b981',grad:'linear-gradient(135deg,#10b981,#06b6d4)',roles:['admin','super']},
     {id:'turno-panel',icon:'👥',title:'Panel de control',desc:'Historial de turnos del equipo, gestión de extras y reportes de nómina.',color:'#f59e0b',grad:'linear-gradient(135deg,#f59e0b,#ef4444)',roles:['admin','super']},
     {id:'ext-tracker',icon:'🔍',title:'Pibox Tracker',desc:'Control de errores en transacciones de bookings y corrección de registros.',color:'#ef4444',grad:'linear-gradient(135deg,#ef4444,#f97316)',roles:['admin','super'],url:'https://pibox-facturacion-gtprw9awrj9qnmi684577t.streamlit.app/'},
-    {id:'ext-trello',icon:'📋',title:'Trello',desc:'Gestión de tareas entre áreas: Marketing, Growth, Onboarding, BI y Tecnología.',color:'#0052CC',grad:'linear-gradient(135deg,#0052CC,#2684FF)',roles:['admin','super'],url:'https://trello.codi.com.co/'},
+    {id:'ext-trello',icon:'📋',title:'Trello',desc:'Gestión de tareas entre áreas: Marketing, Growth, Onboarding, BI y Tecnología.',color:'#0052CC',grad:'linear-gradient(135deg,#0052CC,#2684FF)',roles:['user','admin','super'],url:'https://trello.codi.com.co/'},
     {id:'ext-superset',icon:'📈',title:'Superset',desc:'Centro de control de datos y dashboards de Business Intelligence.',color:'#20A7C9',grad:'linear-gradient(135deg,#20A7C9,#45D0E8)',roles:['admin','super'],url:'https://superset.picap.co/dashboard/list/?pageIndex=0&sortColumn=changed_on_delta_humanized&sortOrder=desc&viewMode=table'},
     {id:'ext-soporte',icon:'🎫',title:'Soporte de Activos',desc:'Abre tickets para fallas con equipos, celulares, licencias y activos de trabajo.',color:'#64748b',grad:'linear-gradient(135deg,#64748b,#94a3b8)',roles:['user','admin','super'],url:'https://consolidador.picap.app/help_desk_tickets/new'},
     {id:'ext-pikasso',icon:'🎯',title:'Pikasso',desc:'Control multiárea de OKRs corporativas. KRs, metas y resultados por área.',color:'#e11d48',grad:'linear-gradient(135deg,#e11d48,#f43f5e)',roles:['super'],url:'https://pikasso.codi.com.co/metas?owner_id=38&period_id=16&tab=configurar&team_id=19&year=2026'},
@@ -1855,6 +1857,13 @@ async function initTurnoView(){
     currentTurnoId=existing.id;turnoStartTime=existing.startTime.toDate();accumulatedSeconds=existing.accumulatedSeconds||0;
     setTurnoActive(existing);startTimer();
   }else if(existing&&existing.status==='interrupted'){
+    // Turno interrumpido — detener todo y mostrar solo banner
+    if(turnoInterval){clearInterval(turnoInterval);turnoInterval=null;}
+    currentTurnoId=null;turnoStartTime=null;accumulatedSeconds=0;
+    document.getElementById('btn-turno-start').style.display='none';
+    document.getElementById('btn-turno-end').style.display='none';
+    document.getElementById('turno-status').textContent='Turno interrumpido';
+    const ft=document.getElementById('floating-timer');if(ft)ft.style.display='none';
     const t=existing.endTime?.toDate();
     const ts=t?t.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'';
     document.getElementById('resume-msg').textContent=`Detectamos que tu turno fue interrumpido a las ${ts}. ¿Deseas continuar?`;
@@ -1962,6 +1971,11 @@ function setTurnoInactive(){
 }
 
 async function startTurno(){
+  // Block from mobile
+  if(getDeviceInfo().isMobile){
+    alert('⚠️ El registro de turno solo está disponible desde un computador de escritorio.\n\nPor favor inicia sesión desde tu computador para registrar tu turno.');
+    return;
+  }
   // Check malla for today - block if novedad exists
   const userEmail=document.getElementById('user-email').textContent;
   const today=new Date();
@@ -2014,6 +2028,18 @@ function showTurnoBlocked(novedad){
 
 async function endTurno(status='ended'){
   if(!currentTurnoId)return;
+  // Block from mobile
+  if(getDeviceInfo().isMobile){
+    alert('⚠️ El registro de turno solo está disponible desde un computador de escritorio.\n\nPor favor finaliza tu turno desde tu computador.');
+    return;
+  }
+  // Punto 4: Confirmación antes de finalizar
+  if(status==='ended'){
+    const elapsed=Math.floor((new Date()-turnoStartTime)/1000)+accumulatedSeconds;
+    const durStr=formatDuration(elapsed);
+    const ok=confirm(`⚠️ ¿Estás seguro de que deseas finalizar tu turno?\n\nTu turno aún no ha terminado según tu horario programado.\nTiempo acumulado: ${durStr}\n\nEsta acción no se puede deshacer sin autorización de tu líder.`);
+    if(!ok)return;
+  }
   if(turnoInterval){clearInterval(turnoInterval);turnoInterval=null;}
   const endTime=new Date();
   const elapsed=Math.floor((endTime-turnoStartTime)/1000)+accumulatedSeconds;
@@ -2567,10 +2593,10 @@ async function loadMallaPersonal(){
         if(!window._mallaSelectedUsers)window._mallaSelectedUsers=new Set();
         pillsEl.innerHTML=allUsers.map(u=>{
           const checked=window._mallaSelectedUsers.has(u);
+          const nombre=allMalla.find(m=>m.usuario===u)?.nombre||u.split('@')[0];
           return`<div class="malla-user-item" data-user="${u}" onclick="setMallaUsers('${u}');renderMallaPersonal();" style="display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:7px;cursor:pointer;font-size:12px;color:var(--text-muted);font-family:var(--mono);${checked?'background:rgba(123,47,255,0.12);':''}">
             <span class="malla-user-check" style="width:14px;color:var(--p2);font-weight:700;">${checked?'✓':''}</span>
-            <span>${u.split('@')[0]}</span>
-            <span style="font-size:10px;color:var(--text-dim);margin-left:auto;">${u.split('@')[1]?'@'+u.split('@')[1]:''}</span>
+            <span>${nombre}</span>
           </div>`;
         }).join('');
         updateMallaUserDropdownLabel();
@@ -2649,8 +2675,26 @@ function renderMallaPersonal(){
   rows.sort((a,b)=>(parseDate(a.fecha)||0)-(parseDate(b.fecha)||0));
   const lineaFilter=document.getElementById('malla-linea-filter')?.value||'';
   if(lineaFilter)rows=rows.filter(r=>r.linea===lineaFilter);
-  if(window._mallaLiderFilter&&isAdminView)rows=rows.filter(r=>r.lider===window._mallaLiderFilter);
-  // Conteos sobre total sin filtro de status (para que las tarjetas siempre muestren el total real)
+  if(!window._mallaColFilters)window._mallaColFilters={estado:'',novedad:''};
+  const colFilterEl=document.getElementById('malla-col-filters');
+  if(colFilterEl){
+    const allNovedades=[...new Set(mallaAllRows.map(r=>r.novedad).filter(Boolean))].sort();
+    const estadoOpts=['cumplió','tardanza','ausente','pendiente','novedad'].map(s=>`<option value="${s}"${window._mallaColFilters.estado===s?' selected':''}>${s.charAt(0).toUpperCase()+s.slice(1)}</option>`).join('');
+    const novedadOpts=allNovedades.map(n=>`<option value="${n}"${window._mallaColFilters.novedad===n?' selected':''}>${n}</option>`).join('');
+    const cols=isAdminView
+      ?['0.55fr','1.2fr','0.65fr','1fr','0.9fr','0.9fr','0.9fr','0.9fr','1fr','0.85fr','1fr','1.2fr']
+      :['0.55fr','0.8fr','1fr','0.9fr','0.9fr','0.9fr','0.9fr','1fr','0.9fr','1fr','1.2fr'];
+    colFilterEl.style.gridTemplateColumns=cols.join(' ');
+    const numCols=cols.length;
+    const novedadIdx=isAdminView?10:9;
+    const estadoIdx=isAdminView?11:10;
+    let cells=Array(numCols).fill('<div style="padding:4px 6px;border-right:1px solid var(--border);"></div>');
+    cells[novedadIdx]=`<div style="padding:4px 6px;border-right:1px solid var(--border);"><select onchange="window._mallaColFilters.novedad=this.value;renderMallaPersonal()" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:5px;color:var(--text-muted);font-size:10px;padding:2px 4px;font-family:var(--mono);cursor:pointer;"><option value="">Todas</option>${novedadOpts}</select></div>`;
+    cells[estadoIdx]=`<div style="padding:4px 6px;"><select onchange="window._mallaColFilters.estado=this.value;renderMallaPersonal()" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:5px;color:var(--text-muted);font-size:10px;padding:2px 4px;font-family:var(--mono);cursor:pointer;"><option value="">Todos</option>${estadoOpts}</select></div>`;
+    colFilterEl.innerHTML=cells.join('');
+  }
+  if(window._mallaColFilters.estado)rows=rows.filter(r=>r.status.cls===window._mallaColFilters.estado);
+  if(window._mallaColFilters.novedad)rows=rows.filter(r=>r.novedad===window._mallaColFilters.novedad); (para que las tarjetas siempre muestren el total real)
   const total=rows.length,cumplió=rows.filter(r=>r.status.cls==='cumplió').length,tardanza=rows.filter(r=>r.status.cls==='tardanza').length,ausente=rows.filter(r=>r.status.cls==='ausente').length,pendiente=rows.filter(r=>r.status.cls==='pendiente').length,novedad=rows.filter(r=>r.status.cls==='novedad').length;
   const pct=total?Math.round(((cumplió+novedad)/total)*100):0;
   // Aplicar filtro de status DESPUÉS de calcular conteos
@@ -2824,8 +2868,14 @@ async function loadPanel2(){
   const som=new Date(now.getFullYear(),now.getMonth(),1);
   const eom=new Date(now.getFullYear(),now.getMonth()+1,0,23,59,59);
 
-  // Active now
-  const activeNow=allTurnos.filter(t=>t.status==='active');
+  // Active now — deduplicar por userEmail, quedarse con el más reciente
+  const activeRaw=allTurnos.filter(t=>t.status==='active');
+  const activeMap={};
+  activeRaw.forEach(t=>{
+    const u=t.userEmail||'';
+    if(!activeMap[u]||t.startTime?.toDate?.()>activeMap[u].startTime?.toDate?.())activeMap[u]=t;
+  });
+  const activeNow=Object.values(activeMap);
   const activeEl=document.getElementById('panel2-active');
   if(!activeEl){setTimeout(()=>loadPanel2(),200);return;}
   if(window.loadOvertimeEvents){window.loadOvertimeEvents().then(events=>{const badge=document.getElementById('overtime-badge');if(badge&&events.length>0){badge.style.display='inline';badge.textContent=events.length;}});}
@@ -2887,7 +2937,7 @@ async function loadPanel2(){
   if(panel2LineaSel){const allLineas=[...new Set(mallaData.map(m=>m.linea).filter(Boolean))].sort();const cur=panel2LineaSel.value;panel2LineaSel.innerHTML='<option value="">Todas las líneas</option>'+allLineas.map(l=>`<option value="${l}"${l===cur?' selected':''}>${l}</option>`).join('');panel2LineaSel.style.display='';}
   const allUsers=[...new Set(mallaFiltrada.map(m=>m.usuario).filter(Boolean))].sort();
   const pillsEl=document.getElementById('panel2-user-pills');
-  if(pillsEl){pillsEl.innerHTML=allUsers.map(u=>{const checked=panel2SelectedUsers.has(u);return`<div class="malla-user-item" data-user="${u}" onclick="setPanel2Users('${u}')" style="display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:7px;cursor:pointer;font-size:12px;color:var(--text-muted);font-family:var(--mono);${checked?'background:rgba(123,47,255,0.12);':''}"><span class="panel2-user-check" style="width:14px;color:var(--p2);font-weight:700;">${checked?'✓':''}</span><span>${u.split('@')[0]}</span></div>`;}).join('');updatePanel2UserDropdownLabel();}
+  if(pillsEl){pillsEl.innerHTML=allUsers.map(u=>{const checked=panel2SelectedUsers.has(u);const nombre=mallaFiltrada.find(m=>m.usuario===u)?.nombre||u.split('@')[0];return`<div class="malla-user-item" data-user="${u}" onclick="setPanel2Users('${u}')" style="display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:7px;cursor:pointer;font-size:12px;color:var(--text-muted);font-family:var(--mono);${checked?'background:rgba(123,47,255,0.12);':''}"><span class="panel2-user-check" style="width:14px;color:var(--p2);font-weight:700;">${checked?'✓':''}</span><span>${nombre}</span></div>`;}).join('');updatePanel2UserDropdownLabel();}
 
   // Poblar dropdown de líderes en panel
   const allLideres=[...new Set(mallaFiltrada.map(m=>m.lider).filter(Boolean))].sort();
@@ -2936,6 +2986,21 @@ async function loadPanel2(){
   renderPanel2Extras(allTurnos,fromDate,toDate,mallaData);
   renderPanel2Insights(panel2AllRows,allTurnos,fromDate,toDate);
 
+  // Filtros por columna Estado y Novedad en panel
+  if(!window._panel2ColFilters)window._panel2ColFilters={estado:'',novedad:''};
+  const p2ColFilterEl=document.getElementById('panel2-col-filters');
+  if(p2ColFilterEl){
+    const allNovedadesP2=[...new Set(panel2AllRows.map(r=>r.novedad).filter(Boolean))].sort();
+    const estadoOptsP2=['cumplió','tardanza','ausente','pendiente','novedad'].map(s=>`<option value="${s}"${window._panel2ColFilters.estado===s?' selected':''}>${s.charAt(0).toUpperCase()+s.slice(1)}</option>`).join('');
+    const novedadOptsP2=allNovedadesP2.map(n=>`<option value="${n}"${window._panel2ColFilters.novedad===n?' selected':''}>${n}</option>`).join('');
+    const emptyCells=Array(7).fill('<div style="padding:4px 6px;border-right:1px solid var(--border);"></div>').join('');
+    p2ColFilterEl.innerHTML=emptyCells+
+      `<div style="padding:4px 6px;border-right:1px solid var(--border);"><select onchange="window._panel2ColFilters.novedad=this.value;loadPanel2()" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:5px;color:var(--text-muted);font-size:10px;padding:2px 4px;font-family:var(--mono);cursor:pointer;"><option value="">Todas</option>${novedadOptsP2}</select></div>`+
+      `<div style="padding:4px 6px;"><select onchange="window._panel2ColFilters.estado=this.value;loadPanel2()" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:5px;color:var(--text-muted);font-size:10px;padding:2px 4px;font-family:var(--mono);cursor:pointer;"><option value="">Todos</option>${estadoOptsP2}</select></div>`;
+  }
+  if(window._panel2ColFilters.estado)filtered=filtered.filter(r=>r.cumplStatus.cls===window._panel2ColFilters.estado);
+  if(window._panel2ColFilters.novedad)filtered=filtered.filter(r=>r.novedad===window._panel2ColFilters.novedad);
+
   // Tabla principal
   const tbody=document.getElementById('panel2-table');
   if(!filtered.length){tbody.innerHTML='<div style="padding:20px;text-align:center;color:var(--text-dim);font-size:12px;">Sin registros en este período</div>';return;}
@@ -2949,9 +3014,10 @@ async function loadPanel2(){
     const re=r.realEnd?r.realEnd.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
     const dur=r.realStart&&r.realEnd?secsToHm(Math.max(0,(r.realEnd-r.realStart)/1000)):'—';
     const t=r.turno;
-    return`<div style="display:grid;grid-template-columns:40px 140px 70px 90px 90px 90px 80px 90px 120px;gap:0;border-bottom:1px solid var(--border);font-size:11px;align-items:stretch;">
+    const gridCols='40px 180px 70px 90px 90px 90px 80px 90px 120px';
+    return`<div style="display:grid;grid-template-columns:${gridCols};gap:0;border-bottom:1px solid var(--border);font-size:11px;align-items:stretch;">
       <div style="padding:8px 6px;border-right:1px solid var(--border);font-weight:700;color:var(--p2);font-family:var(--mono);display:flex;align-items:center;justify-content:center;">${dia}</div>
-      <div style="padding:8px 10px;border-right:1px solid var(--border);display:flex;flex-direction:column;justify-content:center;overflow:hidden;"><div style="font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${r.nombre||r.usuario?.split('@')[0]||'—'}</div><div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);">${r.linea||'—'}</div></div>
+      <div style="padding:8px 10px;border-right:1px solid var(--border);display:flex;flex-direction:column;justify-content:center;min-width:0;"><div style="font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${r.nombre||r.usuario||''}">${r.nombre||r.usuario?.split('@')[0]||'—'}</div><div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${r.linea||'—'}</div></div>
       <div style="padding:8px 10px;border-right:1px solid var(--border);font-family:var(--mono);color:var(--text-muted);display:flex;align-items:center;">${ds}</div>
       <div style="padding:8px 10px;border-right:1px solid var(--border);font-family:var(--mono);color:var(--text-dim);display:flex;flex-direction:column;justify-content:center;"><div style="font-size:9px;color:var(--text-dim);margin-bottom:1px;">Prog.</div><div>${ss}→${se}</div></div>
       <div style="padding:8px 10px;border-right:1px solid var(--border);font-family:var(--mono);color:${r.realStart&&r.cumplStatus.cls==='tardanza'?'#fbbf24':r.cumplStatus.cls==='cumplió'?'#4ade80':'var(--text-muted)'};display:flex;flex-direction:column;justify-content:center;"><div style="font-size:9px;color:var(--text-dim);margin-bottom:1px;">Real</div><div>${rs}→${re}</div></div>
