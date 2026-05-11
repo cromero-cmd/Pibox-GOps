@@ -1174,7 +1174,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 
 <script>
-const APP_VERSION='14.44';
+const APP_VERSION='14.45';
 const APP_CHANGELOG='Notificaciones de asistencia: recordatorio 10 min antes y alertas de tardanza al admin y agente.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -1971,6 +1971,19 @@ function setTurnoInactive(){
 }
 
 async function startTurno(){
+  // Bloquear doble clic
+  const btnStart=document.getElementById('btn-turno-start');
+  if(btnStart._processing)return;
+  btnStart._processing=true;
+  btnStart.disabled=true;
+  btnStart.textContent='Iniciando...';
+  try{await _doStartTurno();}finally{
+    btnStart._processing=false;
+    btnStart.disabled=false;
+    btnStart.innerHTML='<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/><path d="M12 6v6l4 2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>Iniciar turno';
+  }
+}
+async function _doStartTurno(){
   // Block from mobile
   if(getDeviceInfo().isMobile){
     alert('⚠️ El registro de turno solo está disponible desde un computador de escritorio.\n\nPor favor inicia sesión desde tu computador para registrar tu turno.');
