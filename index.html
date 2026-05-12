@@ -1227,7 +1227,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 
 <script>
-const APP_VERSION='14.54';
+const APP_VERSION='14.55';
 const APP_CHANGELOG='Notificaciones de asistencia: recordatorio 10 min antes y alertas de tardanza al admin y agente.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -2656,7 +2656,8 @@ async function loadMallaPersonal(){
       const ut=allTurnos.filter(t=>t.userEmail===m.usuario&&t.startTime?.toDate?.());
       const mt=ut.find(t=>{const pd=parseDate(m.fecha);return pd&&t.startTime.toDate().toDateString()===pd.toDateString();});
       const rs=mt?mt.startTime.toDate():null,re=mt?.endTime?.toDate?mt.endTime.toDate():null;
-      const status=getStatus(ss,rs,m.novedad,now);
+      const hasEnded=mt?mt.status==='ended':false;
+      const status=getStatus(ss,rs,m.novedad,now,null,null,hasEnded);
       return{...m,scheduledStart:ss,scheduledEnd:se,realStart:rs,realEnd:re,status};
     });
     window.mallaAllRows=mallaAllRows;
@@ -3103,8 +3104,8 @@ async function loadPanel2(){
   } // end else filtered
 
   // Extras e Insights (siempre se renderizan)
-  renderPanel2Extras(allTurnos,fromDate,toDate,mallaData);
-  renderPanel2Insights(panel2AllRows,allTurnos,fromDate,toDate);
+  try{renderPanel2Extras(allTurnos,fromDate,toDate,mallaData);}catch(e){console.error('Extras error:',e);}
+  try{renderPanel2Insights(panel2AllRows,allTurnos,fromDate,toDate);}catch(e){console.error('Insights error:',e);}
 }
 
 function togglePanel2LiderDropdownTop(){
