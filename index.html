@@ -181,7 +181,7 @@ window.getTodayTurno = async () => {
 
 window.getRecentTurnos = async () => {
   try {
-    const snap = await getDocs(query(collection(db, 'turnos'), orderBy('startTime', 'desc'), limit(200)));
+    const snap = await getDocs(query(collection(db, 'turnos'), orderBy('startTime', 'desc'), limit(500)));
     return snap.docs.map(d => ({ id: d.id, ...d.data() }));
   } catch(e) { return []; }
 };
@@ -1225,7 +1225,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 
 <script>
-const APP_VERSION='14.66';
+const APP_VERSION='14.67';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -2697,9 +2697,14 @@ async function loadMallaPersonal(){
     mallaAllRows=malla.map(m=>{
       const ss=parseTime(m.fecha,m.inicio),se=parseTime(m.fecha,m.fin);
       const ut=allTurnos.filter(t=>t.userEmail===m.usuario&&t.startTime?.toDate?.());
-      const mt=ut.find(t=>{const pd=parseDate(m.fecha);return pd&&t.startTime.toDate().toDateString()===pd.toDateString();});
+      const dayTurnos=ut.filter(t=>{const pd=parseDate(m.fecha);return pd&&t.startTime.toDate().toDateString()===pd.toDateString();});
+      const mt=dayTurnos.find(t=>t.status==='ended')||dayTurnos.find(t=>t.status==='interrupted')||dayTurnos[0]||null;
       const rs=mt?mt.startTime.toDate():null,re=mt?.endTime?.toDate?mt.endTime.toDate():null;
-      const hasEnded=mt?mt.status==='ended':false;
+      // Si el turno es active pero es de un día anterior, tratarlo como ended
+      const today=new Date();today.setHours(0,0,0,0);
+      const turnoDate=rs?new Date(rs):null;
+      const isOldActive=mt?.status==='active'&&turnoDate&&turnoDate<today;
+      const hasEnded=mt?(mt.status==='ended'||isOldActive):false;
       const status=getStatus(ss,rs,m.novedad,now,null,null,hasEnded);
       return{...m,scheduledStart:ss,scheduledEnd:se,realStart:rs,realEnd:re,status};
     });
@@ -3035,7 +3040,9 @@ async function loadPanel2(){
     const dayTurnos=allTurnos.filter(t=>{if(t.userEmail!==m.usuario)return false;const td=t.startTime?.toDate?.();const md=parseDate(m.fecha);return td&&md&&td.toDateString()===md.toDateString();});
     const mt=dayTurnos.find(t=>t.status==='ended')||dayTurnos.find(t=>t.status==='interrupted')||dayTurnos[0]||null;
     const rs=mt?mt.startTime.toDate():null;
-    const hasEnded=mt?mt.status==='ended':false;
+    const todayP2=new Date();todayP2.setHours(0,0,0,0);
+    const isOldActiveP2=mt?.status==='active'&&rs&&rs<todayP2;
+    const hasEnded=mt?(mt.status==='ended'||isOldActiveP2):false;
     const re=mt?.endTime?.toDate?mt.endTime.toDate():null;
     // Check absence record
     const absKey=(m.usuario||'').replace('@','_at_')+'_'+(m.fecha||'').replace(/\//g,'-');
