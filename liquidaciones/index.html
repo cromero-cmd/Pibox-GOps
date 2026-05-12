@@ -835,8 +835,17 @@ function runConciliacion(){
       (idx3[a]||(idx3[a]=[])).push(m);
       if(!(idx2[b]||[]).find(x=>x[mBKey]===m[mBKey]))(idx2[b]||(idx2[b]=[])).push(m);
     });
+    // ── Separar filas con actividad real de filas vacías ──────
+    // Un día sin actividad (paq=0, inc=0, can=0) no puede tener
+    // booking en la malla — enviarlo a conciliación solo genera
+    // falsos SIN_MALLA. Se omiten antes del match.
+    const filasConActividad = tadaNorm.filter(r => r.paquetes>0 || r.incentivos>0 || r.cancelados>0);
+    const filasVacias       = tadaNorm.filter(r => r.paquetes===0 && r.incentivos===0 && r.cancelados===0);
+    addLog('log-conc',`[INFO] Filas con actividad (a conciliar): ${filasConActividad.length}`,'info');
+    addLog('log-conc',`[INFO] Filas sin actividad (omitidas del match): ${filasVacias.length}`,'dim');
+
     const matchados=new Set();
-    tadaNorm.forEach(row=>{
+    filasConActividad.forEach(row=>{
       const a=`${normStr(row.piloto)}||${row.fecha}||${normStr(row.seller)}`;
       const b=`${normStr(row.piloto)}||${row.fecha}`;
       let matches=[],nivel='SIN_MALLA',nota='';
@@ -845,7 +854,7 @@ function runConciliacion(){
       concResult.push({...row,nivel_confianza:nivel,matches,nota,driver_id:matches[0]?.[mDKey]||'PENDIENTE'});
       addLog('log-conc',`[${nivel}] ${row.piloto} · ${row.fecha} · ${row.seller} — ${nota||'Sin match'}`,nivel==='HIGH'?'ok':nivel==='SIN_MALLA'?'err':'warn');
     });
-    mallaRaw.filter(m=>!matchados.has(m[mBKey])).forEach(m=>addLog('log-conc',`[WARN] Huérfano malla: ${m[mBKey]||'?'} · ${m[mPKey]||''}·${m[mFKey]||''}`,'warn'));
+    mallaRaw.filter(m=>!matchados.has(m[mBKey])).forEach(m=>addLog('log-conc',`[WARN] Huérfano malla: ${m[mBKey]||'?'} · ${m[mPKey]||''} · ${m[mFKey]||''}`,'warn'));
     renderConcStats();
     renderConcTable(null);
     hideProcessing();
@@ -854,15 +863,20 @@ function runConciliacion(){
 }
 
 function renderConcStats(){
-  const h=concResult.filter(r=>r.nivel_confianza==='HIGH').length;
+  const h =concResult.filter(r=>r.nivel_confianza==='HIGH').length;
   const md=concResult.filter(r=>r.nivel_confianza==='MEDIUM').length;
   const lo=concResult.filter(r=>r.nivel_confianza==='LOW').length;
   const sn=concResult.filter(r=>r.nivel_confianza==='SIN_MALLA').length;
+  const omitidas=tadaNorm.filter(r=>r.paquetes===0&&r.incentivos===0&&r.cancelados===0).length;
   document.getElementById('stats-conc').innerHTML=`
     <div class="stat clickable${concFilter==='HIGH'?' selected-high':''}" onclick="filterConc('HIGH')"><div class="stat-l">HIGH · match directo</div><div class="stat-v g">${h}</div><div class="stat-hint">Clic para filtrar</div></div>
     <div class="stat clickable${concFilter==='MEDIUM'?' selected-med':''}" onclick="filterConc('MEDIUM')"><div class="stat-l">MEDIUM · franja</div><div class="stat-v y">${md}</div><div class="stat-hint">Clic para filtrar</div></div>
     <div class="stat clickable${concFilter==='LOW'?' selected-low':''}" onclick="filterConc('LOW')"><div class="stat-l">LOW · fallback</div><div class="stat-v r">${lo}</div><div class="stat-hint">Clic para filtrar</div></div>
-    <div class="stat clickable${concFilter==='SIN_MALLA'?' selected-sin':''}" onclick="filterConc('SIN_MALLA')"><div class="stat-l">SIN_MALLA · excluidos</div><div class="stat-v" style="color:var(--text2)">${sn}</div><div class="stat-hint">Clic para filtrar</div></div>`;
+    <div class="stat clickable${concFilter==='SIN_MALLA'?' selected-sin':''}" onclick="filterConc('SIN_MALLA')"><div class="stat-l">SIN_MALLA · excluidos</div><div class="stat-v" style="color:var(--text2)">${sn}</div><div class="stat-hint">Clic para filtrar</div></div>
+    <div class="stat" style="grid-column:span 4;background:var(--bg3);border-color:var(--border2);padding:9px 14px;display:flex;align-items:center;gap:16px;">
+      <span style="font-size:11px;font-family:var(--mono);color:var(--text3);">Días sin actividad omitidos del match (esperado):</span>
+      <span style="font-family:var(--mono);font-size:12px;color:var(--text2);">${omitidas} filas ignoradas · ${tadaNorm.length-omitidas} de ${tadaNorm.length} conciliadas</span>
+    </div>`;
 }
 
 function filterConc(nivel){
