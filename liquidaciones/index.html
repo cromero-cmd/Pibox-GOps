@@ -814,6 +814,28 @@ function runNorm(){
 // ═══════════════════════════════════════════
 // CONCILIACIÓN
 // ═══════════════════════════════════════════
+// ══════════════════════════════════════════════════════
+// FUZZY MATCHING DE NOMBRES
+//
+// Estrategia: las palabras del nombre corto (TADA) deben
+// aparecer TODAS en el nombre largo (malla), sin acentos.
+// Ej: "Camilo Diaz" → palabras ["camilo","diaz"]
+//     "Camilo Andres Diaz Carey" → contiene ambas → MATCH
+//
+// Retorna true si todas las palabras de nameShort
+// están contenidas en nameLong (después de normalizar).
+// ══════════════════════════════════════════════════════
+function fuzzyNameMatch(nameShort, nameLong){
+  if(!nameShort||!nameLong) return false;
+  const short = normStr(nameShort);
+  const long  = normStr(nameLong);
+  // Evitar falsos positivos con nombres muy cortos (1 sola palabra)
+  const words = short.split(' ').filter(w=>w.length>1);
+  if(words.length===0) return false;
+  // Todas las palabras del nombre corto deben estar en el largo
+  return words.every(w=>long.includes(w));
+}
+
 function runConciliacion(){
   clearLog('log-conc');
   showProcessing('Ejecutando conciliación...');
@@ -821,6 +843,7 @@ function runConciliacion(){
   setTimeout(()=>{
     concResult=[];
     if(!mallaRaw.length){ addLog('log-conc','[ERR] Carga la malla Pibox','err'); hideProcessing(); return; }
+
     const mKeys=Object.keys(mallaRaw[0]);
     const mFKey=mKeys.find(k=>/fecha/i.test(k))||'fecha';
     const mSKey=mKeys.find(k=>/seller|punto|tienda/i.test(k))||'seller';
@@ -828,33 +851,92 @@ function runConciliacion(){
     const mBKey=mKeys.find(k=>/booking/i.test(k))||'booking_id';
     const mDKey=mKeys.find(k=>/driver.?id/i.test(k))||'driver_id';
     addLog('log-conc',`[INFO] Malla — fecha:"${mFKey}" seller:"${mSKey}" piloto:"${mPKey}" booking:"${mBKey}"`,'info');
-    const idx3={},idx2={};
+
+    // ── Índices de match exacto ─────────────────────────────
+    const idx3={}, idx2={};
     mallaRaw.forEach(m=>{
-      const a=`${normStr(String(m[mPKey]||''))}||${String(m[mFKey]||'').trim()}||${normStr(String(m[mSKey]||''))}`;
-      const b=`${normStr(String(m[mPKey]||''))}||${String(m[mFKey]||'').trim()}`;
+      const mp=normStr(String(m[mPKey]||'')), mf=String(m[mFKey]||'').trim(), ms=normStr(String(m[mSKey]||''));
+      const a=`${mp}||${mf}||${ms}`, b=`${mp}||${mf}`;
       (idx3[a]||(idx3[a]=[])).push(m);
       if(!(idx2[b]||[]).find(x=>x[mBKey]===m[mBKey]))(idx2[b]||(idx2[b]=[])).push(m);
     });
-    // ── Separar filas con actividad real de filas vacías ──────
-    // Un día sin actividad (paq=0, inc=0, can=0) no puede tener
-    // booking en la malla — enviarlo a conciliación solo genera
-    // falsos SIN_MALLA. Se omiten antes del match.
-    const filasConActividad = tadaNorm.filter(r => r.paquetes>0 || r.incentivos>0 || r.cancelados>0);
-    const filasVacias       = tadaNorm.filter(r => r.paquetes===0 && r.incentivos===0 && r.cancelados===0);
+
+    // ── Índices de fuzzy por fecha+seller y fecha sola ──────
+    // Clave: fecha||seller → lista de registros malla ese día en ese seller
+    // Clave: fecha         → lista de registros malla ese día (cualquier seller)
+    const idxFS={}, idxF={};
+    mallaRaw.forEach(m=>{
+      const mf=String(m[mFKey]||'').trim(), ms=normStr(String(m[mSKey]||''));
+      const fs=`${mf}||${ms}`, f=mf;
+      (idxFS[fs]||(idxFS[fs]=[])).push(m);
+      (idxF[f] ||(idxF[f] =[])).push(m);
+    });
+
+    // ── Filtrar filas con actividad ─────────────────────────
+    const filasConActividad=tadaNorm.filter(r=>r.paquetes>0||r.incentivos>0||r.cancelados>0);
+    const filasVacias=tadaNorm.filter(r=>r.paquetes===0&&r.incentivos===0&&r.cancelados===0);
     addLog('log-conc',`[INFO] Filas con actividad (a conciliar): ${filasConActividad.length}`,'info');
-    addLog('log-conc',`[INFO] Filas sin actividad (omitidas del match): ${filasVacias.length}`,'dim');
+    addLog('log-conc',`[INFO] Filas sin actividad (omitidas): ${filasVacias.length}`,'dim');
 
     const matchados=new Set();
+
     filasConActividad.forEach(row=>{
-      const a=`${normStr(row.piloto)}||${row.fecha}||${normStr(row.seller)}`;
-      const b=`${normStr(row.piloto)}||${row.fecha}`;
-      let matches=[],nivel='SIN_MALLA',nota='';
-      if(idx3[a]?.length){ matches=idx3[a]; nivel=matches.length===1?'HIGH':'MEDIUM'; nota=nivel==='HIGH'?'Match único piloto+fecha+seller':`${matches.length} bookings → franja horaria`; matches.forEach(m=>matchados.add(m[mBKey])); }
-      else if(idx2[b]?.length){ matches=idx2[b]; nivel='LOW'; nota=`Fallback piloto+fecha · seller TADA="${row.seller}" vs malla="${[...new Set(matches.map(m=>m[mSKey]))].join('/')}"`;  matches.forEach(m=>matchados.add(m[mBKey])); }
-      concResult.push({...row,nivel_confianza:nivel,matches,nota,driver_id:matches[0]?.[mDKey]||'PENDIENTE'});
-      addLog('log-conc',`[${nivel}] ${row.piloto} · ${row.fecha} · ${row.seller} — ${nota||'Sin match'}`,nivel==='HIGH'?'ok':nivel==='SIN_MALLA'?'err':'warn');
+      const rp=normStr(row.piloto), rf=row.fecha, rs=normStr(row.seller);
+      const a=`${rp}||${rf}||${rs}`, b=`${rp}||${rf}`;
+      let matches=[], nivel='SIN_MALLA', nota='';
+
+      // ── NIVEL 1: Match exacto piloto+fecha+seller ────────
+      if(idx3[a]?.length){
+        matches=idx3[a];
+        nivel=matches.length===1?'HIGH':'MEDIUM';
+        nota=nivel==='HIGH'?'Exacto piloto+fecha+seller':`${matches.length} bookings → franja horaria`;
+        matches.forEach(m=>matchados.add(m[mBKey]));
+      }
+      // ── NIVEL 2: Match exacto piloto+fecha (seller distinto)
+      else if(idx2[b]?.length){
+        matches=idx2[b]; nivel='LOW';
+        nota=`Exacto piloto+fecha · seller TADA="${row.seller}" vs malla="${[...new Set(matches.map(m=>m[mSKey]))].join('/')}"`;
+        matches.forEach(m=>matchados.add(m[mBKey]));
+      }
+      // ── NIVEL 3: Fuzzy nombre + fecha + seller ───────────
+      else {
+        const candidatesFS=(idxFS[`${rf}||${rs}`]||[]).filter(m=>fuzzyNameMatch(row.piloto,String(m[mPKey]||'')));
+        if(candidatesFS.length===1){
+          matches=candidatesFS; nivel='FUZZY-HIGH';
+          nota=`Fuzzy nombre+fecha+seller · TADA="${row.piloto}" → malla="${candidatesFS[0][mPKey]}"`;
+          matches.forEach(m=>matchados.add(m[mBKey]));
+        }
+        else if(candidatesFS.length>1){
+          // Ambiguo: varios candidatos con mismo seller y fecha
+          matches=candidatesFS; nivel='AMBIGUOUS';
+          nota=`Ambiguo: ${candidatesFS.length} candidatos en misma fecha+seller: ${candidatesFS.map(m=>m[mPKey]).join(' / ')}`;
+          // No se agrega a matchados — queda excluido del output
+        }
+        else {
+          // ── NIVEL 4: Fuzzy nombre + fecha (cualquier seller) ─
+          const candidatesF=(idxF[rf]||[]).filter(m=>fuzzyNameMatch(row.piloto,String(m[mPKey]||'')));
+          if(candidatesF.length===1){
+            matches=candidatesF; nivel='FUZZY-LOW';
+            nota=`Fuzzy nombre+fecha · TADA="${row.piloto}" → malla="${candidatesF[0][mPKey]}" · seller TADA="${row.seller}" vs malla="${candidatesF[0][mSKey]||''}"`;
+            matches.forEach(m=>matchados.add(m[mBKey]));
+          }
+          else if(candidatesF.length>1){
+            matches=candidatesF; nivel='AMBIGUOUS';
+            nota=`Ambiguo: ${candidatesF.length} candidatos en misma fecha: ${candidatesF.map(m=>m[mPKey]).join(' / ')}`;
+          }
+          // Si length===0 → queda SIN_MALLA
+        }
+      }
+
+      concResult.push({...row, nivel_confianza:nivel, matches, nota, driver_id:matches[0]?.[mDKey]||'PENDIENTE'});
+      const cls=nivel==='HIGH'||nivel==='FUZZY-HIGH'?'ok': nivel==='SIN_MALLA'||nivel==='AMBIGUOUS'?'err':'warn';
+      addLog('log-conc',`[${nivel}] ${row.piloto} · ${row.fecha} · ${row.seller} — ${nota||'Sin match'}`,cls);
     });
-    mallaRaw.filter(m=>!matchados.has(m[mBKey])).forEach(m=>addLog('log-conc',`[WARN] Huérfano malla: ${m[mBKey]||'?'} · ${m[mPKey]||''} · ${m[mFKey]||''}`,'warn'));
+
+    // Huérfanos en malla
+    mallaRaw.filter(m=>!matchados.has(m[mBKey])).forEach(m=>
+      addLog('log-conc',`[WARN] Huérfano malla: ${m[mBKey]||'?'} · ${m[mPKey]||''} · ${m[mFKey]||''}`,'warn'));
+
     renderConcStats();
     renderConcTable(null);
     hideProcessing();
@@ -863,28 +945,35 @@ function runConciliacion(){
 }
 
 function renderConcStats(){
-  const h =concResult.filter(r=>r.nivel_confianza==='HIGH').length;
-  const md=concResult.filter(r=>r.nivel_confianza==='MEDIUM').length;
-  const lo=concResult.filter(r=>r.nivel_confianza==='LOW').length;
-  const sn=concResult.filter(r=>r.nivel_confianza==='SIN_MALLA').length;
+  const h  =concResult.filter(r=>r.nivel_confianza==='HIGH').length;
+  const md =concResult.filter(r=>r.nivel_confianza==='MEDIUM').length;
+  const lo =concResult.filter(r=>r.nivel_confianza==='LOW').length;
+  const fh =concResult.filter(r=>r.nivel_confianza==='FUZZY-HIGH').length;
+  const fl =concResult.filter(r=>r.nivel_confianza==='FUZZY-LOW').length;
+  const amb=concResult.filter(r=>r.nivel_confianza==='AMBIGUOUS').length;
+  const sn =concResult.filter(r=>r.nivel_confianza==='SIN_MALLA').length;
   const omitidas=tadaNorm.filter(r=>r.paquetes===0&&r.incentivos===0&&r.cancelados===0).length;
+
+  const selCls=(n)=>concFilter===n?' selected-high':'';
+  const selClsY=(n)=>concFilter===n?' selected-med':'';
+  const selClsR=(n)=>concFilter===n?' selected-low':'';
+  const selClsS=(n)=>concFilter===n?' selected-sin':'';
+
   document.getElementById('stats-conc').innerHTML=`
-    <div class="stat clickable${concFilter==='HIGH'?' selected-high':''}" onclick="filterConc('HIGH')"><div class="stat-l">HIGH · match directo</div><div class="stat-v g">${h}</div><div class="stat-hint">Clic para filtrar</div></div>
-    <div class="stat clickable${concFilter==='MEDIUM'?' selected-med':''}" onclick="filterConc('MEDIUM')"><div class="stat-l">MEDIUM · franja</div><div class="stat-v y">${md}</div><div class="stat-hint">Clic para filtrar</div></div>
-    <div class="stat clickable${concFilter==='LOW'?' selected-low':''}" onclick="filterConc('LOW')"><div class="stat-l">LOW · fallback</div><div class="stat-v r">${lo}</div><div class="stat-hint">Clic para filtrar</div></div>
-    <div class="stat clickable${concFilter==='SIN_MALLA'?' selected-sin':''}" onclick="filterConc('SIN_MALLA')"><div class="stat-l">SIN_MALLA · excluidos</div><div class="stat-v" style="color:var(--text2)">${sn}</div><div class="stat-hint">Clic para filtrar</div></div>
-    <div class="stat" style="grid-column:span 4;background:var(--bg3);border-color:var(--border2);padding:9px 14px;display:flex;align-items:center;gap:16px;">
-      <span style="font-size:11px;font-family:var(--mono);color:var(--text3);">Días sin actividad omitidos del match (esperado):</span>
-      <span style="font-family:var(--mono);font-size:12px;color:var(--text2);">${omitidas} filas ignoradas · ${tadaNorm.length-omitidas} de ${tadaNorm.length} conciliadas</span>
-    </div>`;
+    <div class="stat clickable${selCls('HIGH')}"         onclick="filterConc('HIGH')">        <div class="stat-l">HIGH · exacto</div>        <div class="stat-v g">${h}</div>  <div class="stat-hint">→ liquidación directa</div></div>
+    <div class="stat clickable${selClsY('MEDIUM')}"      onclick="filterConc('MEDIUM')">      <div class="stat-l">MEDIUM · franja horaria</div><div class="stat-v y">${md}</div> <div class="stat-hint">→ liquidación directa</div></div>
+    <div class="stat clickable${selCls('FUZZY-HIGH')}"   onclick="filterConc('FUZZY-HIGH')">  <div class="stat-l">FUZZY-HIGH · 1 candidato</div><div class="stat-v g">${fh}</div><div class="stat-hint">→ liquidación directa</div></div>
+    <div class="stat clickable${selClsY('FUZZY-LOW')}"   onclick="filterConc('FUZZY-LOW')">   <div class="stat-l">FUZZY-LOW · sin seller</div><div class="stat-v y">${fl}</div> <div class="stat-hint">→ marcado revisión</div></div>
+    <div class="stat clickable${selClsR('LOW')}"         onclick="filterConc('LOW')">         <div class="stat-l">LOW · seller distinto</div><div class="stat-v r">${lo}</div>  <div class="stat-hint">→ marcado revisión</div></div>
+    <div class="stat clickable${selClsR('AMBIGUOUS')}"   onclick="filterConc('AMBIGUOUS')">   <div class="stat-l">AMBIGUOUS · varios cand.</div><div class="stat-v r">${amb}</div><div class="stat-hint">→ revisión manual</div></div>
+    <div class="stat clickable${selClsS('SIN_MALLA')}"   onclick="filterConc('SIN_MALLA')">   <div class="stat-l">SIN_MALLA · sin match</div><div class="stat-v" style="color:var(--text2)">${sn}</div><div class="stat-hint">→ excluido</div></div>
+    <div class="stat" style="border-color:var(--border2);background:var(--bg3);">              <div class="stat-l">Días sin actividad</div><div class="stat-v" style="font-size:13px;color:var(--text3)">${omitidas}</div><div class="stat-hint">omitidos del match</div></div>`;
 }
 
 function filterConc(nivel){
-  // Toggle: si ya está activo, desactivar
   concFilter = concFilter===nivel ? null : nivel;
   renderConcStats();
   renderConcTable(concFilter);
-  // Actualizar badge
   const badge=document.getElementById('conc-filter-badge');
   if(concFilter){ badge.style.display='inline'; badge.textContent=`Filtro: ${concFilter}`; }
   else badge.style.display='none';
@@ -892,7 +981,9 @@ function filterConc(nivel){
 
 function renderConcTable(filter){
   const rows=(filter ? concResult.filter(r=>r.nivel_confianza===filter) : concResult)
-    .map(r=>({piloto:r.piloto,ciudad:r.ciudad,seller:r.seller,fecha:r.fecha,driver_id:r.driver_id,bookings:r.matches.length,nivel_confianza:r.nivel_confianza,nota:r.nota||'Sin match'}));
+    .map(r=>({piloto:r.piloto,ciudad:r.ciudad,seller:r.seller,fecha:r.fecha,
+      driver_id:r.driver_id, bookings:r.matches.length,
+      nivel_confianza:r.nivel_confianza, nota:r.nota||'Sin match'}));
   tableData['conc-data']=rows;
   mkTable('tbl-conc',rows,
     ['piloto','ciudad','seller','fecha','driver_id','bookings','nivel_confianza','nota'],
@@ -912,7 +1003,9 @@ function runDistribucion(){
     const mSKey=mKeys.find(k=>/seller|punto|tienda/i.test(k))||'seller';
     const mHKey=mKeys.find(k=>/hora/i.test(k))||'hora_inicio';
 
-    concResult.filter(r=>r.nivel_confianza!=='SIN_MALLA').forEach(row=>{
+    // Niveles que pasan a distribución (los demás se excluyen)
+    const NIVELES_OK=new Set(['HIGH','MEDIUM','LOW','FUZZY-HIGH','FUZZY-LOW']);
+    concResult.filter(r=>NIVELES_OK.has(r.nivel_confianza)).forEach(row=>{
       const n=row.matches.length;
       [...row.matches].sort((a,b)=>String(a[mHKey]||'').localeCompare(String(b[mHKey]||''))).forEach((m,i)=>{
         const first=i===0;
@@ -934,11 +1027,12 @@ function runDistribucion(){
       });
     });
 
+    const excluidos=concResult.filter(r=>!['HIGH','MEDIUM','LOW','FUZZY-HIGH','FUZZY-LOW'].includes(r.nivel_confianza)).length;
     document.getElementById('stats-dist').innerHTML=`
       <div class="stat"><div class="stat-l">Bookings generados</div><div class="stat-v">${distResult.length}</div></div>
-      <div class="stat"><div class="stat-l">Excluidos SIN_MALLA</div><div class="stat-v r">${concResult.filter(r=>r.nivel_confianza==='SIN_MALLA').length}</div></div>
-      <div class="stat"><div class="stat-l">HIGH</div><div class="stat-v g">${distResult.filter(r=>r.nivel_confianza==='HIGH').length}</div></div>
-      <div class="stat"><div class="stat-l">MEDIUM+LOW</div><div class="stat-v y">${distResult.filter(r=>['MEDIUM','LOW'].includes(r.nivel_confianza)).length}</div></div>`;
+      <div class="stat"><div class="stat-l">Excluidos (SIN_MALLA + AMBIGUOUS)</div><div class="stat-v r">${excluidos}</div></div>
+      <div class="stat"><div class="stat-l">Match exacto (HIGH+MEDIUM)</div><div class="stat-v g">${distResult.filter(r=>['HIGH','MEDIUM'].includes(r.nivel_confianza)).length}</div></div>
+      <div class="stat"><div class="stat-l">Fuzzy + LOW (revisión)</div><div class="stat-v y">${distResult.filter(r=>['FUZZY-HIGH','FUZZY-LOW','LOW'].includes(r.nivel_confianza)).length}</div></div>`;
 
     tableData['dist-data']=distResult;
     mkTable('tbl-dist',distResult,
@@ -1021,9 +1115,11 @@ function downloadTrump(){
   const mSKey=mKeys.find(k=>/seller/i.test(k))||'seller';
   const mPKey=mKeys.find(k=>/piloto|nombre/i.test(k))||'piloto';
   const incon=[];
-  concResult.filter(r=>r.nivel_confianza==='SIN_MALLA').forEach(r=>incon.push({tipo:'SIN_MALLA',piloto:r.piloto,fecha:r.fecha,seller:r.seller,booking_id:'—',nota:'Excluido del output'}));
+  concResult.filter(r=>r.nivel_confianza==='SIN_MALLA').forEach(r=>incon.push({tipo:'SIN_MALLA',piloto:r.piloto,fecha:r.fecha,seller:r.seller,booking_id:'—',nota:'Sin match de ningún tipo — excluido'}));
+  concResult.filter(r=>r.nivel_confianza==='AMBIGUOUS').forEach(r=>incon.push({tipo:'AMBIGUOUS',piloto:r.piloto,fecha:r.fecha,seller:r.seller,booking_id:'—',nota:r.nota}));
   mallaRaw.filter(m=>!distResult.find(d=>d.booking_id===m[mBKey])).forEach(m=>incon.push({tipo:'HUÉRFANO_MALLA',piloto:m[mPKey]||'',fecha:m[mFKey]||'',seller:m[mSKey]||'',booking_id:m[mBKey]||'?',nota:'Sin valores TADA'}));
   concResult.filter(r=>r.nivel_confianza==='LOW').forEach(r=>incon.push({tipo:'LOW_CONFIDENCE',piloto:r.piloto,fecha:r.fecha,seller:r.seller,booking_id:r.matches.map(m=>m[mBKey]).join('/'),nota:'Fallback piloto+fecha'}));
+  concResult.filter(r=>r.nivel_confianza==='FUZZY-LOW').forEach(r=>incon.push({tipo:'FUZZY-LOW',piloto:r.piloto,fecha:r.fecha,seller:r.seller,booking_id:r.matches.map(m=>m[mBKey]).join('/'),nota:r.nota}));
   const ws2=XLSX.utils.json_to_sheet(incon.length?incon:[{tipo:'Sin inconsistencias'}]);
   ws2['!cols']=[{wch:18},{wch:24},{wch:12},{wch:26},{wch:20},{wch:65}];
   const ws3=XLSX.utils.json_to_sheet([
