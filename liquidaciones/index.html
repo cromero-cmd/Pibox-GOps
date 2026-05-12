@@ -815,25 +815,74 @@ function runNorm(){
 // CONCILIACIÓN
 // ═══════════════════════════════════════════
 // ══════════════════════════════════════════════════════
-// FUZZY MATCHING DE NOMBRES
+// FUZZY MATCHING DE NOMBRES — v2
 //
-// Estrategia: las palabras del nombre corto (TADA) deben
-// aparecer TODAS en el nombre largo (malla), sin acentos.
-// Ej: "Camilo Diaz" → palabras ["camilo","diaz"]
-//     "Camilo Andres Diaz Carey" → contiene ambas → MATCH
+// Maneja: acentos, errores tipográficos (Vaquero/Baquero,
+// Bryan/Brahyan), nombres parciales en cualquier dirección
+// (TADA más largo que malla o viceversa).
 //
-// Retorna true si todas las palabras de nameShort
-// están contenidas en nameLong (después de normalizar).
+// Algoritmo:
+//   1. Normalizar (sin acentos, minúsculas)
+//   2. Por cada palabra de A, buscar la palabra más similar en B
+//      usando distancia de Levenshtein
+//   3. Contar palabras con match en ambas direcciones
+//   4. Score = max(matches_AenB, matches_BenA)
+//   5. Match válido si score ≥ 2 Y score ≥ 50% del nombre más corto
 // ══════════════════════════════════════════════════════
-function fuzzyNameMatch(nameShort, nameLong){
-  if(!nameShort||!nameLong) return false;
-  const short = normStr(nameShort);
-  const long  = normStr(nameLong);
-  // Evitar falsos positivos con nombres muy cortos (1 sola palabra)
-  const words = short.split(' ').filter(w=>w.length>1);
-  if(words.length===0) return false;
-  // Todas las palabras del nombre corto deben estar en el largo
-  return words.every(w=>long.includes(w));
+
+function levenshtein(a, b){
+  if(!a) return b.length; if(!b) return a.length;
+  if(a===b) return 0;
+  const al=a.length, bl=b.length;
+  let prev=Array.from({length:bl+1},(_,i)=>i);
+  for(let i=0;i<al;i++){
+    const curr=[i+1];
+    for(let j=0;j<bl;j++)
+      curr.push(Math.min(prev[j]+(a[i]===b[j]?0:1), curr[j]+1, prev[j+1]+1));
+    prev=curr;
+  }
+  return prev[bl];
+}
+
+function wordMatch(w1, w2){
+  // Dos palabras hacen match si son idénticas,
+  // o su distancia de edición es ≤ 2 (palabras > 4 letras)
+  // o ≤ 1 (palabras de 4 letras o menos)
+  if(w1===w2) return true;
+  const maxLen=Math.max(w1.length, w2.length);
+  const threshold = maxLen > 4 ? 2 : 1;
+  return levenshtein(w1,w2) <= threshold;
+}
+
+function scoreNames(nameA, nameB){
+  // Retorna {score, minWords} — score = nº de palabras con match
+  const wordsA = normStr(nameA).split(' ').filter(w=>w.length>1);
+  const wordsB = normStr(nameB).split(' ').filter(w=>w.length>1);
+  if(!wordsA.length||!wordsB.length) return {score:0, minWords:0};
+
+  // Dirección A→B: cuántas palabras de A encuentran match en B
+  let matchAB=0;
+  wordsA.forEach(wa=>{
+    if(wordsB.some(wb=>wordMatch(wa,wb))) matchAB++;
+  });
+
+  // Dirección B→A: cuántas palabras de B encuentran match en A
+  let matchBA=0;
+  wordsB.forEach(wb=>{
+    if(wordsA.some(wa=>wordMatch(wa,wb))) matchBA++;
+  });
+
+  return {
+    score:    Math.max(matchAB, matchBA),
+    minWords: Math.min(wordsA.length, wordsB.length),
+  };
+}
+
+function fuzzyNameMatch(nameA, nameB){
+  // Match válido: al menos 2 palabras coinciden
+  // Y cubre al menos el 50% del nombre más corto
+  const {score, minWords} = scoreNames(nameA, nameB);
+  return score >= 2 && score >= minWords * 0.5;
 }
 
 function runConciliacion(){
@@ -865,6 +914,9 @@ function runConciliacion(){
     // Clave: fecha||seller → lista de registros malla ese día en ese seller
     // Clave: fecha         → lista de registros malla ese día (cualquier seller)
     const idxFS={}, idxF={};
+    // Detectar columna ciudad en malla
+    const mCKey=mKeys.find(k=>/^ciudad$|^city$/i.test(k))||mKeys.find(k=>/ciudad|city/i.test(k))||null;
+    if(mCKey) addLog('log-conc',`[INFO] Columna ciudad malla: "${mCKey}" — usada para desempate fuzzy`,'info');
     mallaRaw.forEach(m=>{
       const mf=String(m[mFKey]||'').trim(), ms=normStr(String(m[mSKey]||''));
       const fs=`${mf}||${ms}`, f=mf;
@@ -900,31 +952,45 @@ function runConciliacion(){
       }
       // ── NIVEL 3: Fuzzy nombre + fecha + seller ───────────
       else {
-        const candidatesFS=(idxFS[`${rf}||${rs}`]||[]).filter(m=>fuzzyNameMatch(row.piloto,String(m[mPKey]||'')));
+        const fsKey=`${rf}||${rs}`;
+        let candidatesFS=(idxFS[fsKey]||[]).filter(m=>fuzzyNameMatch(row.piloto,String(m[mPKey]||'')));
+
+        // Desempate por ciudad si hay más de 1 candidato
+        if(candidatesFS.length>1 && mCKey && row.ciudad){
+          const withCity=candidatesFS.filter(m=>normStr(String(m[mCKey]||''))===normStr(row.ciudad));
+          if(withCity.length>=1) candidatesFS=withCity;
+        }
+
         if(candidatesFS.length===1){
           matches=candidatesFS; nivel='FUZZY-HIGH';
-          nota=`Fuzzy nombre+fecha+seller · TADA="${row.piloto}" → malla="${candidatesFS[0][mPKey]}"`;
+          const {score,minWords}=scoreNames(row.piloto,String(candidatesFS[0][mPKey]||''));
+          nota=`Fuzzy nombre+fecha+seller (${score}/${minWords} palabras) · TADA="${row.piloto}" → malla="${candidatesFS[0][mPKey]}"`;
           matches.forEach(m=>matchados.add(m[mBKey]));
         }
         else if(candidatesFS.length>1){
-          // Ambiguo: varios candidatos con mismo seller y fecha
           matches=candidatesFS; nivel='AMBIGUOUS';
           nota=`Ambiguo: ${candidatesFS.length} candidatos en misma fecha+seller: ${candidatesFS.map(m=>m[mPKey]).join(' / ')}`;
-          // No se agrega a matchados — queda excluido del output
         }
         else {
           // ── NIVEL 4: Fuzzy nombre + fecha (cualquier seller) ─
-          const candidatesF=(idxF[rf]||[]).filter(m=>fuzzyNameMatch(row.piloto,String(m[mPKey]||'')));
+          let candidatesF=(idxF[rf]||[]).filter(m=>fuzzyNameMatch(row.piloto,String(m[mPKey]||'')));
+
+          // Desempate por ciudad
+          if(candidatesF.length>1 && mCKey && row.ciudad){
+            const withCity=candidatesF.filter(m=>normStr(String(m[mCKey]||''))===normStr(row.ciudad));
+            if(withCity.length>=1) candidatesF=withCity;
+          }
+
           if(candidatesF.length===1){
             matches=candidatesF; nivel='FUZZY-LOW';
-            nota=`Fuzzy nombre+fecha · TADA="${row.piloto}" → malla="${candidatesF[0][mPKey]}" · seller TADA="${row.seller}" vs malla="${candidatesF[0][mSKey]||''}"`;
+            const {score,minWords}=scoreNames(row.piloto,String(candidatesF[0][mPKey]||''));
+            nota=`Fuzzy nombre+fecha (${score}/${minWords} palabras) · TADA="${row.piloto}" → malla="${candidatesF[0][mPKey]}" · seller TADA="${row.seller}" vs malla="${candidatesF[0][mSKey]||''}"`;
             matches.forEach(m=>matchados.add(m[mBKey]));
           }
           else if(candidatesF.length>1){
             matches=candidatesF; nivel='AMBIGUOUS';
-            nota=`Ambiguo: ${candidatesF.length} candidatos en misma fecha: ${candidatesF.map(m=>m[mPKey]).join(' / ')}`;
+            nota=`Ambiguo: ${candidatesF.length} candidatos misma fecha: ${candidatesF.map(m=>m[mPKey]).join(' / ')}`;
           }
-          // Si length===0 → queda SIN_MALLA
         }
       }
 
