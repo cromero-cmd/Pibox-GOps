@@ -1224,7 +1224,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 
 <script>
-const APP_VERSION='14.63';
+const APP_VERSION='14.64';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -1880,15 +1880,37 @@ async function confirmClearMetrics(){
 // ── TURNO ──
 function getDeviceInfo(){const ua=navigator.userAgent;const isMobile=/Android|iPhone|iPad|iPod|Mobile/i.test(ua);return{isMobile,icon:isMobile?'📱':'💻',label:isMobile?'Móvil':'Desktop',ua:ua.substring(0,120)};}
 function formatDuration(s){const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sec=s%60;return`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;}
+function formatDeficit(s){
+  // s es negativo — muestra cuánto falta para completar el tiempo programado
+  const abs=Math.abs(s);
+  const h=Math.floor(abs/3600),m=Math.floor((abs%3600)/60),sec=abs%60;
+  return`-${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
+}
 
 function startTimer(){
   if(turnoInterval)clearInterval(turnoInterval);
   const ft=document.getElementById('floating-timer');if(ft)ft.style.display='flex';
   turnoInterval=setInterval(()=>{
     const elapsed=Math.floor((Date.now()-turnoStartTime.getTime())/1000)+accumulatedSeconds;
-    const f=formatDuration(elapsed);
-    document.getElementById('turno-timer').textContent=f;
-    const ftTime=document.getElementById('ft-time');if(ftTime)ftTime.textContent=f;
+    // Calcular balance vs horas programadas
+    const scheduledSecs=window._scheduledTurnoSecs||0;
+    let display,color='';
+    if(scheduledSecs>0){
+      const balance=elapsed-scheduledSecs;
+      if(balance<0){
+        display=formatDeficit(balance);
+        color='color:#f87171;'; // rojo — en déficit
+      } else {
+        display=formatDuration(elapsed);
+        color='color:#4ade80;'; // verde — completó o superó
+      }
+    } else {
+      display=formatDuration(elapsed);
+    }
+    const timerEl=document.getElementById('turno-timer');
+    if(timerEl){timerEl.textContent=display;timerEl.style.cssText=color;}
+    const ftTime=document.getElementById('ft-time');
+    if(ftTime){ftTime.textContent=display;ftTime.style.cssText=color;}
   },1000);
 }
 
@@ -1903,6 +1925,17 @@ async function initTurnoView(){
   const existing=await window.getTodayTurno();
   if(existing&&existing.status==='active'){
     currentTurnoId=existing.id;turnoStartTime=existing.startTime.toDate();accumulatedSeconds=existing.accumulatedSeconds||0;
+    // Cargar horas programadas para el déficit
+    if(existing.scheduledEndTime&&existing.startTime){
+      try{
+        const ss=existing.startTime.toDate();
+        const todayStr=ss.toLocaleDateString('es-CO',{day:'2-digit',month:'2-digit',year:'numeric'}).replace(/\//g,'/');
+        const seTime=existing.scheduledEndTime;
+        const seDate=parseTime(ss.toLocaleDateString('es-CO',{day:'2-digit',month:'2-digit',year:'numeric'}),seTime);
+        const prog=seDate&&ss?Math.max(0,Math.round((seDate-ss)/1000)):0;
+        window._scheduledTurnoSecs=prog;
+      }catch(e){window._scheduledTurnoSecs=0;}
+    }
     setTurnoActive(existing);startTimer();
   }else if(existing&&existing.status==='interrupted'){
     // Turno interrumpido — detener todo y mostrar solo banner
@@ -2037,30 +2070,45 @@ async function _doStartTurno(){
     alert('⚠️ El registro de turno solo está disponible desde un computador de escritorio.\n\nPor favor inicia sesión desde tu computador para registrar tu turno.');
     return;
   }
-  // Check malla for today - block if novedad exists
+  // Check malla for today
   const userEmail=document.getElementById('user-email').textContent;
   const today=new Date();
+  let mallaEntry=null;
   try{
     const resp=await fetch(MALLA_SCRIPT+'?sheet=Malla',{signal:AbortSignal.timeout(8000)});
     const csv=await resp.text();
     const lines=csv.trim().split('\n').slice(1);
-    const todayEntries=lines.map(l=>{const c=parseCSVLine(l);return{fecha:c[1]?.trim(),usuario:c[2]?.trim(),lider:c[9]?.trim(),novedad:c[10]?.trim()};})
+    const todayEntries=lines.map(l=>{const c=parseCSVLine(l);return{fecha:c[1]?.trim(),usuario:c[2]?.trim(),inicio:c[5]?.trim(),fin:c[6]?.trim(),lider:c[9]?.trim(),novedad:c[10]?.trim()};})
       .filter(m=>{
         if(!m.fecha||m.usuario!==userEmail)return false;
         const d=parseDate(m.fecha);
         return d&&d.toDateString()===today.toDateString();
       });
-    if(todayEntries.length>0&&todayEntries[0].novedad){
-      const novedad=todayEntries[0].novedad;
-      showTurnoBlocked(novedad);
-      return;
+    if(todayEntries.length===0){showTurnoBlocked('No tienes un turno programado para hoy en la malla.');return;}
+    mallaEntry=todayEntries[0];
+    if(mallaEntry.novedad){showTurnoBlocked(mallaEntry.novedad);return;}
+    // Punto 3: bloquear inicio anticipado (máximo TOLERANCE_MINS antes)
+    const scheduledStart=parseTime(mallaEntry.fecha,mallaEntry.inicio);
+    if(scheduledStart){
+      const minsEarly=Math.round((scheduledStart-today)/60000);
+      if(minsEarly>TOLERANCE_MINS){
+        const h=Math.floor(minsEarly/60),m=minsEarly%60;
+        showTurnoBlocked(`Tu turno inicia a las ${mallaEntry.inicio}. Podrás iniciar ${TOLERANCE_MINS} minutos antes. Faltan ${h>0?h+'h ':''} ${m}min.`);
+        return;
+      }
     }
   }catch(e){
-    // If malla check fails, allow start anyway
     console.warn('Malla check failed, allowing start:', e);
   }
 
   const device=getDeviceInfo();turnoStartTime=new Date();accumulatedSeconds=0;
+  // Guardar horas programadas para el cronómetro de déficit
+  if(mallaEntry){
+    const ss=parseTime(mallaEntry.fecha,mallaEntry.inicio);
+    const se=parseTime(mallaEntry.fecha,mallaEntry.fin);
+    window._scheduledTurnoSecs=ss&&se?Math.max(0,Math.round((se-ss)/1000)):0;
+    window._scheduledTurnoStart=ss;
+  }else{window._scheduledTurnoSecs=0;}
   const data={startTime:turnoStartTime,endTime:null,accumulatedSeconds:0,status:'active',device:device.label,isMobile:device.isMobile,ua:device.ua};
   currentTurnoId=await window.saveTurnoToFirebase(data);
   setTurnoActive({...data,startTime:{toDate:()=>turnoStartTime}});startTimer();
@@ -2508,7 +2556,7 @@ function setMallaLider(lider){
     el.style.background=el.dataset.lider===lider?'rgba(123,47,255,0.12)':'';
     el.querySelector('.malla-lider-check').textContent=el.dataset.lider===lider?'✓':'';
   });
-  renderMallaPersonal();
+  loadMallaPersonal(); // Recargar con el nuevo filtro
 }
 function togglePanel2LiderDropdown(){
   const menu=document.getElementById('panel2-lider-dropdown-menu');
@@ -2938,7 +2986,26 @@ async function loadPanel2(){
     activeFiltered.forEach(t=>{
       const id='p2a_'+t.id;const start=t.startTime?.toDate?.();const acc=t.accumulatedSeconds||0;
       if(!start)return;
-      panel2ActiveTimers[id]=setInterval(()=>{const el=document.getElementById(id);if(!el){clearInterval(panel2ActiveTimers[id]);return;}el.textContent=formatDuration(Math.floor((Date.now()-start.getTime())/1000)+acc);},1000);
+      // Calcular horas programadas para este agente
+      const mallaHoy=mallaData.find(m=>m.usuario===t.userEmail&&parseDate(m.fecha)?.toDateString()===start.toDateString());
+      const progSecs=mallaHoy?Math.max(0,Math.round(((parseTime(mallaHoy.fecha,mallaHoy.fin)||start)-(parseTime(mallaHoy.fecha,mallaHoy.inicio)||start))/1000)):0;
+      panel2ActiveTimers[id]=setInterval(()=>{
+        const el=document.getElementById(id);if(!el){clearInterval(panel2ActiveTimers[id]);return;}
+        const elapsed=Math.floor((Date.now()-start.getTime())/1000)+acc;
+        if(progSecs>0){
+          const balance=elapsed-progSecs;
+          if(balance<0){
+            el.textContent=formatDeficit(balance);
+            el.style.color='#f87171';
+          } else {
+            el.textContent=formatDuration(elapsed);
+            el.style.color='#4ade80';
+          }
+        } else {
+          el.textContent=formatDuration(elapsed);
+          el.style.color='#4ade80';
+        }
+      },1000);
     });
   }
 
@@ -3546,16 +3613,22 @@ async function reviewAbsence(userEmail,fecha,btn){
   }
 }
 async function reviewEarlyLeave(turnoId, justified, btn){
+  const originalText=btn.textContent;
   btn.textContent='Guardando...';btn.disabled=true;
+  // Deshabilitar el botón hermano también
+  const siblings=btn.parentElement?.querySelectorAll('button');
+  siblings?.forEach(b=>{if(b!==btn)b.disabled=true;});
   const status=justified?'justified':'not_justified';
   try{
     await window.updateTurnoInFirebase(turnoId,{earlyLeaveStatus:status});
     toast(justified?'✅ Salida justificada — nómina no afectada':'❌ Salida marcada como no justificada');
     setTimeout(()=>loadPanel2(),600);
   }catch(e){
-    btn.textContent=justified?'✅ Justificar':'❌ No justificar';
+    btn.textContent=originalText;
     btn.disabled=false;
-    toast('Error al guardar. Intenta de nuevo.');
+    siblings?.forEach(b=>{b.disabled=false;});
+    toast('❌ Error al guardar. Intenta de nuevo.');
+    console.error('reviewEarlyLeave error:',e);
   }
 }
 
