@@ -1029,7 +1029,7 @@ body.agent-preview-mode header{margin-top:34px;}
         <!-- Tarjetas de estado -->
         <div id="panel2-status-cards" style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px;padding:10px 14px;border-bottom:1px solid var(--border);"></div>
         <!-- Header tabla -->
-        <div style="display:grid;grid-template-columns:40px 180px 70px 90px 90px 80px 150px 100px 110px;gap:0;background:var(--surface2);border-bottom:1px solid var(--border);font-size:10px;font-weight:700;color:var(--text-dim);text-transform:uppercase;font-family:var(--mono);">
+        <div style="display:grid;grid-template-columns:40px 180px 70px 90px 90px 80px 1fr 130px;gap:0;background:var(--surface2);border-bottom:1px solid var(--border);font-size:10px;font-weight:700;color:var(--text-dim);text-transform:uppercase;font-family:var(--mono);">
           <div style="padding:8px 6px;border-right:1px solid var(--border);text-align:center;">Día</div>
           <div style="padding:8px 10px;border-right:1px solid var(--border);">Agente</div>
           <div style="padding:8px 10px;border-right:1px solid var(--border);">Fecha</div>
@@ -1037,10 +1037,6 @@ body.agent-preview-mode header{margin-top:34px;}
           <div style="padding:8px 10px;border-right:1px solid var(--border);">Real</div>
           <div style="padding:8px 10px;border-right:1px solid var(--border);">Dur.</div>
           <div style="padding:8px 10px;border-right:1px solid var(--border);">Acciones</div>
-          <div style="padding:8px 10px;border-right:1px solid var(--border);">
-            <div style="margin-bottom:3px;">Novedad</div>
-            <select id="panel2-novedad-filter" onchange="window._panel2ColFilters.novedad=this.value;loadPanel2()" style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:4px;color:var(--text-muted);font-size:9px;padding:1px 3px;font-family:var(--mono);cursor:pointer;"><option value="">Todas...</option></select>
-          </div>
           <div style="padding:8px 10px;">
             <div style="margin-bottom:3px;">Cumplimiento</div>
             <select id="panel2-estado-filter" onchange="window._panel2ColFilters.estado=this.value;loadPanel2()" style="background:var(--surface);border:1px solid var(--border);border-radius:4px;color:var(--text-muted);font-size:9px;padding:1px 3px;font-family:var(--mono);cursor:pointer;width:100%;">
@@ -1228,7 +1224,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 
 <script>
-const APP_VERSION='14.59';
+const APP_VERSION='14.60';
 const APP_CHANGELOG='Notificaciones de asistencia: recordatorio 10 min antes y alertas de tardanza al admin y agente.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -3074,7 +3070,7 @@ async function loadPanel2(){
     const re=r.realEnd?r.realEnd.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
     const dur=r.realStart&&r.realEnd?secsToHm(Math.max(0,(r.realEnd-r.realStart)/1000)):'—';
     const t=r.turno;
-    const gridCols='40px 180px 70px 90px 90px 80px 150px 100px 110px';
+    const gridCols='40px 180px 70px 90px 90px 80px 1fr 130px';
     return`<div style="display:grid;grid-template-columns:${gridCols};gap:0;border-bottom:1px solid var(--border);font-size:11px;align-items:stretch;">
       <div style="padding:8px 6px;border-right:1px solid var(--border);font-weight:700;color:var(--p2);font-family:var(--mono);display:flex;align-items:center;justify-content:center;">${dia}</div>
       <div style="padding:8px 10px;border-right:1px solid var(--border);display:flex;flex-direction:column;justify-content:center;min-width:0;"><div style="font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${r.nombre||r.usuario||''}">${r.nombre||r.usuario?.split('@')[0]||'—'}</div><div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${r.linea||'—'}</div></div>
@@ -3092,8 +3088,8 @@ async function loadPanel2(){
         ${!r.turnoId&&r.cumplStatus.cls==='ausente_justificada'?`<span style="font-size:9px;color:#4ade80;font-family:var(--mono);">✔ Ausencia justificada${r.absenceMotivo?' · '+r.absenceMotivo:''}</span>`:''}
         ${!r.turnoId&&r.cumplStatus.cls==='ausente_injustificada'?'<span style="font-size:9px;color:#f87171;font-family:var(--mono);">✖ Ausencia injustificada</span>':''}
         ${r.turnoId&&!t?.earlyLeave&&!t?.resumeAuthorized&&t?.status==='ended'?'<span style="font-size:9px;color:var(--text-dim);">—</span>':''}
+        ${!r.turnoId&&r.cumplStatus.cls!=='ausente'&&r.cumplStatus.cls!=='ausente_justificada'&&r.cumplStatus.cls!=='ausente_injustificada'?'<span style="font-size:9px;color:var(--text-dim);">—</span>':''}
       </div>
-      <div style="padding:6px 8px;border-right:1px solid var(--border);display:flex;align-items:flex-start;">${r.novedad?`<span style="background:rgba(167,139,250,0.1);border:1px solid rgba(167,139,250,0.3);color:#a78bfa;padding:2px 6px;border-radius:4px;font-family:var(--mono);font-size:9px;">${r.novedad}</span>`:'<span style="color:var(--text-dim);font-size:10px;">—</span>'}</div>
       <div style="padding:8px 10px;display:flex;align-items:center;"><span class="cumpl-status ${r.cumplStatus.cls}">${r.cumplStatus.icon} ${r.cumplStatus.label}</span></div>
     </div>`;
   }).join('');
