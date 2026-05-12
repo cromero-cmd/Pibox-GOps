@@ -839,6 +839,7 @@ body.agent-preview-mode header{margin-top:34px;}
           <div class="turno-card">
             <div class="turno-status" id="turno-status">Sin turno activo</div>
             <div class="turno-timer" id="turno-timer">00:00:00</div>
+            <div id="turno-deficit" style="display:none;font-size:11px;font-weight:600;font-family:var(--mono);margin-bottom:8px;"></div>
             <div class="turno-date" id="turno-date"></div>
             
             <div>
@@ -1224,7 +1225,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 
 <script>
-const APP_VERSION='14.65';
+const APP_VERSION='14.66';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -1892,25 +1893,22 @@ function startTimer(){
   const ft=document.getElementById('floating-timer');if(ft)ft.style.display='flex';
   turnoInterval=setInterval(()=>{
     const elapsed=Math.floor((Date.now()-turnoStartTime.getTime())/1000)+accumulatedSeconds;
-    // Calcular balance vs horas programadas
-    const scheduledSecs=window._scheduledTurnoSecs||0;
-    let display,color='';
-    if(scheduledSecs>0){
-      const balance=elapsed-scheduledSecs;
+    const f=formatDuration(elapsed);
+    document.getElementById('turno-timer').textContent=f;
+    const ftTime=document.getElementById('ft-time');if(ftTime)ftTime.textContent=f;
+    // Indicador de déficit/superávit
+    const defEl=document.getElementById('turno-deficit');
+    if(defEl&&window._scheduledTurnoSecs>0){
+      const balance=elapsed-window._scheduledTurnoSecs;
       if(balance<0){
-        display=formatDeficit(balance);
-        color='color:#f87171;'; // rojo — en déficit
+        defEl.textContent=`⏳ Faltan ${formatDeficit(balance).replace('-','')} para completar tu jornada`;
+        defEl.style.color='#f87171';
       } else {
-        display=formatDuration(elapsed);
-        color='color:#4ade80;'; // verde — completó o superó
+        defEl.textContent=`✅ Jornada completada${balance>0?' (+'+formatDuration(balance)+')':''}`;
+        defEl.style.color='#4ade80';
       }
-    } else {
-      display=formatDuration(elapsed);
+      defEl.style.display='block';
     }
-    const timerEl=document.getElementById('turno-timer');
-    if(timerEl){timerEl.textContent=display;timerEl.style.cssText=color;}
-    const ftTime=document.getElementById('ft-time');
-    if(ftTime){ftTime.textContent=display;ftTime.style.cssText=color;}
   },1000);
 }
 
@@ -2978,6 +2976,7 @@ async function loadPanel2(){
         <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:2px;">${name}</div>
         <div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);margin-bottom:8px;">${t.userEmail||''}</div>
         <div style="font-size:18px;font-weight:800;font-family:var(--mono);color:${isStuck?'#f87171':'#4ade80'};" id="${id}">00:00:00</div>
+        <div id="${id}_def" style="font-size:10px;font-weight:600;font-family:var(--mono);margin-top:2px;"></div>
         <div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);margin-bottom:10px;">desde las ${sinceStr}</div>
         ${userEmail===SUPER_ADMIN?`<button onclick="forceCloseTurno('${t.id}',this)" style="width:100%;background:rgba(248,113,113,0.12);border:1px solid rgba(248,113,113,0.4);color:#f87171;padding:5px 8px;border-radius:7px;font-size:11px;font-family:var(--mono);font-weight:700;cursor:pointer;">⚠ Forzar cierre</button>`:''}
       </div>`;
@@ -3004,11 +3003,19 @@ async function loadPanel2(){
     panel2ActiveTimers[id]=setInterval(()=>{
       const el=document.getElementById(id);if(!el){clearInterval(panel2ActiveTimers[id]);return;}
       const elapsed=Math.floor((Date.now()-start.getTime())/1000)+acc;
-      if(progSecs>0){
+      el.textContent=formatDuration(elapsed);
+      // Indicador de déficit debajo
+      const defEl=document.getElementById(id+'_def');
+      if(defEl&&progSecs>0){
         const balance=elapsed-progSecs;
-        if(balance<0){el.textContent=formatDeficit(balance);el.style.color='#f87171';}
-        else{el.textContent=formatDuration(elapsed);el.style.color='#4ade80';}
-      }else{el.textContent=formatDuration(elapsed);el.style.color='#4ade80';}
+        if(balance<0){
+          defEl.textContent=`⏳ Faltan ${formatDeficit(balance).replace('-','')}`;
+          defEl.style.color='#f87171';
+        } else {
+          defEl.textContent=`✅ Jornada completa`;
+          defEl.style.color='#4ade80';
+        }
+      }
     },1000);
   });
   window._pendingActiveTimers=[];
