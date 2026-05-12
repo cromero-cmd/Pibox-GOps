@@ -1224,7 +1224,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 
 <script>
-const APP_VERSION='14.64';
+const APP_VERSION='14.65';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -2967,8 +2967,7 @@ async function loadPanel2(){
   if(!activeFiltered.length){activeEl.innerHTML='<div style="color:var(--text-dim);font-size:12px;font-family:var(--mono);">Ningún usuario en turno ahora</div>';}
   else{
     const userEmail=document.getElementById('user-email').textContent;
-    activeEl.innerHTML=activeFiltered.map(t=>{
-      const name=t.userName||t.userEmail?.split('@')[0]||'—';
+    activeEl.innerHTML=activeFiltered.map(t=>{      const name=t.userName||t.userEmail?.split('@')[0]||'—';
       const since=t.startTime?.toDate?.();
       const sinceStr=since?since.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
       const id='p2a_'+t.id;
@@ -2983,30 +2982,8 @@ async function loadPanel2(){
         ${userEmail===SUPER_ADMIN?`<button onclick="forceCloseTurno('${t.id}',this)" style="width:100%;background:rgba(248,113,113,0.12);border:1px solid rgba(248,113,113,0.4);color:#f87171;padding:5px 8px;border-radius:7px;font-size:11px;font-family:var(--mono);font-weight:700;cursor:pointer;">⚠ Forzar cierre</button>`:''}
       </div>`;
     }).join('');
-    activeFiltered.forEach(t=>{
-      const id='p2a_'+t.id;const start=t.startTime?.toDate?.();const acc=t.accumulatedSeconds||0;
-      if(!start)return;
-      // Calcular horas programadas para este agente
-      const mallaHoy=mallaData.find(m=>m.usuario===t.userEmail&&parseDate(m.fecha)?.toDateString()===start.toDateString());
-      const progSecs=mallaHoy?Math.max(0,Math.round(((parseTime(mallaHoy.fecha,mallaHoy.fin)||start)-(parseTime(mallaHoy.fecha,mallaHoy.inicio)||start))/1000)):0;
-      panel2ActiveTimers[id]=setInterval(()=>{
-        const el=document.getElementById(id);if(!el){clearInterval(panel2ActiveTimers[id]);return;}
-        const elapsed=Math.floor((Date.now()-start.getTime())/1000)+acc;
-        if(progSecs>0){
-          const balance=elapsed-progSecs;
-          if(balance<0){
-            el.textContent=formatDeficit(balance);
-            el.style.color='#f87171';
-          } else {
-            el.textContent=formatDuration(elapsed);
-            el.style.color='#4ade80';
-          }
-        } else {
-          el.textContent=formatDuration(elapsed);
-          el.style.color='#4ade80';
-        }
-      },1000);
-    });
+    // Timers se inician después de cargar malla (ver abajo)
+    window._pendingActiveTimers=activeFiltered;
   }
 
   // Load malla completa
@@ -3017,6 +2994,24 @@ async function loadPanel2(){
     mallaData=csv.trim().split('\n').slice(1).map(l=>{const c=parseCSVLine(l);return{fecha:c[1]?.trim(),usuario:c[2]?.trim(),nombre:c[3]?.trim(),rol:c[4]?.trim(),inicio:c[5]?.trim(),fin:c[6]?.trim(),linea:c[8]?.trim(),lider:c[9]?.trim(),novedad:c[10]?.trim()};}).filter(m=>m.fecha&&m.usuario);
   }catch(e){}
   window._panel2MallaData=mallaData;
+
+  // Iniciar timers con déficit ahora que tenemos mallaData
+  (window._pendingActiveTimers||[]).forEach(t=>{
+    const id='p2a_'+t.id;const start=t.startTime?.toDate?.();const acc=t.accumulatedSeconds||0;
+    if(!start)return;
+    const mallaHoy=mallaData.find(m=>m.usuario===t.userEmail&&parseDate(m.fecha)?.toDateString()===start.toDateString());
+    const progSecs=mallaHoy?Math.max(0,Math.round(((parseTime(mallaHoy.fecha,mallaHoy.fin)||start)-(parseTime(mallaHoy.fecha,mallaHoy.inicio)||start))/1000)):0;
+    panel2ActiveTimers[id]=setInterval(()=>{
+      const el=document.getElementById(id);if(!el){clearInterval(panel2ActiveTimers[id]);return;}
+      const elapsed=Math.floor((Date.now()-start.getTime())/1000)+acc;
+      if(progSecs>0){
+        const balance=elapsed-progSecs;
+        if(balance<0){el.textContent=formatDeficit(balance);el.style.color='#f87171';}
+        else{el.textContent=formatDuration(elapsed);el.style.color='#4ade80';}
+      }else{el.textContent=formatDuration(elapsed);el.style.color='#4ade80';}
+    },1000);
+  });
+  window._pendingActiveTimers=[];
 
   // Rango de fechas
   let fromDate=null,toDate=null;
