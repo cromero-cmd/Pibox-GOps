@@ -1237,7 +1237,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 
 <script>
-const APP_VERSION='14.70';
+const APP_VERSION='14.71';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -2598,9 +2598,6 @@ function filterPanel2UserList(query){
     const name=el.querySelector('span:last-child')?.textContent?.toLowerCase()||'';
     el.style.display=!q||name.includes(q)?'flex':'none';
   });
-}
-  const menu=document.getElementById('malla-user-dropdown-menu');
-  if(menu)menu.style.display=menu.style.display==='none'?'block':'none';
 }
 // Cerrar dropdown al clicar fuera
 document.addEventListener('click',function(e){
