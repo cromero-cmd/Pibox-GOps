@@ -1224,7 +1224,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 
 <script>
-const APP_VERSION='14.61';
+const APP_VERSION='14.62';
 const APP_CHANGELOG='Notificaciones de asistencia: recordatorio 10 min antes y alertas de tardanza al admin y agente.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -2962,7 +2962,9 @@ async function loadPanel2(){
   const mallaFiltrada=mallaData.filter(m=>{const d=parseDate(m.fecha);if(!d)return false;if(fromDate&&d<fromDate)return false;if(toDate&&d>toDate)return false;return true;});
   panel2AllRows=mallaFiltrada.map(m=>{
     const ss=parseTime(m.fecha,m.inicio),se=parseTime(m.fecha,m.fin);
-    const mt=allTurnos.find(t=>{if(t.userEmail!==m.usuario)return false;const td=t.startTime?.toDate?.();const md=parseDate(m.fecha);return td&&md&&td.toDateString()===md.toDateString();});
+    // Buscar todos los turnos del usuario en ese día, priorizar ended > interrupted > active
+    const dayTurnos=allTurnos.filter(t=>{if(t.userEmail!==m.usuario)return false;const td=t.startTime?.toDate?.();const md=parseDate(m.fecha);return td&&md&&td.toDateString()===md.toDateString();});
+    const mt=dayTurnos.find(t=>t.status==='ended')||dayTurnos.find(t=>t.status==='interrupted')||dayTurnos[0]||null;
     const rs=mt?mt.startTime.toDate():null;
     const hasEnded=mt?mt.status==='ended':false;
     const re=mt?.endTime?.toDate?mt.endTime.toDate():null;
