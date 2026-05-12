@@ -1237,7 +1237,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 
 <script>
-const APP_VERSION='14.71';
+const APP_VERSION='14.72';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -3081,7 +3081,7 @@ async function loadPanel2(){
   // Tarjeta de balance hoy
   const balanceEl=document.getElementById('panel2-balance-card');
   if(balanceEl){
-    const todayMalla=mallaData.filter(m=>{const d=parseDate(m.fecha);return d&&d>=sod&&d<=eod;});
+    const todayMalla=mallaData.filter(m=>{const d=parseDate(m.fecha);return d&&d>=sod&&d<=eod&&!m.novedad?.trim();});
     const prog=todayMalla.length;
     const registraron=allTurnos.filter(t=>{const d=t.startTime?.toDate?.();return d&&d>=sod&&d<=eod&&(t.status==='active'||t.status==='ended');}).length;
     const pendientes=Math.max(0,prog-registraron);
