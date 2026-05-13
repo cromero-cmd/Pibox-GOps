@@ -1846,17 +1846,17 @@ function runTrump(){
       const pMinLJ = t.p_min_lj   ?? 70000;
       const pMinVD = t.p_min_vd   ?? 80000;
 
-      // ── Ingresos operativos netos del piloto este booking ─
+      // ── Ingresos operativos netos del piloto (sin tareas) ─
+      // Tareas van en ADDITIONAL_FINAL_COST, no en FINAL_COST
       const ingresoNeto = r.paquetes_dist   * pPaq
                         + r.incentivos_dist * pInc
-                        + r.cancelados_dist * pCan
-                        + r.tareas_dist     * pTar;
+                        + r.cancelados_dist * pCan;
 
-      // ── Cobro operativo a TaDa ────────────────────────────
+      // ── Cobro operativo a TaDa (sin tareas) ──────────────
+      // Tareas van en ADDITIONAL_COMPANY_FINAL_COST
       const cobroOp = r.paquetes_dist   * cPaq
                     + r.incentivos_dist * cInc
-                    + r.cancelados_dist * cCan
-                    + r.tareas_dist     * cTar;
+                    + r.cancelados_dist * cCan;
 
       // ── Garantizado ───────────────────────────────────────
       // Lógica de COMPLETAR, no de SUMAR:
@@ -1871,38 +1871,37 @@ function runTrump(){
       let cobroGarantizado  = 0;
 
       if(ingresoNeto < minimoNeto){
-        complementoPiloto = minimoNeto - ingresoNeto; // lo que falta para llegar al mínimo
-        // El cobro al cliente es la tarifa fija SI supera el cobro operativo,
-        // de lo contrario se queda con el cobro operativo
+        complementoPiloto = minimoNeto - ingresoNeto;
         cobroGarantizado = tarifaGarCl > cobroOp ? tarifaGarCl : cobroOp;
       }
 
-      // ── Bonos y ajustes (valores netos de TADA) ──────────
-      // Solo se asignan al primer booking del grupo (ya gestionado en distribución)
+      // ── Additional: tareas + bonos + ajustes ─────────────
+      // Tareas: tarifa fija × unidades (neto piloto)
+      // Bonos/ajustes: valores netos directos de TADA
+      const vTarPiloto = r.tareas_dist * pTar;  // neto piloto
+      const vTarCliente= r.tareas_dist * cTar;  // cobro cliente
       const bonos   = r.bonos   || 0;
       const ajustes = r.ajustes || 0;
-      const adicNeto = bonos + ajustes;
+      const adicNeto    = vTarPiloto + bonos + ajustes;  // pago piloto
+      const adicCliente = vTarCliente + bonos + ajustes; // base para gross-up cliente
 
       // ── FINAL_COST (pago piloto → Trump descuenta 15%) ───
-      // Gross-up simple: neto ÷ (1 - pctPlat)
       const netoTotal  = ingresoNeto + complementoPiloto;
       const FINAL_COST = Math.round(netoTotal / (1 - pctPlat));
 
-      // ADDITIONAL_FINAL_COST: Trump NO descuenta 15% en este campo
-      // → el valor neto de TADA va directo, sin gross-up
+      // ADDITIONAL_FINAL_COST: Trump NO descuenta 15% → va directo
       const ADDITIONAL_FINAL_COST = adicNeto;
 
       // ── COMPANY_FINAL_COST (cobro a TaDa) ────────────────
-      // Si aplica garantizado → cobro = tarifa garantizada (reemplaza al operativo)
-      // Si no aplica → cobro = cobro operativo
       const COMPANY_FINAL_COST = cobroGarantizado > 0 ? cobroGarantizado : cobroOp;
 
-      // ── ADDITIONAL_COMPANY_FINAL_COST (bonos/ajustes) ───
-      // Gross-up secuencial Opción A: primero margen corp, luego plataforma
-      // cobro = neto ÷ (1 - pctMarg) ÷ (1 - pctPlat)
-      const ADDITIONAL_COMPANY_FINAL_COST = adicNeto > 0
-        ? Math.round(adicNeto / (1 - pctMarg) / (1 - pctPlat))
+      // ── ADDITIONAL_COMPANY_FINAL_COST ────────────────────
+      // Tareas: tarifa fija de cobro (ya incluye margen) → sin gross-up
+      // Bonos/ajustes: valores netos → gross-up secuencial ÷ 0.97 ÷ 0.85
+      const adicBonosAjustesGrossed = (bonos + ajustes) > 0
+        ? Math.round((bonos + ajustes) / (1 - pctMarg) / (1 - pctPlat))
         : 0;
+      const ADDITIONAL_COMPANY_FINAL_COST = vTarCliente + adicBonosAjustesGrossed;
 
       // ── COMMENTS detallado (auditoría interna) ───────────
       const COMMENTS =
@@ -1910,7 +1909,7 @@ function runTrump(){
         `Paq:${r.paquetes_dist}x${cop(pPaq)}=${cop(r.paquetes_dist*pPaq)} | `+
         `Inc:${r.incentivos_dist}x${cop(pInc)}=${cop(r.incentivos_dist*pInc)} | `+
         `Can:${r.cancelados_dist}x${cop(pCan)}=${cop(r.cancelados_dist*pCan)} | `+
-        `Tar:${r.tareas_dist}x${cop(pTar)}=${cop(r.tareas_dist*pTar)} | `+
+        `[Additional] Tar:${r.tareas_dist}x${cop(pTar)}=${cop(vTarPiloto)} | `+
         `Min:${cop(minimoNeto)} Ingreso:${cop(ingresoNeto)} Compl:${cop(complementoPiloto)} | `+
         `Bonos:${cop(bonos)} Aj:${cop(ajustes)} | Conf:${r.nivel_confianza}`;
 
@@ -1938,6 +1937,7 @@ function runTrump(){
         `Can ${r.cancelados_dist} `+
         `Tar ${r.tareas_dist} `+
         (complementoPiloto>0 ? `Garantizado ${copClean(minimoNeto)} ` : '')+
+        (vTarPiloto>0        ? `Tareas ${r.tareas_dist} `              : '')+
         (bonos>0             ? `Bonos ${copClean(bonos)} `             : '')+
         (ajustes!==0         ? `Aj ${copClean(Math.abs(ajustes))} `    : '')+
         `COP`;
