@@ -1119,7 +1119,9 @@ function runDistribucion(){
         distResult.push({
           booking_id:m[mBKey]||'?', driver_id:m[mDKey]||'PENDIENTE',
           piloto:row.piloto, ciudad:row.ciudad, seller:m[mSKey]||row.seller,
-          fecha:row.fecha, hora_inicio:m[mHKey]||'—',
+          fecha:row.fecha,
+          fecha_malla: String(m[mFKey]||row.fecha).trim(), // fecha de la malla → fuente de verdad para L-J/V-D
+          hora_inicio:m[mHKey]||'—',
           paquetes_dist: Math.round(row.paquetes/n),
           incentivos_dist:Math.round(row.incentivos/n),
           cancelados_dist:Math.round(row.cancelados/n),
@@ -1187,7 +1189,10 @@ function runTrump(){
     }
 
     trumpRows = distResult.map(r=>{
-      const lj = esDiaLJ(r.fecha);
+      // Usar fecha de la malla (ya normalizada YYYY-MM-DD) como fuente de verdad
+      // para determinar si el día es valle (L-J) o pico (V-D)
+      // La fecha de TADA puede ser de una semana diferente
+      const lj = esDiaLJ(r.fecha_malla || r.fecha);
 
       // ── Tarifas cobro cliente ────────────────────────────
       const cPaq = t.c_paquete    ?? 8870;
@@ -1264,14 +1269,13 @@ function runTrump(){
         : 0;
 
       const COMMENTS =
+        `Fecha malla:${r.fecha_malla||r.fecha} Día:${lj?'L-J':'V-D'} | `+
         `Paq:${r.paquetes_dist}×${cop(pPaq)}=${cop(r.paquetes_dist*pPaq)} | `+
         `Inc:${r.incentivos_dist}×${cop(pInc)}=${cop(r.incentivos_dist*pInc)} | `+
         `Can:${r.cancelados_dist}×${cop(pCan)}=${cop(r.cancelados_dist*pCan)} | `+
         `Tar:${r.tareas_dist}×${cop(pTar)}=${cop(r.tareas_dist*pTar)} | `+
-        `Día:${lj?'L-J':'V-D'} Min:${cop(minimoNeto)} `+
-        `Ingreso:${cop(ingresoNeto)} Compl:${cop(complementoPiloto)} | `+
-        `Bonos:${cop(bonos)} Aj:${cop(ajustes)} | `+
-        `Conf:${r.nivel_confianza}`;
+        `Min:${cop(minimoNeto)} Ingreso:${cop(ingresoNeto)} Compl:${cop(complementoPiloto)} | `+
+        `Bonos:${cop(bonos)} Aj:${cop(ajustes)} | Conf:${r.nivel_confianza}`;
 
       return {
         BOOKING_ID:                    r.booking_id,
