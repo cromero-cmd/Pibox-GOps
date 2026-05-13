@@ -1419,9 +1419,12 @@ function runTrump(){
 
     const TC=['BOOKING_ID','COMPANY_FINAL_COST','ADDITIONAL_COMPANY_FINAL_COST',
       'DISPUTED_COMPANY_FINAL_COST','FINAL_COST','ADDITIONAL_FINAL_COST',
+      'DISPUTED_FINAL_COST','PACKAGES_COUNT','IS_PER_HOUR','COMMENTS_PILOTO'];
+    const TC_HEADS=['BOOKING_ID','COMPANY_FINAL_COST','ADDITIONAL_COMPANY_FINAL_COST',
+      'DISPUTED_COMPANY_FINAL_COST','FINAL_COST','ADDITIONAL_FINAL_COST',
       'DISPUTED_FINAL_COST','PACKAGES_COUNT','IS_PER_HOUR','COMMENTS'];
     tableData['trump-data']=trumpRows;
-    mkTable('tbl-trump',trumpRows,TC,TC,
+    mkTable('tbl-trump',trumpRows,TC,TC_HEADS,
       r=>!['HIGH','FUZZY-HIGH'].includes(r._confianza)?' style="background:rgba(240,190,53,0.04)"':'','trump');
 
     clearLog('log-trump');
