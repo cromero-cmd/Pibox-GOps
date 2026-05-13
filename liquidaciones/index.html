@@ -1469,6 +1469,87 @@ function renderModuloNovedades(){
   });
 }
 
+function explicarNovedad(n){
+  // Extraer datos relevantes de la nota técnica para generar explicación humana
+  const tipo = n.tipo;
+
+  if(tipo === 'LOW'){
+    // Extraer sellers de la nota: seller TADA="X" vs malla="Y"
+    const mTada  = n.nota.match(/seller TADA="([^"]+)"/);
+    const mMalla = n.nota.match(/malla="([^"]+)"/);
+    const sellerTada  = mTada  ? mTada[1]  : n.seller;
+    const sellerMalla = mMalla ? mMalla[1] : '?';
+    return `<div style="margin-bottom:10px;">
+      <div style="font-size:11px;font-weight:600;color:var(--yellow);margin-bottom:6px;">⚠ El seller en TADA no coincide con el registrado en la malla.</div>
+      <div style="display:grid;grid-template-columns:90px 1fr;gap:4px;font-size:11px;font-family:var(--mono);line-height:1.8;">
+        <span style="color:var(--text3);">TADA reporta:</span>  <span style="color:var(--text);">${sellerTada}</span>
+        <span style="color:var(--text3);">Malla registra:</span><span style="color:var(--text);">${sellerMalla}</span>
+      </div>
+      <div style="margin-top:8px;font-size:11px;color:var(--text2);">
+        ¿Es el mismo piloto trabajando en un punto diferente al registrado?<br>
+        → <strong>Confirma</strong> si los datos son correctos y quieres incluirlo en la liquidación.<br>
+        → <strong>Excluye</strong> si crees que es un error de asignación.
+      </div>
+    </div>`;
+  }
+
+  if(tipo === 'FUZZY-LOW'){
+    const mTada  = n.nota.match(/TADA="([^"]+)"/);
+    const mMalla = n.nota.match(/malla="([^"]+)"/i);
+    const nomTada  = mTada  ? mTada[1]  : n.piloto;
+    const nomMalla = mMalla ? mMalla[1] : '?';
+    return `<div style="margin-bottom:10px;">
+      <div style="font-size:11px;font-weight:600;color:var(--yellow);margin-bottom:6px;">⚠ El nombre del piloto es similar pero no idéntico, y el seller tampoco coincide.</div>
+      <div style="display:grid;grid-template-columns:90px 1fr;gap:4px;font-size:11px;font-family:var(--mono);line-height:1.8;">
+        <span style="color:var(--text3);">TADA:</span>  <span style="color:var(--text);">${nomTada}</span>
+        <span style="color:var(--text3);">Malla:</span> <span style="color:var(--text);">${nomMalla}</span>
+      </div>
+      <div style="margin-top:8px;font-size:11px;color:var(--text2);">
+        ¿Es la misma persona con nombre escrito diferente en cada sistema?<br>
+        → <strong>Confirma</strong> si es el mismo piloto y quieres incluirlo.<br>
+        → <strong>Excluye</strong> si no estás seguro o es una persona diferente.
+      </div>
+    </div>`;
+  }
+
+  if(tipo === 'AMBIGUOUS'){
+    return `<div style="margin-bottom:10px;">
+      <div style="font-size:11px;font-weight:600;color:var(--red);margin-bottom:6px;">⚠ Hay ${n.matches.length} pilotos diferentes registrados en la malla para esta misma fecha y punto de venta.</div>
+      <div style="font-size:11px;color:var(--text2);">
+        El sistema no puede determinar cuál de ellos corresponde al registro de TADA porque comparten palabras en el nombre.<br>
+        → <strong>Selecciona</strong> el candidato correcto de la lista de abajo.<br>
+        → Si ninguno es correcto, <strong>ingresa manualmente</strong> el nombre y booking.<br>
+        → <strong>Excluye</strong> si prefieres no incluirlo en esta liquidación.
+      </div>
+    </div>`;
+  }
+
+  if(tipo === 'SIN_BOOKING'){
+    return `<div style="margin-bottom:10px;">
+      <div style="font-size:11px;font-weight:600;color:var(--red);margin-bottom:6px;">⚠ Este registro existe en la malla pero no tiene un Booking ID asignado.</div>
+      <div style="font-size:11px;color:var(--text2);">
+        Sin Booking ID no es posible cargar el pago en Trump.<br>
+        → <strong>Ingresa el Booking ID</strong> manualmente si lo tienes disponible y confirma.<br>
+        → <strong>Excluye</strong> si el servicio no debe liquidarse en este ciclo.
+      </div>
+    </div>`;
+  }
+
+  if(tipo === 'SIN_MALLA'){
+    return `<div style="margin-bottom:10px;">
+      <div style="font-size:11px;font-weight:600;color:var(--text3);margin-bottom:6px;">ℹ Este piloto aparece en TADA pero no tiene ningún registro en la malla Pibox para esa fecha.</div>
+      <div style="font-size:11px;color:var(--text2);">
+        Posibles causas: el servicio no se registró en la malla, la fecha no coincide, o el piloto no estaba activo ese día.<br>
+        → Este registro ya está excluido de la liquidación.<br>
+        → Confirma la exclusión o revisa la malla antes de reliquidar.
+      </div>
+    </div>`;
+  }
+
+  // Fallback: mostrar nota técnica
+  return `<div class="nov-nota">${n.nota}</div>`;
+}
+
 function renderNovCard(n, i){
   const res = resoluciones[i];
   const cardCls = res ? (res.accion==='ok'?'resuelto':'excluido') : '';
@@ -1523,7 +1604,11 @@ function renderNovCard(n, i){
       ${statusHtml}
     </div>
     <div class="nov-body">
-      <div class="nov-nota">${n.nota}</div>
+      ${explicarNovedad(n)}
+      <details style="margin-bottom:10px;">
+        <summary style="font-size:10px;color:var(--text3);cursor:pointer;font-family:var(--mono);">Ver detalle técnico</summary>
+        <div style="font-size:10px;font-family:var(--mono);color:var(--text3);margin-top:6px;padding:6px 8px;background:var(--bg3);border-radius:4px;line-height:1.6;">${n.nota}</div>
+      </details>
       ${candidatosHtml}
       ${bookingHtml}
       <div class="nov-actions">
