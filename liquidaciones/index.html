@@ -410,14 +410,31 @@ function hideProcessing(){ document.getElementById('proc-banner').classList.remo
 
 function parseDate(raw){
   if(raw===null||raw===undefined||raw==='') return null;
+  // Serial numérico de Excel → más confiable que cualquier string
   if(typeof raw==='number'){ try{ const d=XLSX.SSF.parse_date_code(raw); if(d&&d.y>1900) return `${d.y}-${String(d.m).padStart(2,'0')}-${String(d.d).padStart(2,'0')}`; }catch{} }
   const s=String(raw).trim();
   if(!s||s==='—') return null;
+  // Ya YYYY-MM-DD correcto
   if(/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10);
+  // DD/MM/YYYY o MM/DD/YYYY — detectar por heurística:
+  // si el primer número > 12 → es DD/MM/YYYY (día no puede ser mes)
+  // si el segundo número > 12 → es MM/DD/YYYY (mes no puede ser día)
+  // si ambos ≤ 12 → asumir DD/MM/YYYY (convención Colombia)
   const m1=s.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})$/);
-  if(m1){ let y=parseInt(m1[3]); if(y<100)y+=2000; return `${y}-${String(parseInt(m1[2])).padStart(2,'0')}-${String(parseInt(m1[1])).padStart(2,'0')}`; }
+  if(m1){
+    let y=parseInt(m1[3]); if(y<100)y+=2000;
+    const a=parseInt(m1[1]), b=parseInt(m1[2]);
+    let day, mon;
+    if(a>12){ day=a; mon=b; }       // a>12 → definitivamente día
+    else if(b>12){ day=b; mon=a; }  // b>12 → definitivamente mes → a es día? No: a=mes, b=día
+    else { day=a; mon=b; }           // ambos ≤12 → asumir DD/MM (Colombia)
+    // Corrección: si b>12, significa que b es el día y a es el mes (MM/DD/YYYY)
+    if(b>12){ mon=a; day=b; }
+    return `${y}-${String(mon).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+  }
+  // DD/MM sin año
   const m2=s.match(/^(\d{1,2})[\/\-\.](\d{1,2})$/);
-  if(m2){ const y=new Date().getFullYear(); return `${y}-${String(parseInt(m2[2])).padStart(2,'0')}-${String(parseInt(m2[1])).padStart(2,'0')}`; }
+  if(m2){ const y=new Date().getFullYear(); const a=parseInt(m2[1]),b=parseInt(m2[2]); const day=a>12?a:a, mon=a>12?b:b; return `${y}-${String(mon).padStart(2,'0')}-${String(day).padStart(2,'0')}`; }
   return s;
 }
 
@@ -935,11 +952,13 @@ function runConciliacion(){
     if(!mallaRaw.length){ addLog('log-conc','[ERR] Carga la malla Pibox','err'); hideProcessing(); return; }
 
     const mKeys=Object.keys(mallaRaw[0]);
-    const mFKey=mKeys.find(k=>/fecha/i.test(k))||'fecha';
-    const mSKey=mKeys.find(k=>/seller|punto|tienda/i.test(k))||'seller';
-    const mPKey=mKeys.find(k=>/piloto|nombre|conductor|driver.?name/i.test(k))||'piloto';
-    const mBKey=mKeys.find(k=>/booking/i.test(k))||'booking_id';
-    const mDKey=mKeys.find(k=>/driver.?id/i.test(k))||'driver_id';
+    const mFKey=mKeys.find(k=>/fecha/i.test(k))||'FECHA';
+    const mSKey=mKeys.find(k=>/seller|punto|tienda/i.test(k))||'SELLER';
+    const mPKey=mKeys.find(k=>/nombre.de.piloto|nombre.*piloto|piloto|conductor|driver.?name/i.test(k))||
+                mKeys.find(k=>/nombre/i.test(k))||'NOMBRE DE PILOTO';
+    const mBKey=mKeys.find(k=>/booking/i.test(k))||'BOOKING SERVICIO';
+    const mDKey=mKeys.find(k=>/^id.piloto$|driver.?id/i.test(k))||
+                mKeys.find(k=>/id.piloto/i.test(k))||'ID PILOTO';
     addLog('log-conc',`[INFO] Malla — fecha:"${mFKey}" seller:"${mSKey}" piloto:"${mPKey}" booking:"${mBKey}"`,'info');
 
     // ── Índices de match exacto ─────────────────────────────
@@ -1106,11 +1125,17 @@ function runDistribucion(){
     try{
       distResult=[];
       const mKeys=Object.keys(mallaRaw[0]||{});
-      const mBKey=mKeys.find(k=>/booking/i.test(k))||'booking_id';
-      const mDKey=mKeys.find(k=>/driver.?id/i.test(k))||'driver_id';
-      const mSKey=mKeys.find(k=>/seller|punto|tienda/i.test(k))||'seller';
-      const mHKey=mKeys.find(k=>/hora/i.test(k))||'hora_inicio';
-      const mFKey=mKeys.find(k=>/fecha/i.test(k))||'fecha'; // ← definir aquí también
+      const mBKey=mKeys.find(k=>/booking/i.test(k))||'BOOKING SERVICIO';
+      const mDKey=mKeys.find(k=>/^id[\s_]?piloto$/i.test(k.trim()))||
+                  mKeys.find(k=>/id.*piloto|driver.?id/i.test(k))||'ID PILOTO';
+      const mSKey=mKeys.find(k=>/seller|punto|tienda/i.test(k))||'SELLER';
+      const mHKey=mKeys.find(k=>/inicio.*turno|hora.*inicio|hora_inicio/i.test(k))||
+                  mKeys.find(k=>/inicio/i.test(k))||'INICIO DE TURNO';
+      const mFKey=mKeys.find(k=>/^fecha$/i.test(k.trim()))||
+                  mKeys.find(k=>/fecha/i.test(k))||'FECHA';
+      // Columna DÍA — viene como "DÍA" en la malla real
+      const mDiaKey=mKeys.find(k=>/^d[íi]a$/i.test(k.trim()))||
+                    mKeys.find(k=>/d[íi]a/i.test(k))||null;
 
       // Niveles que pasan a distribución (los demás se excluyen)
       const NIVELES_OK=new Set(['HIGH','MEDIUM','LOW','FUZZY-HIGH','FUZZY-LOW']);
@@ -1120,10 +1145,11 @@ function runDistribucion(){
           const first=i===0;
           // fecha_malla: fecha real del booking en la malla → fuente de verdad para L-J/V-D
           const fechaMalla = String(m[mFKey]||row.fecha||'').trim();
+          const diaMalla   = mDiaKey ? String(m[mDiaKey]||'').trim() : '';
           distResult.push({
             booking_id:m[mBKey]||'?', driver_id:m[mDKey]||'PENDIENTE',
             piloto:row.piloto, ciudad:row.ciudad, seller:m[mSKey]||row.seller,
-            fecha:row.fecha, fecha_malla:fechaMalla,
+            fecha:row.fecha, fecha_malla:fechaMalla, dia_malla:diaMalla,
             hora_inicio:m[mHKey]||'—',
             paquetes_dist: Math.round(row.paquetes/n),
             incentivos_dist:Math.round(row.incentivos/n),
@@ -1176,29 +1202,31 @@ function runTrump(){
     // ── Días valle (L-J) vs pico (V-D) ──────────────────────
     const DIAS_LJ = new Set(['lunes','martes','miércoles','miercoles','jueves']);
 
-    function esDiaLJ(fecha){
-      // Parsear manualmente YYYY-MM-DD para evitar el bug de zona horaria
-      // de JavaScript donde new Date('2026-04-21') se interpreta como UTC
-      // medianoche y en Bogotá (UTC-5) retorna el día anterior.
+    const DIAS_VD_SET = new Set(['viernes','sabado','sábado','domingo','friday','saturday','sunday']);
+    const DIAS_LJ_SET = new Set(['lunes','martes','miercoles','miércoles','jueves','monday','tuesday','wednesday','thursday']);
+
+    function esDiaLJ(r){
+      // Prioridad 1: nombre del día directo de la malla (más confiable)
+      if(r.dia_malla){
+        const d=r.dia_malla.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+        if(DIAS_VD_SET.has(d)) return false;
+        if(DIAS_LJ_SET.has(d)) return true;
+      }
+      // Prioridad 2: calcular desde fecha_malla como fallback
       try{
-        const parts = String(fecha).split('-');
-        if(parts.length === 3){
-          const y = parseInt(parts[0]);
-          const m = parseInt(parts[1]) - 1; // mes 0-indexado
-          const d = parseInt(parts[2]);
-          // Usar constructor local: Date(año, mes, día) → sin zona horaria
-          const dow = new Date(y, m, d).getDay(); // 0=Dom,1=Lun,2=Mar,3=Mie,4=Jue,5=Vie,6=Sab
-          return dow >= 1 && dow <= 4; // L=1, M=2, X=3, J=4 → true = día valle
+        const parts=String(r.fecha_malla||r.fecha||'').trim().split('-');
+        if(parts.length===3){
+          let y=parseInt(parts[0]),p1=parseInt(parts[1]),p2=parseInt(parts[2]);
+          let mon=p1>12?p2:p1, day=p1>12?p1:p2;
+          const dow=new Date(y,mon-1,day).getDay();
+          return dow>=1&&dow<=4;
         }
       }catch{}
-      return true; // default L-J si no se puede parsear
+      return true; // default L-J
     }
 
     trumpRows = distResult.map(r=>{
-      // Usar fecha de la malla (ya normalizada YYYY-MM-DD) como fuente de verdad
-      // para determinar si el día es valle (L-J) o pico (V-D)
-      // La fecha de TADA puede ser de una semana diferente
-      const lj = esDiaLJ(r.fecha_malla || r.fecha);
+      const lj = esDiaLJ(r);
 
       // ── Tarifas cobro cliente ────────────────────────────
       const cPaq = t.c_paquete    ?? 8870;
@@ -1368,10 +1396,11 @@ function downloadTrump(){
   const ws1=XLSX.utils.json_to_sheet(trumpRows.map(r=>Object.fromEntries(TC.map(c=>[c,r[c]]))));
   ws1['!cols']=TC.map(c=>({wch:c==='COMMENTS'?70:c==='BOOKING_ID'?18:26}));
   const mKeys=Object.keys(mallaRaw[0]||{});
-  const mBKey=mKeys.find(k=>/booking/i.test(k))||'booking_id';
-  const mFKey=mKeys.find(k=>/fecha/i.test(k))||'fecha';
-  const mSKey=mKeys.find(k=>/seller/i.test(k))||'seller';
-  const mPKey=mKeys.find(k=>/piloto|nombre/i.test(k))||'piloto';
+  const mBKey=mKeys.find(k=>/booking/i.test(k))||'BOOKING SERVICIO';
+  const mFKey=mKeys.find(k=>/^fecha$/i.test(k.trim()))||mKeys.find(k=>/fecha/i.test(k))||'FECHA';
+  const mSKey=mKeys.find(k=>/seller/i.test(k))||'SELLER';
+  const mPKey=mKeys.find(k=>/nombre.de.piloto|nombre.*piloto/i.test(k))||
+              mKeys.find(k=>/nombre/i.test(k))||'NOMBRE DE PILOTO';
   const incon=[];
   concResult.filter(r=>r.nivel_confianza==='SIN_MALLA').forEach(r=>incon.push({tipo:'SIN_MALLA',piloto:r.piloto,fecha:r.fecha,seller:r.seller,booking_id:'—',nota:'Sin match de ningún tipo — excluido'}));
   concResult.filter(r=>r.nivel_confianza==='AMBIGUOUS').forEach(r=>incon.push({tipo:'AMBIGUOUS',piloto:r.piloto,fecha:r.fecha,seller:r.seller,booking_id:'—',nota:r.nota}));
