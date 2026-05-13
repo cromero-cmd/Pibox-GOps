@@ -1286,9 +1286,9 @@ function runTrump(){
       const netoTotal  = ingresoNeto + complementoPiloto;
       const FINAL_COST = Math.round(netoTotal / (1 - pctPlat));
 
-      // ── ADDITIONAL_FINAL_COST (bonos/ajustes gross-up) ──
-      // Trump también descuenta 15% sobre este campo
-      const ADDITIONAL_FINAL_COST = Math.round(adicNeto / (1 - pctPlat));
+      // ADDITIONAL_FINAL_COST: Trump NO descuenta 15% en este campo
+      // → el valor neto de TADA va directo, sin gross-up
+      const ADDITIONAL_FINAL_COST = adicNeto;
 
       // ── COMPANY_FINAL_COST (cobro a TaDa) ────────────────
       // Si aplica garantizado → cobro = tarifa garantizada (reemplaza al operativo)
