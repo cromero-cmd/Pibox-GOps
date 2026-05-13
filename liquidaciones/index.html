@@ -1135,7 +1135,7 @@ function runConciliacion(){
       addLog('log-conc',`[WARN] Huérfano malla: ${m[mBKey]||'?'} · ${m[mPKey]||''} · ${m[mFKey]||''}`,'warn'));
 
     renderConcStats();
-    renderConcTable(null);
+    renderConcTable();
     hideProcessing();
     unlock(3);
   },50);
