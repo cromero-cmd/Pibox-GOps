@@ -1032,11 +1032,34 @@ function runConciliacion(){
       const a=`${rp}||${rf}||${rs}`, b=`${rp}||${rf}`;
       let matches=[], nivel='SIN_MALLA', nota='';
 
+      // Helper: describir un candidato de la malla con su booking y horario
+      const descCandidato=(m)=>{
+        const bk  = m[mBKey]||'SIN BOOKING';
+        const hora= m[mHKey]||'sin hora';
+        const nom = m[mPKey]||'';
+        return `${nom} · ${hora} · booking:${bk}`;
+      };
+
       // ── NIVEL 1: Match exacto piloto+fecha+seller ────────
       if(idx3[a]?.length){
         matches=idx3[a];
-        nivel=matches.length===1?'HIGH':'MEDIUM';
-        nota=nivel==='HIGH'?'Exacto piloto+fecha+seller':`${matches.length} bookings → franja horaria`;
+        if(matches.length===1){
+          nivel='HIGH';
+          nota='Exacto piloto+fecha+seller';
+        } else {
+          nivel='MEDIUM';
+          // Detectar si algún registro no tiene booking
+          const sinBooking = matches.filter(m=>!m[mBKey]||String(m[mBKey]).trim()==='');
+          const conBooking = matches.filter(m=> m[mBKey]&&String(m[mBKey]).trim()!=='');
+          if(sinBooking.length>0){
+            nota=`${matches.length} registros en malla · ${sinBooking.length} SIN BOOKING SERVICIO · `+
+                 `Con booking: ${conBooking.map(m=>`${m[mHKey]||'?'} → ${m[mBKey]}`).join(' / ')} · `+
+                 `Sin booking: turnos ${sinBooking.map(m=>m[mHKey]||'sin hora').join(' / ')}`;
+          } else {
+            nota=`${matches.length} bookings mismo piloto+fecha+seller · desambiguar por turno: `+
+                 matches.map(m=>`${m[mHKey]||'?'} → ${m[mBKey]}`).join(' / ');
+          }
+        }
         matches.forEach(m=>matchados.add(m[mBKey]));
       }
       // ── NIVEL 2: Match exacto piloto+fecha (seller distinto)
@@ -1064,7 +1087,14 @@ function runConciliacion(){
         }
         else if(candidatesFS.length>1){
           matches=candidatesFS; nivel='AMBIGUOUS';
-          nota=`Ambiguo: ${candidatesFS.length} candidatos en misma fecha+seller: ${candidatesFS.map(m=>m[mPKey]).join(' / ')}`;
+          // Verificar si tienen horarios distintos (podrían resolverse manualmente)
+          const horarios=[...new Set(candidatesFS.map(m=>m[mHKey]||'sin hora'))];
+          const horariosDistintos = horarios.length===candidatesFS.length;
+          nota=`AMBIGUOUS: ${candidatesFS.length} candidatos en misma fecha+seller · `+
+               (horariosDistintos
+                 ? `turnos DISTINTOS (TADA no tiene horario para desambiguar) · `
+                 : `mismo horario · `)+
+               `Candidatos: ${candidatesFS.map(m=>descCandidato(m)).join(' | ')}`;
         }
         else {
           // ── NIVEL 4: Fuzzy nombre + fecha (cualquier seller) ─
@@ -1084,7 +1114,13 @@ function runConciliacion(){
           }
           else if(candidatesF.length>1){
             matches=candidatesF; nivel='AMBIGUOUS';
-            nota=`Ambiguo: ${candidatesF.length} candidatos misma fecha: ${candidatesF.map(m=>m[mPKey]).join(' / ')}`;
+            const horarios=[...new Set(candidatesF.map(m=>m[mHKey]||'sin hora'))];
+            const horariosDistintos = horarios.length===candidatesF.length;
+            nota=`AMBIGUOUS: ${candidatesF.length} candidatos misma fecha · `+
+                 (horariosDistintos
+                   ? `turnos DISTINTOS (TADA no tiene horario para desambiguar) · `
+                   : `mismo horario · `)+
+                 `Candidatos: ${candidatesF.map(m=>descCandidato(m)).join(' | ')}`;
           }
         }
       }
