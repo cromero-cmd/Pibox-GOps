@@ -679,9 +679,25 @@ function loadFile(file,src){
       document.getElementById('dz-tada').classList.add('loaded');
       document.getElementById('actions-tada').style.display='flex';
     } else {
-      mallaRaw=XLSX.utils.sheet_to_json(ws,{defval:'',raw:false}).map(row=>{
+      // Leer malla con raw:true para obtener seriales de fecha de Excel
+      // y convertirlos a YYYY-MM-DD de forma confiable
+      const mallaRawArr = XLSX.utils.sheet_to_json(ws,{defval:'',raw:true});
+      mallaRaw = mallaRawArr.map(row=>{
         const nr={...row};
-        for(const k of Object.keys(nr)){ if(/fecha/i.test(k)){ const p=parseDate(nr[k]); if(p) nr[k]=p; } }
+        for(const k of Object.keys(nr)){
+          // Convertir cualquier campo que parezca fecha
+          if(/fecha/i.test(k)){
+            const parsed = parseDate(nr[k]);
+            if(parsed) nr[k] = parsed;
+          }
+          // Convertir horas (seriales decimales de Excel → HH:MM)
+          if(/hora|turno|inicio|final/i.test(k) && typeof nr[k]==='number' && nr[k]<1){
+            const totalMins = Math.round(nr[k] * 24 * 60);
+            const hh = Math.floor(totalMins/60).toString().padStart(2,'0');
+            const mm = (totalMins%60).toString().padStart(2,'0');
+            nr[k] = `${hh}:${mm}`;
+          }
+        }
         return nr;
       });
       loadedMalla=true;
@@ -843,7 +859,21 @@ function runNorm(){
     const pilotos=[...new Set(tadaNorm.map(r=>r.piloto))];
     addLog('log-norm',`[OK] ${tadaNorm.length} filas · ${pilotos.length} pilotos · 7 días c/u`,'ok');
     addLog('log-norm',`[OK] Valores semanales asignados a 1ª fila con actividad por piloto`,'ok');
-    addLog('log-norm',`[INFO] Fechas TADA: ${[...new Set(tadaNorm.map(r=>r.fecha))].slice(0,5).join(' · ')}`,'info');
+    addLog('log-norm',`[INFO] Fechas TADA:  ${[...new Set(tadaNorm.map(r=>r.fecha))].slice(0,5).join(' · ')}`,'info');
+
+    // Mostrar muestra de fechas de la malla para verificar alineación
+    if(mallaRaw.length>0){
+      const mFKeyNorm = Object.keys(mallaRaw[0]).find(k=>/^fecha$/i.test(k.trim()))||
+                        Object.keys(mallaRaw[0]).find(k=>/fecha/i.test(k))||'FECHA';
+      const sampleMalla = [...new Set(mallaRaw.map(r=>r[mFKeyNorm]).filter(Boolean))].slice(0,5);
+      addLog('log-norm',`[INFO] Fechas Malla: ${sampleMalla.join(' · ')}`,'info');
+      // Alerta si los formatos no coinciden
+      const tadaFmt  = tadaNorm[0]?.fecha||'';
+      const mallaFmt = String(sampleMalla[0]||'');
+      const misma = /^\d{4}-\d{2}-\d{2}$/.test(tadaFmt) && /^\d{4}-\d{2}-\d{2}$/.test(mallaFmt);
+      if(!misma) addLog('log-norm','[WARN] Formatos de fecha pueden no coincidir — verificar antes de conciliar','warn');
+      else addLog('log-norm','[OK] Fechas TADA y Malla en formato YYYY-MM-DD — listas para conciliar','ok');
+    }
 
     if(tadaNorm.length===0){ addLog('log-norm','[ERR] Sin filas normalizadas','err'); hideProcessing(); return; }
 
@@ -954,11 +984,16 @@ function runConciliacion(){
     const mKeys=Object.keys(mallaRaw[0]);
     const mFKey=mKeys.find(k=>/fecha/i.test(k))||'FECHA';
     const mSKey=mKeys.find(k=>/seller|punto|tienda/i.test(k))||'SELLER';
-    const mPKey=mKeys.find(k=>/nombre.de.piloto|nombre.*piloto|piloto|conductor|driver.?name/i.test(k))||
-                mKeys.find(k=>/nombre/i.test(k))||'NOMBRE DE PILOTO';
+    // mPKey: buscar columna de NOMBRE — excluir explícitamente columnas de ID
+    const mPKey=mKeys.find(k=>!/id/i.test(k) && /nombre.*piloto|nombre de piloto/i.test(k))||
+                mKeys.find(k=>!/id/i.test(k) && /nombre.*conductor|nombre.*driver/i.test(k))||
+                mKeys.find(k=>!/id/i.test(k) && /^nombre$/i.test(k.trim()))||
+                mKeys.find(k=>!/id/i.test(k) && /nombre/i.test(k))||
+                mKeys.find(k=>!/id/i.test(k) && /piloto|conductor/i.test(k))||
+                'NOMBRE';
     const mBKey=mKeys.find(k=>/booking/i.test(k))||'BOOKING SERVICIO';
-    const mDKey=mKeys.find(k=>/^id.piloto$|driver.?id/i.test(k))||
-                mKeys.find(k=>/id.piloto/i.test(k))||'ID PILOTO';
+    const mDKey=mKeys.find(k=>/^id[\s_]?piloto$/i.test(k.trim()))||
+                mKeys.find(k=>/id.*piloto|driver.?id/i.test(k))||'ID PILOTO';
     addLog('log-conc',`[INFO] Malla — fecha:"${mFKey}" seller:"${mSKey}" piloto:"${mPKey}" booking:"${mBKey}"`,'info');
 
     // ── Índices de match exacto ─────────────────────────────
@@ -1465,8 +1500,9 @@ function downloadTrump(){
   const mBKey=mKeys.find(k=>/booking/i.test(k))||'BOOKING SERVICIO';
   const mFKey=mKeys.find(k=>/^fecha$/i.test(k.trim()))||mKeys.find(k=>/fecha/i.test(k))||'FECHA';
   const mSKey=mKeys.find(k=>/seller/i.test(k))||'SELLER';
-  const mPKey=mKeys.find(k=>/nombre.de.piloto|nombre.*piloto/i.test(k))||
-              mKeys.find(k=>/nombre/i.test(k))||'NOMBRE DE PILOTO';
+  const mPKey=mKeys.find(k=>!/id/i.test(k)&&/nombre.*piloto|nombre de piloto/i.test(k))||
+              mKeys.find(k=>!/id/i.test(k)&&/^nombre$/i.test(k.trim()))||
+              mKeys.find(k=>!/id/i.test(k)&&/nombre/i.test(k))||'NOMBRE';
   const incon=[];
   concResult.filter(r=>r.nivel_confianza==='SIN_MALLA').forEach(r=>incon.push({tipo:'SIN_MALLA',piloto:r.piloto,fecha:r.fecha,seller:r.seller,booking_id:'—',nota:'Sin match de ningún tipo — excluido'}));
   concResult.filter(r=>r.nivel_confianza==='AMBIGUOUS').forEach(r=>incon.push({tipo:'AMBIGUOUS',piloto:r.piloto,fecha:r.fecha,seller:r.seller,booking_id:'—',nota:r.nota}));
