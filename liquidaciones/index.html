@@ -386,7 +386,7 @@ const TARIFF_SCHEMA = [
 let tadaRaw=[], mallaRaw=[], colMap=[], tadaNorm=[], concResult=[], distResult=[], trumpRows=[];
 let loadedTada=false, loadedMalla=false, maxStep=0;
 let tariffStore=null, currentEdits={}, pageStates={};
-let concFilter=null; // filtro activo en conciliación
+let concFilter=new Set(); // filtros activos en conciliación (multiselecc con Ctrl)
 // Almacenes de datos para exportar
 const tableData={'conc-data':[],'dist-data':[],'trump-data':[],'tada-norm-data':[],'malla-norm-data':[]};
 
@@ -976,7 +976,7 @@ function fuzzyNameMatch(nameA, nameB){
 function runConciliacion(){
   clearLog('log-conc');
   showProcessing('Ejecutando conciliación...');
-  concFilter=null;
+  concFilter=new Set();
   setTimeout(()=>{
     concResult=[];
     if(!mallaRaw.length){ addLog('log-conc','[ERR] Carga la malla Pibox','err'); hideProcessing(); return; }
@@ -1151,33 +1151,49 @@ function renderConcStats(){
   const sn =concResult.filter(r=>r.nivel_confianza==='SIN_MALLA').length;
   const omitidas=tadaNorm.filter(r=>r.paquetes===0&&r.incentivos===0&&r.cancelados===0).length;
 
-  const selCls=(n)=>concFilter===n?' selected-high':'';
-  const selClsY=(n)=>concFilter===n?' selected-med':'';
-  const selClsR=(n)=>concFilter===n?' selected-low':'';
-  const selClsS=(n)=>concFilter===n?' selected-sin':'';
+  const selCls=(n,base)=>concFilter.has(n)?` ${base}`:'';
 
   document.getElementById('stats-conc').innerHTML=`
-    <div class="stat clickable${selCls('HIGH')}"         onclick="filterConc('HIGH')">        <div class="stat-l">HIGH · exacto</div>        <div class="stat-v g">${h}</div>  <div class="stat-hint">→ liquidación directa</div></div>
-    <div class="stat clickable${selClsY('MEDIUM')}"      onclick="filterConc('MEDIUM')">      <div class="stat-l">MEDIUM · franja horaria</div><div class="stat-v y">${md}</div> <div class="stat-hint">→ liquidación directa</div></div>
-    <div class="stat clickable${selCls('FUZZY-HIGH')}"   onclick="filterConc('FUZZY-HIGH')">  <div class="stat-l">FUZZY-HIGH · 1 candidato</div><div class="stat-v g">${fh}</div><div class="stat-hint">→ liquidación directa</div></div>
-    <div class="stat clickable${selClsY('FUZZY-LOW')}"   onclick="filterConc('FUZZY-LOW')">   <div class="stat-l">FUZZY-LOW · sin seller</div><div class="stat-v y">${fl}</div> <div class="stat-hint">→ marcado revisión</div></div>
-    <div class="stat clickable${selClsR('LOW')}"         onclick="filterConc('LOW')">         <div class="stat-l">LOW · seller distinto</div><div class="stat-v r">${lo}</div>  <div class="stat-hint">→ marcado revisión</div></div>
-    <div class="stat clickable${selClsR('AMBIGUOUS')}"   onclick="filterConc('AMBIGUOUS')">   <div class="stat-l">AMBIGUOUS · varios cand.</div><div class="stat-v r">${amb}</div><div class="stat-hint">→ revisión manual</div></div>
-    <div class="stat clickable${selClsS('SIN_MALLA')}"   onclick="filterConc('SIN_MALLA')">   <div class="stat-l">SIN_MALLA · sin match</div><div class="stat-v" style="color:var(--text2)">${sn}</div><div class="stat-hint">→ excluido</div></div>
-    <div class="stat" style="border-color:var(--border2);background:var(--bg3);">              <div class="stat-l">Días sin actividad</div><div class="stat-v" style="font-size:13px;color:var(--text3)">${omitidas}</div><div class="stat-hint">omitidos del match</div></div>`;
+    <div class="stat clickable${selCls('HIGH','selected-high')}"       onclick="filterConc(event,'HIGH')">       <div class="stat-l">HIGH · exacto</div>         <div class="stat-v g">${h}</div>  <div class="stat-hint">→ liquidación directa</div></div>
+    <div class="stat clickable${selCls('MEDIUM','selected-med')}"      onclick="filterConc(event,'MEDIUM')">     <div class="stat-l">MEDIUM · franja horaria</div><div class="stat-v y">${md}</div> <div class="stat-hint">→ liquidación directa</div></div>
+    <div class="stat clickable${selCls('FUZZY-HIGH','selected-high')}" onclick="filterConc(event,'FUZZY-HIGH')"> <div class="stat-l">FUZZY-HIGH · 1 candidato</div><div class="stat-v g">${fh}</div><div class="stat-hint">→ liquidación directa</div></div>
+    <div class="stat clickable${selCls('FUZZY-LOW','selected-med')}"   onclick="filterConc(event,'FUZZY-LOW')">  <div class="stat-l">FUZZY-LOW · sin seller</div><div class="stat-v y">${fl}</div> <div class="stat-hint">→ marcado revisión</div></div>
+    <div class="stat clickable${selCls('LOW','selected-low')}"         onclick="filterConc(event,'LOW')">        <div class="stat-l">LOW · seller distinto</div><div class="stat-v r">${lo}</div>  <div class="stat-hint">→ marcado revisión</div></div>
+    <div class="stat clickable${selCls('AMBIGUOUS','selected-low')}"   onclick="filterConc(event,'AMBIGUOUS')">  <div class="stat-l">AMBIGUOUS · varios cand.</div><div class="stat-v r">${amb}</div><div class="stat-hint">→ revisión manual</div></div>
+    <div class="stat clickable${selCls('SIN_MALLA','selected-sin')}"   onclick="filterConc(event,'SIN_MALLA')">  <div class="stat-l">SIN_MALLA · sin match</div><div class="stat-v" style="color:var(--text2)">${sn}</div><div class="stat-hint">→ excluido</div></div>
+    <div class="stat" style="border-color:var(--border2);background:var(--bg3);">
+      <div class="stat-l">Días sin actividad</div>
+      <div class="stat-v" style="font-size:13px;color:var(--text3)">${omitidas}</div>
+      <div class="stat-hint">omitidos del match</div>
+    </div>
+    <div style="grid-column:span 4;font-size:10px;font-family:var(--mono);color:var(--text3);padding:4px 2px;">
+      Clic para filtrar · Ctrl+Clic para seleccionar múltiples · Clic en activo para deseleccionar
+    </div>`;
 }
 
-function filterConc(nivel){
-  concFilter = concFilter===nivel ? null : nivel;
+function filterConc(event, nivel){
+  if(event && event.ctrlKey){
+    if(concFilter.has(nivel)) concFilter.delete(nivel);
+    else concFilter.add(nivel);
+  } else {
+    if(concFilter.size===1 && concFilter.has(nivel)) concFilter.clear();
+    else { concFilter.clear(); concFilter.add(nivel); }
+  }
   renderConcStats();
-  renderConcTable(concFilter);
+  renderConcTable();
   const badge=document.getElementById('conc-filter-badge');
-  if(concFilter){ badge.style.display='inline'; badge.textContent=`Filtro: ${concFilter}`; }
-  else badge.style.display='none';
+  if(concFilter.size>0){
+    badge.style.display='inline';
+    badge.textContent='Filtro: '+[...concFilter].join(' + ');
+  } else {
+    badge.style.display='none';
+  }
 }
 
-function renderConcTable(filter){
-  const rows=(filter ? concResult.filter(r=>r.nivel_confianza===filter) : concResult)
+function renderConcTable(){
+  const rows=(concFilter.size>0
+    ? concResult.filter(r=>concFilter.has(r.nivel_confianza))
+    : concResult)
     .map(r=>({piloto:r.piloto,ciudad:r.ciudad,seller:r.seller,fecha:r.fecha,
       driver_id:r.driver_id, bookings:r.matches.length,
       nivel_confianza:r.nivel_confianza, nota:r.nota||'Sin match'}));
