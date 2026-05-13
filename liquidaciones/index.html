@@ -1169,12 +1169,21 @@ function runTrump(){
     const DIAS_LJ = new Set(['lunes','martes','miércoles','miercoles','jueves']);
 
     function esDiaLJ(fecha){
-      // Intentar obtener el día de la semana desde la fecha ISO YYYY-MM-DD
+      // Parsear manualmente YYYY-MM-DD para evitar el bug de zona horaria
+      // de JavaScript donde new Date('2026-04-21') se interpreta como UTC
+      // medianoche y en Bogotá (UTC-5) retorna el día anterior.
       try{
-        const d = new Date(fecha+'T12:00:00');
-        const dow = d.getDay(); // 0=Dom,1=Lun,2=Mar,3=Mie,4=Jue,5=Vie,6=Sab
-        return dow>=1 && dow<=4; // L=1,M=2,X=3,J=4
-      }catch{ return true; } // default L-J si no se puede parsear
+        const parts = String(fecha).split('-');
+        if(parts.length === 3){
+          const y = parseInt(parts[0]);
+          const m = parseInt(parts[1]) - 1; // mes 0-indexado
+          const d = parseInt(parts[2]);
+          // Usar constructor local: Date(año, mes, día) → sin zona horaria
+          const dow = new Date(y, m, d).getDay(); // 0=Dom,1=Lun,2=Mar,3=Mie,4=Jue,5=Vie,6=Sab
+          return dow >= 1 && dow <= 4; // L=1, M=2, X=3, J=4 → true = día valle
+        }
+      }catch{}
+      return true; // default L-J si no se puede parsear
     }
 
     trumpRows = distResult.map(r=>{
@@ -1209,17 +1218,22 @@ function runTrump(){
                     + r.tareas_dist     * cTar;
 
       // ── Garantizado ───────────────────────────────────────
-      // Reconstruimos desde la malla: si ingresoNeto < mínimo del día
-      // → complemento al piloto + cobro tarifa fija completa al cliente
+      // Lógica de COMPLETAR, no de SUMAR:
+      // - Piloto: si ingresoNeto < mínimo → se completa hasta el mínimo
+      // - Cliente: si cobroOp < tarifa_garantizado → se cobra la tarifa fija
+      //   (la tarifa garantizado REEMPLAZA el cobro operativo, no se suma)
+      // - Si el piloto ya superó el mínimo → no aplica garantizado en ningún lado
       const minimoNeto  = lj ? pMinLJ : pMinVD;
       const tarifaGarCl = lj ? cGarLJ : cGarVD;
 
       let complementoPiloto = 0;
       let cobroGarantizado  = 0;
 
-      if(ingresoNeto < minimoNeto && ingresoNeto >= 0){
-        complementoPiloto = minimoNeto - ingresoNeto;
-        cobroGarantizado  = tarifaGarCl; // tarifa completa, no suma
+      if(ingresoNeto < minimoNeto){
+        complementoPiloto = minimoNeto - ingresoNeto; // lo que falta para llegar al mínimo
+        // El cobro al cliente es la tarifa fija SI supera el cobro operativo,
+        // de lo contrario se queda con el cobro operativo
+        cobroGarantizado = tarifaGarCl > cobroOp ? tarifaGarCl : cobroOp;
       }
 
       // ── Bonos y ajustes (valores netos de TADA) ──────────
@@ -1238,8 +1252,9 @@ function runTrump(){
       const ADDITIONAL_FINAL_COST = Math.round(adicNeto / (1 - pctPlat));
 
       // ── COMPANY_FINAL_COST (cobro a TaDa) ────────────────
-      // Tarifas fijas ya incluyen margen — no se aplica fórmula adicional
-      const COMPANY_FINAL_COST = cobroOp + cobroGarantizado;
+      // Si aplica garantizado → cobro = tarifa garantizada (reemplaza al operativo)
+      // Si no aplica → cobro = cobro operativo
+      const COMPANY_FINAL_COST = cobroGarantizado > 0 ? cobroGarantizado : cobroOp;
 
       // ── ADDITIONAL_COMPANY_FINAL_COST (bonos/ajustes) ───
       // Gross-up secuencial Opción A: primero margen corp, luego plataforma
