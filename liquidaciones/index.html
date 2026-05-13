@@ -357,16 +357,27 @@ tr:hover td{background:var(--bg3);}
 // CONSTANTES
 // ═══════════════════════════════════════════
 const DAYS_ES = new Set(['LUNES','MARTES','MIÉRCOLES','MIERCOLES','JUEVES','VIERNES','SÁBADO','SABADO','DOMINGO']);
-const COMISION = 0.15;
-const LS_TAR  = 'pibox:tariff_v5';
-const LS_RUNS = 'pibox:runs_v5';
+const LS_TAR  = 'pibox:tariff_v6';
+const LS_RUNS = 'pibox:runs_v6';
 const PAGE_SIZE = 50;
 const TARIFF_SCHEMA = [
-  {key:'valor_paquete',    label:'Valor paquete (COP)',            def:2500,step:100},
-  {key:'valor_incentivo',  label:'Valor incentivo unitario (COP)', def:5000,step:100},
-  {key:'valor_cancelado',  label:'Valor cancelado (COP)',          def:1200,step:100},
-  {key:'valor_tarea',      label:'Valor tarea adicional (COP)',    def:3500,step:100},
-  {key:'margen_cliente_pct',label:'Margen cobro cliente (%)',      def:22,  step:1},
+  // Cobro a TaDa (por unidad)
+  {key:'c_paquete',     label:'Cobro TaDa · Paquete',           def:8870,  step:10,   group:'cobro'},
+  {key:'c_incentivo',   label:'Cobro TaDa · Incentivo',         def:1580,  step:10,   group:'cobro'},
+  {key:'c_cancelado',   label:'Cobro TaDa · Paquete cancelado', def:8505,  step:10,   group:'cobro'},
+  {key:'c_tarea',       label:'Cobro TaDa · Tarea',             def:6075,  step:10,   group:'cobro'},
+  {key:'c_gar_lj',      label:'Cobro TaDa · Garantizado L-J',   def:85050, step:50,   group:'cobro'},
+  {key:'c_gar_vd',      label:'Cobro TaDa · Garantizado V-D',   def:97200, step:50,   group:'cobro'},
+  // Pago neto al piloto (por unidad)
+  {key:'p_paquete',     label:'Pago piloto · Paquete',          def:7300,  step:10,   group:'pago'},
+  {key:'p_incentivo',   label:'Pago piloto · Incentivo',        def:1300,  step:10,   group:'pago'},
+  {key:'p_cancelado',   label:'Pago piloto · Paquete cancelado',def:7000,  step:10,   group:'pago'},
+  {key:'p_tarea',       label:'Pago piloto · Tarea',            def:5000,  step:10,   group:'pago'},
+  {key:'p_min_lj',      label:'Mínimo diario piloto · L-J',     def:70000, step:1000, group:'pago'},
+  {key:'p_min_vd',      label:'Mínimo diario piloto · V-D',     def:80000, step:1000, group:'pago'},
+  // Porcentajes
+  {key:'pct_plataforma',label:'Comisión plataforma (%)',        def:15,    step:1,    group:'pct'},
+  {key:'pct_margen',    label:'Margen corporativo (%)',         def:3,     step:1,    group:'pct'},
 ];
 
 // ═══════════════════════════════════════════
@@ -561,10 +572,40 @@ function getNextVer(){ const n=tariffStore.versions.map(v=>parseInt(v.version.re
 function renderTariffPanel(){
   const av=getAV();
   document.getElementById('tariff-info').innerHTML=`Versión activa: <code>${av.version}</code> · <code>${fmtDT(av.fecha_creacion)}</code> · Autor: <code>${av.autor}</code>${av.nota?' · '+av.nota:''}`;
-  document.getElementById('tariff-fields').innerHTML=TARIFF_SCHEMA.map(s=>`<div class="t-item"><label>${s.label}</label><input type="number" value="${currentEdits[s.key]??s.def}" step="${s.step}" oninput="currentEdits['${s.key}']=parseFloat(this.value)||0"/></div>`).join('');
+
+  const mkGroup=(group,title,color)=>{
+    const items=TARIFF_SCHEMA.filter(s=>s.group===group);
+    return `<div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:10px;">
+      <div style="font-size:10px;font-family:var(--mono);color:${color};text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px;">${title}</div>
+      <div class="t-grid" style="margin-bottom:0;">
+        ${items.map(s=>`<div class="t-item"><label>${s.label}</label>
+          <input type="number" value="${currentEdits[s.key]??s.def}" step="${s.step}"
+            oninput="currentEdits['${s.key}']=parseFloat(this.value)||0"/></div>`).join('')}
+      </div>
+    </div>`;
+  };
+
+  document.getElementById('tariff-fields').innerHTML=
+    mkGroup('cobro','Tarifas de cobro a TaDa (COP por unidad)','var(--blue)')+
+    mkGroup('pago', 'Tarifas de pago al piloto — neto (COP por unidad)','var(--green)')+
+    mkGroup('pct',  'Porcentajes de descuento','var(--yellow)');
+
   document.getElementById('tariff-history').innerHTML=[...tariffStore.versions].reverse().slice(0,5).map(v=>{
     const isA=v.version===tariffStore.active_version;
-    return `<div class="ver-card${isA?' active-ver':''}"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;"><span style="font-family:var(--mono);font-size:12px;font-weight:600;">${v.version}${isA?'<span class="badge b-active" style="margin-left:6px;font-size:9px;">ACTIVA</span>':''}</span><span style="font-size:10px;color:var(--text3);">${fmtDT(v.fecha_creacion)} · ${v.autor}</span></div><div style="display:flex;flex-wrap:wrap;gap:5px;">${TARIFF_SCHEMA.map(s=>`<span style="font-size:10px;background:var(--bg3);padding:2px 8px;border-radius:3px;font-family:var(--mono);color:var(--text2);">${s.key}:<span style="color:var(--text);">${s.key.includes('pct')?v.values[s.key]+'%':cop(v.values[s.key])}</span></span>`).join('')}</div>${!isA?`<div style="margin-top:8px;"><button class="btn btn-sm" onclick="activateVersion('${v.version}')">Activar</button></div>`:''}</div>`;
+    const cobro=TARIFF_SCHEMA.filter(s=>s.group==='cobro');
+    const pago =TARIFF_SCHEMA.filter(s=>s.group==='pago');
+    const pct  =TARIFF_SCHEMA.filter(s=>s.group==='pct');
+    const mkTags=(items,col)=>items.map(s=>`<span style="font-size:10px;background:var(--bg3);padding:2px 7px;border-radius:3px;font-family:var(--mono);color:${col};">${s.key.split('_').slice(1).join('_')}: <span style="color:var(--text);">${s.group==='pct'?(v.values[s.key]??s.def)+'%':cop(v.values[s.key]??s.def)}</span></span>`).join('');
+    return `<div class="ver-card${isA?' active-ver':''}">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+        <span style="font-family:var(--mono);font-size:12px;font-weight:600;">${v.version}${isA?'<span class="badge b-active" style="margin-left:6px;font-size:9px;">ACTIVA</span>':''}</span>
+        <span style="font-size:10px;color:var(--text3);">${fmtDT(v.fecha_creacion)} · ${v.autor}</span>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:5px;">${mkTags(cobro,'var(--blue)')}</div>
+      <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:5px;">${mkTags(pago,'var(--green)')}</div>
+      <div style="display:flex;flex-wrap:wrap;gap:4px;">${mkTags(pct,'var(--yellow)')}</div>
+      ${!isA?`<div style="margin-top:8px;"><button class="btn btn-sm" onclick="activateVersion('${v.version}')">Activar</button></div>`:''}
+    </div>`;
   }).join('');
 }
 function publishTariff(){
@@ -1119,49 +1160,174 @@ function runTrump(){
   setTimeout(()=>{
     const t=currentEdits, av=getAV();
     const runId=`LIQ-${new Date().toISOString().slice(0,10).replace(/-/g,'')}-${av.version}`;
-    const m=t.margen_cliente_pct/100;
-    trumpRows=distResult.map(r=>{
-      const vPaq=r.paquetes_dist   *t.valor_paquete;
-      const vInc=r.incentivos_dist *t.valor_incentivo;
-      const vCan=r.cancelados_dist *t.valor_cancelado;
-      const vGar=r.garantizado||0, vTar=r.tareas_dist*t.valor_tarea, vBon=r.bonos||0, vAj=r.ajustes||0;
-      const base=vPaq+vInc+vCan+vGar, adicional=vBon+vTar+vAj;
-      const finalCost=Math.round(base/(1-COMISION)), addFinalCost=adicional;
-      const companyCost=Math.round(base*(1+m)), addCompanyCost=Math.round(adicional*(1+m));
+
+    // ── Porcentajes ─────────────────────────────────────────
+    const pctPlat  = (t.pct_plataforma??15) / 100;  // 0.15
+    const pctMarg  = (t.pct_margen??3)      / 100;  // 0.03
+
+    // ── Días valle (L-J) vs pico (V-D) ──────────────────────
+    const DIAS_LJ = new Set(['lunes','martes','miércoles','miercoles','jueves']);
+
+    function esDiaLJ(fecha){
+      // Intentar obtener el día de la semana desde la fecha ISO YYYY-MM-DD
+      try{
+        const d = new Date(fecha+'T12:00:00');
+        const dow = d.getDay(); // 0=Dom,1=Lun,2=Mar,3=Mie,4=Jue,5=Vie,6=Sab
+        return dow>=1 && dow<=4; // L=1,M=2,X=3,J=4
+      }catch{ return true; } // default L-J si no se puede parsear
+    }
+
+    trumpRows = distResult.map(r=>{
+      const lj = esDiaLJ(r.fecha);
+
+      // ── Tarifas cobro cliente ────────────────────────────
+      const cPaq = t.c_paquete    ?? 8870;
+      const cInc = t.c_incentivo  ?? 1580;
+      const cCan = t.c_cancelado  ?? 8505;
+      const cTar = t.c_tarea      ?? 6075;
+      const cGarLJ = t.c_gar_lj   ?? 85050;
+      const cGarVD = t.c_gar_vd   ?? 97200;
+
+      // ── Tarifas pago piloto (neto) ───────────────────────
+      const pPaq = t.p_paquete    ?? 7300;
+      const pInc = t.p_incentivo  ?? 1300;
+      const pCan = t.p_cancelado  ?? 7000;
+      const pTar = t.p_tarea      ?? 5000;
+      const pMinLJ = t.p_min_lj   ?? 70000;
+      const pMinVD = t.p_min_vd   ?? 80000;
+
+      // ── Ingresos operativos netos del piloto este booking ─
+      const ingresoNeto = r.paquetes_dist   * pPaq
+                        + r.incentivos_dist * pInc
+                        + r.cancelados_dist * pCan
+                        + r.tareas_dist     * pTar;
+
+      // ── Cobro operativo a TaDa ────────────────────────────
+      const cobroOp = r.paquetes_dist   * cPaq
+                    + r.incentivos_dist * cInc
+                    + r.cancelados_dist * cCan
+                    + r.tareas_dist     * cTar;
+
+      // ── Garantizado ───────────────────────────────────────
+      // Reconstruimos desde la malla: si ingresoNeto < mínimo del día
+      // → complemento al piloto + cobro tarifa fija completa al cliente
+      const minimoNeto  = lj ? pMinLJ : pMinVD;
+      const tarifaGarCl = lj ? cGarLJ : cGarVD;
+
+      let complementoPiloto = 0;
+      let cobroGarantizado  = 0;
+
+      if(ingresoNeto < minimoNeto && ingresoNeto >= 0){
+        complementoPiloto = minimoNeto - ingresoNeto;
+        cobroGarantizado  = tarifaGarCl; // tarifa completa, no suma
+      }
+
+      // ── Bonos y ajustes (valores netos de TADA) ──────────
+      // Solo se asignan al primer booking del grupo (ya gestionado en distribución)
+      const bonos   = r.bonos   || 0;
+      const ajustes = r.ajustes || 0;
+      const adicNeto = bonos + ajustes;
+
+      // ── FINAL_COST (pago piloto → Trump descuenta 15%) ───
+      // Gross-up simple: neto ÷ (1 - pctPlat)
+      const netoTotal  = ingresoNeto + complementoPiloto;
+      const FINAL_COST = Math.round(netoTotal / (1 - pctPlat));
+
+      // ── ADDITIONAL_FINAL_COST (bonos/ajustes gross-up) ──
+      // Trump también descuenta 15% sobre este campo
+      const ADDITIONAL_FINAL_COST = Math.round(adicNeto / (1 - pctPlat));
+
+      // ── COMPANY_FINAL_COST (cobro a TaDa) ────────────────
+      // Tarifas fijas ya incluyen margen — no se aplica fórmula adicional
+      const COMPANY_FINAL_COST = cobroOp + cobroGarantizado;
+
+      // ── ADDITIONAL_COMPANY_FINAL_COST (bonos/ajustes) ───
+      // Gross-up secuencial Opción A: primero margen corp, luego plataforma
+      // cobro = neto ÷ (1 - pctMarg) ÷ (1 - pctPlat)
+      const ADDITIONAL_COMPANY_FINAL_COST = adicNeto > 0
+        ? Math.round(adicNeto / (1 - pctMarg) / (1 - pctPlat))
+        : 0;
+
+      const COMMENTS =
+        `Paq:${r.paquetes_dist}×${cop(pPaq)}=${cop(r.paquetes_dist*pPaq)} | `+
+        `Inc:${r.incentivos_dist}×${cop(pInc)}=${cop(r.incentivos_dist*pInc)} | `+
+        `Can:${r.cancelados_dist}×${cop(pCan)}=${cop(r.cancelados_dist*pCan)} | `+
+        `Tar:${r.tareas_dist}×${cop(pTar)}=${cop(r.tareas_dist*pTar)} | `+
+        `Día:${lj?'L-J':'V-D'} Min:${cop(minimoNeto)} `+
+        `Ingreso:${cop(ingresoNeto)} Compl:${cop(complementoPiloto)} | `+
+        `Bonos:${cop(bonos)} Aj:${cop(ajustes)} | `+
+        `Conf:${r.nivel_confianza}`;
+
       return {
-        BOOKING_ID:r.booking_id,
-        COMPANY_FINAL_COST:companyCost, ADDITIONAL_COMPANY_FINAL_COST:addCompanyCost,
-        DISPUTED_COMPANY_FINAL_COST:'',
-        FINAL_COST:finalCost, ADDITIONAL_FINAL_COST:addFinalCost,
-        DISPUTED_FINAL_COST:'',
-        PACKAGES_COUNT:r.paquetes_dist, IS_PER_HOUR:0,
-        COMMENTS:`Paquetes: ${r.paquetes_dist} | Inc: ${r.incentivos_dist} | Can: ${r.cancelados_dist} | Gar: ${cop(vGar)} | Bonos: ${cop(vBon)} | Tareas: ${r.tareas_dist} | Aj: ${cop(vAj)} | Conf: ${r.nivel_confianza}`,
-        _driver_id:r.driver_id,_piloto:r.piloto,_ciudad:r.ciudad,_seller:r.seller,
-        _fecha:r.fecha,_confianza:r.nivel_confianza,_run_id:runId,_ver:av.version,
+        BOOKING_ID:                    r.booking_id,
+        COMPANY_FINAL_COST,
+        ADDITIONAL_COMPANY_FINAL_COST,
+        DISPUTED_COMPANY_FINAL_COST:   '',
+        FINAL_COST,
+        ADDITIONAL_FINAL_COST,
+        DISPUTED_FINAL_COST:           '',
+        PACKAGES_COUNT:                r.paquetes_dist,
+        IS_PER_HOUR:                   0,
+        COMMENTS,
+        // Metadata interna
+        _driver_id:   r.driver_id,
+        _piloto:      r.piloto,
+        _ciudad:      r.ciudad,
+        _seller:      r.seller,
+        _fecha:       r.fecha,
+        _dia_tipo:    lj?'L-J':'V-D',
+        _ingreso_neto:ingresoNeto,
+        _complemento: complementoPiloto,
+        _confianza:   r.nivel_confianza,
+        _run_id:      runId,
+        _ver:         av.version,
       };
     });
-    const tp=trumpRows.reduce((a,r)=>a+r.FINAL_COST+r.ADDITIONAL_FINAL_COST,0);
-    const tc=trumpRows.reduce((a,r)=>a+r.COMPANY_FINAL_COST+r.ADDITIONAL_COMPANY_FINAL_COST,0);
-    const rev=trumpRows.filter(r=>r._confianza!=='HIGH').length;
+
+    const tp = trumpRows.reduce((a,r)=>a + r.FINAL_COST        + r.ADDITIONAL_FINAL_COST,         0);
+    const tc = trumpRows.reduce((a,r)=>a + r.COMPANY_FINAL_COST + r.ADDITIONAL_COMPANY_FINAL_COST, 0);
+    const margen = tc - tp;
+    const rev = trumpRows.filter(r=>!['HIGH','FUZZY-HIGH'].includes(r._confianza)).length;
+
     document.getElementById('stats-trump').innerHTML=`
       <div class="stat"><div class="stat-l">Bookings</div><div class="stat-v">${trumpRows.length}</div></div>
-      <div class="stat"><div class="stat-l">Total pago pilotos</div><div class="stat-v g" style="font-size:14px;">${cop(tp)}</div></div>
-      <div class="stat"><div class="stat-l">Total cobro TaDa</div><div class="stat-v" style="font-size:14px;">${cop(tc)}</div></div>
-      <div class="stat"><div class="stat-l">Requieren revisión</div><div class="stat-v ${rev?'y':'g'}">${rev}</div></div>`;
-    const TC=['BOOKING_ID','COMPANY_FINAL_COST','ADDITIONAL_COMPANY_FINAL_COST','DISPUTED_COMPANY_FINAL_COST','FINAL_COST','ADDITIONAL_FINAL_COST','DISPUTED_FINAL_COST','PACKAGES_COUNT','IS_PER_HOUR','COMMENTS'];
+      <div class="stat"><div class="stat-l">Total pago pilotos (FINAL_COST)</div><div class="stat-v g" style="font-size:13px;">${cop(tp)}</div></div>
+      <div class="stat"><div class="stat-l">Total cobro TaDa (COMPANY)</div><div class="stat-v b" style="font-size:13px;">${cop(tc)}</div></div>
+      <div class="stat"><div class="stat-l">Margen bruto</div><div class="stat-v ${margen>=0?'g':'r'}" style="font-size:13px;">${cop(margen)}</div></div>`;
+
+    const TC=['BOOKING_ID','COMPANY_FINAL_COST','ADDITIONAL_COMPANY_FINAL_COST',
+      'DISPUTED_COMPANY_FINAL_COST','FINAL_COST','ADDITIONAL_FINAL_COST',
+      'DISPUTED_FINAL_COST','PACKAGES_COUNT','IS_PER_HOUR','COMMENTS'];
     tableData['trump-data']=trumpRows;
-    mkTable('tbl-trump',trumpRows,TC,TC,r=>r._confianza!=='HIGH'?' style="background:rgba(240,190,53,0.04)"':'','trump');
+    mkTable('tbl-trump',trumpRows,TC,TC,
+      r=>!['HIGH','FUZZY-HIGH'].includes(r._confianza)?' style="background:rgba(240,190,53,0.04)"':'','trump');
+
     clearLog('log-trump');
     addLog('log-trump',`[OK] run_id: ${runId} · tarifas: ${av.version} · ${trumpRows.length} bookings`,'ok');
-    addLog('log-trump',`[OK] Pilotos: ${cop(tp)} · TaDa: ${cop(tc)} · Margen: ${cop(tc-tp)}`,'ok');
+    addLog('log-trump',`[OK] Cobro TaDa: ${cop(tc)} · Pago pilotos: ${cop(tp)} · Margen: ${cop(margen)}`,'ok');
+    if(margen < 0) addLog('log-trump',`[ERR] Margen negativo — revisar tarifas o distribución`,'err');
+
+    // Detalle de garantizados aplicados
+    const conGar = trumpRows.filter(r=>r._complemento>0);
+    if(conGar.length) addLog('log-trump',`[INFO] ${conGar.length} bookings con garantizado aplicado`,'info');
+
     trumpRows.filter(r=>r._confianza==='MEDIUM').forEach(r=>addLog('log-trump',`[MED] ${r.BOOKING_ID} — dist. equitativa`,'warn'));
     trumpRows.filter(r=>r._confianza==='LOW').forEach(r=>addLog('log-trump',`[LOW] ${r.BOOKING_ID} · ${r._piloto}`,'warn'));
     concResult.filter(r=>r.nivel_confianza==='SIN_MALLA').forEach(r=>addLog('log-trump',`[EXCL] ${r.piloto} · ${r.fecha} — excluido`,'err'));
+
     try{
       const runs=JSON.parse(localStorage.getItem(LS_RUNS)||'[]');
-      runs.push({run_id:runId,fecha_ejecucion:new Date().toISOString(),version_tarifas_usada:av.version,snapshot_tarifas:{...av.values},bookings_generados:trumpRows.length,sin_malla:concResult.filter(r=>r.nivel_confianza==='SIN_MALLA').length,requieren_revision:rev});
+      runs.push({
+        run_id:runId, fecha_ejecucion:new Date().toISOString(),
+        version_tarifas_usada:av.version, snapshot_tarifas:{...av.values},
+        bookings_generados:trumpRows.length,
+        sin_malla:concResult.filter(r=>r.nivel_confianza==='SIN_MALLA').length,
+        requieren_revision:rev,
+        cobro_tada:tc, pago_pilotos:tp, margen,
+      });
       localStorage.setItem(LS_RUNS,JSON.stringify(runs.slice(-50)));
     }catch(e){}
+
     hideProcessing();
     unlock(6);
   },50);
@@ -1189,14 +1355,22 @@ function downloadTrump(){
   concResult.filter(r=>r.nivel_confianza==='FUZZY-LOW').forEach(r=>incon.push({tipo:'FUZZY-LOW',piloto:r.piloto,fecha:r.fecha,seller:r.seller,booking_id:r.matches.map(m=>m[mBKey]).join('/'),nota:r.nota}));
   const ws2=XLSX.utils.json_to_sheet(incon.length?incon:[{tipo:'Sin inconsistencias'}]);
   ws2['!cols']=[{wch:18},{wch:24},{wch:12},{wch:26},{wch:20},{wch:65}];
+  const tc2=trumpRows.reduce((a,r)=>a+r.COMPANY_FINAL_COST+r.ADDITIONAL_COMPANY_FINAL_COST,0);
+  const tp2=trumpRows.reduce((a,r)=>a+r.FINAL_COST+r.ADDITIONAL_FINAL_COST,0);
   const ws3=XLSX.utils.json_to_sheet([
-    {campo:'run_id',valor:runId},{campo:'fecha_ejecucion',valor:new Date().toLocaleString('es-CO')},
-    {campo:'version_tarifas_usada',valor:av.version},{campo:'autor_tarifa',valor:av.autor},
-    {campo:'bookings_generados',valor:trumpRows.length},
-    {campo:'sin_malla_excluidos',valor:concResult.filter(r=>r.nivel_confianza==='SIN_MALLA').length},
-    {campo:'requieren_revision',valor:trumpRows.filter(r=>r._confianza!=='HIGH').length},
-    {campo:'───────────────',valor:'SNAPSHOT TARIFAS'},
-    ...TARIFF_SCHEMA.map(s=>({campo:s.label,valor:av.values[s.key]})),
+    {campo:'run_id',                    valor:runId},
+    {campo:'fecha_ejecucion',           valor:new Date().toLocaleString('es-CO')},
+    {campo:'version_tarifas_usada',     valor:av.version},
+    {campo:'autor_tarifa',              valor:av.autor},
+    {campo:'bookings_generados',        valor:trumpRows.length},
+    {campo:'cobro_total_tada',          valor:tc2},
+    {campo:'pago_total_pilotos',        valor:tp2},
+    {campo:'margen_bruto',              valor:tc2-tp2},
+    {campo:'sin_malla_excluidos',       valor:concResult.filter(r=>r.nivel_confianza==='SIN_MALLA').length},
+    {campo:'ambiguous_excluidos',       valor:concResult.filter(r=>r.nivel_confianza==='AMBIGUOUS').length},
+    {campo:'bookings_con_garantizado',  valor:trumpRows.filter(r=>r._complemento>0).length},
+    {campo:'───────────────',           valor:'SNAPSHOT TARIFAS'},
+    ...TARIFF_SCHEMA.map(s=>({campo:s.label, valor:av.values[s.key]??s.def})),
   ]);
   ws3['!cols']=[{wch:34},{wch:46}];
   const wb=XLSX.utils.book_new();
