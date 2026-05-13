@@ -1103,54 +1103,60 @@ function renderConcTable(filter){
 function runDistribucion(){
   showProcessing('Distribuyendo valores a bookings...');
   setTimeout(()=>{
-    distResult=[];
-    const mKeys=Object.keys(mallaRaw[0]||{});
-    const mBKey=mKeys.find(k=>/booking/i.test(k))||'booking_id';
-    const mDKey=mKeys.find(k=>/driver.?id/i.test(k))||'driver_id';
-    const mSKey=mKeys.find(k=>/seller|punto|tienda/i.test(k))||'seller';
-    const mHKey=mKeys.find(k=>/hora/i.test(k))||'hora_inicio';
+    try{
+      distResult=[];
+      const mKeys=Object.keys(mallaRaw[0]||{});
+      const mBKey=mKeys.find(k=>/booking/i.test(k))||'booking_id';
+      const mDKey=mKeys.find(k=>/driver.?id/i.test(k))||'driver_id';
+      const mSKey=mKeys.find(k=>/seller|punto|tienda/i.test(k))||'seller';
+      const mHKey=mKeys.find(k=>/hora/i.test(k))||'hora_inicio';
+      const mFKey=mKeys.find(k=>/fecha/i.test(k))||'fecha'; // ← definir aquí también
 
-    // Niveles que pasan a distribución (los demás se excluyen)
-    const NIVELES_OK=new Set(['HIGH','MEDIUM','LOW','FUZZY-HIGH','FUZZY-LOW']);
-    concResult.filter(r=>NIVELES_OK.has(r.nivel_confianza)).forEach(row=>{
-      const n=row.matches.length;
-      [...row.matches].sort((a,b)=>String(a[mHKey]||'').localeCompare(String(b[mHKey]||''))).forEach((m,i)=>{
-        const first=i===0;
-        distResult.push({
-          booking_id:m[mBKey]||'?', driver_id:m[mDKey]||'PENDIENTE',
-          piloto:row.piloto, ciudad:row.ciudad, seller:m[mSKey]||row.seller,
-          fecha:row.fecha,
-          fecha_malla: String(m[mFKey]||row.fecha).trim(), // fecha de la malla → fuente de verdad para L-J/V-D
-          hora_inicio:m[mHKey]||'—',
-          paquetes_dist: Math.round(row.paquetes/n),
-          incentivos_dist:Math.round(row.incentivos/n),
-          cancelados_dist:Math.round(row.cancelados/n),
-          // Valores semanales: ya están asignados a UNA sola fila en tadaNorm
-          // Se distribuyen al primer booking del grupo
-          tareas_dist:    first?row.tareas:0,
-          garantizado:    first?row.garantizado:0,
-          bonos:          first?row.bonos:0,
-          ajustes:        first?row.ajustes:0,
-          nivel_confianza:row.nivel_confianza, n_bookings:n,
+      // Niveles que pasan a distribución (los demás se excluyen)
+      const NIVELES_OK=new Set(['HIGH','MEDIUM','LOW','FUZZY-HIGH','FUZZY-LOW']);
+      concResult.filter(r=>NIVELES_OK.has(r.nivel_confianza)).forEach(row=>{
+        const n=row.matches.length;
+        [...row.matches].sort((a,b)=>String(a[mHKey]||'').localeCompare(String(b[mHKey]||''))).forEach((m,i)=>{
+          const first=i===0;
+          // fecha_malla: fecha real del booking en la malla → fuente de verdad para L-J/V-D
+          const fechaMalla = String(m[mFKey]||row.fecha||'').trim();
+          distResult.push({
+            booking_id:m[mBKey]||'?', driver_id:m[mDKey]||'PENDIENTE',
+            piloto:row.piloto, ciudad:row.ciudad, seller:m[mSKey]||row.seller,
+            fecha:row.fecha, fecha_malla:fechaMalla,
+            hora_inicio:m[mHKey]||'—',
+            paquetes_dist: Math.round(row.paquetes/n),
+            incentivos_dist:Math.round(row.incentivos/n),
+            cancelados_dist:Math.round(row.cancelados/n),
+            tareas_dist:    first?row.tareas:0,
+            garantizado:    first?row.garantizado:0,
+            bonos:          first?row.bonos:0,
+            ajustes:        first?row.ajustes:0,
+            nivel_confianza:row.nivel_confianza, n_bookings:n,
+          });
         });
       });
-    });
 
-    const excluidos=concResult.filter(r=>!['HIGH','MEDIUM','LOW','FUZZY-HIGH','FUZZY-LOW'].includes(r.nivel_confianza)).length;
-    document.getElementById('stats-dist').innerHTML=`
-      <div class="stat"><div class="stat-l">Bookings generados</div><div class="stat-v">${distResult.length}</div></div>
-      <div class="stat"><div class="stat-l">Excluidos (SIN_MALLA + AMBIGUOUS)</div><div class="stat-v r">${excluidos}</div></div>
-      <div class="stat"><div class="stat-l">Match exacto (HIGH+MEDIUM)</div><div class="stat-v g">${distResult.filter(r=>['HIGH','MEDIUM'].includes(r.nivel_confianza)).length}</div></div>
-      <div class="stat"><div class="stat-l">Fuzzy + LOW (revisión)</div><div class="stat-v y">${distResult.filter(r=>['FUZZY-HIGH','FUZZY-LOW','LOW'].includes(r.nivel_confianza)).length}</div></div>`;
+      const excluidos=concResult.filter(r=>!['HIGH','MEDIUM','LOW','FUZZY-HIGH','FUZZY-LOW'].includes(r.nivel_confianza)).length;
+      document.getElementById('stats-dist').innerHTML=`
+        <div class="stat"><div class="stat-l">Bookings generados</div><div class="stat-v">${distResult.length}</div></div>
+        <div class="stat"><div class="stat-l">Excluidos (SIN_MALLA + AMBIGUOUS)</div><div class="stat-v r">${excluidos}</div></div>
+        <div class="stat"><div class="stat-l">Match exacto (HIGH+MEDIUM)</div><div class="stat-v g">${distResult.filter(r=>['HIGH','MEDIUM'].includes(r.nivel_confianza)).length}</div></div>
+        <div class="stat"><div class="stat-l">Fuzzy + LOW (revisión)</div><div class="stat-v y">${distResult.filter(r=>['FUZZY-HIGH','FUZZY-LOW','LOW'].includes(r.nivel_confianza)).length}</div></div>`;
 
-    tableData['dist-data']=distResult;
-    mkTable('tbl-dist',distResult,
-      ['booking_id','driver_id','piloto','ciudad','seller','fecha','hora_inicio','paquetes_dist','incentivos_dist','cancelados_dist','tareas_dist','garantizado','bonos','ajustes','nivel_confianza'],
-      ['Booking ID','Driver ID','Piloto','Ciudad','Seller','Fecha','Hora','Paq.','Inc.','Canc.','Tareas','Garantizado','Bonos','Ajustes','Confianza'],null,'dist');
+      tableData['dist-data']=distResult;
+      mkTable('tbl-dist',distResult,
+        ['booking_id','driver_id','piloto','ciudad','seller','fecha','fecha_malla','hora_inicio','paquetes_dist','incentivos_dist','cancelados_dist','tareas_dist','garantizado','bonos','ajustes','nivel_confianza'],
+        ['Booking ID','Driver ID','Piloto','Ciudad','Seller','Fecha TADA','Fecha Malla','Hora','Paq.','Inc.','Canc.','Tareas','Garantizado','Bonos','Ajustes','Confianza'],null,'dist');
 
-    hideProcessing();
-    unlock(4);
-    maxStep=5; // desbloquear tarifas para que el botón "Configurar tarifas →" funcione
+    }catch(err){
+      addLog('log-norm','[ERR] Error en distribución: '+err.message,'err');
+      console.error('runDistribucion error:',err);
+    }finally{
+      hideProcessing();
+      unlock(4);
+      maxStep=5;
+    }
   },50);
 }
 
