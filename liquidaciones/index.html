@@ -1302,14 +1302,43 @@ function runTrump(){
         ? Math.round(adicNeto / (1 - pctMarg) / (1 - pctPlat))
         : 0;
 
+      // ── COMMENTS detallado (auditoría interna) ───────────
       const COMMENTS =
-        `Fecha malla:${r.fecha_malla||r.fecha} Día:${lj?'L-J':'V-D'} | `+
-        `Paq:${r.paquetes_dist}×${cop(pPaq)}=${cop(r.paquetes_dist*pPaq)} | `+
-        `Inc:${r.incentivos_dist}×${cop(pInc)}=${cop(r.incentivos_dist*pInc)} | `+
-        `Can:${r.cancelados_dist}×${cop(pCan)}=${cop(r.cancelados_dist*pCan)} | `+
-        `Tar:${r.tareas_dist}×${cop(pTar)}=${cop(r.tareas_dist*pTar)} | `+
+        `Fecha malla:${r.fecha_malla||r.fecha} Dia:${lj?'L-J':'V-D'} | `+
+        `Paq:${r.paquetes_dist}x${cop(pPaq)}=${cop(r.paquetes_dist*pPaq)} | `+
+        `Inc:${r.incentivos_dist}x${cop(pInc)}=${cop(r.incentivos_dist*pInc)} | `+
+        `Can:${r.cancelados_dist}x${cop(pCan)}=${cop(r.cancelados_dist*pCan)} | `+
+        `Tar:${r.tareas_dist}x${cop(pTar)}=${cop(r.tareas_dist*pTar)} | `+
         `Min:${cop(minimoNeto)} Ingreso:${cop(ingresoNeto)} Compl:${cop(complementoPiloto)} | `+
         `Bonos:${cop(bonos)} Aj:${cop(ajustes)} | Conf:${r.nivel_confianza}`;
+
+      // ── COMMENTS_PILOTO para Trump (sin caracteres especiales) ──
+      // Sin tildes, comas, puntos, simbolos, enes — solo letras numeros y espacios
+      function copClean(n){ return Math.round(Math.abs(n)).toLocaleString('es-CO').replace(/[^0-9]/g,''); }
+      const MESES=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+      function fechaLegible(fechaStr){
+        // Parsear YYYY-MM-DD o YYYY-DD-MM robusto
+        try{
+          const p=String(fechaStr||'').trim().split('-');
+          if(p.length===3){
+            let y=parseInt(p[0]), p1=parseInt(p[1]), p2=parseInt(p[2]);
+            let mon=p1>12?p2:p1, day=p1>12?p1:p2;
+            return `${day} ${MESES[mon-1]||''}`;
+          }
+        }catch{}
+        return fechaStr||'';
+      }
+      const fechaDisplay = fechaLegible(r.fecha_malla||r.fecha);
+      const COMMENTS_PILOTO =
+        `Servicio ${fechaDisplay} `+
+        `Paq ${r.paquetes_dist} `+
+        `Inc ${r.incentivos_dist} `+
+        `Can ${r.cancelados_dist} `+
+        `Tar ${r.tareas_dist} `+
+        (complementoPiloto>0 ? `Garantizado ${copClean(minimoNeto)} ` : '')+
+        (bonos>0             ? `Bonos ${copClean(bonos)} `             : '')+
+        (ajustes!==0         ? `Aj ${copClean(Math.abs(ajustes))} `    : '')+
+        `COP`;
 
       return {
         BOOKING_ID:                    r.booking_id,
@@ -1322,6 +1351,7 @@ function runTrump(){
         PACKAGES_COUNT:                r.paquetes_dist,
         IS_PER_HOUR:                   0,
         COMMENTS,
+        COMMENTS_PILOTO,
         // Metadata interna
         _driver_id:   r.driver_id,
         _piloto:      r.piloto,
@@ -1340,13 +1370,17 @@ function runTrump(){
     const tp = trumpRows.reduce((a,r)=>a + r.FINAL_COST        + r.ADDITIONAL_FINAL_COST,         0);
     const tc = trumpRows.reduce((a,r)=>a + r.COMPANY_FINAL_COST + r.ADDITIONAL_COMPANY_FINAL_COST, 0);
     const margen = tc - tp;
+    const margenPct = tc > 0 ? ((margen/tc)*100).toFixed(1) : '0.0';
     const rev = trumpRows.filter(r=>!['HIGH','FUZZY-HIGH'].includes(r._confianza)).length;
 
     document.getElementById('stats-trump').innerHTML=`
       <div class="stat"><div class="stat-l">Bookings</div><div class="stat-v">${trumpRows.length}</div></div>
       <div class="stat"><div class="stat-l">Total pago pilotos (FINAL_COST)</div><div class="stat-v g" style="font-size:13px;">${cop(tp)}</div></div>
       <div class="stat"><div class="stat-l">Total cobro TaDa (COMPANY)</div><div class="stat-v b" style="font-size:13px;">${cop(tc)}</div></div>
-      <div class="stat"><div class="stat-l">Margen bruto</div><div class="stat-v ${margen>=0?'g':'r'}" style="font-size:13px;">${cop(margen)}</div></div>`;
+      <div class="stat"><div class="stat-l">Margen bruto</div>
+        <div class="stat-v ${margen>=0?'g':'r'}" style="font-size:13px;">${cop(margen)}</div>
+        <div style="font-size:11px;font-family:var(--mono);color:${margen>=0?'var(--green)':'var(--red)'};margin-top:4px;">${margenPct}% sobre cobro</div>
+      </div>`;
 
     const TC=['BOOKING_ID','COMPANY_FINAL_COST','ADDITIONAL_COMPANY_FINAL_COST',
       'DISPUTED_COMPANY_FINAL_COST','FINAL_COST','ADDITIONAL_FINAL_COST',
@@ -1392,9 +1426,41 @@ function runTrump(){
 function downloadTrump(){
   if(!trumpRows.length) return;
   const av=getAV(), runId=trumpRows[0]?._run_id||'LIQ';
-  const TC=['BOOKING_ID','COMPANY_FINAL_COST','ADDITIONAL_COMPANY_FINAL_COST','DISPUTED_COMPANY_FINAL_COST','FINAL_COST','ADDITIONAL_FINAL_COST','DISPUTED_FINAL_COST','PACKAGES_COUNT','IS_PER_HOUR','COMMENTS'];
-  const ws1=XLSX.utils.json_to_sheet(trumpRows.map(r=>Object.fromEntries(TC.map(c=>[c,r[c]]))));
-  ws1['!cols']=TC.map(c=>({wch:c==='COMMENTS'?70:c==='BOOKING_ID'?18:26}));
+  // Hoja 1: Template Trump — COMMENTS_PILOTO va en la columna COMMENTS (limpio para Trump)
+  const TC_TRUMP=['BOOKING_ID','COMPANY_FINAL_COST','ADDITIONAL_COMPANY_FINAL_COST',
+    'DISPUTED_COMPANY_FINAL_COST','FINAL_COST','ADDITIONAL_FINAL_COST',
+    'DISPUTED_FINAL_COST','PACKAGES_COUNT','IS_PER_HOUR','COMMENTS'];
+  const ws1=XLSX.utils.json_to_sheet(trumpRows.map(r=>({
+    BOOKING_ID:                    r.BOOKING_ID,
+    COMPANY_FINAL_COST:            r.COMPANY_FINAL_COST,
+    ADDITIONAL_COMPANY_FINAL_COST: r.ADDITIONAL_COMPANY_FINAL_COST,
+    DISPUTED_COMPANY_FINAL_COST:   '',
+    FINAL_COST:                    r.FINAL_COST,
+    ADDITIONAL_FINAL_COST:         r.ADDITIONAL_FINAL_COST,
+    DISPUTED_FINAL_COST:           '',
+    PACKAGES_COUNT:                r.PACKAGES_COUNT,
+    IS_PER_HOUR:                   0,
+    COMMENTS:                      r.COMMENTS_PILOTO, // versión limpia para Trump
+  })));
+  ws1['!cols']=TC_TRUMP.map(c=>({wch:c==='COMMENTS'?55:c==='BOOKING_ID'?18:26}));
+
+  // Hoja 1b: Referencia interna con COMMENTS detallado para auditoría
+  const ws1b=XLSX.utils.json_to_sheet(trumpRows.map(r=>({
+    BOOKING_ID:       r.BOOKING_ID,
+    PILOTO:           r._piloto,
+    CIUDAD:           r._ciudad,
+    SELLER:           r._seller,
+    FECHA_MALLA:      r._fecha,
+    DIA_TIPO:         r._dia_tipo,
+    INGRESO_NETO:     r._ingreso_neto,
+    COMPLEMENTO:      r._complemento,
+    FINAL_COST:       r.FINAL_COST,
+    COMPANY_FINAL_COST: r.COMPANY_FINAL_COST,
+    CONFIANZA:        r._confianza,
+    COMMENTS_DETALLE: r.COMMENTS,
+    COMMENTS_PILOTO:  r.COMMENTS_PILOTO,
+  })));
+  ws1b['!cols']=[{wch:18},{wch:24},{wch:10},{wch:30},{wch:12},{wch:8},{wch:14},{wch:14},{wch:14},{wch:18},{wch:12},{wch:80},{wch:55}];
   const mKeys=Object.keys(mallaRaw[0]||{});
   const mBKey=mKeys.find(k=>/booking/i.test(k))||'BOOKING SERVICIO';
   const mFKey=mKeys.find(k=>/^fecha$/i.test(k.trim()))||mKeys.find(k=>/fecha/i.test(k))||'FECHA';
@@ -1429,8 +1495,9 @@ function downloadTrump(){
   ws3['!cols']=[{wch:34},{wch:46}];
   const wb=XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb,ws1,'Template Trump');
+  XLSX.utils.book_append_sheet(wb,ws1b,'Referencia Interna');
   XLSX.utils.book_append_sheet(wb,ws2,'Inconsistencias');
-  XLSX.utils.book_append_sheet(wb,ws3,'Auditoría');
+  XLSX.utils.book_append_sheet(wb,ws3,'Auditoria');
   XLSX.writeFile(wb,`${runId}.xlsx`);
   toast(`✓ ${runId}.xlsx descargado`);
 }
