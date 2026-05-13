@@ -1153,15 +1153,37 @@ function runConciliacion(){
           matches.forEach(m=>matchados.add(m[mBKey]));
         }
         else if(candidatesFS.length>1){
-          matches=candidatesFS; nivel='AMBIGUOUS';
-          // Verificar si tienen horarios distintos (podrían resolverse manualmente)
-          const horarios=[...new Set(candidatesFS.map(m=>m[mHKey]||'sin hora'))];
-          const horariosDistintos = horarios.length===candidatesFS.length;
-          nota=`AMBIGUOUS: ${candidatesFS.length} candidatos en misma fecha+seller · `+
-               (horariosDistintos
-                 ? `turnos DISTINTOS (TADA no tiene horario para desambiguar) · `
-                 : `mismo horario · `)+
-               `Candidatos: ${candidatesFS.map(m=>descCandidato(m)).join(' | ')}`;
+          // ── Desempate automático antes de declarar AMBIGUOUS ──────────
+
+          // Regla 1: Eliminar candidatos SIN booking — no pueden liquidarse
+          const conBooking=candidatesFS.filter(m=>m[mBKey]&&String(m[mBKey]).trim()!==''&&m[mBKey]!=='SIN BOOKING');
+          if(conBooking.length===1){
+            matches=conBooking; nivel='FUZZY-HIGH';
+            const {score,minWords}=scoreNames(row.piloto,String(conBooking[0][mPKey]||''));
+            nota=`Fuzzy nombre+fecha+seller (${score}/${minWords} palabras · desempate: otro candidato sin booking) · TADA="${row.piloto}" → malla="${conBooking[0][mPKey]}"`;
+            matches.forEach(m=>matchados.add(m[mBKey]));
+          }
+          // Regla 2: El candidato con score notablemente mayor gana
+          else {
+            const scored=candidatesFS.map(m=>({m, s:scoreNames(row.piloto,String(m[mPKey]||'')).score}));
+            scored.sort((a,b)=>b.s-a.s);
+            const best=scored[0], second=scored[1];
+            if(best.s > second.s){
+              // El mejor tiene más palabras coincidentes que el segundo
+              matches=[best.m]; nivel='FUZZY-HIGH';
+              const {score,minWords}=scoreNames(row.piloto,String(best.m[mPKey]||''));
+              nota=`Fuzzy nombre+fecha+seller (${score}/${minWords} palabras · desempate por score: ${best.s} vs ${second.s}) · TADA="${row.piloto}" → malla="${best.m[mPKey]}"`;
+              matches.forEach(m=>matchados.add(m[mBKey]));
+            } else {
+              // Scores iguales → genuinamente ambiguo
+              matches=candidatesFS; nivel='AMBIGUOUS';
+              const horarios=[...new Set(candidatesFS.map(m=>m[mHKey]||'sin hora'))];
+              const horariosDistintos=horarios.length===candidatesFS.length;
+              nota=`AMBIGUOUS: ${candidatesFS.length} candidatos con score igual (${best.s}) en misma fecha+seller · `+
+                   (horariosDistintos?`turnos DISTINTOS (TADA sin horario para desambiguar) · `:`mismo horario · `)+
+                   `Candidatos: ${candidatesFS.map(m=>descCandidato(m)).join(' | ')}`;
+            }
+          }
         }
         else {
           // ── NIVEL 4: Fuzzy nombre + fecha (cualquier seller) ─
@@ -1180,14 +1202,30 @@ function runConciliacion(){
             matches.forEach(m=>matchados.add(m[mBKey]));
           }
           else if(candidatesF.length>1){
-            matches=candidatesF; nivel='AMBIGUOUS';
-            const horarios=[...new Set(candidatesF.map(m=>m[mHKey]||'sin hora'))];
-            const horariosDistintos = horarios.length===candidatesF.length;
-            nota=`AMBIGUOUS: ${candidatesF.length} candidatos misma fecha · `+
-                 (horariosDistintos
-                   ? `turnos DISTINTOS (TADA no tiene horario para desambiguar) · `
-                   : `mismo horario · `)+
-                 `Candidatos: ${candidatesF.map(m=>descCandidato(m)).join(' | ')}`;
+            // Desempate automático
+            const conBookingF=candidatesF.filter(m=>m[mBKey]&&String(m[mBKey]).trim()!==''&&m[mBKey]!=='SIN BOOKING');
+            if(conBookingF.length===1){
+              matches=conBookingF; nivel='FUZZY-LOW';
+              const {score,minWords}=scoreNames(row.piloto,String(conBookingF[0][mPKey]||''));
+              nota=`Fuzzy nombre+fecha (${score}/${minWords} palabras · desempate: otro candidato sin booking) · TADA="${row.piloto}" → malla="${conBookingF[0][mPKey]}"`;
+              matches.forEach(m=>matchados.add(m[mBKey]));
+            } else {
+              const scoredF=candidatesF.map(m=>({m,s:scoreNames(row.piloto,String(m[mPKey]||'')).score}));
+              scoredF.sort((a,b)=>b.s-a.s);
+              const bestF=scoredF[0], secondF=scoredF[1];
+              if(bestF.s > secondF.s){
+                matches=[bestF.m]; nivel='FUZZY-LOW';
+                const {score,minWords}=scoreNames(row.piloto,String(bestF.m[mPKey]||''));
+                nota=`Fuzzy nombre+fecha (${score}/${minWords} palabras · desempate score: ${bestF.s} vs ${secondF.s}) · TADA="${row.piloto}" → malla="${bestF.m[mPKey]}"`;
+                matches.forEach(m=>matchados.add(m[mBKey]));
+              } else {
+                matches=candidatesF; nivel='AMBIGUOUS';
+                const horariosF=[...new Set(candidatesF.map(m=>m[mHKey]||'sin hora'))];
+                nota=`AMBIGUOUS: ${candidatesF.length} candidatos score igual (${bestF.s}) misma fecha · `+
+                     (horariosF.length===candidatesF.length?`turnos DISTINTOS · `:`mismo horario · `)+
+                     `Candidatos: ${candidatesF.map(m=>descCandidato(m)).join(' | ')}`;
+              }
+            }
           }
         }
       }
@@ -1349,153 +1387,136 @@ function runDistribucion(){
 // ═══════════════════════════════════════════
 // MÓDULO DE NOVEDADES — Resolución manual
 // ═══════════════════════════════════════════
+let novedades = [];    // lista construida una sola vez al abrir el módulo
+let resoluciones = {}; // key → {accion, booking_id, driver_id, ...}
 
-// Estado de resoluciones: clave = índice en concResult/distResult
-// { tipo, accion:'ok'|'excluir', booking_id, driver_id, nota_manual }
-let resoluciones = {};
-
-const TIPOS_NOVEDAD = new Set(['LOW','FUZZY-LOW','AMBIGUOUS','SIN_MALLA']);
+const TIPOS_NOVEDAD  = new Set(['LOW','FUZZY-LOW','AMBIGUOUS','SIN_MALLA']);
 const TIPOS_SIN_BOOKING = 'SIN_BOOKING';
 
-// Construir la lista de novedades desde concResult + distResult
 function buildNovedades(){
   const nov = [];
-
   // 1. Registros de conciliación que requieren atención
-  concResult.forEach((r, idx) => {
+  concResult.forEach((r,idx)=>{
     if(TIPOS_NOVEDAD.has(r.nivel_confianza)){
-      nov.push({
-        tipo: r.nivel_confianza,
-        fuente: 'conc',
-        idx,
-        piloto: r.piloto,
-        ciudad: r.ciudad,
-        seller: r.seller,
-        fecha:  r.fecha,
-        nota:   r.nota||'',
-        matches: r.matches||[],
-        driver_id: r.driver_id||'',
-      });
+      nov.push({tipo:r.nivel_confianza, fuente:'conc', idx,
+        piloto:r.piloto, ciudad:r.ciudad, seller:r.seller, fecha:r.fecha,
+        nota:r.nota||'', matches:r.matches||[], driver_id:r.driver_id||''});
     }
   });
-
-  // 2. Registros distribuidos SIN booking
-  distResult.forEach((r, idx) => {
-    if(!r.booking_id || String(r.booking_id).trim()==='' ||
-       r.booking_id==='?' || r.booking_id==='SIN BOOKING'){
-      nov.push({
-        tipo: TIPOS_SIN_BOOKING,
-        fuente: 'dist',
-        idx,
-        piloto: r.piloto,
-        ciudad: r.ciudad,
-        seller: r.seller,
-        fecha:  r.fecha_malla||r.fecha,
-        nota:   'Registro sin BOOKING SERVICIO en la malla',
-        matches: [],
-        driver_id: r.driver_id||'',
-        booking_actual: r.booking_id,
-      });
+  // 2. Registros distribuidos SIN booking válido
+  distResult.forEach((r,idx)=>{
+    const bk = String(r.booking_id||'').trim();
+    if(!bk || bk==='?' || bk==='SIN BOOKING' || bk==='__EXCLUIDO__'){
+      nov.push({tipo:TIPOS_SIN_BOOKING, fuente:'dist', idx,
+        piloto:r.piloto, ciudad:r.ciudad, seller:r.seller, fecha:r.fecha_malla||r.fecha,
+        nota:'Registro sin BOOKING SERVICIO en la malla', matches:[], driver_id:r.driver_id||''});
     }
   });
-
   return nov;
-}
-
-function abrirNovedades(){
-  const nov = buildNovedades();
-  resoluciones = {};
-
-  // Summary
-  const tipos = {};
-  nov.forEach(n=>{ tipos[n.tipo]=(tipos[n.tipo]||0)+1; });
-  const total = nov.length;
-  document.getElementById('nov-summary').innerHTML = total===0
-    ? '<span style="color:var(--green);font-family:var(--mono);font-size:12px;">✓ Sin novedades — todos los registros tienen match y booking válido</span>'
-    : `<span class="ns-item" style="color:var(--text2);">Total novedades:</span>
-       <span class="ns-item" style="font-weight:600;">${total}</span>
-       ${Object.entries(tipos).map(([t,n])=>`<span class="ns-item"><span class="badge ${badgeClass(t)}">${t}</span> <strong>${n}</strong></span>`).join('')}
-       <span class="ns-item" style="color:var(--text3);font-size:10px;font-family:var(--mono);">· Las no resueltas se excluyen automáticamente</span>`;
-
-  // Renderizar tarjetas
-  const lista = document.getElementById('nov-lista');
-  if(total===0){ lista.innerHTML=''; navStep(4.5); unlock(4.5); return; }
-
-  lista.innerHTML = nov.map((n,i) => renderNovCard(n, i)).join('');
-  navStep(4.5);
-  unlock(4.5);
 }
 
 function badgeClass(tipo){
   if(tipo==='LOW'||tipo==='FUZZY-LOW') return 'b-med';
-  if(tipo==='AMBIGUOUS') return 'b-low';
-  if(tipo==='SIN_MALLA') return 'b-sin';
-  if(tipo==='SIN_BOOKING') return 'b-low';
+  if(tipo==='AMBIGUOUS'||tipo===TIPOS_SIN_BOOKING) return 'b-low';
   return 'b-sin';
 }
 
+function abrirNovedades(){
+  novedades = buildNovedades();
+  resoluciones = {};
+  renderModuloNovedades();
+  navStep(4.5);
+  if(maxStep<5) maxStep=5;
+}
+
+function renderModuloNovedades(){
+  const total = novedades.length;
+  const tipos = {};
+  novedades.forEach(n=>{ tipos[n.tipo]=(tipos[n.tipo]||0)+1; });
+
+  document.getElementById('nov-summary').innerHTML = total===0
+    ? '<span style="color:var(--green);font-family:var(--mono);font-size:12px;">✓ Sin novedades — todos los registros tienen match y booking válido</span>'
+    : Object.entries(tipos).map(([t,n])=>
+        `<span class="ns-item"><span class="badge ${badgeClass(t)}">${t}</span> <strong>${n}</strong></span>`
+      ).join(' &nbsp; ') +
+      `<span class="ns-item" style="color:var(--text3);font-size:10px;font-family:var(--mono);">· Las no resueltas se excluyen automáticamente</span>`;
+
+  document.getElementById('nov-lista').innerHTML = total===0
+    ? '' : novedades.map((n,i)=>renderNovCard(n,i)).join('');
+
+  // Adjuntar eventos después de renderizar (evita problemas con comillas en onclick)
+  novedades.forEach((n,i)=>{
+    const card = document.getElementById(`nov-card-${i}`);
+    if(!card) return;
+    // Botón confirmar
+    const btnOk = card.querySelector('.btn-nov-ok');
+    if(btnOk) btnOk.addEventListener('click',()=>confirmarOk(i));
+    // Botón excluir
+    const btnEx = card.querySelector('.btn-nov-ex');
+    if(btnEx) btnEx.addEventListener('click',()=>confirmarExcluir(i));
+    // Candidatos AMBIGUOUS
+    card.querySelectorAll('.nov-candidato').forEach(el=>{
+      el.addEventListener('click',()=>seleccionarCandidato(i, el.dataset.bk, el.dataset.did, el.dataset.nom));
+    });
+    // Input booking manual
+    const inpBk = card.querySelector('.inp-booking');
+    if(inpBk) inpBk.addEventListener('input',e=>{ novedades[i]._booking_manual=e.target.value.trim(); });
+    // Inputs ambiguous manual
+    const inpNom = card.querySelector('.inp-nom-manual');
+    const inpBkM = card.querySelector('.inp-bk-manual');
+    if(inpNom) inpNom.addEventListener('input',e=>{ novedades[i]._nombre_manual=e.target.value.trim(); });
+    if(inpBkM) inpBkM.addEventListener('input',e=>{ novedades[i]._bk_manual=e.target.value.trim(); });
+  });
+}
+
 function renderNovCard(n, i){
-  const key = `${n.fuente}_${n.idx}`;
-  const res = resoluciones[key];
+  const res = resoluciones[i];
   const cardCls = res ? (res.accion==='ok'?'resuelto':'excluido') : '';
   const statusHtml = res
     ? `<span class="nov-status ${res.accion==='ok'?'ns-ok':'ns-excl'}">${res.accion==='ok'?'✓ Incluido':'✗ Excluido'}</span>`
     : '';
 
-  // Candidatos para AMBIGUOUS
-  let candidatosHtml = '';
+  // Candidatos AMBIGUOUS
+  let candidatosHtml='';
   if(n.tipo==='AMBIGUOUS' && n.matches.length>0){
-    // Detectar columnas de la malla dinámicamente
     const mKeys=Object.keys(mallaRaw[0]||{});
     const mBKey=mKeys.find(k=>/booking/i.test(k))||'BOOKING SERVICIO';
     const mHKey=mKeys.find(k=>/inicio.*turno|hora.*inicio/i.test(k))||mKeys.find(k=>/inicio/i.test(k))||'INICIO DE TURNO';
     const mPKey=mKeys.find(k=>!/id/i.test(k)&&/nombre/i.test(k))||'NOMBRE';
     const mDKey=mKeys.find(k=>/^id[\s_]?piloto/i.test(k.trim()))||'ID PILOTO';
-
-    candidatosHtml = `<div style="margin-bottom:8px;font-size:11px;color:var(--text3);font-family:var(--mono);">Selecciona el candidato correcto o escribe manualmente:</div>
-      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;">
-        ${n.matches.map((m,mi)=>{
-          const bk=m[mBKey]||'SIN BOOKING';
+    candidatosHtml=`<div style="margin-bottom:8px;font-size:11px;color:var(--text3);font-family:var(--mono);">Selecciona el candidato correcto:</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;">
+        ${n.matches.map(m=>{
+          const bk=String(m[mBKey]||'SIN BOOKING');
           const hora=m[mHKey]||'?';
           const nom=m[mPKey]||'';
           const did=m[mDKey]||'';
-          const selCls=res&&res.accion==='ok'&&res.booking_id===bk?'selected':'';
-          return `<div class="nov-candidato ${selCls}" onclick="seleccionarCandidato('${key}',${i},'${bk}','${did}','${nom.replace(/'/g,"\\'")}')">
-            <div style="font-weight:600;">${nom}</div>
-            <div style="color:var(--text3);">${hora} · ${bk}</div>
+          const selCls=res?.booking_id===bk?'selected':'';
+          return `<div class="nov-candidato ${selCls}" data-bk="${bk}" data-did="${did}" data-nom="${nom}">
+            <div style="font-weight:600;font-size:11px;">${nom}</div>
+            <div style="color:var(--text3);font-size:10px;">${hora} · ${bk}</div>
           </div>`;
         }).join('')}
+      </div>
+      <div style="font-size:10px;color:var(--text3);font-family:var(--mono);margin-bottom:4px;">O ninguno es correcto — ingresar manualmente:</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">
+        <input class="nov-input inp-nom-manual" type="text" placeholder="Nombre del piloto correcto..." value="${n._nombre_manual||''}"/>
+        <input class="nov-input inp-bk-manual"  type="text" placeholder="Booking ID..."              value="${n._bk_manual||''}"/>
       </div>`;
   }
 
-  // Input manual de booking para SIN_BOOKING
-  let bookingInputHtml = '';
+  // Input booking SIN_BOOKING
+  let bookingHtml='';
   if(n.tipo===TIPOS_SIN_BOOKING){
-    const val = res?.booking_id||'';
-    bookingInputHtml = `<div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
-      <input class="nov-input" type="text" placeholder="Ingresar BOOKING SERVICIO manualmente..."
-        value="${val}" oninput="setBookingManual('${key}',${i},this.value)"/>
+    bookingHtml=`<div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;">
+      <input class="nov-input inp-booking" type="text" placeholder="Ingresar BOOKING SERVICIO manualmente..." value="${n._booking_manual||''}"/>
     </div>`;
-  }
-
-  // Input manual de nombre para AMBIGUOUS (si ningún candidato es correcto)
-  let nombreManualHtml = '';
-  if(n.tipo==='AMBIGUOUS'){
-    const valNom = res?.nombre_manual||'';
-    const valBk  = res?.booking_manual||'';
-    nombreManualHtml = `<div style="font-size:10px;color:var(--text3);font-family:var(--mono);margin-bottom:4px;">O ninguno es correcto — ingresar manualmente:</div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap;">
-        <input class="nov-input" type="text" placeholder="Nombre del piloto correcto..."
-          value="${valNom}" oninput="setManualAmbiguous('${key}',${i},'nombre',this.value)"/>
-        <input class="nov-input" type="text" placeholder="Booking ID..."
-          value="${valBk}" oninput="setManualAmbiguous('${key}',${i},'booking',this.value)"/>
-      </div>`;
   }
 
   return `<div class="nov-card ${cardCls}" id="nov-card-${i}">
     <div class="nov-header">
       <span class="nov-badge ${badgeClass(n.tipo)}">${n.tipo}</span>
-      <div>
+      <div style="flex:1;">
         <div class="nov-piloto">${n.piloto}</div>
         <div class="nov-meta">${n.ciudad} · ${n.seller} · ${n.fecha}</div>
       </div>
@@ -1504,156 +1525,121 @@ function renderNovCard(n, i){
     <div class="nov-body">
       <div class="nov-nota">${n.nota}</div>
       ${candidatosHtml}
-      ${bookingInputHtml}
-      ${nombreManualHtml}
+      ${bookingHtml}
       <div class="nov-actions">
-        ${n.tipo!=='SIN_MALLA' ? `<button class="btn btn-sm btn-primary" onclick="confirmarOk('${key}',${i})">✓ Confirmar</button>` : ''}
-        <button class="btn btn-sm btn-danger" onclick="confirmarExcluir('${key}',${i})">✗ Excluir</button>
+        ${n.tipo!=='SIN_MALLA'?`<button class="btn btn-sm btn-primary btn-nov-ok">✓ Confirmar</button>`:''}
+        <button class="btn btn-sm btn-danger btn-nov-ex">✗ Excluir</button>
       </div>
     </div>
   </div>`;
 }
 
-function seleccionarCandidato(key, i, bookingId, driverId, nombre){
-  resoluciones[key]={accion:'ok', booking_id:bookingId, driver_id:driverId, nombre_malla:nombre, tipo:'AMBIGUOUS'};
-  refrescarCard(i);
-}
-
-function setBookingManual(key, i, val){
-  if(!resoluciones[key]) resoluciones[key]={accion:'pendiente',tipo:'SIN_BOOKING'};
-  resoluciones[key].booking_id = val.trim();
-}
-
-function setManualAmbiguous(key, i, campo, val){
-  if(!resoluciones[key]) resoluciones[key]={accion:'pendiente',tipo:'AMBIGUOUS'};
-  resoluciones[key][campo==='nombre'?'nombre_manual':'booking_manual'] = val.trim();
-}
-
-function confirmarOk(key, i){
-  if(!resoluciones[key]) resoluciones[key]={};
-  resoluciones[key].accion='ok';
-  // Para SIN_BOOKING verificar que haya booking ingresado
-  if(resoluciones[key].tipo==='SIN_BOOKING' && !resoluciones[key].booking_id){
-    toast('Ingresa el Booking ID antes de confirmar'); return;
+function seleccionarCandidato(i, bk, did, nom){
+  resoluciones[i]={accion:'ok', booking_id:bk, driver_id:did, nombre_malla:nom};
+  // Actualizar visual de candidatos seleccionados
+  const card=document.getElementById(`nov-card-${i}`);
+  if(card){
+    card.querySelectorAll('.nov-candidato').forEach(el=>{
+      el.classList.toggle('selected', el.dataset.bk===bk);
+    });
+    card.classList.remove('excluido'); card.classList.add('resuelto');
+    const st=card.querySelector('.nov-status');
+    if(st){ st.className='nov-status ns-ok'; st.textContent='✓ Incluido'; }
+    else {
+      const hdr=card.querySelector('.nov-header');
+      if(hdr) hdr.insertAdjacentHTML('beforeend','<span class="nov-status ns-ok">✓ Incluido</span>');
+    }
   }
-  // Para AMBIGUOUS verificar que haya candidato o manual
-  if(resoluciones[key].tipo==='AMBIGUOUS' && !resoluciones[key].booking_id && !resoluciones[key].booking_manual){
-    toast('Selecciona un candidato o ingresa el booking manualmente'); return;
-  }
-  refrescarCard(i);
   actualizarSummary();
 }
 
-function confirmarExcluir(key, i){
-  resoluciones[key]={accion:'excluir'};
-  refrescarCard(i);
-  actualizarSummary();
-}
-
-function excluirTodas(){
-  const nov = buildNovedades();
-  nov.forEach((n,i)=>{
-    const key=`${n.fuente}_${n.idx}`;
-    resoluciones[key]={accion:'excluir'};
-  });
-  // Re-renderizar todas
-  document.getElementById('nov-lista').innerHTML = nov.map((n,i)=>renderNovCard(n,i)).join('');
-  actualizarSummary();
-}
-
-function refrescarCard(i){
-  // Re-renderizar solo la tarjeta afectada
-  const nov = buildNovedades();
-  if(nov[i]){
-    const card = document.getElementById(`nov-card-${i}`);
-    if(card) card.outerHTML = renderNovCard(nov[i], i);
+function confirmarOk(i){
+  const n=novedades[i];
+  if(!n) return;
+  if(n.tipo===TIPOS_SIN_BOOKING){
+    const bk=n._booking_manual||'';
+    if(!bk){ toast('Ingresa el Booking ID antes de confirmar'); return; }
+    resoluciones[i]={accion:'ok', booking_id:bk};
+  } else if(n.tipo==='AMBIGUOUS'){
+    // Verificar candidato seleccionado o manual
+    const bkM=n._bk_manual||'';
+    if(!resoluciones[i]?.booking_id && !bkM){ toast('Selecciona un candidato o ingresa el booking'); return; }
+    if(bkM && !resoluciones[i]) resoluciones[i]={accion:'ok', booking_id:bkM, nombre_manual:n._nombre_manual||''};
+    else if(resoluciones[i]) resoluciones[i].accion='ok';
+  } else {
+    resoluciones[i]={accion:'ok'};
   }
+  actualizarCard(i,'resuelto','✓ Incluido','ns-ok');
+  actualizarSummary();
+}
+
+function confirmarExcluir(i){
+  resoluciones[i]={accion:'excluir'};
+  actualizarCard(i,'excluido','✗ Excluido','ns-excl');
+  actualizarSummary();
+}
+
+function actualizarCard(i, cls, txt, stCls){
+  const card=document.getElementById(`nov-card-${i}`);
+  if(!card) return;
+  card.className=`nov-card ${cls}`;
+  let st=card.querySelector('.nov-status');
+  if(!st){
+    card.querySelector('.nov-header').insertAdjacentHTML('beforeend',`<span class="nov-status ${stCls}">${txt}</span>`);
+  } else { st.className=`nov-status ${stCls}`; st.textContent=txt; }
 }
 
 function actualizarSummary(){
-  const nov = buildNovedades();
-  const resueltos = nov.filter((_,i)=>{
-    const n=nov[i]; const key=`${n.fuente}_${n.idx}`;
-    return resoluciones[key]?.accion==='ok';
-  }).length;
-  const excluidos = nov.filter((_,i)=>{
-    const n=nov[i]; const key=`${n.fuente}_${n.idx}`;
-    return resoluciones[key]?.accion==='excluir';
-  }).length;
-  const pendientes = nov.length - resueltos - excluidos;
-  const sumEl = document.getElementById('nov-summary');
-  if(sumEl){
-    const extra = `<span class="ns-item" style="color:var(--green);">✓ ${resueltos} incluidos</span>
-      <span class="ns-item" style="color:var(--text3);">✗ ${excluidos} excluidos</span>
-      <span class="ns-item" style="color:var(--yellow);">⏳ ${pendientes} pendientes</span>`;
-    // Actualizar solo la parte dinámica
-    const base = sumEl.innerHTML.split('<span class="ns-item" style="color:var(--green)')[0];
-    sumEl.innerHTML = base + extra;
-  }
+  const resueltos=Object.values(resoluciones).filter(r=>r.accion==='ok').length;
+  const excluidos=Object.values(resoluciones).filter(r=>r.accion==='excluir').length;
+  const pendientes=novedades.length-resueltos-excluidos;
+  const sumEl=document.getElementById('nov-summary');
+  if(!sumEl) return;
+  // Mantener los badges de tipo y agregar contadores
+  const tiposHtml=Object.entries(
+    novedades.reduce((acc,n)=>{ acc[n.tipo]=(acc[n.tipo]||0)+1; return acc; },{})
+  ).map(([t,n])=>`<span class="ns-item"><span class="badge ${badgeClass(t)}">${t}</span> <strong>${n}</strong></span>`).join(' &nbsp; ');
+  sumEl.innerHTML=`${tiposHtml} &nbsp;&nbsp;
+    <span class="ns-item" style="color:var(--green);">✓ ${resueltos} incluidos</span>
+    <span class="ns-item" style="color:var(--text3);">✗ ${excluidos} excluidos</span>
+    <span class="ns-item" style="color:var(--yellow);">⏳ ${pendientes} pendientes</span>`;
+}
+
+function excluirTodas(){
+  novedades.forEach((_,i)=>{ resoluciones[i]={accion:'excluir'}; actualizarCard(i,'excluido','✗ Excluido','ns-excl'); });
+  actualizarSummary();
 }
 
 function aplicarResoluciones(){
-  const nov = buildNovedades();
-
-  nov.forEach((n,i) => {
-    const key = `${n.fuente}_${n.idx}`;
-    const res = resoluciones[key];
-
+  novedades.forEach((n,i)=>{
+    const res=resoluciones[i];
     if(n.tipo===TIPOS_SIN_BOOKING && n.fuente==='dist'){
-      // Sin resolución o excluido → marcar booking como vacío (se filtrará en Trump)
-      if(!res || res.accion==='excluir'){
-        distResult[n.idx].booking_id = '__EXCLUIDO__';
-      } else if(res.accion==='ok' && res.booking_id){
-        distResult[n.idx].booking_id = res.booking_id;
-        distResult[n.idx]._resolucion_manual = true;
-      }
+      if(!res||res.accion==='excluir') distResult[n.idx].booking_id='__EXCLUIDO__';
+      else if(res.accion==='ok'&&res.booking_id){ distResult[n.idx].booking_id=res.booking_id; distResult[n.idx]._manual=true; }
     }
-
-    if(TIPOS_NOVEDAD.has(n.tipo) && n.fuente==='conc'){
-      if(!res || res.accion==='excluir'){
-        concResult[n.idx]._excluido_manual = true;
-      } else if(res.accion==='ok'){
-        concResult[n.idx]._resolucion_manual = true;
-        // Actualizar driver_id y booking si viene de resolución de AMBIGUOUS
-        if(res.driver_id) concResult[n.idx].driver_id = res.driver_id;
-        // Si tiene booking_manual, ajustar el primer match
-        if(res.booking_manual && concResult[n.idx].matches.length>0){
+    if(TIPOS_NOVEDAD.has(n.tipo)&&n.fuente==='conc'){
+      if(!res||res.accion==='excluir'){ concResult[n.idx]._excluido_manual=true; }
+      else if(res.accion==='ok'){
+        concResult[n.idx]._resolucion_manual=true;
+        if(res.driver_id) concResult[n.idx].driver_id=res.driver_id;
+        if(res.booking_id&&concResult[n.idx].matches.length>1){
           const mKeys=Object.keys(mallaRaw[0]||{});
           const mBKey=mKeys.find(k=>/booking/i.test(k))||'BOOKING SERVICIO';
-          concResult[n.idx].matches[0][mBKey] = res.booking_manual;
+          const fil=concResult[n.idx].matches.filter(m=>m[mBKey]===res.booking_id);
+          if(fil.length>0) concResult[n.idx].matches=fil;
         }
-        // Si seleccionó candidato específico, filtrar matches a solo ese
-        if(res.booking_id && concResult[n.idx].matches.length>1){
-          const mKeys=Object.keys(mallaRaw[0]||{});
-          const mBKey=mKeys.find(k=>/booking/i.test(k))||'BOOKING SERVICIO';
-          const filtered = concResult[n.idx].matches.filter(m=>m[mBKey]===res.booking_id);
-          if(filtered.length>0) concResult[n.idx].matches = filtered;
-        }
-        concResult[n.idx].nivel_confianza = 'MANUAL-OK';
+        concResult[n.idx].nivel_confianza='MANUAL-OK';
       }
     }
   });
-
-  // Re-ejecutar distribución con los cambios aplicados
   showProcessing('Aplicando resoluciones...');
   setTimeout(()=>{
-    try{
-      // Solo re-distribuir los registros afectados que cambiaron a MANUAL-OK
-      // Los __EXCLUIDO__ se filtran en runTrump
-      runDistribucionSilent();
-    }catch(e){
-      console.error(e);
-    }finally{
-      hideProcessing();
-      navStep(5); // ir a tarifas
-      if(maxStep<6) maxStep=6;
-      toast('Resoluciones aplicadas');
-    }
+    try{ runDistribucionSilent(); }catch(e){ console.error(e); }
+    finally{ hideProcessing(); navStep(5); if(maxStep<6) maxStep=6; toast('Resoluciones aplicadas'); }
   },100);
 }
 
 function runDistribucionSilent(){
-  // Re-ejecutar distribución sin UI, solo actualizar distResult
   const mKeys=Object.keys(mallaRaw[0]||{});
   const mBKey=mKeys.find(k=>/booking/i.test(k))||'BOOKING SERVICIO';
   const mDKey=mKeys.find(k=>/^id[\s_]?piloto/i.test(k.trim()))||'ID PILOTO';
@@ -1661,35 +1647,29 @@ function runDistribucionSilent(){
   const mHKey=mKeys.find(k=>/inicio.*turno|hora.*inicio/i.test(k))||'INICIO DE TURNO';
   const mFKey=mKeys.find(k=>/^fecha$/i.test(k.trim()))||'FECHA';
   const mDiaKey=mKeys.find(k=>/^d[íi]a$/i.test(k.trim()))||null;
-
   const NIVELES_OK=new Set(['HIGH','MEDIUM','LOW','FUZZY-HIGH','FUZZY-LOW','MANUAL-OK']);
   distResult=[];
   concResult.filter(r=>NIVELES_OK.has(r.nivel_confianza)&&!r._excluido_manual).forEach(row=>{
     const n=row.matches.length||1;
-    const sorted=[...row.matches].sort((a,b)=>String(a[mHKey]||'').localeCompare(String(b[mHKey]||'')));
-    sorted.forEach((m,i)=>{
+    [...row.matches].sort((a,b)=>String(a[mHKey]||'').localeCompare(String(b[mHKey]||''))).forEach((m,i)=>{
       const first=i===0;
-      const fechaMalla=String(m[mFKey]||row.fecha||'').trim();
-      const diaMalla=mDiaKey?String(m[mDiaKey]||'').trim():'';
       distResult.push({
         booking_id:m[mBKey]||'?', driver_id:m[mDKey]||row.driver_id||'PENDIENTE',
         piloto:row.piloto, ciudad:row.ciudad, seller:m[mSKey]||row.seller,
-        fecha:row.fecha, fecha_malla:fechaMalla, dia_malla:diaMalla,
+        fecha:row.fecha, fecha_malla:String(m[mFKey]||row.fecha||'').trim(),
+        dia_malla:mDiaKey?String(m[mDiaKey]||'').trim():'',
         hora_inicio:m[mHKey]||'—',
-        paquetes_dist:Math.round(row.paquetes/n),
-        incentivos_dist:Math.round(row.incentivos/n),
+        paquetes_dist:Math.round(row.paquetes/n), incentivos_dist:Math.round(row.incentivos/n),
         cancelados_dist:Math.round(row.cancelados/n),
-        tareas_dist:first?row.tareas:0,
-        garantizado:first?row.garantizado:0,
-        bonos:first?row.bonos:0,
-        ajustes:first?row.ajustes:0,
-        nivel_confianza:row.nivel_confianza,
-        n_bookings:n,
-        _resolucion_manual:row._resolucion_manual||false,
+        tareas_dist:first?row.tareas:0, garantizado:first?row.garantizado:0,
+        bonos:first?row.bonos:0, ajustes:first?row.ajustes:0,
+        nivel_confianza:row.nivel_confianza, n_bookings:n,
+        _manual:row._resolucion_manual||false,
       });
     });
   });
 }
+
 
 // ═══════════════════════════════════════════
 // TEMPLATE TRUMP
