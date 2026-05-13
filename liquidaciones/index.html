@@ -671,7 +671,28 @@ function renderTariffPanel(){
     mkGroup('pago', 'Tarifas de pago al piloto — neto (COP por unidad)','var(--green)')+
     mkGroup('pct',  'Porcentajes de descuento','var(--yellow)');
 
-  document.getElementById('tariff-history').innerHTML=[...tariffStore.versions].reverse().slice(0,5).map(v=>{
+  // Log de cambios
+  const log = (tariffStore.log||[]).slice().reverse().slice(0,10);
+  const logHtml = log.length===0
+    ? '<div style="font-size:11px;color:var(--text3);font-family:var(--mono);">Sin cambios registrados aún</div>'
+    : log.map(e=>{
+        const ts=fmtDT(e.timestamp);
+        const accion=e.accion==='publicar'?`<span style="color:var(--green);">publicó ${e.version}</span>`
+                                          :`<span style="color:var(--blue);">activó ${e.version}</span>`;
+        const cambiosHtml=e.cambios?.length
+          ? `<div style="margin-top:4px;padding-left:8px;border-left:2px solid var(--border2);">${e.cambios.map(c=>`<div style="font-size:10px;color:var(--text3);">${c}</div>`).join('')}</div>`
+          : '';
+        return `<div style="background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:8px 12px;margin-bottom:6px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:${cambiosHtml?'4px':'0'};">
+            <span style="font-size:11px;font-family:var(--mono);">${accion}${e.nota?' · '+e.nota:''}</span>
+            <span style="font-size:10px;color:var(--text3);">${ts} · ${e.autor||'?'}</span>
+          </div>${cambiosHtml}
+        </div>`;
+      }).join('');
+
+  // Insertar log después del historial de versiones
+  document.getElementById('tariff-history').innerHTML +=
+    `<div class="sec" style="margin-top:16px;">Log de cambios</div>${logHtml}`;
     const isA=v.version===tariffStore.active_version;
     const cobro=TARIFF_SCHEMA.filter(s=>s.group==='cobro');
     const pago =TARIFF_SCHEMA.filter(s=>s.group==='pago');
@@ -690,20 +711,40 @@ function renderTariffPanel(){
   }).join('');
 }
 function publishTariff(){
-  const av=getAV(); if(!TARIFF_SCHEMA.some(s=>currentEdits[s.key]!==av.values[s.key])){ toast('Sin cambios'); return; }
+  const av=getAV();
+  if(!TARIFF_SCHEMA.some(s=>currentEdits[s.key]!==av.values[s.key])){ toast('Sin cambios'); return; }
   const autor=document.getElementById('t-autor').value.trim()||'sin especificar';
   const nota=document.getElementById('t-nota').value.trim()||'';
   const nv=getNextVer();
-  tariffStore.versions.push({version:nv,fecha_creacion:new Date().toISOString(),autor,nota,values:{...currentEdits}});
+  // Registrar qué campos cambiaron para el log
+  const cambios=TARIFF_SCHEMA.filter(s=>currentEdits[s.key]!==av.values[s.key])
+    .map(s=>`${s.label}: ${av.values[s.key]} → ${currentEdits[s.key]}`);
+  tariffStore.versions.push({
+    version:nv, fecha_creacion:new Date().toISOString(), autor, nota,
+    values:{...currentEdits}, cambios,
+  });
+  if(!tariffStore.log) tariffStore.log=[];
+  tariffStore.log.push({
+    timestamp:new Date().toISOString(), accion:'publicar',
+    version:nv, autor, nota, cambios,
+  });
   tariffStore.active_version=nv; saveTariffs();
   document.getElementById('t-autor').value=''; document.getElementById('t-nota').value='';
   document.getElementById('nav-version').textContent=`Tarifas ${nv}`;
   renderTariffPanel(); toast(`✓ ${nv} publicada`);
 }
-function resetTarifas(){ currentEdits={...getAV().values}; renderTariffPanel(); toast('Cambios descartados'); }
+
 function activateVersion(ver){
-  tariffStore.active_version=ver; currentEdits={...tariffStore.versions.find(v=>v.version===ver).values};
-  saveTariffs(); document.getElementById('nav-version').textContent=`Tarifas ${ver}`; renderTariffPanel(); toast(`✓ ${ver} activada`);
+  const autor=document.getElementById('t-autor').value.trim()||'sin especificar';
+  tariffStore.active_version=ver;
+  currentEdits={...tariffStore.versions.find(v=>v.version===ver).values};
+  if(!tariffStore.log) tariffStore.log=[];
+  tariffStore.log.push({
+    timestamp:new Date().toISOString(), accion:'activar', version:ver, autor,
+  });
+  saveTariffs();
+  document.getElementById('nav-version').textContent=`Tarifas ${ver}`;
+  renderTariffPanel(); toast(`✓ ${ver} activada`);
 }
 
 // ═══════════════════════════════════════════
@@ -1421,12 +1462,20 @@ function badgeClass(tipo){
   return 'b-sin';
 }
 
+let novFilter = null; // filtro activo en módulo de novedades
+
 function abrirNovedades(){
   novedades = buildNovedades();
   resoluciones = {};
+  novFilter = null;
   renderModuloNovedades();
   navStep(4.5);
   if(maxStep<5) maxStep=5;
+}
+
+function filterNovedades(tipo){
+  novFilter = novFilter===tipo ? null : tipo;
+  renderListaNovedades();
 }
 
 function renderModuloNovedades(){
@@ -1437,31 +1486,42 @@ function renderModuloNovedades(){
   document.getElementById('nov-summary').innerHTML = total===0
     ? '<span style="color:var(--green);font-family:var(--mono);font-size:12px;">✓ Sin novedades — todos los registros tienen match y booking válido</span>'
     : Object.entries(tipos).map(([t,n])=>
-        `<span class="ns-item"><span class="badge ${badgeClass(t)}">${t}</span> <strong>${n}</strong></span>`
+        `<span class="ns-item">
+          <span class="badge ${badgeClass(t)}" onclick="filterNovedades('${t}')"
+            style="cursor:pointer;transition:opacity .15s;${novFilter===t?'outline:2px solid var(--accent);outline-offset:2px;':''}"
+            title="Clic para filtrar">${t}</span>
+          <strong>${n}</strong>
+        </span>`
       ).join(' &nbsp; ') +
-      `<span class="ns-item" style="color:var(--text3);font-size:10px;font-family:var(--mono);">· Las no resueltas se excluyen automáticamente</span>`;
+      `<span class="ns-item" style="color:var(--text3);font-size:10px;font-family:var(--mono);">
+        · ${novFilter ? `Filtro: <strong style="color:var(--accent);">${novFilter}</strong> — clic en badge para quitar` : 'Clic en badge para filtrar'} · Las no resueltas se excluyen automáticamente
+      </span>`;
 
-  document.getElementById('nov-lista').innerHTML = total===0
-    ? '' : novedades.map((n,i)=>renderNovCard(n,i)).join('');
+  renderListaNovedades();
+}
 
-  // Adjuntar eventos después de renderizar (evita problemas con comillas en onclick)
-  novedades.forEach((n,i)=>{
+function renderListaNovedades(){
+  const visibles = novFilter
+    ? novedades.map((n,i)=>({n,i})).filter(({n})=>n.tipo===novFilter)
+    : novedades.map((n,i)=>({n,i}));
+
+  document.getElementById('nov-lista').innerHTML = visibles.length===0
+    ? `<div style="padding:20px;text-align:center;color:var(--text3);font-family:var(--mono);font-size:11px;">Sin novedades de tipo "${novFilter}"</div>`
+    : visibles.map(({n,i})=>renderNovCard(n,i)).join('');
+
+  // Adjuntar eventos después de renderizar
+  visibles.forEach(({n,i})=>{
     const card = document.getElementById(`nov-card-${i}`);
     if(!card) return;
-    // Botón confirmar
     const btnOk = card.querySelector('.btn-nov-ok');
     if(btnOk) btnOk.addEventListener('click',()=>confirmarOk(i));
-    // Botón excluir
     const btnEx = card.querySelector('.btn-nov-ex');
     if(btnEx) btnEx.addEventListener('click',()=>confirmarExcluir(i));
-    // Candidatos AMBIGUOUS
     card.querySelectorAll('.nov-candidato').forEach(el=>{
       el.addEventListener('click',()=>seleccionarCandidato(i, el.dataset.bk, el.dataset.did, el.dataset.nom));
     });
-    // Input booking manual
     const inpBk = card.querySelector('.inp-booking');
     if(inpBk) inpBk.addEventListener('input',e=>{ novedades[i]._booking_manual=e.target.value.trim(); });
-    // Inputs ambiguous manual
     const inpNom = card.querySelector('.inp-nom-manual');
     const inpBkM = card.querySelector('.inp-bk-manual');
     if(inpNom) inpNom.addEventListener('input',e=>{ novedades[i]._nombre_manual=e.target.value.trim(); });
@@ -1678,16 +1738,22 @@ function actualizarSummary(){
   const resueltos=Object.values(resoluciones).filter(r=>r.accion==='ok').length;
   const excluidos=Object.values(resoluciones).filter(r=>r.accion==='excluir').length;
   const pendientes=novedades.length-resueltos-excluidos;
+  const tipos=novedades.reduce((acc,n)=>{ acc[n.tipo]=(acc[n.tipo]||0)+1; return acc; },{});
   const sumEl=document.getElementById('nov-summary');
   if(!sumEl) return;
-  // Mantener los badges de tipo y agregar contadores
-  const tiposHtml=Object.entries(
-    novedades.reduce((acc,n)=>{ acc[n.tipo]=(acc[n.tipo]||0)+1; return acc; },{})
-  ).map(([t,n])=>`<span class="ns-item"><span class="badge ${badgeClass(t)}">${t}</span> <strong>${n}</strong></span>`).join(' &nbsp; ');
+  const tiposHtml=Object.entries(tipos).map(([t,n])=>
+    `<span class="ns-item">
+      <span class="badge ${badgeClass(t)}" onclick="filterNovedades('${t}')"
+        style="cursor:pointer;${novFilter===t?'outline:2px solid var(--accent);outline-offset:2px;':''}">
+        ${t}</span> <strong>${n}</strong>
+    </span>`).join(' &nbsp; ');
   sumEl.innerHTML=`${tiposHtml} &nbsp;&nbsp;
     <span class="ns-item" style="color:var(--green);">✓ ${resueltos} incluidos</span>
     <span class="ns-item" style="color:var(--text3);">✗ ${excluidos} excluidos</span>
-    <span class="ns-item" style="color:var(--yellow);">⏳ ${pendientes} pendientes</span>`;
+    <span class="ns-item" style="color:var(--yellow);">⏳ ${pendientes} pendientes</span>
+    <span class="ns-item" style="color:var(--text3);font-size:10px;font-family:var(--mono);">
+      · ${novFilter?`Filtro: <strong style="color:var(--accent);">${novFilter}</strong>`:'Clic en badge para filtrar'}
+    </span>`;
 }
 
 function excluirTodas(){
