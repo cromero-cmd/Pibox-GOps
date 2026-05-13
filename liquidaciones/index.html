@@ -978,10 +978,11 @@ function runConciliacion(){
   showProcessing('Ejecutando conciliación...');
   concFilter=new Set();
   setTimeout(()=>{
-    concResult=[];
-    if(!mallaRaw.length){ addLog('log-conc','[ERR] Carga la malla Pibox','err'); hideProcessing(); return; }
+    try{
+      concResult=[];
+      if(!mallaRaw.length){ addLog('log-conc','[ERR] Carga la malla Pibox','err'); return; }
 
-    const mKeys=Object.keys(mallaRaw[0]);
+      const mKeys=Object.keys(mallaRaw[0]);
     const mFKey=mKeys.find(k=>/fecha/i.test(k))||'FECHA';
     const mSKey=mKeys.find(k=>/seller|punto|tienda/i.test(k))||'SELLER';
     // mPKey: buscar columna de NOMBRE — excluir explícitamente columnas de ID
@@ -994,7 +995,9 @@ function runConciliacion(){
     const mBKey=mKeys.find(k=>/booking/i.test(k))||'BOOKING SERVICIO';
     const mDKey=mKeys.find(k=>/^id[\s_]?piloto$/i.test(k.trim()))||
                 mKeys.find(k=>/id.*piloto|driver.?id/i.test(k))||'ID PILOTO';
-    addLog('log-conc',`[INFO] Malla — fecha:"${mFKey}" seller:"${mSKey}" piloto:"${mPKey}" booking:"${mBKey}"`,'info');
+    const mHKey=mKeys.find(k=>/inicio.*turno|hora.*inicio/i.test(k))||
+                mKeys.find(k=>/inicio/i.test(k))||'INICIO DE TURNO';
+    addLog('log-conc',`[INFO] Malla — fecha:"${mFKey}" seller:"${mSKey}" piloto:"${mPKey}" booking:"${mBKey}" hora:"${mHKey}"`,'info');
 
     // ── Índices de match exacto ─────────────────────────────
     const idx3={}, idx2={};
@@ -1136,8 +1139,14 @@ function runConciliacion(){
 
     renderConcStats();
     renderConcTable();
-    hideProcessing();
     unlock(3);
+
+    }catch(err){
+      addLog('log-conc','[ERR] Error en conciliación: '+err.message,'err');
+      console.error('runConciliacion error:', err);
+    }finally{
+      hideProcessing();
+    }
   },50);
 }
 
