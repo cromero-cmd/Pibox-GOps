@@ -1696,15 +1696,28 @@ function excluirTodas(){
 }
 
 function aplicarResoluciones(){
+  // Construir set de booking_ids excluidos por SIN_BOOKING
+  const bookingsExcluidos = new Set();
+  const bookingsConfirmados = {}; // booking_id_viejo → booking_id_nuevo
+
   novedades.forEach((n,i)=>{
     const res=resoluciones[i];
+
     if(n.tipo===TIPOS_SIN_BOOKING && n.fuente==='dist'){
-      if(!res||res.accion==='excluir') distResult[n.idx].booking_id='__EXCLUIDO__';
-      else if(res.accion==='ok'&&res.booking_id){ distResult[n.idx].booking_id=res.booking_id; distResult[n.idx]._manual=true; }
+      if(!res||res.accion==='excluir'){
+        // Marcar para exclusión — guardar el índice del distResult
+        distResult[n.idx]._excluido_sin_booking=true;
+        bookingsExcluidos.add(n.idx); // índice en distResult
+      } else if(res.accion==='ok'&&res.booking_id){
+        distResult[n.idx].booking_id=res.booking_id;
+        distResult[n.idx]._manual=true;
+      }
     }
+
     if(TIPOS_NOVEDAD.has(n.tipo)&&n.fuente==='conc'){
-      if(!res||res.accion==='excluir'){ concResult[n.idx]._excluido_manual=true; }
-      else if(res.accion==='ok'){
+      if(!res||res.accion==='excluir'){
+        concResult[n.idx]._excluido_manual=true;
+      } else if(res.accion==='ok'){
         concResult[n.idx]._resolucion_manual=true;
         if(res.driver_id) concResult[n.idx].driver_id=res.driver_id;
         if(res.booking_id&&concResult[n.idx].matches.length>1){
@@ -1717,9 +1730,26 @@ function aplicarResoluciones(){
       }
     }
   });
+
   showProcessing('Aplicando resoluciones...');
   setTimeout(()=>{
-    try{ runDistribucionSilent(); }catch(e){ console.error(e); }
+    try{
+      runDistribucionSilent();
+      // Después de re-generar distResult, aplicar exclusiones de SIN_BOOKING
+      // Los SIN_BOOKING confirmados con booking nuevo ya están en distResult con booking correcto
+      // Los SIN_BOOKING excluidos: marcarlos como __EXCLUIDO__ en el nuevo distResult
+      // Identificarlos por piloto+fecha_malla+hora ya que idx cambió
+      const excluirPorPiloto = novedades
+        .filter((_,i)=>{ const n=novedades[i]; return n.tipo===TIPOS_SIN_BOOKING && (!resoluciones[i]||resoluciones[i].accion==='excluir'); })
+        .map(n=>(`${n.piloto}||${n.fecha}`));
+
+      distResult.forEach(r=>{
+        const key=`${r.piloto}||${r.fecha_malla||r.fecha}`;
+        if(excluirPorPiloto.includes(key) && (!r.booking_id||r.booking_id==='?'||r.booking_id==='SIN BOOKING')){
+          r.booking_id='__EXCLUIDO__';
+        }
+      });
+    }catch(e){ console.error(e); }
     finally{ hideProcessing(); navStep(5); if(maxStep<6) maxStep=6; toast('Resoluciones aplicadas'); }
   },100);
 }
@@ -1975,7 +2005,12 @@ function runTrump(){
 
     trumpRows.filter(r=>r._confianza==='MEDIUM').forEach(r=>addLog('log-trump',`[MED] ${r.BOOKING_ID} — dist. equitativa`,'warn'));
     trumpRows.filter(r=>r._confianza==='LOW').forEach(r=>addLog('log-trump',`[LOW] ${r.BOOKING_ID} · ${r._piloto}`,'warn'));
-    concResult.filter(r=>r.nivel_confianza==='SIN_MALLA').forEach(r=>addLog('log-trump',`[EXCL] ${r.piloto} · ${r.fecha} — excluido`,'err'));
+    concResult.filter(r=>r.nivel_confianza==='SIN_MALLA').forEach(r=>
+      addLog('log-trump',`[EXCL] ${r.piloto} · ${r.fecha} — SIN_MALLA`,'err'));
+    concResult.filter(r=>r._excluido_manual).forEach(r=>
+      addLog('log-trump',`[EXCL] ${r.piloto} · ${r.fecha} — excluido manualmente en Novedades`,'err'));
+    distResult.filter(r=>r.booking_id==='__EXCLUIDO__').forEach(r=>
+      addLog('log-trump',`[EXCL] ${r.piloto} · ${r.fecha_malla||r.fecha} — SIN_BOOKING excluido`,'err'));
 
     try{
       const runs=JSON.parse(localStorage.getItem(LS_RUNS)||'[]');
