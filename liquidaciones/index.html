@@ -638,12 +638,28 @@ function unlock(i){
 // TARIFAS
 // ═══════════════════════════════════════════
 function initTariffs(){
-  try{ const r=localStorage.getItem(LS_TAR); tariffStore=r?JSON.parse(r):null; }catch{ tariffStore=null; }
+  try{
+    const r=localStorage.getItem(LS_TAR);
+    tariffStore = r ? JSON.parse(r) : null;
+    // Validar que la estructura es correcta
+    if(tariffStore && (!tariffStore.versions || !tariffStore.active_version || !getAV())){
+      tariffStore = null; // estructura inválida → resetear
+    }
+  }catch{ tariffStore=null; }
+
   if(!tariffStore){
     const defs={}; TARIFF_SCHEMA.forEach(s=>defs[s.key]=s.def);
-    tariffStore={active_version:'v1',versions:[{version:'v1',fecha_creacion:new Date().toISOString(),autor:'sistema',nota:'Versión inicial',values:{...defs}}]};
+    tariffStore={
+      active_version:'v1',
+      versions:[{version:'v1',fecha_creacion:new Date().toISOString(),
+        autor:'sistema',nota:'Versión inicial',values:{...defs}}],
+      log:[]
+    };
     saveTariffs();
   }
+  // Asegurar que el campo log existe aunque sea de una versión anterior
+  if(!tariffStore.log) tariffStore.log=[];
+
   currentEdits={...getAV().values};
   document.getElementById('nav-version').textContent=`Tarifas ${getAV().version}`;
 }
