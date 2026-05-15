@@ -1237,7 +1237,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 
 <script>
-const APP_VERSION='14.72';
+const APP_VERSION='14.73';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -2727,8 +2727,9 @@ async function loadMallaPersonal(){
       const today=new Date();today.setHours(0,0,0,0);
       const turnoDate=rs?new Date(rs):null;
       const isOldActive=mt?.status==='active'&&turnoDate&&turnoDate<today;
-      const hasEndTime=!!(mt?.endTime?.toDate?.())||!!(mt?.endTime?.seconds);
-      const hasEnded=mt?(mt.status==='ended'||isOldActive||hasEndTime):false;
+      const hasEndTime=mt?.endTime!=null&&mt?.endTime!==undefined&&mt?.endTime!=='null'&&!!(mt?.endTime?.seconds||mt?.endTime?.toDate);
+      const hasAccumulated=mt?.status==='active'&&(mt?.accumulatedSeconds||0)>0&&turnoDate&&turnoDate<today;
+      const hasEnded=mt?(mt.status==='ended'||mt.status==='interrupted'||isOldActive||hasEndTime||hasAccumulated):false;
       const status=getStatus(ss,rs,m.novedad,now,null,null,hasEnded);
       return{...m,scheduledStart:ss,scheduledEnd:se,realStart:rs,realEnd:re,status};
     });
@@ -3066,8 +3067,9 @@ async function loadPanel2(){
     const rs=mt?mt.startTime.toDate():null;
     const todayP2=new Date();todayP2.setHours(0,0,0,0);
     const isOldActiveP2=mt?.status==='active'&&rs&&rs<todayP2;
-    const hasEndTime=!!(mt?.endTime?.toDate?.())||!!(mt?.endTime?.seconds);
-    const hasEnded=mt?(mt.status==='ended'||isOldActiveP2||hasEndTime):false;
+    const hasEndTime=mt?.endTime!=null&&mt?.endTime!==undefined&&mt?.endTime!=='null'&&!!(mt?.endTime?.seconds||mt?.endTime?.toDate);
+    const hasAccumulatedP2=mt?.status==='active'&&(mt?.accumulatedSeconds||0)>0&&rs&&rs<todayP2;
+    const hasEnded=mt?(mt.status==='ended'||mt.status==='interrupted'||isOldActiveP2||hasEndTime||hasAccumulatedP2):false;
     const re=mt?.endTime?.toDate?mt.endTime.toDate():null;
     // Check absence record
     const absKey=(m.usuario||'').replace('@','_at_')+'_'+(m.fecha||'').replace(/\//g,'-');
