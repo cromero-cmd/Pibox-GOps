@@ -1242,7 +1242,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 
 <script>
-const APP_VERSION='14.83';
+const APP_VERSION='14.84';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -3285,43 +3285,82 @@ function setPanel2MobileFilter(){
 function renderPanel2Extras(allTurnos,fromDate,toDate,mallaData){
   const el=document.getElementById('panel2-extras');
   if(!el)return;
+  // Incluir todos los turnos con cualquier estado de overtime (incluyendo pending_review)
   const extTurnos=allTurnos.filter(t=>{
-    if(!t.overtimeStatus||t.overtimeStatus==='pending_review')return false;
+    if(!t.overtimeStatus)return false;
     const d=t.startTime?.toDate?.();
     return d&&(!fromDate||d>=fromDate)&&(!toDate||d<=toDate);
   });
   if(!extTurnos.length){el.innerHTML='<div style="padding:16px;font-size:12px;color:var(--text-dim);text-align:center;">Sin extras en este período</div>';return;}
   const approved=extTurnos.filter(t=>t.overtimeStatus==='approved');
   const rejected=extTurnos.filter(t=>t.overtimeStatus==='rejected');
-  const pending=extTurnos.filter(t=>t.overtimeStatus==='pending_super_admin');
-  // Quién aprobó más
+  const pending=extTurnos.filter(t=>t.overtimeStatus==='pending_review'||t.overtimeStatus==='pending_super_admin');
   const byApprover={};
   approved.forEach(t=>{const a=t.overtimeApprovedBy||'—';byApprover[a]=(byApprover[a]||0)+1;});
   const topApprover=Object.entries(byApprover).sort((a,b)=>b[1]-a[1])[0];
-  el.innerHTML=`<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px;">
-    <div style="background:rgba(74,222,128,0.08);border:1px solid rgba(74,222,128,0.2);border-radius:10px;padding:12px;text-align:center;"><div style="font-size:22px;font-weight:800;color:#4ade80;">${approved.length}</div><div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);">✅ Aprobadas</div></div>
-    <div style="background:rgba(248,113,113,0.08);border:1px solid rgba(248,113,113,0.2);border-radius:10px;padding:12px;text-align:center;"><div style="font-size:22px;font-weight:800;color:#f87171;">${rejected.length}</div><div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);">❌ Rechazadas</div></div>
-    <div style="background:rgba(251,146,60,0.08);border:1px solid rgba(251,146,60,0.2);border-radius:10px;padding:12px;text-align:center;"><div style="font-size:22px;font-weight:800;color:#fb923c;">${pending.length}</div><div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);">⏳ En revisión</div></div>
-  </div>
-  ${topApprover?`<div style="font-size:11px;color:var(--text-dim);font-family:var(--mono);margin-bottom:10px;">Admin con más aprobaciones: <span style="color:var(--p2);font-weight:700;">${topApprover[0].split('@')[0]}</span> (${topApprover[1]})</div>`:''}
-  <div style="max-height:200px;overflow-y:auto;">
-    ${extTurnos.map(t=>{
+
+  // Estado de filtro activo
+  if(!window._extrasFilter)window._extrasFilter=null;
+
+  function renderTable(filter){
+    const rows=filter?extTurnos.filter(t=>{
+      if(filter==='approved')return t.overtimeStatus==='approved';
+      if(filter==='rejected')return t.overtimeStatus==='rejected';
+      if(filter==='pending')return t.overtimeStatus==='pending_review'||t.overtimeStatus==='pending_super_admin';
+      return true;
+    }):extTurnos;
+    const tableEl=document.getElementById('panel2-extras-table');
+    if(!tableEl)return;
+    if(!rows.length){tableEl.innerHTML='<div style="padding:12px;font-size:12px;color:var(--text-dim);text-align:center;">Sin registros para este filtro</div>';return;}
+    tableEl.innerHTML=rows.map(t=>{
       const d=t.startTime?.toDate?.();
       const ds=d?d.toLocaleDateString('es-CO',{day:'2-digit',month:'short'}):'—';
       const name=t.userName||t.userEmail?.split('@')[0]||'—';
       const statusColor=t.overtimeStatus==='approved'?'#4ade80':t.overtimeStatus==='rejected'?'#f87171':'#fb923c';
-      const statusLabel=t.overtimeStatus==='approved'?'✅ Aprobada':t.overtimeStatus==='rejected'?'❌ Rechazada':'⏳ Revisión';
-      const approvedBy=t.overtimeApprovedBy
-        ?t.overtimeApprovedBy.split('@')[0]
-        :(t.overtimeStatus==='rejected'?'el agente':'—');
+      const statusLabel=t.overtimeStatus==='approved'?'✅ Aprobada':t.overtimeStatus==='rejected'?'❌ Rechazada':'⏳ En revisión';
+      const approvedBy=t.overtimeApprovedBy?t.overtimeApprovedBy.split('@')[0]:(t.overtimeStatus==='rejected'?'el agente':'—');
       return`<div style="display:grid;grid-template-columns:120px 70px 80px 120px;gap:0;border-bottom:1px solid var(--border);font-size:11px;align-items:center;">
         <div style="padding:7px 10px;border-right:1px solid var(--border);font-weight:600;color:var(--text);">${name}</div>
         <div style="padding:7px 10px;border-right:1px solid var(--border);font-family:var(--mono);color:var(--text-muted);">${ds}</div>
         <div style="padding:7px 10px;border-right:1px solid var(--border);font-family:var(--mono);color:var(--p2);font-weight:700;">${t.overtimeMinutes||0}m</div>
         <div style="padding:7px 10px;display:flex;flex-direction:column;gap:2px;"><span style="font-size:10px;color:${statusColor};">${statusLabel}</span><span style="font-size:9px;color:var(--text-dim);font-family:var(--mono);">por ${approvedBy}</span></div>
       </div>`;
-    }).join('')}
-  </div>`;
+    }).join('');
+  }
+
+  const activeFilter=window._extrasFilter;
+  function cardStyle(filter,color,bg){
+    const isActive=activeFilter===filter;
+    return`background:${bg};border:2px solid ${isActive?color:'transparent'};border-radius:10px;padding:12px;text-align:center;cursor:pointer;transition:all 0.15s;${isActive?'':'opacity:'+(!activeFilter?1:0.5)+';}'}`;
+  }
+
+  el.innerHTML=`<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px;">
+    <div style="${cardStyle('approved','#4ade80','rgba(74,222,128,0.08)')}" onclick="window._extrasFilter=window._extrasFilter==='approved'?null:'approved';renderPanel2ExtrasTable()">
+      <div style="font-size:22px;font-weight:800;color:#4ade80;">${approved.length}</div>
+      <div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);">✅ Aprobadas</div>
+    </div>
+    <div style="${cardStyle('rejected','#f87171','rgba(248,113,113,0.08)')}" onclick="window._extrasFilter=window._extrasFilter==='rejected'?null:'rejected';renderPanel2ExtrasTable()">
+      <div style="font-size:22px;font-weight:800;color:#f87171;">${rejected.length}</div>
+      <div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);">❌ Rechazadas</div>
+    </div>
+    <div style="${cardStyle('pending','#fb923c','rgba(251,146,60,0.08)')}" onclick="window._extrasFilter=window._extrasFilter==='pending'?null:'pending';renderPanel2ExtrasTable()">
+      <div style="font-size:22px;font-weight:800;color:#fb923c;">${pending.length}</div>
+      <div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);">⏳ En revisión</div>
+    </div>
+  </div>
+  ${topApprover?`<div style="font-size:11px;color:var(--text-dim);font-family:var(--mono);margin-bottom:10px;">Admin con más aprobaciones: <span style="color:var(--p2);font-weight:700;">${topApprover[0].split('@')[0]}</span> (${topApprover[1]})</div>`:''}
+  <div id="panel2-extras-table" style="max-height:200px;overflow-y:auto;"></div>`;
+
+  // Guardar datos para re-render al filtrar
+  window._extrasAllTurnos=extTurnos;
+  renderTable(activeFilter);
+
+  // Función global para re-render al cambiar filtro
+  window.renderPanel2ExtrasTable=function(){
+    const f=window._extrasFilter;
+    // Re-render cards con nuevo estado activo
+    renderPanel2Extras(allTurnos,fromDate,toDate,mallaData);
+  };
 }
 
 function renderPanel2Insights(rows,allTurnos,fromDate,toDate){
