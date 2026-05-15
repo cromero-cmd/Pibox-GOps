@@ -1237,7 +1237,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 
 <script>
-const APP_VERSION='14.73';
+const APP_VERSION='14.74';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -3404,13 +3404,33 @@ async function forceCloseTurno(turnoId,btn){
   try{
     const adminEmail=document.getElementById('user-email').textContent;
     const now=new Date();
+    // Buscar la hora programada de fin en la malla para este turno
+    let endTime=now;
+    const turnoRow=panel2AllRows?.find(r=>r.turnoId===turnoId);
+    if(turnoRow?.scheduledEnd){
+      endTime=turnoRow.scheduledEnd;
+    } else {
+      // Buscar en mallaData por usuario y fecha
+      const mallaData=window._panel2MallaData||[];
+      const activeRow=Object.values(panel2ActiveTimers||{}).find(t=>t===turnoId);
+      const allTurnos=await window.getRecentTurnos();
+      const t=allTurnos.find(t=>t.id===turnoId);
+      if(t){
+        const tDate=t.startTime?.toDate?.();
+        const mEntry=mallaData.find(m=>m.usuario===t.userEmail&&parseDate(m.fecha)?.toDateString()===tDate?.toDateString());
+        if(mEntry?.fin){
+          const scheduled=parseTime(mEntry.fecha,mEntry.fin);
+          if(scheduled)endTime=scheduled;
+        }
+      }
+    }
     await window.updateTurnoInFirebase(turnoId,{
       status:'ended',
-      endTime:now,
+      endTime:endTime,
       forcedClosedBy:adminEmail,
       forcedClosedAt:now.toISOString()
     });
-    toast('✅ Turno cerrado forzosamente');
+    toast('✅ Turno cerrado — hora de fin: '+endTime.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}));
     setTimeout(()=>loadPanel2(),800);
   }catch(e){
     btn.textContent='⚠ Forzar cierre';btn.disabled=false;
