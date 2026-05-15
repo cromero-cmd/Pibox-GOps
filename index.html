@@ -845,6 +845,14 @@ body.agent-preview-mode header{margin-top:34px;}
             <div class="turno-timer" id="turno-timer">00:00:00</div>
             <div id="turno-deficit" style="display:none;font-size:11px;font-weight:600;font-family:var(--mono);margin-bottom:8px;"></div>
             <div class="turno-date" id="turno-date"></div>
+            <div id="notif-banner" style="display:none;margin:10px 0;background:rgba(123,47,255,0.08);border:1px solid rgba(123,47,255,0.25);border-radius:10px;padding:10px 14px;display:flex;align-items:center;gap:10px;max-width:360px;">
+              <span style="font-size:18px;">🔔</span>
+              <div style="flex:1;">
+                <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:2px;">Recordatorio de fin de turno</div>
+                <div style="font-size:11px;color:var(--text-dim);">Recibe una alerta cuando tu turno esté por terminar.</div>
+              </div>
+              <button onclick="requestNotifPermission()" style="background:var(--grad);border:none;color:white;padding:6px 12px;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;">Activar</button>
+            </div>
             
             <div>
               <button class="btn-turno-start" id="btn-turno-start" onclick="startTurno()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/><path d="M12 6v6l4 2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>Iniciar turno</button>
@@ -1242,7 +1250,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 
 <script>
-const APP_VERSION='14.84';
+const APP_VERSION='14.85';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -1410,6 +1418,58 @@ function applyStoredTheme(){
     if(icon)icon.textContent='🌙';
   }
 }
+// ── NOTIFICACIONES DE FIN DE TURNO ──
+function checkNotifBanner(){
+  const banner=document.getElementById('notif-banner');
+  if(!banner)return;
+  if(!('Notification' in window)){banner.style.display='none';return;}
+  if(Notification.permission==='granted'){banner.style.display='none';}
+  else if(Notification.permission==='denied'){banner.style.display='none';}
+  else{banner.style.display='flex';}
+}
+
+async function requestNotifPermission(){
+  if(!('Notification' in window)){toast('Tu navegador no soporta notificaciones');return;}
+  const perm=await Notification.requestPermission();
+  if(perm==='granted'){
+    toast('🔔 Notificaciones activadas');
+    document.getElementById('notif-banner').style.display='none';
+    // Si hay turno activo con hora programada, programar notificación
+    if(window._scheduledTurnoSecs&&turnoStartTime){
+      scheduleEndNotification();
+    }
+  } else {
+    toast('Permiso denegado — no se enviarán notificaciones');
+  }
+}
+
+function scheduleEndNotification(){
+  // Cancelar cualquier notificación anterior
+  if(window._notifTimeout)clearTimeout(window._notifTimeout);
+  if(!window._scheduledTurnoSecs||!turnoStartTime)return;
+  if(Notification.permission!=='granted')return;
+  const now=new Date();
+  const endTime=new Date(turnoStartTime.getTime()+(window._scheduledTurnoSecs*1000));
+  const warningTime=new Date(endTime.getTime()-5*60*1000); // 5 min antes
+  const msUntilWarning=warningTime.getTime()-now.getTime();
+  if(msUntilWarning<=0)return; // Ya pasó
+  window._notifTimeout=setTimeout(()=>{
+    if(Notification.permission!=='granted')return;
+    const n=new Notification('⏰ Tu turno está por terminar — Pi GOps',{
+      body:`Faltan 5 minutos para las ${endTime.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'})}. No olvides finalizar tu turno.`,
+      icon:'https://cromero-cmd.github.io/Pibox-GOps/favicon.ico',
+      requireInteraction:true
+    });
+    n.onclick=()=>{
+      window.focus();
+      switchTab('turno');
+      setTimeout(()=>switchTurnoTab('miturno'),100);
+      n.close();
+    };
+  },msUntilWarning);
+  console.log(`[Pi GOps] Notificación programada para ${warningTime.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'})}`);
+}
+
 function switchTab(t){
   if(t!=='home')localStorage.setItem('pg_active_tab',t);
   else localStorage.removeItem('pg_active_tab');
@@ -1985,6 +2045,7 @@ async function initTurnoView(){
   loadTurnoHistory();
   // Pre-check malla for today
   checkTodayNovedad();
+  checkNotifBanner();
 }
 
 function showTurnoDoneToday(turno){
@@ -2138,7 +2199,7 @@ async function _doStartTurno(){
   }else{window._scheduledTurnoSecs=0;}
   const data={startTime:turnoStartTime,endTime:null,accumulatedSeconds:0,status:'active',device:device.label,isMobile:device.isMobile,ua:device.ua};
   currentTurnoId=await window.saveTurnoToFirebase(data);
-  setTurnoActive({...data,startTime:{toDate:()=>turnoStartTime}});startTimer();
+  setTurnoActive({...data,startTime:{toDate:()=>turnoStartTime}});startTimer();scheduleEndNotification();
   toast('✅ Turno iniciado — '+turnoStartTime.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}));
 }
 
@@ -2399,7 +2460,7 @@ async function resumeTurno(){
   document.getElementById('resume-banner').style.display='none';
   currentTurnoId=t.id;turnoStartTime=new Date();accumulatedSeconds=t.accumulatedSeconds||0;
   await window.updateTurnoInFirebase(currentTurnoId,{status:'active',resumedAt:turnoStartTime,resumeAuthorized:false});
-  setTurnoActive({...t,startTime:{toDate:()=>new Date(t.startTime.toDate())}});startTimer();
+  setTurnoActive({...t,startTime:{toDate:()=>new Date(t.startTime.toDate())}});startTimer();scheduleEndNotification();
   toast('▶️ Turno reanudado');
 }
 async function startFreshTurno(){if(window._resumePollId){clearInterval(window._resumePollId);window._resumePollId=null;}document.getElementById('resume-banner').style.display='none';window._interruptedTurno=null;await startTurno();}
