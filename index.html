@@ -811,6 +811,10 @@ body.agent-preview-mode header{margin-top:34px;}
           <h1 id="home-greeting" style="font-size:26px;font-weight:800;color:var(--text);margin-bottom:6px;">Hola 👋</h1>
           <p style="font-size:14px;color:var(--text-muted);font-family:var(--mono);">¿Qué quieres hacer hoy?</p>
         </div>
+        <div style="display:flex;align-items:center;gap:8px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:8px 14px;margin-bottom:16px;max-width:320px;">
+          <svg viewBox="0 0 24 24" fill="none" width="15" height="15" style="flex-shrink:0;color:var(--text-dim);"><circle cx="11" cy="11" r="8" stroke="currentColor" stroke-width="2"/><path d="M21 21l-4.35-4.35" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          <input id="home-search" type="text" placeholder="Buscar aplicación..." oninput="filterHomeCards(this.value)" style="background:none;border:none;outline:none;color:var(--text);font-size:13px;width:100%;font-family:var(--font);"/>
+        </div>
         <div id="home-cards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px;"></div>
       </div>
     </div>
@@ -1238,7 +1242,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 
 <script>
-const APP_VERSION='14.82';
+const APP_VERSION='14.83';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -1340,6 +1344,14 @@ function startVersionPolling(){
 }
 
 // ── TABS ──
+function filterHomeCards(query){
+  const q=query.toLowerCase().trim();
+  document.querySelectorAll('#home-cards .home-card').forEach(el=>{
+    const title=el.querySelector('.home-card-title')?.textContent?.toLowerCase()||'';
+    const desc=el.querySelector('.home-card-desc')?.textContent?.toLowerCase()||'';
+    el.style.display=!q||title.includes(q)||desc.includes(q)?'':'none';
+  });
+}
 function initHomeView(){
   const userEmail=document.getElementById('user-email')?.textContent||'';
   const userName=document.getElementById('user-name')?.textContent||'';
