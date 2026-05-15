@@ -1237,7 +1237,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 
 <script>
-const APP_VERSION='14.77';
+const APP_VERSION='14.79';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -3476,22 +3476,24 @@ async function saveTurnoTimeEdit(turnoId, fecha, btn){
   const reason=document.getElementById('edit-reason').value||'Corrección manual';
   if(!startVal&&!endVal){toast('Ingresa al menos una hora');return;}
 
-  // Buscar horas programadas en la malla
+  // Buscar horas programadas en panel2AllRows (más confiable que buscar en mallaData)
   const mallaData=window._panel2MallaData||[];
-  const mEntry=mallaData.find(m=>{const d=parseDate(m.fecha);return d&&d.toDateString()===new Date(fecha.replace(/(\d+)\/(\d+)\/(\d+)/,'$3-$2-$1')||fecha).toDateString()||m.fecha===fecha;});
-  const scheduledEnd=mEntry?parseTime(mEntry.fecha,mEntry.fin):null;
-  const scheduledStart=mEntry?parseTime(mEntry.fecha,mEntry.inicio):null;
+  const panelRow=panel2AllRows?.find(r=>r.turnoId===turnoId);
+  const scheduledEnd=panelRow?.scheduledEnd||null;
+  const scheduledStart=panelRow?.scheduledStart||null;
+  // Fallback: buscar en mallaData por fecha y usuario del turno
+  let fechaMalla=panelRow?.fecha||fecha;
 
   // Verificar si hay extras
   if(endVal&&scheduledEnd){
-    const newEnd=parseTime(fecha,endVal);
+    const newEnd=parseTime(fechaMalla,endVal);
+    console.log('[Edit] scheduledEnd:',scheduledEnd,'newEnd:',newEnd,'fechaMalla:',fechaMalla,'endVal:',endVal);
     if(newEnd&&newEnd>scheduledEnd){
       const extraMins=Math.round((newEnd-scheduledEnd)/60000);
       const extraH=Math.floor(extraMins/60),extraM=extraMins%60;
-      const extraStr=extraH>0?`${extraH}h ${extraM}m`:`${extraM}m`;
-      const ok=confirm(`⚠️ Atención: con esta corrección se generan ${extraStr} de tiempo adicional al turno programado.\n\n¿Confirmas que estas horas extras están aprobadas y deben incluirse en nómina?`);
-      if(!ok){btn.textContent='💾 Guardar';btn.disabled=false;return;}
-      // Marcar extras como aprobadas automáticamente
+      const extraStr=extraH>0?`${extraH}h ${extraM>0?extraM+'m':''}`:`${extraM}m`;
+      const ok=confirm(`⚠️ Atención: con esta corrección se generan ${extraStr} de tiempo adicional al turno programado (fin programado: ${scheduledEnd.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'})}).\n\n¿Confirmas que estas horas extras están aprobadas y deben incluirse en nómina?`);
+      if(!ok)return;
       btn._approveExtras=true;
       btn._extraMins=extraMins;
     }
@@ -3501,8 +3503,8 @@ async function saveTurnoTimeEdit(turnoId, fecha, btn){
   try{
     const adminEmail=document.getElementById('user-email').textContent;
     const updates={editedBy:adminEmail,editedAt:new Date().toISOString(),editReason:reason};
-    if(startVal){const newStart=parseTime(fecha,startVal);if(newStart)updates.startTime=newStart;}
-    if(endVal){const newEnd=parseTime(fecha,endVal);if(newEnd){updates.endTime=newEnd;updates.status='ended';}}
+    if(startVal){const newStart=parseTime(fechaMalla,startVal);if(newStart)updates.startTime=newStart;}
+    if(endVal){const newEnd=parseTime(fechaMalla,endVal);if(newEnd){updates.endTime=newEnd;updates.status='ended';}}
     if(updates.startTime&&updates.endTime){
       updates.accumulatedSeconds=Math.max(0,Math.round((updates.endTime-updates.startTime)/1000));
     }
