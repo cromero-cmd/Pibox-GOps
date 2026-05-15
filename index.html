@@ -1238,7 +1238,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 
 <script>
-const APP_VERSION='14.81';
+const APP_VERSION='14.82';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -1360,6 +1360,9 @@ function initHomeView(){
     {id:'ext-pikasso',icon:'🎯',title:'Pikasso',desc:'Control multiárea de OKRs corporativas. KRs, metas y resultados por área.',color:'#e11d48',grad:'linear-gradient(135deg,#e11d48,#f43f5e)',roles:['super'],url:'https://pikasso.codi.com.co/metas?owner_id=38&period_id=16&tab=configurar&team_id=19&year=2026'},
     {id:'ext-limpiador',icon:'🗺️',title:'Limpiador de direcciones',desc:'Limpia y estandariza direcciones para mejorar el procesamiento de rutas.',color:'#0ea5e9',grad:'linear-gradient(135deg,#0ea5e9,#6366f1)',roles:['user','admin','super'],url:'https://andrealuceiro-hash.github.io/pibox-separador-direcciones/separador_direcciones_colombia.html'},
     {id:'ext-novedades',icon:'📝',title:'Reporte Novedades Nómina',desc:'Reporta formalmente a TH incapacidades, licencias, vacaciones, día de familia y demás novedades con sus soportes.',color:'#059669',grad:'linear-gradient(135deg,#059669,#10b981)',roles:['user','admin','super'],url:'http://docs.google.com/forms/d/e/1FAIpQLSejVqeu_w3o21lwGqOxGX-5w1YncQouEdG6_jJIwkUlQQFQ-w/viewform'},
+    {id:'ext-trump',icon:'🚛',title:'Trump',desc:'TMS de Pibox — gestión y monitoreo de servicios en el Pibox Dashboard.',color:'#1d4ed8',grad:'linear-gradient(135deg,#1d4ed8,#3b82f6)',roles:['user','admin','super'],url:'https://trump.picap.app/trump/pibox/dashboard'},
+    {id:'ext-trump-new',icon:'🚀',title:'Nuevo Trump',desc:'Nueva versión del TMS al que se está migrando Pibox.',color:'#7c3aed',grad:'linear-gradient(135deg,#7c3aed,#a78bfa)',roles:['user','admin','super'],url:'https://admin.picap.io/sessions/new'},
+    {id:'ext-pibox-web',icon:'🌐',title:'Pibox Web',desc:'Centro de creación de servicios — Web Service del cliente corporativo.',color:'#0891b2',grad:'linear-gradient(135deg,#0891b2,#06b6d4)',roles:['user','admin','super'],url:'https://www.pibox.app/app'},
   ];
   const role=window._agentPreviewMode?'user':isSuperAdmin?'super':isAdmin?'admin':'user';
   const filtered=cards.filter(c=>c.roles.includes(role));
