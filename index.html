@@ -1237,7 +1237,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 
 <script>
-const APP_VERSION='14.75';
+const APP_VERSION='14.76';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -3501,6 +3501,7 @@ async function saveTurnoTimeEdit(turnoId, fecha, btn){
     toast('❌ Error al guardar. Intenta de nuevo.');
   }
 }
+async function approveOvertime(eventId,approved,btn,turnoId){
   const userEmail=document.getElementById('user-email').textContent;
   const isSuperAdmin=userEmail===SUPER_ADMIN;
   const newStatus=approved?(isSuperAdmin?'approved':'pending_super_admin'):'rejected';
