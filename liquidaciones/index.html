@@ -1783,9 +1783,32 @@ function renderNovCard(n, i){
 }
 
 function seleccionarCandidato(i, bk, did, nom){
-  resoluciones[i]={accion:'ok', booking_id:bk, driver_id:did, nombre_malla:nom};
-  renderListaNovedades();
-  actualizarSummary();
+  // Solo guardar la selección y marcar visualmente — NO confirmar aún
+  if(!resoluciones[i]) resoluciones[i]={};
+  resoluciones[i].booking_id  = bk;
+  resoluciones[i].driver_id   = did;
+  resoluciones[i].nombre_malla= nom;
+  // NO setear accion='ok' todavía — el usuario debe presionar Confirmar
+
+  // Actualizar visual: poner candidato en verde sin re-renderizar toda la lista
+  const card = document.getElementById(`nov-card-${i}`);
+  if(card){
+    card.querySelectorAll('.nov-candidato').forEach(el=>{
+      el.classList.toggle('selected', el.dataset.bk===bk);
+    });
+    // Mostrar hint de que hay selección pendiente de confirmar
+    let hint = card.querySelector('.sel-hint');
+    if(!hint){
+      const actions = card.querySelector('.nov-actions');
+      if(actions){
+        hint = document.createElement('span');
+        hint.className = 'sel-hint';
+        hint.style.cssText = 'font-size:10px;font-family:var(--mono);color:var(--green);margin-right:auto;';
+        actions.insertBefore(hint, actions.firstChild);
+      }
+    }
+    if(hint) hint.textContent = `✓ Seleccionado: ${nom.split(' ').slice(0,2).join(' ')} — presiona Confirmar`;
+  }
 }
 
 function confirmarOk(i){
