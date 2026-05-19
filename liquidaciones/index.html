@@ -1510,85 +1510,109 @@ function badgeClass(tipo){
   return 'b-sin';
 }
 
-let novFilter = null; // filtro activo en módulo de novedades
+let novFilter = null;  // filtro por tipo (AMBIGUOUS, LOW, etc.)
+let novEstado = null;  // filtro por estado: 'ok' | 'excluir' | 'pendiente'
 
 function abrirNovedades(){
   novedades = buildNovedades();
   resoluciones = {};
   novFilter = null;
-  renderModuloNovedades();
+  novEstado = null;
+  // Inicializar summary y lista
+  const total = novedades.length;
+  if(total===0){
+    document.getElementById('nov-summary').innerHTML =
+      '<span style="color:var(--green);font-family:var(--mono);font-size:12px;">✓ Sin novedades — todos los registros tienen match y booking válido</span>';
+    document.getElementById('nov-lista').innerHTML = '';
+  } else {
+    actualizarSummary();
+    renderListaNovedades();
+  }
   navStep(4.5);
   if(maxStep<5) maxStep=5;
 }
 
 function filterNovedades(tipo){
   novFilter = novFilter===tipo ? null : tipo;
+  novEstado = null;
   renderListaNovedades();
+  actualizarSummary();
 }
 
-function renderModuloNovedades(){
-  const total = novedades.length;
-  const tipos = {};
-  novedades.forEach(n=>{ tipos[n.tipo]=(tipos[n.tipo]||0)+1; });
-
-  document.getElementById('nov-summary').innerHTML = total===0
-    ? '<span style="color:var(--green);font-family:var(--mono);font-size:12px;">✓ Sin novedades — todos los registros tienen match y booking válido</span>'
-    : Object.entries(tipos).map(([t,n])=>
-        `<span class="ns-item">
-          <span class="badge ${badgeClass(t)}" onclick="filterNovedades('${t}')"
-            style="cursor:pointer;transition:opacity .15s;${novFilter===t?'outline:2px solid var(--accent);outline-offset:2px;':''}"
-            title="Clic para filtrar">${t}</span>
-          <strong>${n}</strong>
-        </span>`
-      ).join(' &nbsp; ') +
-      `<span class="ns-item" style="color:var(--text3);font-size:10px;font-family:var(--mono);">
-        · ${novFilter ? `Filtro: <strong style="color:var(--accent);">${novFilter}</strong> — clic en badge para quitar` : 'Clic en badge para filtrar'} · Las no resueltas se excluyen automáticamente
-      </span>`;
-
+function filterEstado(estado){
+  novEstado = novEstado===estado ? null : estado;
+  novFilter = null;
   renderListaNovedades();
+  actualizarSummary();
 }
 
 function renderListaNovedades(){
-  const todos = novFilter
+  let todos = novFilter
     ? novedades.map((n,i)=>({n,i})).filter(({n})=>n.tipo===novFilter)
     : novedades.map((n,i)=>({n,i}));
 
-  const pendientes = todos.filter(({i})=>!resoluciones[i]);
-  const resueltos  = todos.filter(({i})=> resoluciones[i]);
+  // Filtro de estado: mostrar solo incluidos / excluidos / pendientes
+  if(novEstado==='ok')        todos = todos.filter(({i})=>resoluciones[i]?.accion==='ok');
+  else if(novEstado==='excluir') todos = todos.filter(({i})=>resoluciones[i]?.accion==='excluir');
+  else if(novEstado==='pendiente') todos = todos.filter(({i})=>!resoluciones[i]);
+
+  const pendientes = novEstado ? todos : todos.filter(({i})=>!resoluciones[i]);
+  const resueltos  = novEstado ? []    : todos.filter(({i})=> resoluciones[i]);
 
   let html = '';
 
-  // Pendientes
+  // Vista filtrada por estado: lista plana con botón revertir
+  if(novEstado){
+    if(todos.length===0){
+      const label = novEstado==='ok'?'incluidos':novEstado==='excluir'?'excluidos':'pendientes';
+      html=`<div style="padding:20px;text-align:center;color:var(--text3);font-family:var(--mono);font-size:11px;">Sin registros en estado "${label}"</div>`;
+    } else {
+      html = todos.map(({n,i})=>{
+        const res = resoluciones[i];
+        const accion = res?.accion==='ok'?'✓ Incluido':res?.accion==='excluir'?'✗ Excluido':'⏳ Pendiente';
+        const color  = res?.accion==='ok'?'var(--green)':res?.accion==='excluir'?'var(--text3)':'var(--yellow)';
+        const detalle= res?.booking_id ? `· booking: ${res.booking_id}` : res?.nombre_malla ? `· ${res.nombre_malla}` : '';
+        return `<div style="display:flex;align-items:center;gap:10px;padding:9px 14px;
+          background:var(--bg2);border:1px solid var(--border);border-radius:6px;margin-bottom:5px;">
+          <span class="badge ${badgeClass(n.tipo)}">${n.tipo}</span>
+          <div style="flex:1;">
+            <div style="font-size:12px;font-weight:600;">${n.piloto}</div>
+            <div style="font-size:10px;color:var(--text3);font-family:var(--mono);">${n.ciudad} · ${n.fecha}</div>
+          </div>
+          <span style="font-size:11px;font-family:var(--mono);color:${color};">${accion}${detalle}</span>
+          <button class="btn btn-sm" onclick="revertirResolucion(${i})" style="font-size:10px;padding:3px 8px;flex-shrink:0;">↩ Revertir</button>
+        </div>`;
+      }).join('');
+    }
+    document.getElementById('nov-lista').innerHTML=html;
+    return;
+  }
+
+  // Vista normal: pendientes visibles + resueltos en acordeón
   if(pendientes.length===0 && todos.length>0){
-    html += `<div style="padding:16px;text-align:center;color:var(--green);font-family:var(--mono);font-size:12px;">
-      ✓ Todas las novedades han sido atendidas
-    </div>`;
+    html += `<div style="padding:16px;text-align:center;color:var(--green);font-family:var(--mono);font-size:12px;">✓ Todas las novedades han sido atendidas</div>`;
   } else {
     html += pendientes.map(({n,i})=>renderNovCard(n,i)).join('');
   }
 
-  // Resueltos — acordeón colapsado
   if(resueltos.length>0){
     html += `<details style="margin-top:12px;">
       <summary style="cursor:pointer;font-size:11px;font-family:var(--mono);color:var(--text3);
         padding:8px 12px;background:var(--bg3);border-radius:6px;border:1px solid var(--border);
         list-style:none;display:flex;align-items:center;gap:8px;">
-        <span>▶</span>
-        <span>Resueltos (${resueltos.length})</span>
+        <span>▶</span><span>Resueltos (${resueltos.length})</span>
         <span style="margin-left:auto;">
           ${resueltos.filter(({i})=>resoluciones[i]?.accion==='ok').length} incluidos ·
           ${resueltos.filter(({i})=>resoluciones[i]?.accion==='excluir').length} excluidos
         </span>
       </summary>
-      <div style="margin-top:6px;">
-        ${resueltos.map(({n,i})=>renderNovCardResuelto(n,i)).join('')}
-      </div>
+      <div style="margin-top:6px;">${resueltos.map(({n,i})=>renderNovCardResuelto(n,i)).join('')}</div>
     </details>`;
   }
 
   document.getElementById('nov-lista').innerHTML = html || '<div style="padding:12px;color:var(--text3);font-size:11px;">Sin novedades</div>';
 
-  // Adjuntar eventos solo a pendientes
+  // Adjuntar eventos a pendientes
   pendientes.forEach(({n,i})=>{
     const card = document.getElementById(`nov-card-${i}`);
     if(!card) return;
@@ -1608,6 +1632,14 @@ function renderListaNovedades(){
   });
 }
 
+function revertirResolucion(i){
+  delete resoluciones[i];
+  if(novedades[i]){ delete novedades[i]._booking_manual; delete novedades[i]._nombre_manual; delete novedades[i]._bk_manual; }
+  novEstado = null;
+  renderListaNovedades();
+  actualizarSummary();
+  toast('Resolución revertida — vuelve a pendientes');
+}
 // Tarjeta compacta para resueltos (sin acciones)
 function renderNovCardResuelto(n, i){
   const res = resoluciones[i];
@@ -1854,19 +1886,33 @@ function actualizarSummary(){
   const tipos=novedades.reduce((acc,n)=>{ acc[n.tipo]=(acc[n.tipo]||0)+1; return acc; },{});
   const sumEl=document.getElementById('nov-summary');
   if(!sumEl) return;
+
   const tiposHtml=Object.entries(tipos).map(([t,n])=>
     `<span class="ns-item">
       <span class="badge ${badgeClass(t)}" onclick="filterNovedades('${t}')"
         style="cursor:pointer;${novFilter===t?'outline:2px solid var(--accent);outline-offset:2px;':''}">
         ${t}</span> <strong>${n}</strong>
     </span>`).join(' &nbsp; ');
+
+  // Estilo de cada contador de estado — resaltado si está activo
+  const stOk  = novEstado==='ok'      ? 'font-weight:700;text-decoration:underline;' : '';
+  const stEx  = novEstado==='excluir' ? 'font-weight:700;text-decoration:underline;' : '';
+  const stPe  = novEstado==='pendiente'?'font-weight:700;text-decoration:underline;' : '';
+
+  // Determinar texto de ayuda contextual
+  let ayuda = '';
+  if(novEstado)    ayuda=`· Mostrando: <strong style="color:var(--accent);">${novEstado==='ok'?'incluidos':novEstado==='excluir'?'excluidos':'pendientes'}</strong> <span style="cursor:pointer;color:var(--text3);" onclick="filterEstado(null)">[quitar]</span>`;
+  else if(novFilter) ayuda=`· Filtro tipo: <strong style="color:var(--accent);">${novFilter}</strong>`;
+  else               ayuda=`· Clic en badges o contadores para filtrar`;
+
   sumEl.innerHTML=`${tiposHtml} &nbsp;&nbsp;
-    <span class="ns-item" style="color:var(--green);">✓ ${resueltos} incluidos</span>
-    <span class="ns-item" style="color:var(--text3);">✗ ${excluidos} excluidos</span>
-    <span class="ns-item" style="color:var(--yellow);">⏳ ${pendientes} pendientes</span>
-    <span class="ns-item" style="color:var(--text3);font-size:10px;font-family:var(--mono);">
-      · ${novFilter?`Filtro: <strong style="color:var(--accent);">${novFilter}</strong>`:'Clic en badge para filtrar'}
-    </span>`;
+    <span class="ns-item" onclick="filterEstado('ok')"
+      style="cursor:pointer;color:var(--green);${stOk}">✓ ${resueltos} incluidos</span>
+    <span class="ns-item" onclick="filterEstado('excluir')"
+      style="cursor:pointer;color:var(--text3);${stEx}">✗ ${excluidos} excluidos</span>
+    <span class="ns-item" onclick="filterEstado('pendiente')"
+      style="cursor:pointer;color:var(--yellow);${stPe}">⏳ ${pendientes} pendientes</span>
+    <span class="ns-item" style="color:var(--text3);font-size:10px;font-family:var(--mono);">${ayuda}</span>`;
 }
 
 function excluirTodas(){
