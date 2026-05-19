@@ -1099,6 +1099,12 @@ function fuzzyNameMatch(nameA, nameB){
   return score >= 2 && score >= minWords * 0.5;
 }
 
+function fuzzyNameMatch1(nameA, nameB){
+  // Match débil: al menos 1 palabra coincide (solo se usa cuando seller+fecha confirman)
+  const {score} = scoreNames(nameA, nameB);
+  return score >= 1;
+}
+
 function runConciliacion(){
   clearLog('log-conc');
   showProcessing('Ejecutando conciliación...');
@@ -1288,6 +1294,27 @@ function runConciliacion(){
                      `Candidatos: ${candidatesF.map(m=>descCandidato(m)).join(' | ')}`;
               }
             }
+          }
+        }
+
+        // ── NIVEL 5: Fuzzy débil (1 palabra) + seller + fecha + ciudad ─
+        // Cuando el nombre corto de TADA solo comparte 1 palabra con candidatos de la malla
+        // pero seller, fecha y ciudad coinciden → AMBIGUOUS para revisión manual
+        // (mejor que SIN_MALLA pues hay candidatos plausibles)
+        if(nivel==='SIN_MALLA'){
+          const fsKey=`${rf}||${rs}`;
+          const weak=(idxFS[fsKey]||[]).filter(m=>fuzzyNameMatch1(row.piloto,String(m[mPKey]||'')));
+          // Filtrar también por ciudad si está disponible
+          const weakFiltered = mCKey && row.ciudad
+            ? weak.filter(m=>normStr(String(m[mCKey]||''))===normStr(row.ciudad) || weak.length===0)
+            : weak;
+          const final = weakFiltered.length>0 ? weakFiltered : weak;
+          if(final.length>0){
+            matches=final; nivel='AMBIGUOUS';
+            const horarios=[...new Set(final.map(m=>m[mHKey]||'sin hora'))];
+            nota=`AMBIGUOUS (match débil 1 palabra + seller+fecha): ${final.length} candidato(s) · `+
+                 (horarios.length===final.length && final.length>1 ? `turnos DISTINTOS · ` : ``)+
+                 `TADA="${row.piloto}" · Candidatos: ${final.map(m=>descCandidato(m)).join(' | ')}`;
           }
         }
       }
@@ -1522,16 +1549,47 @@ function renderModuloNovedades(){
 }
 
 function renderListaNovedades(){
-  const visibles = novFilter
+  const todos = novFilter
     ? novedades.map((n,i)=>({n,i})).filter(({n})=>n.tipo===novFilter)
     : novedades.map((n,i)=>({n,i}));
 
-  document.getElementById('nov-lista').innerHTML = visibles.length===0
-    ? `<div style="padding:20px;text-align:center;color:var(--text3);font-family:var(--mono);font-size:11px;">Sin novedades de tipo "${novFilter}"</div>`
-    : visibles.map(({n,i})=>renderNovCard(n,i)).join('');
+  const pendientes = todos.filter(({i})=>!resoluciones[i]);
+  const resueltos  = todos.filter(({i})=> resoluciones[i]);
 
-  // Adjuntar eventos después de renderizar
-  visibles.forEach(({n,i})=>{
+  let html = '';
+
+  // Pendientes
+  if(pendientes.length===0 && todos.length>0){
+    html += `<div style="padding:16px;text-align:center;color:var(--green);font-family:var(--mono);font-size:12px;">
+      ✓ Todas las novedades han sido atendidas
+    </div>`;
+  } else {
+    html += pendientes.map(({n,i})=>renderNovCard(n,i)).join('');
+  }
+
+  // Resueltos — acordeón colapsado
+  if(resueltos.length>0){
+    html += `<details style="margin-top:12px;">
+      <summary style="cursor:pointer;font-size:11px;font-family:var(--mono);color:var(--text3);
+        padding:8px 12px;background:var(--bg3);border-radius:6px;border:1px solid var(--border);
+        list-style:none;display:flex;align-items:center;gap:8px;">
+        <span>▶</span>
+        <span>Resueltos (${resueltos.length})</span>
+        <span style="margin-left:auto;">
+          ${resueltos.filter(({i})=>resoluciones[i]?.accion==='ok').length} incluidos ·
+          ${resueltos.filter(({i})=>resoluciones[i]?.accion==='excluir').length} excluidos
+        </span>
+      </summary>
+      <div style="margin-top:6px;">
+        ${resueltos.map(({n,i})=>renderNovCardResuelto(n,i)).join('')}
+      </div>
+    </details>`;
+  }
+
+  document.getElementById('nov-lista').innerHTML = html || '<div style="padding:12px;color:var(--text3);font-size:11px;">Sin novedades</div>';
+
+  // Adjuntar eventos solo a pendientes
+  pendientes.forEach(({n,i})=>{
     const card = document.getElementById(`nov-card-${i}`);
     if(!card) return;
     const btnOk = card.querySelector('.btn-nov-ok');
@@ -1548,6 +1606,23 @@ function renderListaNovedades(){
     if(inpNom) inpNom.addEventListener('input',e=>{ novedades[i]._nombre_manual=e.target.value.trim(); });
     if(inpBkM) inpBkM.addEventListener('input',e=>{ novedades[i]._bk_manual=e.target.value.trim(); });
   });
+}
+
+// Tarjeta compacta para resueltos (sin acciones)
+function renderNovCardResuelto(n, i){
+  const res = resoluciones[i];
+  const accion = res?.accion==='ok' ? '✓ Incluido' : '✗ Excluido';
+  const color  = res?.accion==='ok' ? 'var(--green)' : 'var(--text3)';
+  const detalle = res?.accion==='ok' && res?.booking_id
+    ? `→ booking: ${res.booking_id}`
+    : res?.accion==='ok' ? '→ match confirmado' : '→ excluido de la liquidación';
+  return `<div style="display:flex;align-items:center;gap:10px;padding:7px 12px;
+    background:var(--bg2);border:1px solid var(--border);border-radius:6px;margin-bottom:4px;opacity:.6;">
+    <span class="badge ${badgeClass(n.tipo)}" style="flex-shrink:0;">${n.tipo}</span>
+    <span style="font-size:11px;font-weight:600;flex:1;">${n.piloto}</span>
+    <span style="font-size:10px;font-family:var(--mono);color:var(--text3);">${n.fecha}</span>
+    <span style="font-size:10px;font-family:var(--mono);color:${color};">${accion} ${detalle}</span>
+  </div>`;
 }
 
 function explicarNovedad(n){
@@ -1594,10 +1669,17 @@ function explicarNovedad(n){
   }
 
   if(tipo === 'AMBIGUOUS'){
+    const esDebil = n.nota && n.nota.includes('match débil');
     return `<div style="margin-bottom:10px;">
-      <div style="font-size:11px;font-weight:600;color:var(--red);margin-bottom:6px;">⚠ Hay ${n.matches.length} pilotos diferentes registrados en la malla para esta misma fecha y punto de venta.</div>
+      <div style="font-size:11px;font-weight:600;color:var(--red);margin-bottom:6px;">
+        ${esDebil
+          ? `⚠ Hay ${n.matches.length} piloto(s) en la malla con nombre similar en la misma fecha y punto de venta, pero sin suficiente coincidencia para asignación automática.`
+          : `⚠ Hay ${n.matches.length} pilotos diferentes registrados en la malla para esta misma fecha y punto de venta.`}
+      </div>
       <div style="font-size:11px;color:var(--text2);">
-        El sistema no puede determinar cuál de ellos corresponde al registro de TADA porque comparten palabras en el nombre.<br>
+        ${esDebil
+          ? `El nombre en TADA (<strong>${n.piloto}</strong>) solo comparte una palabra con los candidatos encontrados.<br>Revisa los candidatos y selecciona el correcto, o ingresa el booking manualmente.`
+          : `El sistema no puede determinar cuál corresponde al registro de TADA porque comparten palabras en el nombre.`}<br>
         → <strong>Selecciona</strong> el candidato correcto de la lista de abajo.<br>
         → Si ninguno es correcto, <strong>ingresa manualmente</strong> el nombre y booking.<br>
         → <strong>Excluye</strong> si prefieres no incluirlo en esta liquidación.
@@ -1702,20 +1784,7 @@ function renderNovCard(n, i){
 
 function seleccionarCandidato(i, bk, did, nom){
   resoluciones[i]={accion:'ok', booking_id:bk, driver_id:did, nombre_malla:nom};
-  // Actualizar visual de candidatos seleccionados
-  const card=document.getElementById(`nov-card-${i}`);
-  if(card){
-    card.querySelectorAll('.nov-candidato').forEach(el=>{
-      el.classList.toggle('selected', el.dataset.bk===bk);
-    });
-    card.classList.remove('excluido'); card.classList.add('resuelto');
-    const st=card.querySelector('.nov-status');
-    if(st){ st.className='nov-status ns-ok'; st.textContent='✓ Incluido'; }
-    else {
-      const hdr=card.querySelector('.nov-header');
-      if(hdr) hdr.insertAdjacentHTML('beforeend','<span class="nov-status ns-ok">✓ Incluido</span>');
-    }
-  }
+  renderListaNovedades();
   actualizarSummary();
 }
 
@@ -1727,21 +1796,21 @@ function confirmarOk(i){
     if(!bk){ toast('Ingresa el Booking ID antes de confirmar'); return; }
     resoluciones[i]={accion:'ok', booking_id:bk};
   } else if(n.tipo==='AMBIGUOUS'){
-    // Verificar candidato seleccionado o manual
     const bkM=n._bk_manual||'';
     if(!resoluciones[i]?.booking_id && !bkM){ toast('Selecciona un candidato o ingresa el booking'); return; }
     if(bkM && !resoluciones[i]) resoluciones[i]={accion:'ok', booking_id:bkM, nombre_manual:n._nombre_manual||''};
     else if(resoluciones[i]) resoluciones[i].accion='ok';
+    else resoluciones[i]={accion:'ok'};
   } else {
     resoluciones[i]={accion:'ok'};
   }
-  actualizarCard(i,'resuelto','✓ Incluido','ns-ok');
+  renderListaNovedades();
   actualizarSummary();
 }
 
 function confirmarExcluir(i){
   resoluciones[i]={accion:'excluir'};
-  actualizarCard(i,'excluido','✗ Excluido','ns-excl');
+  renderListaNovedades();
   actualizarSummary();
 }
 
@@ -1778,7 +1847,8 @@ function actualizarSummary(){
 }
 
 function excluirTodas(){
-  novedades.forEach((_,i)=>{ resoluciones[i]={accion:'excluir'}; actualizarCard(i,'excluido','✗ Excluido','ns-excl'); });
+  novedades.forEach((_,i)=>{ resoluciones[i]={accion:'excluir'}; });
+  renderListaNovedades();
   actualizarSummary();
 }
 
