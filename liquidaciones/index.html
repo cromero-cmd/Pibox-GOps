@@ -794,10 +794,12 @@ function loadFile(file,src){
     const wb=XLSX.read(e.target.result,{type:'array',raw:true,cellDates:false});
     const ws=wb.Sheets[wb.SheetNames[0]];
     if(src==='tada'){
-      const rawTrue =XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:true, blankrows:false});
-      const rawFalse=XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:false,blankrows:false});
-      // Usar rawFalse para fila 2 (fechas legibles) y rawTrue para el resto
-      tadaRaw=rawTrue.map((row,ri)=>ri===2?(rawFalse[ri]||row):row);
+      // Leer TADA con raw:true en TODAS las filas — incluyendo fila 2 (fechas)
+      // raw:false convierte datetimes a strings locales del navegador (ej: "5/11/2026")
+      // que parseDate puede invertir día/mes cuando ambos son ≤ 12.
+      // Con raw:true las fechas llegan como seriales numéricos de Excel (ej: 46162)
+      // que parseDate convierte vía XLSX.SSF.parse_date_code → siempre correcto.
+      tadaRaw = XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:true,blankrows:false});
       loadedTada=true;
       document.getElementById('lbl-tada').textContent=file.name+' ✓';
       document.getElementById('dz-tada').classList.add('loaded');
