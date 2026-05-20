@@ -2125,22 +2125,29 @@ function runTrump(){
       const vTarCliente= r.tareas_dist * cTar;  // cobro cliente
       const bonos   = r.bonos   || 0;
       const ajustes = r.ajustes || 0;
-      const adicNeto    = vTarPiloto + bonos + ajustes;  // pago piloto
+      const adicNeto    = vTarPiloto + bonos + ajustes;  // pago piloto referencia
       const adicCliente = vTarCliente + bonos + ajustes; // base para gross-up cliente
-
-      // ── FINAL_COST (pago piloto → Trump descuenta 15%) ───
-      const netoTotal  = ingresoNeto + complementoPiloto;
-      const FINAL_COST = Math.round(netoTotal / (1 - pctPlat));
-
-      // ADDITIONAL_FINAL_COST: Trump NO descuenta 15% → va directo
-      const ADDITIONAL_FINAL_COST = adicNeto;
 
       // ── COMPANY_FINAL_COST (cobro a TaDa) ────────────────
       const COMPANY_FINAL_COST = cobroGarantizado > 0 ? cobroGarantizado : cobroOp;
 
+      // ── FINAL_COST ────────────────────────────────────────
+      // Cascada desde COMPANY_FINAL_COST replicando la lógica de Trump:
+      //   FINAL_COST = COMPANY_FINAL_COST × (1 - pct_margen)
+      //   Trump descuenta pct_plataforma → piloto recibe FINAL_COST × (1 - pct_plat)
+      // Esto garantiza que el valor coincida con el pago automático de Trump
+      // y no genere ajustes negativos al piloto.
+      const FINAL_COST = Math.round(COMPANY_FINAL_COST * (1 - pctMarg));
+
+      // ── ADDITIONAL_FINAL_COST ─────────────────────────────
+      // Trump NO descuenta plataforma en este campo.
+      // → va el neto directo al piloto (tareas neto + bonos + ajustes)
+      // No aplicar cascada aquí porque overpaga al piloto.
+      const ADDITIONAL_FINAL_COST = adicNeto;
+
       // ── ADDITIONAL_COMPANY_FINAL_COST ────────────────────
       // Tareas: tarifa fija de cobro (ya incluye margen) → sin gross-up
-      // Bonos/ajustes: valores netos → gross-up secuencial ÷ 0.97 ÷ 0.85
+      // Bonos/ajustes: gross-up secuencial desde neto
       const adicBonosAjustesGrossed = (bonos + ajustes) > 0
         ? Math.round((bonos + ajustes) / (1 - pctMarg) / (1 - pctPlat))
         : 0;
