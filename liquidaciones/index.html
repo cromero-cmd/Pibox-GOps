@@ -491,6 +491,10 @@ const TARIFF_SCHEMA = [
   // Porcentajes Cali (ciudad CAL)
   {key:'pct_plataforma_cal',label:'Comisión plataforma · Cali (%)', def:10, step:1, group:'pct_cal'},
   {key:'pct_margen_cal',    label:'Margen corporativo · Cali (%)',  def:7,  step:1, group:'pct_cal'},
+  // Fechas pico especiales — festivos L-J que se liquidan como V-D
+  // Formato: YYYY-MM-DD separadas por coma. Ej: 2026-06-09, 2026-08-07
+  {key:'fechas_pico_especiales', label:'Fechas pico especiales (YYYY-MM-DD, separadas por coma)',
+   def:'', step:null, group:'fechas'},
 ];
 
 // ═══════════════════════════════════════════
@@ -758,11 +762,25 @@ function renderTariffPanel(){
     </div>`;
   };
 
+  const mkFechasPico = () => {
+    const s = TARIFF_SCHEMA.find(x=>x.key==='fechas_pico_especiales');
+    const val = currentEdits[s.key] ?? '';
+    return `<div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:10px;">
+      <div style="font-size:10px;font-family:var(--mono);color:var(--yellow);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;">Fechas pico especiales (festivos L-J liquidados como V-D)</div>
+      <input type="text" value="${val}"
+        placeholder="Ej: 2026-06-09, 2026-08-07, 2026-11-02"
+        style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:6px;padding:8px 10px;color:var(--text);font-family:var(--mono);font-size:12px;"
+        oninput="currentEdits['fechas_pico_especiales']=this.value"/>
+      <div style="font-size:10px;color:var(--text3);margin-top:5px;">Formato YYYY-MM-DD · Una o varias fechas separadas por coma · El sistema aplicará tarifa V-D en esos días sin importar el día de la semana.</div>
+    </div>`;
+  };
+
   document.getElementById('tariff-fields').innerHTML=
     mkGroup('cobro',   'Tarifas de cobro a TaDa (COP por unidad)',           'var(--blue)')+
     mkGroup('pago',    'Tarifas de pago al piloto — neto (COP por unidad)',   'var(--green)')+
     mkGroup('pct',     'Porcentajes · Nacional',                              'var(--yellow)')+
-    mkGroup('pct_cal', 'Porcentajes · Cali (ciudad CAL)',                     'var(--purple)');
+    mkGroup('pct_cal', 'Porcentajes · Cali (ciudad CAL)',                     'var(--purple)')+
+    mkFechasPico();
 
   // Historial de versiones
   document.getElementById('tariff-history').innerHTML=[...tariffStore.versions].reverse().slice(0,5).map(v=>{
@@ -2226,7 +2244,38 @@ function runTrump(){
     const DIAS_VD_SET = new Set(['viernes','sabado','sábado','domingo','friday','saturday','sunday']);
     const DIAS_LJ_SET = new Set(['lunes','martes','miercoles','miércoles','jueves','monday','tuesday','wednesday','thursday']);
 
+    // Fechas pico especiales — festivos L-J que se liquidan como V-D
+    const fechasPicoRaw = String(t.fechas_pico_especiales||'');
+    const todasFechasPico = fechasPicoRaw.split(',')
+      .map(f=>f.trim())
+      .filter(f=>/^\d{4}-\d{2}-\d{2}$/.test(f));
+
+    // Detectar rango de fechas de la malla cargada
+    const mFKeyT = Object.keys(mallaRaw[0]||{}).find(k=>/^fecha$/i.test(k.trim()))||'FECHA';
+    const fechasMalla = mallaRaw
+      .map(r=>String(r[mFKeyT]||'').trim())
+      .filter(f=>/^\d{4}-\d{2}-\d{2}$/.test(f))
+      .sort();
+    const mallaMin = fechasMalla[0]||'';
+    const mallaMax = fechasMalla[fechasMalla.length-1]||'';
+
+    // Filtrar: solo fechas pico dentro del rango de la malla actual
+    const fechasPicoSet = new Set(
+      todasFechasPico.filter(f=>f>=mallaMin && f<=mallaMax)
+    );
+    const fechasPicoIgnoradas = todasFechasPico.filter(f=>!fechasPicoSet.has(f));
+
+    if(fechasPicoSet.size>0)
+      addLog('log-trump',`[INFO] Fechas pico especiales aplicadas (${fechasPicoSet.size}): ${[...fechasPicoSet].join(' · ')}`,'ok');
+    if(fechasPicoIgnoradas.length>0)
+      addLog('log-trump',`[INFO] Fechas pico fuera del rango de esta malla (${mallaMin} → ${mallaMax}) — ignoradas: ${fechasPicoIgnoradas.join(' · ')}`,'info');
+
     function esDiaLJ(r){
+      const fechaRef = String(r.fecha_malla||r.fecha||'').trim();
+
+      // Prioridad 0: fecha pico especial → siempre V-D
+      if(fechasPicoSet.has(fechaRef)) return false;
+
       // Prioridad 1: nombre del día directo de la malla (más confiable)
       if(r.dia_malla){
         const d=r.dia_malla.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
@@ -2235,7 +2284,7 @@ function runTrump(){
       }
       // Prioridad 2: calcular desde fecha_malla como fallback
       try{
-        const parts=String(r.fecha_malla||r.fecha||'').trim().split('-');
+        const parts=fechaRef.split('-');
         if(parts.length===3){
           let y=parseInt(parts[0]),p1=parseInt(parts[1]),p2=parseInt(parts[2]);
           let mon=p1>12?p2:p1, day=p1>12?p1:p2;
