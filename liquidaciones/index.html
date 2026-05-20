@@ -156,6 +156,15 @@ tr:hover td{background:var(--bg3);}
 
 .toast{position:fixed;bottom:20px;right:24px;background:var(--greenBg);border:1px solid var(--green2);color:var(--green);font-size:11px;font-family:var(--mono);padding:8px 16px;border-radius:6px;z-index:999;opacity:0;transition:opacity .25s;pointer-events:none;}
 .toast.show{opacity:1;}
+/* DICCIONARIO */
+.dict-table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:11px;}
+.dict-table th{background:var(--bg3);color:var(--text2);font-weight:500;padding:7px 10px;text-align:left;border-bottom:1px solid var(--border);}
+.dict-table td{padding:7px 10px;border-bottom:1px solid var(--border);color:var(--text);vertical-align:middle;}
+.dict-table tr:last-child td{border-bottom:none;}
+.dict-table tr:hover td{background:var(--bg3);}
+.dict-input{background:var(--bg3);border:1px solid var(--border2);border-radius:5px;padding:4px 8px;color:var(--text);font-family:var(--mono);font-size:11px;width:100%;}
+.dict-input:focus{outline:none;border-color:var(--accent);}
+.b-aprendido{background:#0d1a30;color:#60a5fa;border:1px solid #1e3a5f;}
 
 /* MÓDULO DE RESOLUCIÓN */
 .nov-card{background:var(--bg2);border:1px solid var(--border);border-radius:8px;margin-bottom:10px;overflow:hidden;transition:border-color .2s;}
@@ -306,6 +315,25 @@ tr:hover td{background:var(--bg3);}
   </div>
   <div class="sec" style="margin-top:6px;">Log de inconsistencias</div>
   <div class="log" id="log-conc"></div>
+
+  <!-- Diccionario de equivalencias -->
+  <details id="dict-panel" style="margin-top:14px;">
+    <summary style="cursor:pointer;font-size:11px;font-family:var(--mono);color:var(--text3);
+      padding:9px 14px;background:var(--bg2);border-radius:6px;border:1px solid var(--border);
+      list-style:none;display:flex;align-items:center;gap:8px;" onclick="renderDiccionario()">
+      <span>📚</span>
+      <span id="dict-summary-label">Diccionario de equivalencias</span>
+      <span style="margin-left:auto;font-size:10px;">Gestionar →</span>
+    </summary>
+    <div style="background:var(--bg2);border:1px solid var(--border);border-top:none;border-radius:0 0 6px 6px;padding:14px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+        <span style="font-size:11px;color:var(--text2);">El sistema aplica estas equivalencias automáticamente en conciliaciones futuras.</span>
+        <button class="btn btn-sm btn-primary" onclick="agregarEquivalencia()">+ Agregar</button>
+      </div>
+      <div id="dict-lista"></div>
+    </div>
+  </details>
+
   <div class="panel-footer">
     <button class="btn" onclick="navStep(2)">← Atrás</button>
     <button class="btn btn-primary" onclick="runDistribucion()">Distribuir a bookings →</button>
@@ -439,6 +467,7 @@ tr:hover td{background:var(--bg3);}
 const DAYS_ES = new Set(['LUNES','MARTES','MIÉRCOLES','MIERCOLES','JUEVES','VIERNES','SÁBADO','SABADO','DOMINGO']);
 const LS_TAR  = 'pibox:tariff_v6';
 const LS_RUNS = 'pibox:runs_v6';
+const LS_DICT = 'pibox:diccionario_v1'; // equivalencias aprendidas
 const PAGE_SIZE = 50;
 const TARIFF_SCHEMA = [
   // Cobro a TaDa (por unidad)
@@ -1275,6 +1304,9 @@ function runConciliacion(){
     addLog('log-conc',`[INFO] Filas sin actividad (omitidas): ${filasVacias.length}`,'dim');
 
     const matchados=new Set();
+    // Cargar diccionario para aplicar equivalencias aprendidas
+    const dict = loadDict();
+    let dictAplicados = 0;
 
     filasConActividad.forEach(row=>{
       const rp=normStr(row.piloto), rf=row.fecha, rs=normStr(row.seller);
@@ -1288,6 +1320,36 @@ function runConciliacion(){
         const nom = m[mPKey]||'';
         return `${nom} · ${hora} · booking:${bk}`;
       };
+
+      // ── NIVEL 0: Diccionario de equivalencias aprendidas ──
+      // Si el nombre TADA tiene una equivalencia guardada, buscar por nombre_malla
+      const dictEntry = dict.find(e => normStr(e.tadaNombre) === rp);
+      if(dictEntry){
+        const mallaNorm = normStr(dictEntry.mallaNombre);
+        // Buscar en la malla por nombre equivalente + fecha
+        const candidatos = (idxF[rf]||[]).filter(m => normStr(String(m[mPKey]||'')) === mallaNorm);
+        if(candidatos.length===1){
+          matches=[candidatos[0]]; nivel='APRENDIDO';
+          nota=`Diccionario: "${row.piloto}" → "${dictEntry.mallaNombre}"`;
+          matches.forEach(m=>matchados.add(m[mBKey]));
+          dictIncrementarUso(row.piloto);
+          dictAplicados++;
+        } else if(candidatos.length>1){
+          // Múltiples bookings del mismo piloto equivalente ese día → MEDIUM
+          matches=candidatos; nivel='MEDIUM';
+          nota=`Diccionario (${candidatos.length} bookings): "${row.piloto}" → "${dictEntry.mallaNombre}"`;
+          matches.forEach(m=>matchados.add(m[mBKey]));
+          dictIncrementarUso(row.piloto);
+          dictAplicados++;
+        }
+        // Si no hay candidatos, continuar con matching normal
+      }
+
+      if(nivel !== 'SIN_MALLA'){
+        concResult.push({...row, nivel_confianza:nivel, matches, nota, driver_id:matches[0]?.[mDKey]||'PENDIENTE'});
+        addLog('log-conc',`[APRENDIDO] ${row.piloto} · ${row.fecha} — ${nota}`,'ok');
+        return;
+      }
 
       // ── NIVEL 1: Match exacto piloto+fecha+seller ────────
       if(idx3[a]?.length){
@@ -1442,8 +1504,12 @@ function runConciliacion(){
     mallaRaw.filter(m=>!matchados.has(m[mBKey])).forEach(m=>
       addLog('log-conc',`[WARN] Huérfano malla: ${m[mBKey]||'?'} · ${m[mPKey]||''} · ${m[mFKey]||''}`,'warn'));
 
+    if(dictAplicados>0)
+      addLog('log-conc',`[INFO] Diccionario: ${dictAplicados} coincidencias resueltas automáticamente`,'ok');
+
     renderConcStats();
     renderConcTable();
+    actualizarDictSummary();
     unlock(3);
 
     }catch(err){
@@ -1457,6 +1523,7 @@ function runConciliacion(){
 
 function renderConcStats(){
   const h  =concResult.filter(r=>r.nivel_confianza==='HIGH').length;
+  const ap =concResult.filter(r=>r.nivel_confianza==='APRENDIDO').length;
   const md =concResult.filter(r=>r.nivel_confianza==='MEDIUM').length;
   const lo =concResult.filter(r=>r.nivel_confianza==='LOW').length;
   const fh =concResult.filter(r=>r.nivel_confianza==='FUZZY-HIGH').length;
@@ -1469,6 +1536,7 @@ function renderConcStats(){
 
   document.getElementById('stats-conc').innerHTML=`
     <div class="stat clickable${selCls('HIGH','selected-high')}"       onclick="filterConc(event,'HIGH')">       <div class="stat-l">HIGH · exacto</div>         <div class="stat-v g">${h}</div>  <div class="stat-hint">→ liquidación directa</div></div>
+    ${ap>0?`<div class="stat clickable${selCls('APRENDIDO','selected-high')}" onclick="filterConc(event,'APRENDIDO')"><div class="stat-l">APRENDIDO · diccionario</div><div class="stat-v" style="color:#60a5fa;">${ap}</div><div class="stat-hint">→ liquidación directa</div></div>`:''}
     <div class="stat clickable${selCls('MEDIUM','selected-med')}"      onclick="filterConc(event,'MEDIUM')">     <div class="stat-l">MEDIUM · franja horaria</div><div class="stat-v y">${md}</div> <div class="stat-hint">→ liquidación directa</div></div>
     <div class="stat clickable${selCls('FUZZY-HIGH','selected-high')}" onclick="filterConc(event,'FUZZY-HIGH')"> <div class="stat-l">FUZZY-HIGH · 1 candidato</div><div class="stat-v g">${fh}</div><div class="stat-hint">→ liquidación directa</div></div>
     <div class="stat clickable${selCls('FUZZY-LOW','selected-med')}"   onclick="filterConc(event,'FUZZY-LOW')">  <div class="stat-l">FUZZY-LOW · sin seller</div><div class="stat-v y">${fl}</div> <div class="stat-hint">→ marcado revisión</div></div>
@@ -1970,6 +2038,16 @@ function confirmarOk(i){
     if(bkM && !resoluciones[i]) resoluciones[i]={accion:'ok', booking_id:bkM, nombre_manual:n._nombre_manual||''};
     else if(resoluciones[i]) resoluciones[i].accion='ok';
     else resoluciones[i]={accion:'ok'};
+    // Guardar en diccionario si hay nombre malla conocido
+    const nombreMalla = resoluciones[i].nombre_malla || n._nombre_manual || '';
+    if(nombreMalla) dictSave(n.piloto, nombreMalla, 'auto');
+  } else if(n.tipo==='FUZZY-LOW'||n.tipo==='LOW'){
+    resoluciones[i]={accion:'ok'};
+    // Para FUZZY-LOW guardar la equivalencia de nombre aprendida
+    if(n.tipo==='FUZZY-LOW' && n.nota){
+      const m = n.nota.match(/malla="([^"]+)"/);
+      if(m) dictSave(n.piloto, m[1], 'auto');
+    }
   } else {
     resoluciones[i]={accion:'ok'};
   }
@@ -2674,8 +2752,171 @@ async function enviarPorCorreo(){
   }
 }
 
+// ═══════════════════════════════════════════
+// DICCIONARIO DE EQUIVALENCIAS
+// Estructura: [{id, tadaNombre, mallaNombre, fechaAprendido, usos, fuente}]
+// ═══════════════════════════════════════════
+function loadDict(){ try{ return JSON.parse(localStorage.getItem(LS_DICT)||'[]'); }catch{ return []; } }
+function saveDict(d){ try{ localStorage.setItem(LS_DICT,JSON.stringify(d)); }catch{} }
+
+function dictFind(nombreTada){
+  // Buscar equivalencia para un nombre TADA
+  const dict = loadDict();
+  const nTada = normStr(nombreTada);
+  return dict.find(e => normStr(e.tadaNombre) === nTada) || null;
+}
+
+function dictSave(tadaNombre, mallaNombre, fuente){
+  const dict = loadDict();
+  const nTada = normStr(tadaNombre);
+  const idx = dict.findIndex(e => normStr(e.tadaNombre) === nTada);
+  if(idx >= 0){
+    // Actualizar existente
+    dict[idx].mallaNombre = mallaNombre;
+    dict[idx].fuente = fuente;
+    dict[idx].fechaActualizado = new Date().toISOString().slice(0,10);
+  } else {
+    dict.push({
+      id: Date.now().toString(),
+      tadaNombre, mallaNombre, fuente,
+      fechaAprendido: new Date().toISOString().slice(0,10),
+      usos: 0,
+    });
+  }
+  saveDict(dict);
+  actualizarDictSummary();
+}
+
+function dictIncrementarUso(tadaNombre){
+  const dict = loadDict();
+  const nTada = normStr(tadaNombre);
+  const entry = dict.find(e => normStr(e.tadaNombre) === nTada);
+  if(entry){ entry.usos = (entry.usos||0) + 1; saveDict(dict); }
+}
+
+function actualizarDictSummary(){
+  const n = loadDict().length;
+  const el = document.getElementById('dict-summary-label');
+  if(el) el.textContent = `Diccionario de equivalencias (${n})`;
+}
+
+function renderDiccionario(){
+  const dict = loadDict();
+  actualizarDictSummary();
+  const lista = document.getElementById('dict-lista');
+  if(!lista) return;
+
+  if(dict.length === 0){
+    lista.innerHTML = '<div style="padding:12px;color:var(--text3);font-size:11px;font-family:var(--mono);">Sin equivalencias guardadas aún. Se aprenden automáticamente al confirmar novedades.</div>';
+    return;
+  }
+
+  lista.innerHTML = `<div style="overflow-x:auto;border-radius:6px;border:1px solid var(--border);">
+    <table class="dict-table">
+      <thead><tr>
+        <th>Nombre en TADA</th>
+        <th>Nombre en Malla</th>
+        <th>Aprendido</th>
+        <th>Usos</th>
+        <th>Fuente</th>
+        <th style="width:110px;">Acciones</th>
+      </tr></thead>
+      <tbody id="dict-tbody">
+        ${dict.map(e=>`
+          <tr id="dict-row-${e.id}">
+            <td><span id="dict-tada-${e.id}">${e.tadaNombre}</span></td>
+            <td><span id="dict-malla-${e.id}">${e.mallaNombre}</span></td>
+            <td style="color:var(--text3);">${e.fechaAprendido||''}</td>
+            <td style="text-align:center;">${e.usos||0}</td>
+            <td><span class="badge ${e.fuente==='manual'?'b-sin':'b-aprendido'}">${e.fuente||'auto'}</span></td>
+            <td>
+              <div style="display:flex;gap:4px;">
+                <button class="btn btn-sm" onclick="editarEquivalencia('${e.id}')" style="padding:3px 7px;font-size:10px;">✏</button>
+                <button class="btn btn-sm btn-danger" onclick="eliminarEquivalencia('${e.id}')" style="padding:3px 7px;font-size:10px;">🗑</button>
+              </div>
+            </td>
+          </tr>`).join('')}
+      </tbody>
+    </table>
+  </div>`;
+}
+
+function editarEquivalencia(id){
+  const dict = loadDict();
+  const e = dict.find(x=>x.id===id);
+  if(!e) return;
+  const row = document.getElementById(`dict-row-${id}`);
+  if(!row) return;
+  // Reemplazar celdas con inputs
+  document.getElementById(`dict-tada-${id}`).outerHTML =
+    `<input class="dict-input" id="edit-tada-${id}" value="${e.tadaNombre}"/>`;
+  document.getElementById(`dict-malla-${id}`).outerHTML =
+    `<input class="dict-input" id="edit-malla-${id}" value="${e.mallaNombre}"/>`;
+  // Cambiar botones
+  row.querySelector('div').innerHTML =
+    `<button class="btn btn-sm btn-primary" onclick="guardarEdicion('${id}')" style="padding:3px 7px;font-size:10px;">✓</button>
+     <button class="btn btn-sm" onclick="renderDiccionario()" style="padding:3px 7px;font-size:10px;">✗</button>`;
+}
+
+function guardarEdicion(id){
+  const dict = loadDict();
+  const idx  = dict.findIndex(x=>x.id===id);
+  if(idx<0) return;
+  const newTada  = document.getElementById(`edit-tada-${id}`)?.value.trim();
+  const newMalla = document.getElementById(`edit-malla-${id}`)?.value.trim();
+  if(!newTada||!newMalla){ toast('Ambos campos son requeridos'); return; }
+  dict[idx].tadaNombre  = newTada;
+  dict[idx].mallaNombre = newMalla;
+  dict[idx].fuente      = 'manual';
+  dict[idx].fechaActualizado = new Date().toISOString().slice(0,10);
+  saveDict(dict);
+  renderDiccionario();
+  toast('✓ Equivalencia actualizada');
+}
+
+function eliminarEquivalencia(id){
+  const dict = loadDict().filter(e=>e.id!==id);
+  saveDict(dict);
+  renderDiccionario();
+  toast('Equivalencia eliminada');
+}
+
+function agregarEquivalencia(){
+  const lista = document.getElementById('dict-lista');
+  if(!lista) return;
+  // Insertar fila de nueva equivalencia al inicio
+  const newRow = document.createElement('div');
+  newRow.id = 'dict-new-row';
+  newRow.style.cssText = 'display:flex;gap:8px;align-items:center;margin-bottom:10px;padding:10px;background:var(--bg3);border-radius:6px;border:1px solid var(--accent);';
+  newRow.innerHTML = `
+    <div style="flex:1;"><label style="font-size:10px;color:var(--text3);display:block;margin-bottom:3px;">Nombre en TADA</label>
+      <input class="dict-input" id="new-tada" placeholder="Ej: Jeremy Acosta"/></div>
+    <div style="flex:1;"><label style="font-size:10px;color:var(--text3);display:block;margin-bottom:3px;">Nombre en Malla</label>
+      <input class="dict-input" id="new-malla" placeholder="Ej: Jeremy Santiago"/></div>
+    <div style="display:flex;gap:4px;padding-top:16px;">
+      <button class="btn btn-sm btn-primary" onclick="confirmarNuevaEquivalencia()">✓</button>
+      <button class="btn btn-sm" onclick="document.getElementById('dict-new-row').remove()">✗</button>
+    </div>`;
+  // Remover si ya existe una fila de nueva
+  const existing = document.getElementById('dict-new-row');
+  if(existing) existing.remove();
+  lista.insertBefore(newRow, lista.firstChild);
+  document.getElementById('new-tada').focus();
+}
+
+function confirmarNuevaEquivalencia(){
+  const tada  = document.getElementById('new-tada')?.value.trim();
+  const malla = document.getElementById('new-malla')?.value.trim();
+  if(!tada||!malla){ toast('Ambos campos son requeridos'); return; }
+  dictSave(tada, malla, 'manual');
+  renderDiccionario();
+  toast('✓ Equivalencia agregada');
+}
+
+// ═══════════════════════════════════════════
 // BOOT
 initTariffs();
+actualizarDictSummary();
 </script>
 </body>
 </html>
