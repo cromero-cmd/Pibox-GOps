@@ -2461,7 +2461,9 @@ function runTrump(){
       //   Trump descuenta pct_plataforma → piloto recibe FINAL_COST × (1 - pct_plat)
       // Esto garantiza que el valor coincida con el pago automático de Trump
       // y no genere ajustes negativos al piloto.
-      const FINAL_COST = Math.round(COMPANY_FINAL_COST * (1 - pctMarg));
+      // Math.floor garantiza que FINAL_COST nunca supere el valor exacto
+      // evitando que Trump rechace por "comisión insuficiente" por centavos
+      const FINAL_COST = Math.floor(COMPANY_FINAL_COST * (1 - pctMarg));
 
       // ── ADDITIONAL_FINAL_COST ─────────────────────────────
       // Trump NO descuenta plataforma en este campo.
