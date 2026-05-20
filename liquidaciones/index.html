@@ -381,7 +381,50 @@ tr:hover td{background:var(--bg3);}
   <div class="log" id="log-trump"></div>
   <div class="panel-footer">
     <button class="btn" onclick="navStep(5)">← Atrás</button>
+    <button class="btn" onclick="abrirModalEnvio()">✉ Enviar por correo</button>
     <button class="btn btn-green" onclick="downloadTrump()">↓ Descargar Excel Trump completo (3 hojas)</button>
+  </div>
+</div>
+
+<!-- MODAL ENVÍO POR CORREO -->
+<div id="modal-envio" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:800;display:none;align-items:center;justify-content:center;">
+  <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:12px;padding:24px;width:480px;max-width:95vw;">
+    <div style="font-size:14px;font-weight:600;margin-bottom:4px;">✉ Enviar template por correo</div>
+    <div style="font-size:11px;color:var(--text3);font-family:var(--mono);margin-bottom:16px;" id="modal-periodo-label"></div>
+
+    <div class="t-item" style="margin-bottom:12px;">
+      <label>URL del Web App (Apps Script)</label>
+      <input type="text" id="envio-url" placeholder="https://script.google.com/macros/s/.../exec"
+        style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:6px;padding:8px 10px;color:var(--text);font-family:var(--mono);font-size:11px;"/>
+    </div>
+    <div class="t-item" style="margin-bottom:12px;">
+      <label>API Key</label>
+      <input type="password" id="envio-apikey" placeholder="Clave secreta configurada en Apps Script"
+        style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:6px;padding:8px 10px;color:var(--text);font-family:var(--mono);font-size:11px;"/>
+    </div>
+    <div class="t-item" style="margin-bottom:12px;">
+      <label>Tu nombre (aparece en el correo)</label>
+      <input type="text" id="envio-analista" placeholder="Nombre del analista"
+        style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:6px;padding:8px 10px;color:var(--text);font-family:var(--mono);font-size:11px;"/>
+    </div>
+    <div class="t-item" style="margin-bottom:12px;">
+      <label>Tu correo (recibirás una copia)</label>
+      <input type="email" id="envio-email-analista" placeholder="analista@empresa.com"
+        style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:6px;padding:8px 10px;color:var(--text);font-family:var(--mono);font-size:11px;"/>
+    </div>
+    <div class="t-item" style="margin-bottom:16px;">
+      <label>Destinatarios adicionales (separados por coma)</label>
+      <input type="text" id="envio-extra" placeholder="otro@empresa.com, otro2@empresa.com"
+        style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:6px;padding:8px 10px;color:var(--text);font-family:var(--mono);font-size:11px;"/>
+      <div style="font-size:10px;color:var(--text3);margin-top:4px;">Los destinatarios fijos configurados en Apps Script siempre reciben el correo.</div>
+    </div>
+
+    <div id="envio-status" style="min-height:18px;font-size:11px;font-family:var(--mono);margin-bottom:12px;"></div>
+
+    <div style="display:flex;gap:8px;justify-content:flex-end;">
+      <button class="btn" onclick="cerrarModalEnvio()">Cancelar</button>
+      <button class="btn btn-primary" id="btn-enviar-correo" onclick="enviarPorCorreo()">Enviar →</button>
+    </div>
   </div>
 </div>
 
@@ -2361,6 +2404,176 @@ function downloadTrump(){
   XLSX.utils.book_append_sheet(wb,ws3,'Auditoria');
   XLSX.writeFile(wb,`${runId}.xlsx`);
   toast(`✓ ${runId}.xlsx descargado`);
+}
+
+// ═══════════════════════════════════════════
+// ENVÍO POR CORREO — Google Apps Script
+// ═══════════════════════════════════════════
+
+// Persistir URL y API key en localStorage para no reescribirlos cada vez
+const LS_EMAIL = 'pibox:email_config';
+
+function calcularPeriodoMalla(){
+  // Detectar fechas mínima y máxima de la malla para construir el período
+  const mKeys = Object.keys(mallaRaw[0]||{});
+  const mFKey = mKeys.find(k=>/^fecha$/i.test(k.trim()))||mKeys.find(k=>/fecha/i.test(k))||'FECHA';
+  const fechas = mallaRaw
+    .map(r=>String(r[mFKey]||'').trim())
+    .filter(f=>/^\d{4}-\d{2}-\d{2}$/.test(f))
+    .sort();
+  if(!fechas.length) return null;
+  const min = fechas[0], max = fechas[fechas.length-1];
+
+  const MESES=['enero','febrero','marzo','abril','mayo','junio','julio',
+               'agosto','septiembre','octubre','noviembre','diciembre'];
+  const fmt = iso => {
+    const [y,m,d] = iso.split('-').map(Number);
+    return `${d} de ${MESES[m-1]} de ${y}`;
+  };
+  // Si mismo mes: "11 al 17 de mayo de 2026"
+  const [y1,m1,d1] = min.split('-').map(Number);
+  const [y2,m2,d2] = max.split('-').map(Number);
+  if(m1===m2 && y1===y2)
+    return `${d1} al ${d2} de ${MESES[m1-1]} de ${y1}`;
+  return `${fmt(min)} al ${fmt(max)}`;
+}
+
+function abrirModalEnvio(){
+  if(!trumpRows.length){ toast('Genera el template primero'); return; }
+
+  // Restaurar config guardada
+  try{
+    const cfg = JSON.parse(localStorage.getItem(LS_EMAIL)||'{}');
+    if(cfg.url)           document.getElementById('envio-url').value            = cfg.url;
+    if(cfg.apikey)        document.getElementById('envio-apikey').value         = cfg.apikey;
+    if(cfg.analista)      document.getElementById('envio-analista').value       = cfg.analista;
+    if(cfg.emailAnalista) document.getElementById('envio-email-analista').value = cfg.emailAnalista;
+  }catch{}
+
+  const periodo = calcularPeriodoMalla();
+  document.getElementById('modal-periodo-label').textContent =
+    periodo ? `Período detectado: ${periodo}` : 'Período: no detectado — revisa la malla';
+  document.getElementById('envio-status').textContent = '';
+  document.getElementById('envio-extra').value = '';
+
+  const modal = document.getElementById('modal-envio');
+  modal.style.display = 'flex';
+}
+
+function cerrarModalEnvio(){
+  document.getElementById('modal-envio').style.display = 'none';
+}
+
+async function enviarPorCorreo(){
+  const url     = document.getElementById('envio-url').value.trim();
+  const apikey  = document.getElementById('envio-apikey').value.trim();
+  const analista      = document.getElementById('envio-analista').value.trim()||'Analista';
+  const emailAnalista = document.getElementById('envio-email-analista').value.trim();
+  const extra         = document.getElementById('envio-extra').value
+                          .split(',').map(s=>s.trim()).filter(s=>s.includes('@'));
+
+  const status  = document.getElementById('envio-status');
+  const btnEnviar = document.getElementById('btn-enviar-correo');
+
+  if(!url)    { status.innerHTML='<span style="color:var(--red);">Ingresa la URL del Web App</span>'; return; }
+  if(!apikey) { status.innerHTML='<span style="color:var(--red);">Ingresa la API Key</span>'; return; }
+
+  // Guardar config para próxima vez
+  try{ localStorage.setItem(LS_EMAIL, JSON.stringify({url, apikey, analista, emailAnalista})); }catch{}
+
+  // Generar el Excel en memoria (mismo que downloadTrump pero sin descargar)
+  const av    = getAV();
+  const runId = trumpRows[0]?._run_id || 'LIQ';
+  const tc    = trumpRows.reduce((a,r)=>a+r.COMPANY_FINAL_COST+r.ADDITIONAL_COMPANY_FINAL_COST,0);
+  const tp    = trumpRows.reduce((a,r)=>a+r.FINAL_COST+r.ADDITIONAL_FINAL_COST,0);
+  const margen= tc - tp;
+  const periodo = calcularPeriodoMalla() || 'período no especificado';
+
+  // Construir workbook
+  const TC=['BOOKING_ID','COMPANY_FINAL_COST','ADDITIONAL_COMPANY_FINAL_COST',
+    'DISPUTED_COMPANY_FINAL_COST','FINAL_COST','ADDITIONAL_FINAL_COST',
+    'DISPUTED_FINAL_COST','PACKAGES_COUNT','IS_PER_HOUR','COMMENTS'];
+  const ws1=XLSX.utils.json_to_sheet(trumpRows.map(r=>({
+    BOOKING_ID:r.BOOKING_ID, COMPANY_FINAL_COST:r.COMPANY_FINAL_COST,
+    ADDITIONAL_COMPANY_FINAL_COST:r.ADDITIONAL_COMPANY_FINAL_COST,
+    DISPUTED_COMPANY_FINAL_COST:'', FINAL_COST:r.FINAL_COST,
+    ADDITIONAL_FINAL_COST:r.ADDITIONAL_FINAL_COST, DISPUTED_FINAL_COST:'',
+    PACKAGES_COUNT:r.PACKAGES_COUNT, IS_PER_HOUR:0, COMMENTS:r.COMMENTS_PILOTO,
+  })));
+
+  const mKeys=Object.keys(mallaRaw[0]||{});
+  const mBKey=mKeys.find(k=>/booking/i.test(k))||'BOOKING SERVICIO';
+  const mFKey2=mKeys.find(k=>/^fecha$/i.test(k.trim()))||'FECHA';
+  const mSKey=mKeys.find(k=>/seller/i.test(k))||'SELLER';
+  const mPKey=mKeys.find(k=>!/id/i.test(k)&&/nombre/i.test(k))||'NOMBRE';
+
+  const incon=[];
+  concResult.filter(r=>r.nivel_confianza==='SIN_MALLA').forEach(r=>
+    incon.push({tipo:'SIN_MALLA',piloto:r.piloto,fecha:r.fecha,seller:r.seller,booking_id:'—',nota:'Sin match'}));
+  concResult.filter(r=>r._excluido_manual).forEach(r=>
+    incon.push({tipo:'EXCLUIDO_MANUAL',piloto:r.piloto,fecha:r.fecha,seller:r.seller,booking_id:'—',nota:'Excluido en Novedades'}));
+  const ws2=XLSX.utils.json_to_sheet(incon.length?incon:[{tipo:'Sin inconsistencias'}]);
+  const ws3=XLSX.utils.json_to_sheet([
+    {campo:'run_id',valor:runId},{campo:'periodo',valor:periodo},
+    {campo:'fecha_generacion',valor:new Date().toLocaleString('es-CO')},
+    {campo:'analista',valor:analista},{campo:'version_tarifas',valor:av.version},
+    {campo:'bookings_generados',valor:trumpRows.length},
+    {campo:'cobro_tada',valor:tc},{campo:'pago_pilotos',valor:tp},{campo:'margen',valor:margen},
+  ]);
+
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws1,'Template Trump');
+  XLSX.utils.book_append_sheet(wb,ws2,'Inconsistencias');
+  XLSX.utils.book_append_sheet(wb,ws3,'Auditoria');
+
+  // Convertir a base64
+  const wbArray  = XLSX.write(wb, {type:'array', bookType:'xlsx'});
+  const uint8    = new Uint8Array(wbArray);
+  let binary     = '';
+  uint8.forEach(b=>binary+=String.fromCharCode(b));
+  const base64   = btoa(binary);
+  const nombreArchivo = `${runId}.xlsx`;
+
+  // Enviar al Apps Script
+  btnEnviar.disabled = true;
+  status.innerHTML   = '<span style="color:var(--blue);">⏳ Enviando...</span>';
+
+  try{
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        apiKey: apikey,
+        archivoBase64: base64,
+        nombreArchivo,
+        destinatarios: extra,
+        resumen: {
+          periodo,
+          bookings:     trumpRows.length.toString(),
+          cobro:        cop(tc),
+          pago:         cop(tp),
+          margen:       cop(margen),
+          runId,
+          version:      av.version,
+          analista,
+          emailAnalista,
+        },
+      }),
+    });
+
+    const data = await resp.json();
+    if(data.ok){
+      status.innerHTML=`<span style="color:var(--green);">✓ ${data.mensaje}</span>`;
+      addLog('log-trump',`[OK] Correo enviado · ${data.destinatarios?.join(', ')}`,'ok');
+      setTimeout(cerrarModalEnvio, 2000);
+    } else {
+      status.innerHTML=`<span style="color:var(--red);">✗ Error: ${data.error}</span>`;
+    }
+  }catch(err){
+    status.innerHTML=`<span style="color:var(--red);">✗ No se pudo conectar: ${err.message}</span>`;
+  }finally{
+    btnEnviar.disabled = false;
+  }
 }
 
 // BOOT
