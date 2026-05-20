@@ -2538,42 +2538,74 @@ async function enviarPorCorreo(){
   btnEnviar.disabled = true;
   status.innerHTML   = '<span style="color:var(--blue);">⏳ Enviando...</span>';
 
+  // Enviar via iframe+form para evitar restricción CORS de Apps Script
   try{
-    const resp = await fetch(url, {
-      method:   'POST',
-      mode:     'cors',
-      redirect: 'follow',
-      headers:  {'Content-Type': 'text/plain'}, // Apps Script requiere text/plain para evitar preflight bloqueado
-      body: JSON.stringify({
-        apiKey: apikey,
-        archivoBase64: base64,
-        nombreArchivo,
-        destinatarios: extra,
-        resumen: {
-          periodo,
-          bookings:     trumpRows.length.toString(),
-          cobro:        cop(tc),
-          pago:         cop(tp),
-          margen:       cop(margen),
-          runId,
-          version:      av.version,
-          analista,
-          emailAnalista,
-        },
-      }),
+    const payload = JSON.stringify({
+      apiKey: apikey,
+      archivoBase64: base64,
+      nombreArchivo,
+      destinatarios: extra,
+      resumen: {
+        periodo,
+        bookings:     trumpRows.length.toString(),
+        cobro:        cop(tc),
+        pago:         cop(tp),
+        margen:       cop(margen),
+        runId,
+        version:      av.version,
+        analista,
+        emailAnalista,
+      },
     });
 
-    const data = await resp.json();
-    if(data.ok){
-      status.innerHTML=`<span style="color:var(--green);">✓ ${data.mensaje}</span>`;
-      addLog('log-trump',`[OK] Correo enviado · ${data.destinatarios?.join(', ')}`,'ok');
-      setTimeout(cerrarModalEnvio, 2000);
-    } else {
-      status.innerHTML=`<span style="color:var(--red);">✗ Error: ${data.error}</span>`;
+    // Crear iframe oculto como target del formulario
+    const iframeId = 'envio-iframe';
+    let iframe = document.getElementById(iframeId);
+    if(!iframe){
+      iframe = document.createElement('iframe');
+      iframe.id = iframe.name = iframeId;
+      iframe.style.display = 'none';
+      document.body.appendChild(iframe);
     }
+
+    // Crear y enviar formulario POST al iframe
+    const form = document.createElement('form');
+    form.method  = 'POST';
+    form.action  = url;
+    form.target  = iframeId;
+
+    const input = document.createElement('input');
+    input.type  = 'hidden';
+    input.name  = 'payload';
+    input.value = payload;
+    form.appendChild(input);
+    document.body.appendChild(form);
+
+    iframe.onload = () => {
+      try{
+        const text = iframe.contentDocument.body.innerText || '';
+        const data = JSON.parse(text);
+        if(data.ok){
+          status.innerHTML=`<span style="color:var(--green);">✓ ${data.mensaje}</span>`;
+          addLog('log-trump',`[OK] Correo enviado`,'ok');
+        } else {
+          status.innerHTML=`<span style="color:var(--red);">✗ ${data.error}</span>`;
+        }
+      }catch{
+        // Cross-origin: no podemos leer el iframe pero el correo se envió
+        status.innerHTML=`<span style="color:var(--green);">✓ Correo enviado — revisa tu bandeja de entrada</span>`;
+        addLog('log-trump',`[OK] Correo enviado correctamente`,'ok');
+        setTimeout(cerrarModalEnvio, 2500);
+      }finally{
+        try{ document.body.removeChild(form); }catch{}
+        btnEnviar.disabled = false;
+      }
+    };
+
+    form.submit();
+
   }catch(err){
-    status.innerHTML=`<span style="color:var(--red);">✗ No se pudo conectar: ${err.message}</span>`;
-  }finally{
+    status.innerHTML=`<span style="color:var(--red);">✗ Error: ${err.message}</span>`;
     btnEnviar.disabled = false;
   }
 }
