@@ -413,8 +413,12 @@ const TARIFF_SCHEMA = [
   {key:'p_min_lj',      label:'Mínimo diario piloto · L-J',     def:70000, step:1000, group:'pago'},
   {key:'p_min_vd',      label:'Mínimo diario piloto · V-D',     def:80000, step:1000, group:'pago'},
   // Porcentajes
-  {key:'pct_plataforma',label:'Comisión plataforma (%)',        def:15,    step:1,    group:'pct'},
-  {key:'pct_margen',    label:'Margen corporativo (%)',         def:3,     step:1,    group:'pct'},
+  // Porcentajes nacionales
+  {key:'pct_plataforma',label:'Comisión plataforma · Nacional (%)', def:15, step:1, group:'pct'},
+  {key:'pct_margen',    label:'Margen corporativo · Nacional (%)',  def:3,  step:1, group:'pct'},
+  // Porcentajes Cali (ciudad CAL)
+  {key:'pct_plataforma_cal',label:'Comisión plataforma · Cali (%)', def:10, step:1, group:'pct_cal'},
+  {key:'pct_margen_cal',    label:'Margen corporativo · Cali (%)',  def:7,  step:1, group:'pct_cal'},
 ];
 
 // ═══════════════════════════════════════════
@@ -683,16 +687,18 @@ function renderTariffPanel(){
   };
 
   document.getElementById('tariff-fields').innerHTML=
-    mkGroup('cobro','Tarifas de cobro a TaDa (COP por unidad)','var(--blue)')+
-    mkGroup('pago', 'Tarifas de pago al piloto — neto (COP por unidad)','var(--green)')+
-    mkGroup('pct',  'Porcentajes de descuento','var(--yellow)');
+    mkGroup('cobro',   'Tarifas de cobro a TaDa (COP por unidad)',           'var(--blue)')+
+    mkGroup('pago',    'Tarifas de pago al piloto — neto (COP por unidad)',   'var(--green)')+
+    mkGroup('pct',     'Porcentajes · Nacional',                              'var(--yellow)')+
+    mkGroup('pct_cal', 'Porcentajes · Cali (ciudad CAL)',                     'var(--purple)');
 
   // Historial de versiones
   document.getElementById('tariff-history').innerHTML=[...tariffStore.versions].reverse().slice(0,5).map(v=>{
     const isA=v.version===tariffStore.active_version;
-    const cobro=TARIFF_SCHEMA.filter(s=>s.group==='cobro');
-    const pago =TARIFF_SCHEMA.filter(s=>s.group==='pago');
-    const pct  =TARIFF_SCHEMA.filter(s=>s.group==='pct');
+    const cobro  =TARIFF_SCHEMA.filter(s=>s.group==='cobro');
+    const pago   =TARIFF_SCHEMA.filter(s=>s.group==='pago');
+    const pct    =TARIFF_SCHEMA.filter(s=>s.group==='pct');
+    const pctCal =TARIFF_SCHEMA.filter(s=>s.group==='pct_cal');
     const mkTags=(items,col)=>items.map(s=>`<span style="font-size:10px;background:var(--bg3);padding:2px 7px;border-radius:3px;font-family:var(--mono);color:${col};">${s.key.split('_').slice(1).join('_')}: <span style="color:var(--text);">${s.group==='pct'?(v.values[s.key]??s.def)+'%':cop(v.values[s.key]??s.def)}</span></span>`).join('');
     return `<div class="ver-card${isA?' active-ver':''}">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
@@ -701,7 +707,8 @@ function renderTariffPanel(){
       </div>
       <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:5px;">${mkTags(cobro,'var(--blue)')}</div>
       <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:5px;">${mkTags(pago,'var(--green)')}</div>
-      <div style="display:flex;flex-wrap:wrap;gap:4px;">${mkTags(pct,'var(--yellow)')}</div>
+      <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:5px;">${mkTags(pct,'var(--yellow)')}</div>
+      <div style="display:flex;flex-wrap:wrap;gap:4px;">${mkTags(pctCal,'var(--purple)')}</div>
       ${!isA?`<div style="margin-top:8px;"><button class="btn btn-sm" onclick="activateVersion('${v.version}')">Activar</button></div>`:''}
     </div>`;
   }).join('');
@@ -2021,9 +2028,12 @@ function runTrump(){
     const t=currentEdits, av=getAV();
     const runId=`LIQ-${new Date().toISOString().slice(0,10).replace(/-/g,'')}-${av.version}`;
 
-    // ── Porcentajes ─────────────────────────────────────────
-    const pctPlat  = (t.pct_plataforma??15) / 100;  // 0.15
-    const pctMarg  = (t.pct_margen??3)      / 100;  // 0.03
+    // ── Porcentajes nacionales ────────────────────────────────
+    const pctPlatNac = (t.pct_plataforma    ?? 15) / 100;  // 0.15
+    const pctMargNac = (t.pct_margen        ?? 3)  / 100;  // 0.03
+    // ── Porcentajes Cali ──────────────────────────────────────
+    const pctPlatCal = (t.pct_plataforma_cal ?? 10) / 100; // 0.10
+    const pctMargCal = (t.pct_margen_cal     ?? 7)  / 100; // 0.07
 
     // ── Días valle (L-J) vs pico (V-D) ──────────────────────
     const DIAS_LJ = new Set(['lunes','martes','miércoles','miercoles','jueves']);
@@ -2055,6 +2065,13 @@ function runTrump(){
       .filter(r=>r.booking_id!=='__EXCLUIDO__' && r.booking_id!=='?' && r.booking_id!=='SIN BOOKING')
       .map(r=>{
       const lj = esDiaLJ(r);
+
+      // ── Seleccionar porcentajes según ciudad ─────────────
+      // Cali (CAL) tiene comisión plataforma 10% y margen 7%
+      // Resto del país: 15% y 3%
+      const esCali = normStr(r.ciudad||'') === 'cal';
+      const pctPlat = esCali ? pctPlatCal : pctPlatNac;
+      const pctMarg = esCali ? pctMargCal : pctMargNac;
 
       // ── Tarifas cobro cliente ────────────────────────────
       const cPaq = t.c_paquete    ?? 8870;
@@ -2131,7 +2148,7 @@ function runTrump(){
 
       // ── COMMENTS detallado (auditoría interna) ───────────
       const COMMENTS =
-        `Fecha malla:${r.fecha_malla||r.fecha} Dia:${lj?'L-J':'V-D'} | `+
+        `Fecha malla:${r.fecha_malla||r.fecha} Dia:${lj?'L-J':'V-D'} ${esCali?'[CAL plat:'+Math.round(pctPlat*100)+'%]':''} | `+
         `Paq:${r.paquetes_dist}x${cop(pPaq)}=${cop(r.paquetes_dist*pPaq)} | `+
         `Inc:${r.incentivos_dist}x${cop(pInc)}=${cop(r.incentivos_dist*pInc)} | `+
         `Can:${r.cancelados_dist}x${cop(pCan)}=${cop(r.cancelados_dist*pCan)} | `+
