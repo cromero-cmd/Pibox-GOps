@@ -1657,7 +1657,7 @@ function runDistribucion(){
                     mKeys.find(k=>/d[íi]a/i.test(k))||null;
 
       // Niveles que pasan a distribución (los demás se excluyen)
-      const NIVELES_OK=new Set(['HIGH','MEDIUM','LOW','FUZZY-HIGH','FUZZY-LOW']);
+      const NIVELES_OK=new Set(['HIGH','MEDIUM','LOW','FUZZY-HIGH','FUZZY-LOW','MANUAL-OK']);
       concResult.filter(r=>NIVELES_OK.has(r.nivel_confianza)).forEach(row=>{
         const n=row.matches.length;
         [...row.matches].sort((a,b)=>String(a[mHKey]||'').localeCompare(String(b[mHKey]||''))).forEach((m,i)=>{
@@ -2188,11 +2188,34 @@ function aplicarResoluciones(){
       } else if(res.accion==='ok'){
         concResult[n.idx]._resolucion_manual=true;
         if(res.driver_id) concResult[n.idx].driver_id=res.driver_id;
-        if(res.booking_id&&concResult[n.idx].matches.length>1){
-          const mKeys=Object.keys(mallaRaw[0]||{});
-          const mBKey=mKeys.find(k=>/booking/i.test(k))||'BOOKING SERVICIO';
-          const fil=concResult[n.idx].matches.filter(m=>m[mBKey]===res.booking_id);
-          if(fil.length>0) concResult[n.idx].matches=fil;
+
+        const mKeys=Object.keys(mallaRaw[0]||{});
+        const mBKey=mKeys.find(k=>/booking/i.test(k))||'BOOKING SERVICIO';
+        const mDKey=mKeys.find(k=>/^id[\s_]?piloto/i.test(k.trim()))||'ID PILOTO';
+
+        if(res.booking_id){
+          if(concResult[n.idx].matches.length>1){
+            // Filtrar al candidato seleccionado
+            const fil=concResult[n.idx].matches.filter(m=>m[mBKey]===res.booking_id);
+            if(fil.length>0) concResult[n.idx].matches=fil;
+          } else if(concResult[n.idx].matches.length===0){
+            // Sin matches — buscar en mallaRaw por booking_id
+            const mRow = mallaRaw.find(m=>m[mBKey]===res.booking_id);
+            if(mRow) concResult[n.idx].matches=[mRow];
+            else {
+              // Crear un match mínimo con los datos disponibles
+              const fakeMatch={};
+              fakeMatch[mBKey] = res.booking_id;
+              if(res.driver_id) fakeMatch[mDKey] = res.driver_id;
+              concResult[n.idx].matches=[fakeMatch];
+            }
+          }
+          // Si tiene 1 match pero booking diferente, actualizarlo
+          if(concResult[n.idx].matches.length===1 &&
+             concResult[n.idx].matches[0][mBKey] !== res.booking_id){
+            const mRow = mallaRaw.find(m=>m[mBKey]===res.booking_id);
+            if(mRow) concResult[n.idx].matches=[mRow];
+          }
         }
         concResult[n.idx].nivel_confianza='MANUAL-OK';
       }
