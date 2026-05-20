@@ -1550,12 +1550,35 @@ function runConciliacion(){
       addLog('log-conc',`[${nivel}] ${row.piloto} · ${row.fecha} · ${row.seller} — ${nota||'Sin match'}`,cls);
     });
 
-    // Huérfanos en malla
-    mallaRaw.filter(m=>!matchados.has(m[mBKey])).forEach(m=>
-      addLog('log-conc',`[WARN] Huérfano malla: ${m[mBKey]||'?'} · ${m[mPKey]||''} · ${m[mFKey]||''}`,'warn'));
+    // Huérfanos en malla — bookings en malla que no matchearon con ningún registro TADA
+    // Los agregamos a concResult como SIN_TADA para que sean visibles y gestionables
+    const huerfanosMalla = mallaRaw.filter(m=>m[mBKey]&&!matchados.has(m[mBKey]));
+    huerfanosMalla.forEach(m=>{
+      const nombreMalla = String(m[mPKey]||'');
+      const fechaMalla  = String(m[mFKey]||'');
+      const sellerMalla = String(m[mSKey]||'');
+      const ciudadMalla = String(m[mCKey]||'');
+      const bookingId   = String(m[mBKey]||'');
+      concResult.push({
+        piloto:    nombreMalla,
+        ciudad:    ciudadMalla,
+        seller:    sellerMalla,
+        fecha:     fechaMalla,
+        driver_id: String(m[mDKey]||'PENDIENTE'),
+        paquetes:0, incentivos:0, cancelados:0, tareas:0,
+        garantizado:0, bonos:0, ajustes:0,
+        nivel_confianza: 'SIN_TADA',
+        matches: [m],  // el registro de malla está disponible
+        nota: `Booking en malla sin actividad reportada en TADA · booking: ${bookingId}`,
+        _booking_malla: bookingId,
+      });
+      addLog('log-conc',`[SIN_TADA] ${nombreMalla} · ${fechaMalla} · booking: ${bookingId}`,'warn');
+    });
 
     if(dictAplicados>0)
       addLog('log-conc',`[INFO] Diccionario: ${dictAplicados} coincidencias resueltas automáticamente`,'ok');
+    if(huerfanosMalla.length>0)
+      addLog('log-conc',`[WARN] ${huerfanosMalla.length} bookings en malla sin actividad en TADA — aparecen como SIN_TADA`,'warn');
 
     renderConcStats();
     renderConcTable();
@@ -1580,6 +1603,7 @@ function renderConcStats(){
   const fl =concResult.filter(r=>r.nivel_confianza==='FUZZY-LOW').length;
   const amb=concResult.filter(r=>r.nivel_confianza==='AMBIGUOUS').length;
   const sn =concResult.filter(r=>r.nivel_confianza==='SIN_MALLA').length;
+  const st =concResult.filter(r=>r.nivel_confianza==='SIN_TADA').length;
   const omitidas=tadaNorm.filter(r=>r.paquetes===0&&r.incentivos===0&&r.cancelados===0).length;
 
   const selCls=(n,base)=>concFilter.has(n)?` ${base}`:'';
@@ -1593,6 +1617,7 @@ function renderConcStats(){
     <div class="stat clickable${selCls('LOW','selected-low')}"         onclick="filterConc(event,'LOW')">        <div class="stat-l">LOW · seller distinto</div><div class="stat-v r">${lo}</div>  <div class="stat-hint">→ marcado revisión</div></div>
     <div class="stat clickable${selCls('AMBIGUOUS','selected-low')}"   onclick="filterConc(event,'AMBIGUOUS')">  <div class="stat-l">AMBIGUOUS · varios cand.</div><div class="stat-v r">${amb}</div><div class="stat-hint">→ revisión manual</div></div>
     <div class="stat clickable${selCls('SIN_MALLA','selected-sin')}"   onclick="filterConc(event,'SIN_MALLA')">  <div class="stat-l">SIN_MALLA · sin match</div><div class="stat-v" style="color:var(--text2)">${sn}</div><div class="stat-hint">→ excluido</div></div>
+    ${st>0?`<div class="stat clickable${selCls('SIN_TADA','selected-sin')}" onclick="filterConc(event,'SIN_TADA')"><div class="stat-l">SIN_TADA · no en reporte</div><div class="stat-v" style="color:var(--yellow);">${st}</div><div class="stat-hint">→ revisar en Novedades</div></div>`:''}
     <div class="stat" style="border-color:var(--border2);background:var(--bg3);">
       <div class="stat-l">Días sin actividad</div>
       <div class="stat-v" style="font-size:13px;color:var(--text3)">${omitidas}</div>
@@ -1711,7 +1736,7 @@ function runDistribucion(){
 let novedades = [];    // lista construida una sola vez al abrir el módulo
 let resoluciones = {}; // key → {accion, booking_id, driver_id, ...}
 
-const TIPOS_NOVEDAD  = new Set(['LOW','FUZZY-LOW','AMBIGUOUS','SIN_MALLA']);
+const TIPOS_NOVEDAD  = new Set(['LOW','FUZZY-LOW','AMBIGUOUS','SIN_MALLA','SIN_TADA']);
 const TIPOS_SIN_BOOKING = 'SIN_BOOKING';
 
 function buildNovedades(){
@@ -1739,6 +1764,7 @@ function buildNovedades(){
 function badgeClass(tipo){
   if(tipo==='LOW'||tipo==='FUZZY-LOW') return 'b-med';
   if(tipo==='AMBIGUOUS'||tipo===TIPOS_SIN_BOOKING) return 'b-low';
+  if(tipo==='SIN_TADA') return 'b-med';
   return 'b-sin';
 }
 
@@ -1973,6 +1999,21 @@ function explicarNovedad(n){
     </div>`;
   }
 
+  if(tipo === 'SIN_TADA'){
+    const bk = n.nota.match(/booking: ([a-f0-9]+)/)?.[1] || '—';
+    return `<div style="margin-bottom:10px;">
+      <div style="font-size:11px;font-weight:600;color:var(--yellow);margin-bottom:6px;">⚠ Este booking está en la malla Pibox pero no aparece en el reporte de TADA.</div>
+      <div style="display:grid;grid-template-columns:90px 1fr;gap:4px;font-size:11px;font-family:var(--mono);line-height:1.8;">
+        <span style="color:var(--text3);">Booking ID:</span><span style="color:var(--text);">${bk}</span>
+      </div>
+      <div style="margin-top:8px;font-size:11px;color:var(--text2);">
+        Posibles causas: el piloto trabajó ese día pero TADA no reportó actividad, o hay un desfase entre los sistemas.<br>
+        → <strong>Confirma</strong> si debe incluirse en la liquidación (se liquidará con garantizado mínimo).<br>
+        → <strong>Excluye</strong> si no debe pagarse en este ciclo.
+      </div>
+    </div>`;
+  }
+
   // Fallback: mostrar nota técnica
   return `<div class="nov-nota">${n.nota}</div>`;
 }
@@ -2039,7 +2080,7 @@ function renderNovCard(n, i){
       ${candidatosHtml}
       ${bookingHtml}
       <div class="nov-actions">
-        ${n.tipo!=='SIN_MALLA'?`<button class="btn btn-sm btn-primary btn-nov-ok">✓ Confirmar</button>`:''}
+        ${n.tipo!=='SIN_MALLA' ? `<button class="btn btn-sm btn-primary btn-nov-ok">✓ Confirmar</button>` : ''}
         <button class="btn btn-sm btn-danger btn-nov-ex">✗ Excluir</button>
       </div>
     </div>
@@ -2675,6 +2716,16 @@ function buildExclusiones(){
       descripcion:'Piloto en TADA sin coincidencia en la malla Pibox',
       piloto:r.piloto, ciudad:r.ciudad, seller:r.seller,
       fecha:r.fecha, booking_id:'—',
+    });
+  });
+
+  // 1b. SIN_TADA — en malla pero sin actividad en TADA
+  concResult.filter(r=>r.nivel_confianza==='SIN_TADA'&&!r._resolucion_manual&&!r._excluido_manual).forEach(r=>{
+    excl.push({
+      razon:'SIN_TADA',
+      descripcion:'Booking en malla sin actividad reportada en TADA — pendiente de revisión',
+      piloto:r.piloto, ciudad:r.ciudad, seller:r.seller,
+      fecha:r.fecha, booking_id:r._booking_malla||'—',
     });
   });
 
