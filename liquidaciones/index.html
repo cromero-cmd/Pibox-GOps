@@ -242,8 +242,8 @@ tr:hover td{background:var(--bg3);}
   <div id="load-status" style="font-size:11px;font-family:var(--mono);color:var(--text2);min-height:18px;margin-bottom:14px;"></div>
   <!-- Botón explícito para continuar -->
   <div style="display:flex;gap:10px;align-items:center;">
-    <button class="btn btn-primary" id="btn-continuar" onclick="proceedToDiag()" disabled>
-      Continuar al diagnóstico →
+    <button class="btn btn-primary" id="btn-continuar" onclick="proceedToConciliacion()" disabled>
+      Continuar a conciliación →
     </button>
     <span id="continuar-hint" style="font-size:11px;color:var(--text3);font-family:var(--mono);">Carga ambos archivos para continuar</span>
   </div>
@@ -904,9 +904,73 @@ function updateLoadStatus(){
 }
 
 // El usuario controla cuándo avanzar — NO automático
-function proceedToDiag(){
-  showProcessing('Analizando estructura del archivo TADA...');
-  setTimeout(()=>{ runDiagnostico(); hideProcessing(); }, 100);
+function proceedToConciliacion(){
+  showProcessing('Analizando archivos...');
+  setTimeout(()=>{
+    // Paso 1: Diagnóstico en background
+    const result = buildColMap(tadaRaw);
+    colMap = result.map;
+
+    if(result.error || colMap.filter(c=>c.t==='d').length === 0){
+      // Hay un error — mostrar diagnóstico para que lo resuelva
+      hideProcessing();
+      runDiagnostico();
+      return;
+    }
+
+    // Paso 2: Normalización en background
+    showProcessing('Normalizando datos...');
+    const fixedCols = colMap.filter(c=>c.t==='f');
+    const extraCols  = colMap.filter(c=>c.t==='e');
+    const dayCols    = colMap.filter(c=>c.t==='d');
+    const groups = {};
+    dayCols.forEach(c=>{
+      const key=`${c.dia}||${c.fecha}`;
+      if(!groups[key]) groups[key]={dia:c.dia,fecha:c.fecha,cols:{}};
+      groups[key].cols[c.metric]=c.i;
+    });
+    const sortedGroups = Object.values(groups).sort((a,b)=>a.fecha.localeCompare(b.fecha));
+    const parseMoney = v=>{ if(typeof v==='number') return v; if(!v&&v!==0) return 0; return parseFloat(String(v).replace(/[$\s.]/g,'').replace(',','.'))||0; };
+    const getExtra   = (row,name)=>{ const col=extraCols.find(c=>c.n===name); return col?row[col.i]:0; };
+    const dataRows   = tadaRaw.slice(3).filter(r=>r.some(v=>v!==''&&v!==null&&v!==undefined));
+
+    tadaNorm = [];
+    dataRows.forEach(row=>{
+      const fixed={};
+      fixedCols.forEach(c=>{ fixed[c.n]=String(row[c.i]||'').trim(); });
+      if(!fixed.piloto||!fixed.piloto.trim()) return;
+      const tareas     =parseInt(getExtra(row,'tareas'))||0;
+      const garantizado=parseMoney(getExtra(row,'garantizado'));
+      const bonos      =parseMoney(getExtra(row,'bonos'));
+      const ajustes    =parseMoney(getExtra(row,'ajustes'));
+      const filas = sortedGroups.map(g=>({
+        piloto:fixed.piloto, ciudad:fixed.ciudad||'', seller:fixed.seller||'',
+        dia:g.dia, fecha:g.fecha,
+        paquetes:parseInt(row[g.cols.paquetes])||0,
+        incentivos:parseInt(row[g.cols.incentivos])||0,
+        cancelados:parseInt(row[g.cols.cancelados])||0,
+        tareas:0, garantizado:0, bonos:0, ajustes:0,
+      }));
+      let targetIdx = filas.findIndex(f=>f.paquetes>0||f.incentivos>0||f.cancelados>0);
+      if(targetIdx===-1) targetIdx=0;
+      filas[targetIdx].tareas=tareas; filas[targetIdx].garantizado=garantizado;
+      filas[targetIdx].bonos=bonos; filas[targetIdx].ajustes=ajustes;
+      tadaNorm.push(...filas);
+    });
+
+    if(tadaNorm.length === 0){
+      // Error en normalización — mostrar pantalla de diagnóstico
+      hideProcessing();
+      runDiagnostico();
+      return;
+    }
+
+    // Todo OK — ir directo a conciliación
+    // Marcar pasos 1 y 2 como completados sin mostrarlos
+    maxStep = 3;
+    hideProcessing();
+    runConciliacion();
+  }, 100);
 }
 
 // ═══════════════════════════════════════════
