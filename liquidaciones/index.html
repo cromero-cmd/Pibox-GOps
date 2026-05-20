@@ -2540,8 +2540,10 @@ async function enviarPorCorreo(){
 
   try{
     const resp = await fetch(url, {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
+      method:   'POST',
+      mode:     'cors',
+      redirect: 'follow',
+      headers:  {'Content-Type': 'text/plain'}, // Apps Script requiere text/plain para evitar preflight bloqueado
       body: JSON.stringify({
         apiKey: apikey,
         archivoBase64: base64,
