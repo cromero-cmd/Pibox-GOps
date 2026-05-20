@@ -2192,10 +2192,6 @@ function excluirTodas(){
 }
 
 function aplicarResoluciones(){
-  console.log(`[APLIC-START] novedades=${novedades.length} resoluciones=${Object.keys(resoluciones).length}`);
-  console.log(`[APLIC-START] tipos:`, novedades.map(n=>n.tipo));
-  console.log(`[APLIC-START] resoluciones:`, resoluciones);
-  console.log(`[APLIC-START] TIPOS_NOVEDAD:`, [...TIPOS_NOVEDAD]);
   // Construir set de booking_ids excluidos por SIN_BOOKING
   const bookingsExcluidos = new Set();
   const bookingsConfirmados = {}; // booking_id_viejo → booking_id_nuevo
@@ -2215,11 +2211,16 @@ function aplicarResoluciones(){
     }
 
     if(TIPOS_NOVEDAD.has(n.tipo)&&n.fuente==='conc'){
-      if(!res||res.accion==='excluir'){
+      if(!res){
+        // Pendiente no resuelto — excluir automáticamente
         concResult[n.idx]._excluido_manual=true;
-        console.log(`[APLIC] EXCLUIDO: ${n.piloto} idx=${n.idx} tipo=${n.tipo}`);
+        concResult[n.idx]._nivel_original=n.tipo;
+        // SIN marcar _accion_manual → buildExclusiones lo identifica como PENDIENTE
+      } else if(res.accion==='excluir'){
+        concResult[n.idx]._excluido_manual=true;
+        concResult[n.idx]._accion_manual='excluir'; // exclusión explícita del analista
+        concResult[n.idx]._nivel_original=n.tipo;
       } else if(res.accion==='ok'){
-        console.log(`[APLIC] OK: ${n.piloto} idx=${n.idx} tipo=${n.tipo} booking=${res.booking_id||'(sin booking)'} matches_antes=${concResult[n.idx]?.matches?.length}`);
         concResult[n.idx]._resolucion_manual=true;
         if(res.driver_id) concResult[n.idx].driver_id=res.driver_id;
 
@@ -2252,7 +2253,6 @@ function aplicarResoluciones(){
           }
         }
         concResult[n.idx].nivel_confianza='MANUAL-OK';
-        console.log(`[APLIC] → MANUAL-OK: matches=${concResult[n.idx].matches.length} booking=${concResult[n.idx].matches[0]?.[Object.keys(mallaRaw[0]||{}).find(k=>/booking/i.test(k))||'BOOKING SERVICIO']||'?'}`);
       }
     }
   });
@@ -2289,12 +2289,8 @@ function runDistribucionSilent(){
   const mFKey=mKeys.find(k=>/^fecha$/i.test(k.trim()))||'FECHA';
   const mDiaKey=mKeys.find(k=>/^d[íi]a$/i.test(k.trim()))||null;
   const NIVELES_OK=new Set(['HIGH','MEDIUM','LOW','FUZZY-HIGH','FUZZY-LOW','MANUAL-OK']);
-  const procesables = concResult.filter(r=>NIVELES_OK.has(r.nivel_confianza)&&!r._excluido_manual);
-  console.log(`[DIST-SILENT] Total procesables: ${procesables.length}`);
-  console.log(`[DIST-SILENT] MANUAL-OK: ${procesables.filter(r=>r.nivel_confianza==='MANUAL-OK').length}`);
-  console.log(`[DIST-SILENT] Muestra MANUAL-OK:`, procesables.filter(r=>r.nivel_confianza==='MANUAL-OK').slice(0,3).map(r=>({piloto:r.piloto,matches:r.matches.length,booking:r.matches[0]?.[Object.keys(mallaRaw[0]||{}).find(k=>/booking/i.test(k))||'BOOKING SERVICIO']})));
   distResult=[];
-  procesables.forEach(row=>{
+  concResult.filter(r=>NIVELES_OK.has(r.nivel_confianza)&&!r._excluido_manual).forEach(row=>{
     const n=row.matches.length||1;
     [...row.matches].sort((a,b)=>String(a[mHKey]||'').localeCompare(String(b[mHKey]||''))).forEach((m,i)=>{
       const first=i===0;
@@ -2585,8 +2581,10 @@ function runTrump(){
     trumpRows.filter(r=>r._confianza==='LOW').forEach(r=>addLog('log-trump',`[LOW] ${r.BOOKING_ID} · ${r._piloto}`,'warn'));
     concResult.filter(r=>r.nivel_confianza==='SIN_MALLA').forEach(r=>
       addLog('log-trump',`[EXCL] ${r.piloto} · ${r.fecha} — SIN_MALLA`,'err'));
-    concResult.filter(r=>r._excluido_manual).forEach(r=>
-      addLog('log-trump',`[EXCL] ${r.piloto} · ${r.fecha} — excluido manualmente en Novedades`,'err'));
+    concResult.filter(r=>r._excluido_manual&&r._accion_manual==='excluir').forEach(r=>
+      addLog('log-trump',`[EXCL] ${r.piloto} · ${r.fecha} — excluido manualmente`,'err'));
+    concResult.filter(r=>r._excluido_manual&&!r._accion_manual).forEach(r=>
+      addLog('log-trump',`[PEND] ${r.piloto} · ${r.fecha} — pendiente no resuelto`,'warn'));
     distResult.filter(r=>r.booking_id==='__EXCLUIDO__').forEach(r=>
       addLog('log-trump',`[EXCL] ${r.piloto} · ${r.fecha_malla||r.fecha} — SIN_BOOKING excluido`,'err'));
 
@@ -2727,12 +2725,23 @@ function buildExclusiones(){
     });
   });
 
-  // 2. Excluidos manualmente en Novedades (LOW, FUZZY-LOW, AMBIGUOUS)
-  concResult.filter(r=>r._excluido_manual).forEach(r=>{
+  // 2. Excluidos manualmente en Novedades (acción explícita del analista)
+  concResult.filter(r=>r._excluido_manual && r._accion_manual==='excluir').forEach(r=>{
     const bk = r.matches?.[0]?.[Object.keys(mallaRaw[0]||{}).find(k=>/booking/i.test(k))||'BOOKING SERVICIO']||'—';
     excl.push({
       razon:'EXCLUIDO_MANUAL',
       descripcion:`Excluido manualmente en Novedades (nivel original: ${r.nivel_confianza})`,
+      piloto:r.piloto, ciudad:r.ciudad, seller:r.seller,
+      fecha:r.fecha, booking_id:bk,
+    });
+  });
+
+  // 3. Pendientes no resueltos — excluidos automáticamente por no tomar acción
+  concResult.filter(r=>r._excluido_manual && !r._accion_manual).forEach(r=>{
+    const bk = r.matches?.[0]?.[Object.keys(mallaRaw[0]||{}).find(k=>/booking/i.test(k))||'BOOKING SERVICIO']||'—';
+    excl.push({
+      razon:'PENDIENTE',
+      descripcion:`Novedad tipo ${r._nivel_original||r.nivel_confianza} no resuelta — excluida automáticamente`,
       piloto:r.piloto, ciudad:r.ciudad, seller:r.seller,
       fecha:r.fecha, booking_id:bk,
     });
