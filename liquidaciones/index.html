@@ -405,12 +405,21 @@ tr:hover td{background:var(--bg3);}
     </div>
     <div id="tbl-trump"></div>
   </div>
+
+  <!-- Resumen de exclusiones -->
+  <div id="resumen-exclusiones" style="margin-top:14px;display:none;">
+    <div style="font-size:11px;font-weight:600;color:var(--yellow);text-transform:uppercase;
+      letter-spacing:.08em;margin-bottom:8px;font-family:var(--mono);">⚠ Resumen de exclusiones — revisa antes de descargar</div>
+    <div id="exclusiones-tabla" style="background:var(--bg2);border:1px solid var(--yellow);
+      border-radius:8px;overflow:hidden;"></div>
+  </div>
+
   <div class="sec" style="margin-top:6px;">Log final</div>
   <div class="log" id="log-trump"></div>
   <div class="panel-footer">
     <button class="btn" onclick="navStep(5)">← Atrás</button>
     <button class="btn" onclick="abrirModalEnvio()">✉ Enviar por correo</button>
-    <button class="btn btn-green" onclick="downloadTrump()">↓ Descargar Excel Trump completo (3 hojas)</button>
+    <button class="btn btn-green" onclick="downloadTrump()">↓ Descargar Excel Trump completo (4 hojas)</button>
   </div>
 </div>
 
@@ -581,7 +590,7 @@ function buildColMap(raw){
     let name=null;
     if(v2==='ciudad'||v2==='city') name='ciudad';
     else if(v2.includes('seller')||v2.includes('tienda')||v2.includes('punto')) name='seller';
-    else if(v2.includes('domicili')||v2==='piloto'||v2.includes('nombre')||v2.includes('conductor')) name='piloto';
+    else if(v2.includes('domicili')||v2==='piloto'||v2.includes('nombre')||v2.includes('conductor')||v2.includes('driver')) name='piloto';
     if(name) map.push({t:'f',n:name,i});
   }
 
@@ -954,34 +963,32 @@ function updateLoadStatus(){
 function proceedToConciliacion(){
   showProcessing('Analizando archivos...');
   setTimeout(()=>{
-    // Paso 1: Diagnóstico en background
+    // Diagnóstico en background
     const result = buildColMap(tadaRaw);
     colMap = result.map;
 
     if(result.error || colMap.filter(c=>c.t==='d').length === 0){
-      // Hay un error — mostrar diagnóstico para que lo resuelva
       hideProcessing();
       runDiagnostico();
       return;
     }
 
-    // Paso 2: Normalización en background
-    showProcessing('Normalizando datos...');
-    const fixedCols = colMap.filter(c=>c.t==='f');
-    const extraCols  = colMap.filter(c=>c.t==='e');
-    const dayCols    = colMap.filter(c=>c.t==='d');
-    const groups = {};
+    // Normalización en background — reutilizar exactamente la misma lógica de runNorm
+    tadaNorm=[];
+    const fixedCols=colMap.filter(c=>c.t==='f');
+    const extraCols =colMap.filter(c=>c.t==='e');
+    const dayCols   =colMap.filter(c=>c.t==='d');
+    const groups={};
     dayCols.forEach(c=>{
       const key=`${c.dia}||${c.fecha}`;
       if(!groups[key]) groups[key]={dia:c.dia,fecha:c.fecha,cols:{}};
       groups[key].cols[c.metric]=c.i;
     });
-    const sortedGroups = Object.values(groups).sort((a,b)=>a.fecha.localeCompare(b.fecha));
-    const parseMoney = v=>{ if(typeof v==='number') return v; if(!v&&v!==0) return 0; return parseFloat(String(v).replace(/[$\s.]/g,'').replace(',','.'))||0; };
-    const getExtra   = (row,name)=>{ const col=extraCols.find(c=>c.n===name); return col?row[col.i]:0; };
-    const dataRows   = tadaRaw.slice(3).filter(r=>r.some(v=>v!==''&&v!==null&&v!==undefined));
+    const sortedGroups=Object.values(groups).sort((a,b)=>a.fecha.localeCompare(b.fecha));
+    const parseMoney=v=>{ if(typeof v==='number') return v; if(!v&&v!==0) return 0; return parseFloat(String(v).replace(/[$\s.]/g,'').replace(',','.'))||0; };
+    const getExtra=(row,name)=>{ const col=extraCols.find(c=>c.n===name); return col?row[col.i]:0; };
+    const dataRows=tadaRaw.slice(3).filter(r=>r.some(v=>v!==''&&v!==null&&v!==undefined&&v!==0));
 
-    tadaNorm = [];
     dataRows.forEach(row=>{
       const fixed={};
       fixedCols.forEach(c=>{ fixed[c.n]=String(row[c.i]||'').trim(); });
@@ -990,15 +997,15 @@ function proceedToConciliacion(){
       const garantizado=parseMoney(getExtra(row,'garantizado'));
       const bonos      =parseMoney(getExtra(row,'bonos'));
       const ajustes    =parseMoney(getExtra(row,'ajustes'));
-      const filas = sortedGroups.map(g=>({
+      const filas=sortedGroups.map(g=>({
         piloto:fixed.piloto, ciudad:fixed.ciudad||'', seller:fixed.seller||'',
         dia:g.dia, fecha:g.fecha,
-        paquetes:parseInt(row[g.cols.paquetes])||0,
+        paquetes:  parseInt(row[g.cols.paquetes])||0,
         incentivos:parseInt(row[g.cols.incentivos])||0,
         cancelados:parseInt(row[g.cols.cancelados])||0,
         tareas:0, garantizado:0, bonos:0, ajustes:0,
       }));
-      let targetIdx = filas.findIndex(f=>f.paquetes>0||f.incentivos>0||f.cancelados>0);
+      let targetIdx=filas.findIndex(f=>f.paquetes>0||f.incentivos>0||f.cancelados>0);
       if(targetIdx===-1) targetIdx=0;
       filas[targetIdx].tareas=tareas; filas[targetIdx].garantizado=garantizado;
       filas[targetIdx].bonos=bonos; filas[targetIdx].ajustes=ajustes;
@@ -1006,14 +1013,26 @@ function proceedToConciliacion(){
     });
 
     if(tadaNorm.length === 0){
-      // Error en normalización — mostrar pantalla de diagnóstico
       hideProcessing();
       runDiagnostico();
       return;
     }
 
-    // Todo OK — ir directo a conciliación
-    // Marcar pasos 1 y 2 como completados sin mostrarlos
+    // Verificar que las fechas están en formato correcto
+    const fechasTada = [...new Set(tadaNorm.map(r=>r.fecha))].filter(Boolean).sort();
+    const fechasMalla = [...new Set(mallaRaw.map(r=>{
+      const mFKey = Object.keys(mallaRaw[0]).find(k=>/^fecha$/i.test(k.trim()))||'FECHA';
+      return String(r[mFKey]||'').trim();
+    }))].filter(f=>/^\d{4}-\d{2}-\d{2}$/.test(f)).sort();
+
+    // Si hay mismatch de formatos, ir a diagnóstico
+    const formatOk = fechasTada.every(f=>/^\d{4}-\d{2}-\d{2}$/.test(f));
+    if(!formatOk){
+      hideProcessing();
+      runDiagnostico();
+      return;
+    }
+
     maxStep = 3;
     hideProcessing();
     runConciliacion();
@@ -2496,6 +2515,9 @@ function runTrump(){
     distResult.filter(r=>r.booking_id==='__EXCLUIDO__').forEach(r=>
       addLog('log-trump',`[EXCL] ${r.piloto} · ${r.fecha_malla||r.fecha} — SIN_BOOKING excluido`,'err'));
 
+    // Mostrar resumen visual de exclusiones
+    renderResumenExclusiones(trumpRows.length);
+
     try{
       const runs=JSON.parse(localStorage.getItem(LS_RUNS)||'[]');
       runs.push({
@@ -2592,13 +2614,156 @@ function downloadTrump(){
   XLSX.utils.book_append_sheet(wb,ws1,'Template Trump');
   XLSX.utils.book_append_sheet(wb,ws1b,'Referencia Interna');
   XLSX.utils.book_append_sheet(wb,ws2,'Inconsistencias');
+
+  // Hoja de exclusiones completa
+  const excl = buildExclusiones();
+  const ws4 = XLSX.utils.json_to_sheet(excl.length ? excl : [{razon:'Sin exclusiones',descripcion:'Todos los registros fueron incluidos'}]);
+  ws4['!cols'] = [{wch:20},{wch:55},{wch:30},{wch:12},{wch:28},{wch:28}];
+  XLSX.utils.book_append_sheet(wb,ws4,'Exclusiones');
+
   XLSX.utils.book_append_sheet(wb,ws3,'Auditoria');
   XLSX.writeFile(wb,`${runId}.xlsx`);
   toast(`✓ ${runId}.xlsx descargado`);
 }
 
 // ═══════════════════════════════════════════
-// ENVÍO POR CORREO — Google Apps Script
+// RESUMEN DE EXCLUSIONES
+// ═══════════════════════════════════════════
+function buildExclusiones(){
+  const excl = [];
+
+  // 1. SIN_MALLA — en TADA pero sin match en la malla
+  concResult.filter(r=>r.nivel_confianza==='SIN_MALLA').forEach(r=>{
+    excl.push({
+      razon:'SIN_MALLA',
+      descripcion:'Piloto en TADA sin coincidencia en la malla Pibox',
+      piloto:r.piloto, ciudad:r.ciudad, seller:r.seller,
+      fecha:r.fecha, booking_id:'—',
+    });
+  });
+
+  // 2. Excluidos manualmente en Novedades (LOW, FUZZY-LOW, AMBIGUOUS)
+  concResult.filter(r=>r._excluido_manual).forEach(r=>{
+    const bk = r.matches?.[0]?.[Object.keys(mallaRaw[0]||{}).find(k=>/booking/i.test(k))||'BOOKING SERVICIO']||'—';
+    excl.push({
+      razon:'EXCLUIDO_MANUAL',
+      descripcion:`Excluido manualmente en Novedades (nivel original: ${r.nivel_confianza})`,
+      piloto:r.piloto, ciudad:r.ciudad, seller:r.seller,
+      fecha:r.fecha, booking_id:bk,
+    });
+  });
+
+  // 3. SIN_BOOKING — en malla sin booking ID, excluidos en Novedades o automáticamente
+  distResult.filter(r=>r.booking_id==='__EXCLUIDO__').forEach(r=>{
+    excl.push({
+      razon:'SIN_BOOKING',
+      descripcion:'Registro en malla sin Booking ID — excluido de la liquidación',
+      piloto:r.piloto, ciudad:r.ciudad, seller:r.seller,
+      fecha:r.fecha_malla||r.fecha, booking_id:'—',
+    });
+  });
+
+  // 4. Novedades pendientes — no resueltas → excluidas automáticamente
+  if(typeof novedades !== 'undefined'){
+    novedades.forEach((n,i)=>{
+      if(!resoluciones[i]){
+        excl.push({
+          razon:'NOVEDAD_PENDIENTE',
+          descripcion:`Novedad tipo ${n.tipo} no resuelta — excluida automáticamente`,
+          piloto:n.piloto, ciudad:n.ciudad, seller:n.seller,
+          fecha:n.fecha, booking_id:'—',
+        });
+      }
+    });
+  }
+
+  return excl;
+}
+
+function renderResumenExclusiones(totalIncluidos){
+  const excl = buildExclusiones();
+  const el   = document.getElementById('resumen-exclusiones');
+  const tbl  = document.getElementById('exclusiones-tabla');
+  if(!el||!tbl) return;
+
+  if(excl.length===0){
+    el.style.display='none';
+    return;
+  }
+
+  el.style.display='block';
+
+  // Agrupar por razón
+  const grupos = {};
+  excl.forEach(e=>{ grupos[e.razon]=(grupos[e.razon]||[]); grupos[e.razon].push(e); });
+
+  const colores = {
+    SIN_MALLA:        {bg:'rgba(239,68,68,.08)',  border:'#ef4444', label:'SIN_MALLA'},
+    EXCLUIDO_MANUAL:  {bg:'rgba(234,179,8,.08)',  border:'#eab308', label:'EXCLUIDO MANUAL'},
+    SIN_BOOKING:      {bg:'rgba(239,68,68,.08)',  border:'#ef4444', label:'SIN_BOOKING'},
+    NOVEDAD_PENDIENTE:{bg:'rgba(234,179,8,.08)',  border:'#eab308', label:'PENDIENTE'},
+  };
+
+  const totalMalla = mallaRaw.filter(r=>{
+    const mBKey=Object.keys(mallaRaw[0]||{}).find(k=>/booking/i.test(k))||'BOOKING SERVICIO';
+    return r[mBKey];
+  }).length;
+
+  let html = `<div style="padding:12px 14px;border-bottom:1px solid var(--border);background:var(--bg3);">
+    <div style="display:flex;gap:24px;align-items:center;flex-wrap:wrap;">
+      <span style="font-size:12px;font-family:var(--mono);">
+        <span style="color:var(--green);font-weight:600;">${totalIncluidos}</span>
+        <span style="color:var(--text3);"> incluidos en template</span>
+      </span>
+      <span style="font-size:12px;font-family:var(--mono);">
+        <span style="color:var(--red);font-weight:600;">${excl.length}</span>
+        <span style="color:var(--text3);"> excluidos de ${totalMalla} bookings en malla</span>
+      </span>
+      ${Object.entries(grupos).map(([r,items])=>`
+        <span style="font-size:11px;font-family:var(--mono);background:${colores[r]?.bg||'var(--bg2)'};
+          border:1px solid ${colores[r]?.border||'var(--border)'};padding:2px 8px;border-radius:3px;">
+          ${colores[r]?.label||r}: ${items.length}
+        </span>`).join('')}
+    </div>
+  </div>`;
+
+  // Tabla de detalle colapsable por grupo
+  Object.entries(grupos).forEach(([razon, items])=>{
+    const c = colores[razon]||{bg:'var(--bg2)',border:'var(--border)',label:razon};
+    html += `<details style="border-top:1px solid var(--border);">
+      <summary style="padding:10px 14px;cursor:pointer;font-size:11px;font-family:var(--mono);
+        background:${c.bg};display:flex;align-items:center;gap:8px;list-style:none;">
+        <span style="color:${c.border};font-weight:600;">${c.label}</span>
+        <span style="color:var(--text2);">${items.length} registro${items.length>1?'s':''}</span>
+        <span style="margin-left:auto;color:var(--text3);">▶ ver detalle</span>
+      </summary>
+      <div style="overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;font-size:10px;font-family:var(--mono);">
+          <thead>
+            <tr style="background:var(--bg3);">
+              <th style="padding:6px 10px;text-align:left;color:var(--text3);border-bottom:1px solid var(--border);">Piloto</th>
+              <th style="padding:6px 10px;text-align:left;color:var(--text3);border-bottom:1px solid var(--border);">Ciudad</th>
+              <th style="padding:6px 10px;text-align:left;color:var(--text3);border-bottom:1px solid var(--border);">Fecha</th>
+              <th style="padding:6px 10px;text-align:left;color:var(--text3);border-bottom:1px solid var(--border);">Booking ID</th>
+              <th style="padding:6px 10px;text-align:left;color:var(--text3);border-bottom:1px solid var(--border);">Detalle</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${items.map(e=>`<tr style="border-bottom:1px solid var(--border);">
+              <td style="padding:5px 10px;color:var(--text);">${e.piloto}</td>
+              <td style="padding:5px 10px;color:var(--text2);">${e.ciudad}</td>
+              <td style="padding:5px 10px;color:var(--text2);">${e.fecha}</td>
+              <td style="padding:5px 10px;color:var(--text3);">${e.booking_id}</td>
+              <td style="padding:5px 10px;color:var(--text3);">${e.descripcion}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    </details>`;
+  });
+
+  tbl.innerHTML = html;
+}
 // ═══════════════════════════════════════════
 
 // Persistir URL y API key en localStorage para no reescribirlos cada vez
