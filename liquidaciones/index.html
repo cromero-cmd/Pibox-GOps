@@ -2192,6 +2192,10 @@ function excluirTodas(){
 }
 
 function aplicarResoluciones(){
+  console.log(`[APLIC-START] novedades=${novedades.length} resoluciones=${Object.keys(resoluciones).length}`);
+  console.log(`[APLIC-START] tipos:`, novedades.map(n=>n.tipo));
+  console.log(`[APLIC-START] resoluciones:`, resoluciones);
+  console.log(`[APLIC-START] TIPOS_NOVEDAD:`, [...TIPOS_NOVEDAD]);
   // Construir set de booking_ids excluidos por SIN_BOOKING
   const bookingsExcluidos = new Set();
   const bookingsConfirmados = {}; // booking_id_viejo → booking_id_nuevo
