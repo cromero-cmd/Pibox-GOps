@@ -1035,6 +1035,19 @@ function proceedToConciliacion(){
 
     maxStep = 3;
     hideProcessing();
+
+    // LOG DE DIAGNÓSTICO — cuántos pilotos y fechas detectó el parser
+    const pilotos_norm = [...new Set(tadaNorm.map(r=>r.piloto))];
+    const filas_activas = tadaNorm.filter(r=>r.paquetes>0||r.incentivos>0||r.cancelados>0);
+    console.log(`[DIAG] tadaNorm: ${tadaNorm.length} filas · ${pilotos_norm.length} pilotos únicos`);
+    console.log(`[DIAG] Filas con actividad: ${filas_activas.length}`);
+    console.log(`[DIAG] Pilotos únicos con actividad: ${[...new Set(filas_activas.map(r=>r.piloto))].length}`);
+    console.log(`[DIAG] Muestra pilotos:`, pilotos_norm.slice(0,10));
+    console.log(`[DIAG] colMap piloto col:`, colMap.find(c=>c.n==='piloto'));
+    console.log(`[DIAG] colMap seller col:`, colMap.find(c=>c.n==='seller'));
+    console.log(`[DIAG] colMap ciudad col:`, colMap.find(c=>c.n==='ciudad'));
+    console.log(`[DIAG] dataRows count:`, tadaRaw.slice(3).filter(r=>r.some(v=>v!==''&&v!==null&&v!==undefined&&v!==0)).length);
+
     runConciliacion();
   }, 100);
 }
