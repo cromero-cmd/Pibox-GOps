@@ -2729,7 +2729,8 @@ async function enviarPorCorreo(){
   btnEnviar.disabled = true;
   status.innerHTML   = '<span style="color:var(--blue);">⏳ Enviando...</span>';
 
-  // Enviar via iframe+form para evitar restricción CORS de Apps Script
+  // Enviar con fetch no-cors — no podemos leer la respuesta pero el correo sí se envía
+  // Apps Script procesa el POST aunque el navegador bloquee la lectura de la respuesta
   try{
     const payload = JSON.stringify({
       apiKey: apikey,
@@ -2749,54 +2750,25 @@ async function enviarPorCorreo(){
       },
     });
 
-    // Crear iframe oculto como target del formulario
-    const iframeId = 'envio-iframe';
-    let iframe = document.getElementById(iframeId);
-    if(!iframe){
-      iframe = document.createElement('iframe');
-      iframe.id = iframe.name = iframeId;
-      iframe.style.display = 'none';
-      document.body.appendChild(iframe);
-    }
+    // fetch con mode:'no-cors' evita el bloqueo cross-origin
+    // Apps Script recibe y procesa el POST normalmente
+    // La respuesta no es legible desde el navegador, pero el correo se envía
+    await fetch(url, {
+      method:   'POST',
+      mode:     'no-cors',
+      headers:  {'Content-Type': 'application/x-www-form-urlencoded'},
+      body:     'payload=' + encodeURIComponent(payload),
+    });
 
-    // Crear y enviar formulario POST al iframe
-    const form = document.createElement('form');
-    form.method  = 'POST';
-    form.action  = url;
-    form.target  = iframeId;
-
-    const input = document.createElement('input');
-    input.type  = 'hidden';
-    input.name  = 'payload';
-    input.value = payload;
-    form.appendChild(input);
-    document.body.appendChild(form);
-
-    iframe.onload = () => {
-      try{
-        const text = iframe.contentDocument.body.innerText || '';
-        const data = JSON.parse(text);
-        if(data.ok){
-          status.innerHTML=`<span style="color:var(--green);">✓ ${data.mensaje}</span>`;
-          addLog('log-trump',`[OK] Correo enviado`,'ok');
-        } else {
-          status.innerHTML=`<span style="color:var(--red);">✗ ${data.error}</span>`;
-        }
-      }catch{
-        // Cross-origin: no podemos leer el iframe pero el correo se envió
-        status.innerHTML=`<span style="color:var(--green);">✓ Correo enviado — revisa tu bandeja de entrada</span>`;
-        addLog('log-trump',`[OK] Correo enviado correctamente`,'ok');
-        setTimeout(cerrarModalEnvio, 2500);
-      }finally{
-        try{ document.body.removeChild(form); }catch{}
-        btnEnviar.disabled = false;
-      }
-    };
-
-    form.submit();
+    // Con no-cors no podemos confirmar éxito/error desde la respuesta
+    // Mostramos confirmación optimista — Apps Script enviará el correo
+    status.innerHTML=`<span style="color:var(--green);">✓ Solicitud enviada — revisa tu bandeja en unos segundos</span>`;
+    addLog('log-trump',`[OK] Correo enviado a ${[...new Set(['cromero@pibox.app','aperez@pibox.app',emailAnalista,...extra].filter(Boolean))].join(', ')}`,'ok');
+    setTimeout(cerrarModalEnvio, 2500);
 
   }catch(err){
     status.innerHTML=`<span style="color:var(--red);">✗ Error: ${err.message}</span>`;
+  }finally{
     btnEnviar.disabled = false;
   }
 }
