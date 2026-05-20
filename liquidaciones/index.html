@@ -2289,8 +2289,12 @@ function runDistribucionSilent(){
   const mFKey=mKeys.find(k=>/^fecha$/i.test(k.trim()))||'FECHA';
   const mDiaKey=mKeys.find(k=>/^d[íi]a$/i.test(k.trim()))||null;
   const NIVELES_OK=new Set(['HIGH','MEDIUM','LOW','FUZZY-HIGH','FUZZY-LOW','MANUAL-OK']);
+  const procesables = concResult.filter(r=>NIVELES_OK.has(r.nivel_confianza)&&!r._excluido_manual);
+  console.log(`[DIST-SILENT] Total procesables: ${procesables.length}`);
+  console.log(`[DIST-SILENT] MANUAL-OK: ${procesables.filter(r=>r.nivel_confianza==='MANUAL-OK').length}`);
+  console.log(`[DIST-SILENT] Muestra MANUAL-OK:`, procesables.filter(r=>r.nivel_confianza==='MANUAL-OK').slice(0,3).map(r=>({piloto:r.piloto,matches:r.matches.length,booking:r.matches[0]?.[Object.keys(mallaRaw[0]||{}).find(k=>/booking/i.test(k))||'BOOKING SERVICIO']})));
   distResult=[];
-  concResult.filter(r=>NIVELES_OK.has(r.nivel_confianza)&&!r._excluido_manual).forEach(row=>{
+  procesables.forEach(row=>{
     const n=row.matches.length||1;
     [...row.matches].sort((a,b)=>String(a[mHKey]||'').localeCompare(String(b[mHKey]||''))).forEach((m,i)=>{
       const first=i===0;
