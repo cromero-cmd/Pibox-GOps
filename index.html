@@ -51,19 +51,33 @@ onAuthStateChanged(auth, async user => {
     if (subtabPanel) subtabPanel.style.display = isAdmin ? 'flex' : 'none';
     try {
       const snap = await getDoc(doc(db, 'configs', user.uid));
-      if (snap.exists()) {
-        const cfg = snap.data();
-        if (cfg.key) localStorage.setItem('pg_key', cfg.key);
-        if (cfg.sheet) localStorage.setItem('pg_sheet', cfg.sheet);
-        if (cfg.vid) localStorage.setItem('pg_vid', cfg.vid);
-        if (cfg.faq) localStorage.setItem('pg_faq', cfg.faq);
-        if (cfg.sys) localStorage.setItem('pg_sys', cfg.sys);
-        if (cfg.payrollEmails) localStorage.setItem('pg_payroll_emails', cfg.payrollEmails);
-        if (cfg.reminderEmails) localStorage.setItem('pg_reminder_emails', cfg.reminderEmails);
-        if (cfg.cutDay) localStorage.setItem('pg_cut_day', cfg.cutDay.toString());
-        if (cfg.cutHour) localStorage.setItem('pg_cut_hour', cfg.cutHour.toString());
-        window._loadAppConfig && window._loadAppConfig();
-      }
+      const globalSnap = await getDoc(doc(db, 'configs', 'global'));
+      const globalCfg = globalSnap.exists() ? globalSnap.data() : {};
+      const cfg = snap.exists() ? snap.data() : {};
+      // Para key, sheet, vid, faq, sys: usar config global si el usuario no tiene la suya
+      const merged = {
+        key: cfg.key || globalCfg.key,
+        sheet: cfg.sheet || globalCfg.sheet,
+        vid: cfg.vid || globalCfg.vid,
+        faq: cfg.faq || globalCfg.faq,
+        sys: cfg.sys || globalCfg.sys,
+        payrollEmails: cfg.payrollEmails || globalCfg.payrollEmails,
+        reminderEmails: cfg.reminderEmails || globalCfg.reminderEmails,
+        cutDay: cfg.cutDay || globalCfg.cutDay,
+        cutHour: cfg.cutHour || globalCfg.cutHour,
+        mallaNotifDelay: cfg.mallaNotifDelay || globalCfg.mallaNotifDelay,
+      };
+      if (merged.key) localStorage.setItem('pg_key', merged.key);
+      if (merged.sheet) localStorage.setItem('pg_sheet', merged.sheet);
+      if (merged.vid) localStorage.setItem('pg_vid', merged.vid);
+      if (merged.faq) localStorage.setItem('pg_faq', merged.faq);
+      if (merged.sys) localStorage.setItem('pg_sys', merged.sys);
+      if (merged.payrollEmails) localStorage.setItem('pg_payroll_emails', merged.payrollEmails);
+      if (merged.reminderEmails) localStorage.setItem('pg_reminder_emails', merged.reminderEmails);
+      if (merged.cutDay) localStorage.setItem('pg_cut_day', merged.cutDay.toString());
+      if (merged.cutHour) localStorage.setItem('pg_cut_hour', merged.cutHour.toString());
+      if (merged.mallaNotifDelay) localStorage.setItem('pg_malla_notif_delay', merged.mallaNotifDelay.toString());
+      window._loadAppConfig && window._loadAppConfig();
     } catch(e) { console.log('Config load:', e); }
   } else {
     currentUser = null;
@@ -98,8 +112,18 @@ window.trackEvent = async (type, data) => {
 
 window.saveConfigToFirebase = async (cfg) => {
   if (!auth.currentUser) return;
-  try { await setDoc(doc(db, 'configs', auth.currentUser.uid), cfg); }
-  catch(e) {}
+  try {
+    // Guardar config personal del usuario
+    await setDoc(doc(db, 'configs', auth.currentUser.uid), cfg);
+    // Si es Super Admin, también guardar como config global para todos
+    if (auth.currentUser.email === window.SUPER_ADMIN) {
+      const globalCfg = {
+        key: cfg.key, sheet: cfg.sheet, vid: cfg.vid,
+        faq: cfg.faq, sys: cfg.sys
+      };
+      await setDoc(doc(db, 'configs', 'global'), globalCfg, { merge: true });
+    }
+  } catch(e) { console.log('Save config error:', e); }
 };
 
 window.loadAdmins = async () => {
@@ -1250,7 +1274,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 
 <script>
-const APP_VERSION='14.85';
+const APP_VERSION='14.86';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
