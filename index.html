@@ -675,7 +675,17 @@ hr{border:none;border-top:1px solid var(--border);margin:18px 0;}
 .cumpl-status.ausente_justificada{background:rgba(74,222,128,0.1);color:#4ade80;border-color:rgba(74,222,128,0.3);}
 .cumpl-status.ausente_injustificada{background:rgba(248,113,113,0.1);color:#f87171;border-color:rgba(248,113,113,0.3);}
 .cumpl-status.en_curso{background:rgba(96,165,250,0.1);color:#60a5fa;border-color:rgba(96,165,250,0.3);}
-.ft-end:hover{color:#f87171;}
+.strikes-wrap{background:var(--surface);border:1px solid var(--border);border-radius:16px;overflow:hidden;margin-top:14px;}
+.strikes-header{padding:14px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;}
+.strikes-title{font-size:13px;font-weight:700;color:var(--text);}
+.strike-badge{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;font-size:13px;font-weight:800;}
+.strike-badge.warn{background:rgba(251,191,36,0.15);color:#fbbf24;border:2px solid rgba(251,191,36,0.4);}
+.strike-badge.danger{background:rgba(248,113,113,0.15);color:#f87171;border:2px solid rgba(248,113,113,0.4);}
+.strike-badge.ok{background:rgba(74,222,128,0.1);color:#4ade80;border:2px solid rgba(74,222,128,0.3);}
+.strike-item{display:flex;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid var(--border);font-size:12px;}
+.strike-item:last-child{border-bottom:none;}
+.strike-meter{height:6px;border-radius:3px;background:var(--surface3);overflow:hidden;margin:8px 16px 12px;}
+.strike-meter-fill{height:100%;border-radius:3px;transition:width 0.6s ease;}
 
 .toast{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:var(--grad);color:white;padding:8px 20px;border-radius:100px;font-weight:700;font-size:13px;z-index:999;box-shadow:0 4px 20px rgba(123,47,255,0.5);animation:msgIn 0.3s ease both;}
 @media(max-width:640px){.faq-sidebar{display:none;}}
@@ -804,6 +814,18 @@ body.agent-preview-mode header{margin-top:34px;}
         </div>
       </div>
       <hr/>
+      <div class="msec">⚡ Sistema de Strikes</div>
+      <div class="field">
+        <label>Minutos de tolerancia para tardanza (strike)</label>
+        <input type="number" id="inp-strike-tardanza" min="1" max="60" step="1" value="5" style="width:100%;"/>
+        <div style="font-size:10px;color:var(--text-dim);margin-top:4px;font-family:var(--mono);">Tardanzas mayores a este valor generan un strike.</div>
+      </div>
+      <div class="field">
+        <label>Horas extra después del turno para strike de no desconexión</label>
+        <input type="number" id="inp-strike-nodesconexion" min="1" max="12" step="0.5" value="4" style="width:100%;"/>
+        <div style="font-size:10px;color:var(--text-dim);margin-top:4px;font-family:var(--mono);">Si el agente no se desconecta X horas después de su salida programada, genera un strike.</div>
+      </div>
+      <hr/>
       <div class="msec">🔔 Notificaciones de cambios en malla</div>
       <div class="field">
         <label>Delay antes de notificar cambios (minutos)</label>
@@ -889,8 +911,7 @@ body.agent-preview-mode header{margin-top:34px;}
           </div>
           <div class="turno-history-wrap">
             <div class="turno-history-header">
-              <div class="turno-history-title">📊 Resumen de horas</div>
-              <div class="turno-filters">
+              <div class="turno-history-title">📊 Resumen de horas</div>              <div class="turno-filters">
                 <button class="turno-filter-btn active" onclick="setTurnoFilter('custom',this)">📅 Personalizado</button>
               </div>
             </div>
@@ -906,7 +927,18 @@ body.agent-preview-mode header{margin-top:34px;}
             </div>
           </div>
         </div>
+
+        <!-- Strikes -->
+        <div class="strikes-wrap" id="strikes-wrap" style="display:none;">
+          <div class="strikes-header">
+            <div class="strikes-title">⚡ Mis strikes del mes</div>
+            <div id="strikes-summary" style="font-size:11px;color:var(--text-dim);font-family:var(--mono);"></div>
+          </div>
+          <div class="strike-meter"><div class="strike-meter-fill" id="strike-meter-fill" style="width:0%;background:#4ade80;"></div></div>
+          <div id="strikes-list"></div>
+        </div>
       </div>
+
 
       <!-- Mi malla -->
       <div id="subview-mimalla" style="display:none;">
@@ -1274,7 +1306,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 
 <script>
-const APP_VERSION='14.89';
+const APP_VERSION='14.91';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -1494,6 +1526,205 @@ function scheduleEndNotification(){
   console.log(`[Pi GOps] Notificación programada para ${warningTime.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'})}`);
 }
 
+// ── STRIKES ──
+async function loadStrikes(){
+  const userEmail=document.getElementById('user-email').textContent;
+  const isAdmin=(window.ADMINS||ADMINS).includes(userEmail)||userEmail===SUPER_ADMIN;
+  if(isAdmin&&!window._agentPreviewMode){document.getElementById('strikes-wrap').style.display='none';return;}
+
+  const strikeTardanzaMins=parseInt(localStorage.getItem('pg_strike_tardanza')||'5');
+  const strikeNoDesconexionHrs=parseFloat(localStorage.getItem('pg_strike_nodesconexion')||'4');
+
+  const now=new Date();
+  const som=new Date(now.getFullYear(),now.getMonth(),1);
+  const eom=new Date(now.getFullYear(),now.getMonth()+1,0,23,59,59);
+
+  let mallaData=[];
+  try{
+    const resp=await fetch(MALLA_SCRIPT+'?sheet=Malla',{signal:AbortSignal.timeout(8000)});
+    const csv=await resp.text();
+    mallaData=csv.trim().split('\n').slice(1).map(l=>{const c=parseCSVLine(l);return{fecha:c[1]?.trim(),usuario:c[2]?.trim(),inicio:c[5]?.trim(),fin:c[6]?.trim(),novedad:c[10]?.trim()};})
+      .filter(m=>m.fecha&&m.usuario===userEmail&&!m.novedad);
+  }catch(e){}
+
+  const allTurnos=await window.getRecentTurnos();
+  const myTurnos=allTurnos.filter(t=>t.userEmail===userEmail&&t.startTime?.toDate?.()>=som&&t.startTime?.toDate?.()<=eom);
+
+  // Clasificar strikes por tipo
+  const strikesLeve=[];      // tardanza 5-19 min
+  const strikesModerade=[];  // tardanza 20-59 min
+  const strikesGrave=[];     // tardanza 60+ min
+  const strikesNoDesconex=[]; // no desconexión
+
+  mallaData.forEach(m=>{
+    const d=parseDate(m.fecha);
+    if(!d||d>now)return;
+    const ss=parseTime(m.fecha,m.inicio);
+    const se=parseTime(m.fecha,m.fin);
+    const turno=myTurnos.find(t=>{const td=t.startTime?.toDate?.();return td&&td.toDateString()===d.toDateString();});
+    const rs=turno?turno.startTime.toDate():null;
+    const re=turno?.endTime?.toDate?.();
+
+    if(rs&&ss){
+      const diffMins=Math.round((rs-ss)/60000);
+      if(diffMins>=60){
+        strikesGrave.push({fecha:m.fecha,detalle:`Llegó ${diffMins} min tarde (${rs.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'})}, programado ${m.inicio})`});
+      } else if(diffMins>=20){
+        strikesModerade.push({fecha:m.fecha,detalle:`Llegó ${diffMins} min tarde (${rs.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'})}, programado ${m.inicio})`});
+      } else if(diffMins>=strikeTardanzaMins){
+        strikesLeve.push({fecha:m.fecha,detalle:`Llegó ${diffMins} min tarde (${rs.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'})}, programado ${m.inicio})`});
+      }
+    }
+    if(se&&re){
+      const extraHrs=(re-se)/3600000;
+      if(extraHrs>strikeNoDesconexionHrs){
+        strikesNoDesconex.push({fecha:m.fecha,detalle:`No se desconectó a tiempo — salida ${m.fin}, salida real ${re.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'})}`});
+      }
+    } else if(se&&turno?.forcedClosedAt){
+      strikesNoDesconex.push({fecha:m.fecha,detalle:`Turno cerrado forzosamente — salida programada ${m.fin}`});
+    }
+  });
+
+  // Calcular llamados por tipo (cada N strikes = 1 llamado)
+  const llamadosLeve=Math.floor(strikesLeve.length/3);
+  const llamadosModerado=Math.floor(strikesModerade.length/2);
+  const llamadosGrave=Math.floor(strikesGrave.length/1);
+  const llamadosNoDesconex=Math.floor(strikesNoDesconex.length/3);
+  const totalLlamados=llamadosLeve+llamadosModerado+llamadosGrave+llamadosNoDesconex;
+  const enDescargos=totalLlamados>=3;
+
+  // Strikes faltantes para próximo llamado por tipo
+  const faltanLeve=strikesLeve.length%3===0?3:3-(strikesLeve.length%3);
+  const faltanModerado=strikesModerade.length%2===0?2:2-(strikesModerade.length%2);
+  const faltanGrave=strikesGrave.length===0?1:strikesGrave.length%1===0?1:0;
+  const faltanNoDesconex=strikesNoDesconex.length%3===0?3:3-(strikesNoDesconex.length%3);
+
+  const wrap=document.getElementById('strikes-wrap');
+  const list=document.getElementById('strikes-list');
+  const summary=document.getElementById('strikes-summary');
+  const meterFill=document.getElementById('strike-meter-fill');
+  if(!wrap||!list)return;
+  wrap.style.display='block';
+
+  const totalStrikes=strikesLeve.length+strikesModerade.length+strikesGrave.length+strikesNoDesconex.length;
+  const pct=Math.min(100,Math.round((totalLlamados/3)*100));
+  const meterColor=enDescargos?'#f87171':totalLlamados===2?'#fb923c':totalLlamados===1?'#fbbf24':'#4ade80';
+  meterFill.style.width=pct+'%';
+  meterFill.style.background=meterColor;
+
+  // Header con estado general
+  let estadoBadge='';
+  if(enDescargos){
+    estadoBadge=`<span style="background:rgba(248,113,113,0.15);border:1px solid rgba(248,113,113,0.4);color:#f87171;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;">🚨 Proceso disciplinario</span>`;
+  } else if(totalLlamados===2){
+    estadoBadge=`<span style="background:rgba(251,146,60,0.15);border:1px solid rgba(251,146,60,0.4);color:#fb923c;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;">⚠️ ${3-totalLlamados} llamado más = descargos</span>`;
+  } else if(totalLlamados===1){
+    estadoBadge=`<span style="background:rgba(251,191,36,0.12);border:1px solid rgba(251,191,36,0.3);color:#fbbf24;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;">⚠️ ${totalLlamados} llamado de atención</span>`;
+  } else if(totalStrikes===0){
+    estadoBadge=`<span style="background:rgba(74,222,128,0.1);border:1px solid rgba(74,222,128,0.3);color:#4ade80;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;">🏆 Sin strikes</span>`;
+  } else {
+    estadoBadge=`<span style="background:rgba(74,222,128,0.08);border:1px solid rgba(74,222,128,0.2);color:#4ade80;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;">✅ Sin llamados aún</span>`;
+  }
+  summary.innerHTML=estadoBadge;
+
+  // Llamados acumulados visual
+  const llamadosHTML=`<div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;">
+    <div style="flex:1;">
+      <div style="font-size:11px;color:var(--text-dim);margin-bottom:6px;font-family:var(--mono);">Llamados de atención acumulados</div>
+      <div style="display:flex;gap:6px;">
+        ${[1,2,3].map(n=>{
+          const filled=n<=totalLlamados;
+          const isCurrent=n===totalLlamados+1;
+          return`<div style="width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;
+            background:${filled?(n===3?'rgba(248,113,113,0.2)':'rgba(251,146,60,0.15)'):'var(--surface2)'};
+            border:2px solid ${filled?(n===3?'#f87171':'#fb923c'):'var(--border)'};
+            color:${filled?(n===3?'#f87171':'#fb923c'):'var(--text-dim)'};
+            ${isCurrent&&!filled?'box-shadow:0 0 0 3px rgba(251,146,60,0.2);':''}">${n}</div>`;
+        }).join('')}
+        <div style="width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;
+          background:${enDescargos?'rgba(248,113,113,0.2)':'var(--surface2)'};
+          border:2px solid ${enDescargos?'#f87171':'var(--border)'};
+          color:${enDescargos?'#f87171':'var(--text-dim)'};">⚖️</div>
+      </div>
+    </div>
+    <div style="text-align:right;">
+      <div style="font-size:22px;font-weight:800;color:${meterColor};">${totalStrikes}</div>
+      <div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);">strikes totales</div>
+    </div>
+  </div>`;
+
+  // Tabla de tipos con progreso
+  function tipoRow(icon,label,color,strikes,strikesXLlamado,faltan){
+    if(!strikes.length)return'';
+    const llamados=Math.floor(strikes.length/strikesXLlamado);
+    const progPct=Math.min(100,Math.round(((strikes.length%strikesXLlamado||strikesXLlamado)/strikesXLlamado)*100));
+    return`<div style="padding:10px 16px;border-bottom:1px solid var(--border);">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+        <div style="display:flex;align-items:center;gap:6px;">
+          <span style="font-size:14px;">${icon}</span>
+          <span style="font-size:12px;font-weight:600;color:${color};">${label}</span>
+          <span style="font-size:11px;background:${color}22;border:1px solid ${color}44;color:${color};padding:1px 7px;border-radius:10px;font-family:var(--mono);">${strikes.length} strike${strikes.length!==1?'s':''}</span>
+        </div>
+        ${llamados>0?`<span style="font-size:10px;color:${color};font-family:var(--mono);">${llamados} llamado${llamados!==1?'s':''}</span>`:''}
+      </div>
+      <div style="height:4px;background:var(--surface3);border-radius:2px;overflow:hidden;margin-bottom:4px;">
+        <div style="height:100%;width:${progPct}%;background:${color};border-radius:2px;transition:width 0.5s;"></div>
+      </div>
+      <div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);">Faltan ${faltan} strike${faltan!==1?'s':''} para ${llamados>0?'el siguiente':'un'} llamado de atención · ${strikesXLlamado} strikes = 1 llamado</div>
+      ${strikes.slice(-3).map(s=>`<div style="font-size:10px;color:var(--text-muted);margin-top:3px;padding-left:20px;">• ${s.fecha} — ${s.detalle}</div>`).join('')}
+      ${strikes.length>3?`<div style="font-size:10px;color:var(--text-dim);padding-left:20px;margin-top:2px;">...y ${strikes.length-3} más</div>`:''}
+    </div>`;
+  }
+
+  // Aviso de proximidad
+  let avisoHTML='';
+  const strikesAlLimite=[];
+  if(faltanLeve===1&&strikesLeve.length>0)strikesAlLimite.push('tardanza leve');
+  if(faltanModerado===1&&strikesModerade.length>0)strikesAlLimite.push('tardanza moderada');
+  if(faltanGrave===1&&strikesGrave.length>0)strikesAlLimite.push('tardanza grave');
+  if(faltanNoDesconex===1&&strikesNoDesconex.length>0)strikesAlLimite.push('no desconexión');
+  if(strikesAlLimite.length>0){
+    avisoHTML=`<div style="margin:10px 16px;background:rgba(251,146,60,0.08);border:1px solid rgba(251,146,60,0.3);border-radius:8px;padding:10px 12px;font-size:11px;color:#fb923c;">
+      ⚠️ Estás a <strong>1 strike</strong> de un nuevo llamado de atención por: ${strikesAlLimite.join(', ')}.
+    </div>`;
+  }
+  if(totalLlamados===2){
+    avisoHTML+=`<div style="margin:10px 16px;background:rgba(248,113,113,0.08);border:1px solid rgba(248,113,113,0.3);border-radius:8px;padding:10px 12px;font-size:11px;color:#f87171;">
+      🚨 Tienes 2 llamados de atención. <strong>Un llamado más activa un proceso disciplinario.</strong>
+    </div>`;
+  }
+
+  // Reglamento informativo
+  const reglamHTML=`<div style="padding:12px 16px;border-top:1px solid var(--border);background:var(--surface2);">
+    <div style="font-size:10px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px;font-family:var(--mono);">📋 Escala disciplinaria (sin justa causa)</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+      ${[
+        ['🟡','Tardanza leve (5–19 min)','3 strikes = llamado'],
+        ['🟠','Tardanza moderada (20–59 min)','2 strikes = llamado'],
+        ['🔴','Tardanza grave (60+ min)','1 strike = llamado'],
+        ['🔵','No desconexión (+4h)','3 strikes = llamado'],
+      ].map(([icon,label,rule])=>`<div style="font-size:10px;color:var(--text-muted);display:flex;align-items:flex-start;gap:4px;"><span>${icon}</span><span><strong>${label}</strong><br/>${rule}</span></div>`).join('')}
+    </div>
+    <div style="margin-top:8px;font-size:10px;color:var(--text-dim);font-family:var(--mono);">⚖️ 3 llamados de atención acumulados (cualquier combinación) = proceso disciplinario</div>
+  </div>`;
+
+  if(totalStrikes===0){
+    list.innerHTML=`<div style="padding:24px 16px;text-align:center;">
+      <div style="font-size:40px;margin-bottom:10px;">🏆</div>
+      <div style="font-size:15px;font-weight:700;color:#4ade80;margin-bottom:4px;">¡Sin strikes este mes!</div>
+      <div style="font-size:12px;color:var(--text-dim);">Tu puntualidad y responsabilidad son excelentes. ¡Sigue así!</div>
+    </div>`+reglamHTML;
+    return;
+  }
+
+  list.innerHTML=llamadosHTML+avisoHTML+
+    tipoRow('🟡','Tardanza leve','#fbbf24',strikesLeve,3,faltanLeve)+
+    tipoRow('🟠','Tardanza moderada','#fb923c',strikesModerade,2,faltanModerado)+
+    tipoRow('🔴','Tardanza grave','#f87171',strikesGrave,1,faltanGrave)+
+    tipoRow('🔵','No desconexión','#60a5fa',strikesNoDesconex,3,faltanNoDesconex)+
+    reglamHTML;
+}
+
 function switchTab(t){
   if(t!=='home')localStorage.setItem('pg_active_tab',t);
   else localStorage.removeItem('pg_active_tab');
@@ -1575,6 +1806,8 @@ function openConfig(){
   const inpCD=document.getElementById('inp-cut-day');if(inpCD)inpCD.value=cd;
   const inpCH=document.getElementById('inp-cut-hour');if(inpCH)inpCH.value=ch;
   const inpMD=document.getElementById('inp-malla-notif-delay');if(inpMD)inpMD.value=md;
+  const inpST=document.getElementById('inp-strike-tardanza');if(inpST)inpST.value=localStorage.getItem('pg_strike_tardanza')||'5';
+  const inpSN=document.getElementById('inp-strike-nodesconexion');if(inpSN)inpSN.value=localStorage.getItem('pg_strike_nodesconexion')||'4';
 }
 function closeConfig(){document.getElementById('overlay').classList.remove('open');}
 async function saveConfig(){
@@ -1599,6 +1832,10 @@ async function saveConfig(){
   localStorage.setItem('pg_cut_day',cd);
   localStorage.setItem('pg_cut_hour',ch);
   localStorage.setItem('pg_malla_notif_delay',mallaDelay.toString());
+  const strikeTardanza=Math.max(1,parseInt(document.getElementById('inp-strike-tardanza')?.value||'5'));
+  const strikeNoDesconexion=Math.max(1,parseFloat(document.getElementById('inp-strike-nodesconexion')?.value||'4'));
+  localStorage.setItem('pg_strike_tardanza',strikeTardanza.toString());
+  localStorage.setItem('pg_strike_nodesconexion',strikeNoDesconexion.toString());
   window.saveConfigToFirebase&&window.saveConfigToFirebase({key:k,sheet:u,vid:vu,faq:fu,sys:sysBase,payrollEmails:pe,reminderEmails:re,cutDay:cd,cutHour:ch,mallaNotifDelay:mallaDelay});
   // Save config to Apps Script
   const adminEmailsForScript=(window.ADMINS||ADMINS).join(',');
@@ -2070,6 +2307,7 @@ async function initTurnoView(){
   // Pre-check malla for today
   checkTodayNovedad();
   checkNotifBanner();
+  loadStrikes();
 }
 
 function showTurnoDoneToday(turno){
