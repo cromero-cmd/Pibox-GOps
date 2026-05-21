@@ -998,7 +998,10 @@ function proceedToConciliacion(){
       const bonos      =parseMoney(getExtra(row,'bonos'));
       const ajustes    =parseMoney(getExtra(row,'ajustes'));
       const filas=sortedGroups.map(g=>({
-        piloto:fixed.piloto, ciudad:fixed.ciudad||'', seller:fixed.seller||'',
+        piloto:fixed.piloto,
+        // Si ciudad está vacía, inferir desde el seller (ej: 'CAL-TD-FLORESTA...' → 'CAL')
+        ciudad: fixed.ciudad || (fixed.seller ? String(fixed.seller).split('-')[0].trim() : ''),
+        seller:fixed.seller||'',
         dia:g.dia, fecha:g.fecha,
         paquetes:  parseInt(row[g.cols.paquetes])||0,
         incentivos:parseInt(row[g.cols.incentivos])||0,
@@ -1140,7 +1143,7 @@ function runNorm(){
       // Construir las 7 filas diarias (sin valores semanales aún)
       const filas=sortedGroups.map(g=>({
         piloto:    fixed.piloto,
-        ciudad:    fixed.ciudad||'',
+        ciudad:    fixed.ciudad || (fixed.seller ? String(fixed.seller).split('-')[0].trim() : ''),
         seller:    fixed.seller||'',
         dia:       g.dia,
         fecha:     g.fecha,
