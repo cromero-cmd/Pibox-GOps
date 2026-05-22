@@ -1306,7 +1306,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 
 <script>
-const APP_VERSION='14.94';
+const APP_VERSION='14.95';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -1429,7 +1429,7 @@ function initHomeView(){
     {id:'library',icon:'🎬',title:'Tutoriales',desc:'Biblioteca de videos de capacitación y guías para el equipo de operaciones.',color:'#8b5cf6',grad:'linear-gradient(135deg,#8b5cf6,#ec4899)',roles:['user','admin','super']},
     {id:'analytics',icon:'📊',title:'Métricas',desc:'Indicadores de uso del asistente, tasa de resolución y tiempos de respuesta.',color:'#10b981',grad:'linear-gradient(135deg,#10b981,#06b6d4)',roles:['admin','super']},
     {id:'turno-panel',icon:'👥',title:'Panel de control',desc:'Historial de turnos del equipo, gestión de extras y reportes de nómina.',color:'#f59e0b',grad:'linear-gradient(135deg,#f59e0b,#ef4444)',roles:['admin','super']},
-    {id:'ext-tracker',icon:'🔍',title:'Pibox Tracker',desc:'Control de errores en transacciones de bookings y corrección de registros.',color:'#ef4444',grad:'linear-gradient(135deg,#ef4444,#f97316)',roles:['admin','super'],url:'https://pibox-facturacion-gtprw9awrj9qnmi684577t.streamlit.app/'},
+    {id:'ext-tracker',icon:'🔍',title:'Pibox Tracker',desc:'Control de errores en transacciones de bookings y corrección de registros.',color:'#ef4444',grad:'linear-gradient(135deg,#ef4444,#f97316)',roles:['admin','super'],url:'https://pibox-facturacion.streamlit.app/'},
     {id:'ext-trello',icon:'📋',title:'Trello',desc:'Gestión de tareas entre áreas: Marketing, Growth, Onboarding, BI y Tecnología.',color:'#0052CC',grad:'linear-gradient(135deg,#0052CC,#2684FF)',roles:['user','admin','super'],url:'https://trello.codi.com.co/'},
     {id:'ext-superset',icon:'📈',title:'Superset',desc:'Centro de control de datos y dashboards de Business Intelligence.',color:'#20A7C9',grad:'linear-gradient(135deg,#20A7C9,#45D0E8)',roles:['admin','super'],url:'https://superset.picap.co/dashboard/list/?pageIndex=0&sortColumn=changed_on_delta_humanized&sortOrder=desc&viewMode=table'},
     {id:'ext-soporte',icon:'🎫',title:'Soporte de Activos',desc:'Abre tickets para fallas con equipos, celulares, licencias y activos de trabajo.',color:'#64748b',grad:'linear-gradient(135deg,#64748b,#94a3b8)',roles:['user','admin','super'],url:'https://consolidador.picap.app/help_desk_tickets/new'},
@@ -3689,41 +3689,86 @@ function renderPanel2Extras(allTurnos,fromDate,toDate,mallaData){
 function renderPanel2Insights(rows,allTurnos,fromDate,toDate){
   const el=document.getElementById('panel2-insights');
   if(!el||!rows.length)return;
+  const strikeTardanzaMins=parseInt(localStorage.getItem('pg_strike_tardanza')||'5');
+  const strikeNoDesconexionHrs=parseFloat(localStorage.getItem('pg_strike_nodesconexion')||'4');
+
   // Contar por usuario
   const userStats={};
   rows.forEach(r=>{
     const u=r.usuario||'—';
-    if(!userStats[u])userStats[u]={nombre:r.nombre||u.split('@')[0],tardanza:0,ausente:0,novedad:0,cumplió:0};
-    if(r.cumplStatus.cls==='tardanza')userStats[u].tardanza++;
+    if(!userStats[u])userStats[u]={nombre:r.nombre||u.split('@')[0],tardanza:0,ausente:0,novedad:0,cumplió:0,strikeLeve:0,strikeModerado:0,strikeGrave:0,strikeNoDesconex:0};
+    if(r.cumplStatus.cls==='tardanza'){
+      userStats[u].tardanza++;
+      // Clasificar tipo de strike
+      if(r.realStart&&r.scheduledStart){
+        const mins=Math.round((r.realStart-r.scheduledStart)/60000);
+        if(mins>=60)userStats[u].strikeGrave++;
+        else if(mins>=20)userStats[u].strikeModerado++;
+        else if(mins>=strikeTardanzaMins)userStats[u].strikeLeve++;
+      }
+    }
     else if(r.cumplStatus.cls==='ausente')userStats[u].ausente++;
     else if(r.cumplStatus.cls==='novedad')userStats[u].novedad++;
     else if(r.cumplStatus.cls==='cumplió')userStats[u].cumplió++;
+    // No desconexión
+    if(r.realEnd&&r.scheduledEnd){
+      const extraHrs=(r.realEnd-r.scheduledEnd)/3600000;
+      if(extraHrs>strikeNoDesconexionHrs)userStats[u].strikeNoDesconex++;
+    }
   });
-  // Extras por usuario
+
+  // Calcular llamados por usuario
+  Object.values(userStats).forEach(u=>{
+    u.llamados=Math.floor(u.strikeLeve/3)+Math.floor(u.strikeModerado/2)+u.strikeGrave+Math.floor(u.strikeNoDesconex/3);
+    u.totalStrikes=u.strikeLeve+u.strikeModerado+u.strikeGrave+u.strikeNoDesconex;
+  });
+
+  function top3(obj,key){return Object.entries(obj).filter(([,v])=>v[key]>0).sort((a,b)=>b[1][key]-a[1][key]).slice(0,3);}
+  function topExtras(obj){return Object.entries(obj).sort((a,b)=>b[1]-a[1]).slice(0,3);}
+  const topTardanza=top3(userStats,'tardanza');
+  const topAusente=top3(userStats,'ausente');
+  const topNovedad=top3(userStats,'novedad');
+  const topStrikes=Object.entries(userStats).filter(([,v])=>v.totalStrikes>0).sort((a,b)=>b[1].totalStrikes-a[1].totalStrikes).slice(0,5);
+  const topLlamados=Object.entries(userStats).filter(([,v])=>v.llamados>0).sort((a,b)=>b[1].llamados-a[1].llamados).slice(0,5);
+
+  // Extras
   const extrasReq={},extrasAppr={};
   allTurnos.filter(t=>{const d=t.startTime?.toDate?.();return t.overtimeStatus&&d&&(!fromDate||d>=fromDate)&&(!toDate||d<=toDate);}).forEach(t=>{
     const u=t.userEmail||'—';
     extrasReq[u]=(extrasReq[u]||0)+1;
     if(t.overtimeStatus==='approved')extrasAppr[u]=(extrasAppr[u]||0)+1;
   });
-  function top3(obj,key){return Object.entries(obj).filter(([,v])=>v[key]>0).sort((a,b)=>b[1][key]-a[1][key]).slice(0,3);}
-  function topExtras(obj){return Object.entries(obj).sort((a,b)=>b[1]-a[1]).slice(0,3);}
-  const topTardanza=top3(userStats,'tardanza');
-  const topAusente=top3(userStats,'ausente');
-  const topNovedad=top3(userStats,'novedad');
   const topExtrasReq=topExtras(extrasReq);
   const topExtrasAppr=topExtras(extrasAppr);
+
   function rankBlock(title,color,items,key,suffix=''){
     if(!items.length)return`<div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:14px;"><div style="font-size:11px;font-weight:700;color:${color};margin-bottom:8px;">${title}</div><div style="font-size:11px;color:var(--text-dim);">Sin registros</div></div>`;
     return`<div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:14px;"><div style="font-size:11px;font-weight:700;color:${color};margin-bottom:8px;">${title}</div>${items.map(([u,v],i)=>`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;"><div style="display:flex;align-items:center;gap:6px;"><span style="font-size:11px;color:var(--text-dim);font-family:var(--mono);width:14px;">${i+1}.</span><span style="font-size:12px;color:var(--text);">${key?v.nombre:u.split('@')[0]}</span></div><span style="font-size:12px;font-weight:700;color:${color};">${key?v[key]:v}${suffix}</span></div>`).join('')}</div>`;
   }
+
+  function strikesBlock(){
+    if(!topStrikes.length)return`<div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:14px;"><div style="font-size:11px;font-weight:700;color:#fbbf24;margin-bottom:8px;">⚡ Más strikes</div><div style="font-size:11px;color:var(--text-dim);">Sin registros</div></div>`;
+    return`<div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:14px;"><div style="font-size:11px;font-weight:700;color:#fbbf24;margin-bottom:8px;">⚡ Más strikes</div>${topStrikes.map(([u,v],i)=>{
+      const color=v.llamados>=3?'#f87171':v.llamados===2?'#fb923c':v.llamados===1?'#fbbf24':'var(--text-muted)';
+      return`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;">
+        <div style="display:flex;align-items:center;gap:6px;"><span style="font-size:11px;color:var(--text-dim);font-family:var(--mono);width:14px;">${i+1}.</span><span style="font-size:12px;color:var(--text);">${v.nombre}</span></div>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <span style="font-size:10px;font-family:var(--mono);color:var(--text-dim);">${v.totalStrikes}⚡</span>
+          ${v.llamados>0?`<span style="font-size:10px;background:${color}22;color:${color};border:1px solid ${color}44;padding:1px 6px;border-radius:10px;font-family:var(--mono);">${v.llamados} llamado${v.llamados!==1?'s':''}</span>`:''}
+          ${v.llamados>=3?`<span style="font-size:10px;background:rgba(248,113,113,0.15);color:#f87171;border:1px solid rgba(248,113,113,0.4);padding:1px 6px;border-radius:10px;">⚖️</span>`:''}
+        </div>
+      </div>`;
+    }).join('')}</div>`;
+  }
+
   el.innerHTML=`
     <div style="font-size:12px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:12px;font-family:var(--mono);">📊 Rankings del período</div>
-    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;">
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;">
       ${rankBlock('🟡 Más tardanzas','#fbbf24',topTardanza,'tardanza')}
       ${rankBlock('🔴 Más ausencias','#f87171',topAusente,'ausente')}
       ${rankBlock('📋 Más novedades','#a78bfa',topNovedad,'novedad')}
-      ${rankBlock('⚡ Más extras solicita','#fb923c',topExtrasReq,null)}
+      ${strikesBlock()}
+      ${rankBlock('⚡ Más extras solicitadas','#fb923c',topExtrasReq,null)}
       ${rankBlock('✅ Más extras aprobadas','#4ade80',topExtrasAppr,null)}
     </div>`;
 }
