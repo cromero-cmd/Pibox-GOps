@@ -1324,7 +1324,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 
 <script>
-const APP_VERSION='15.0';
+const APP_VERSION='15.1';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -3427,8 +3427,8 @@ async function loadPanel2(){
 
   // Iniciar timers con déficit ahora que tenemos mallaData
   (window._pendingActiveTimers||[]).forEach(t=>{
-  (window._pendingActiveTimers||[]).forEach(t=>{
     const id='p2a_'+t.id;const start=t.startTime?.toDate?.();
+    const mallaHoy=mallaData.find(m=>m.usuario===t.userEmail&&parseDate(m.fecha)?.toDateString()===start.toDateString());
     if(!start)return;
     const progSecs=mallaHoy?Math.max(0,Math.round(((parseTime(mallaHoy.fecha,mallaHoy.fin)||start)-(parseTime(mallaHoy.fecha,mallaHoy.inicio)||start))/1000)):0;
     panel2ActiveTimers[id]=setInterval(()=>{
