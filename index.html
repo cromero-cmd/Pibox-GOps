@@ -1324,7 +1324,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 
 <script>
-const APP_VERSION='15.1';
+const APP_VERSION='15.4';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -1633,7 +1633,7 @@ async function loadStrikes(){
         strikesGrave.push({fecha:m.fecha,detalle:`Llegó ${diffMins} min tarde (${rs.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'})}, programado ${m.inicio})`});
       } else if(diffMins>=20){
         strikesModerade.push({fecha:m.fecha,detalle:`Llegó ${diffMins} min tarde (${rs.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'})}, programado ${m.inicio})`});
-      } else if(diffMins>=strikeTardanzaMins){
+      } else if(diffMins>strikeTardanzaMins){
         strikesLeve.push({fecha:m.fecha,detalle:`Llegó ${diffMins} min tarde (${rs.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'})}, programado ${m.inicio})`});
       }
     }
@@ -1642,8 +1642,6 @@ async function loadStrikes(){
       if(extraHrs>strikeNoDesconexionHrs){
         strikesNoDesconex.push({fecha:m.fecha,detalle:`No se desconectó a tiempo — salida ${m.fin}, salida real ${re.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'})}`});
       }
-    } else if(se&&turno?.forcedClosedAt){
-      strikesNoDesconex.push({fecha:m.fecha,detalle:`Turno cerrado forzosamente — salida programada ${m.fin}`});
     }
   });
 
@@ -3766,7 +3764,7 @@ function renderPanel2Insights(rows,allTurnos,fromDate,toDate){
         const mins=Math.round((r.realStart-r.scheduledStart)/60000);
         if(mins>=60)userStats[u].strikeGrave++;
         else if(mins>=20)userStats[u].strikeModerado++;
-        else if(mins>=strikeTardanzaMins)userStats[u].strikeLeve++;
+        else if(mins>strikeTardanzaMins)userStats[u].strikeLeve++;
       }
     }
     else if(r.cumplStatus.cls==='ausente')userStats[u].ausente++;
