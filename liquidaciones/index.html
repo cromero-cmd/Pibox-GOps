@@ -40,9 +40,10 @@ nav{
 .nav-brand{display:flex;align-items:center;gap:12px;}
 .nav-logo{
   width:32px;height:32px;
+  background:linear-gradient(135deg,var(--accent),#7c3aed);
   border-radius:8px;
   display:flex;align-items:center;justify-content:center;
-  overflow:hidden;
+  box-shadow:0 0 16px var(--accentGlow);
 }
 .nav-title{font-size:14px;font-weight:700;letter-spacing:-.01em;}
 .nav-sub{font-size:10px;color:var(--text3);font-family:var(--mono);letter-spacing:.05em;}
@@ -352,11 +353,12 @@ tr:hover td{background:var(--bg3);}
 }
 @keyframes fadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
 .auth-logo{
-  width:52px;height:58px;
-  border-radius:0;
-  background:none;
+  width:52px;height:52px;
+  background:linear-gradient(135deg,var(--accent),#7c3aed);
+  border-radius:14px;
   display:flex;align-items:center;justify-content:center;
   margin-bottom:24px;
+  box-shadow:0 8px 32px var(--accentGlow);
 }
 .auth-title{font-size:22px;font-weight:800;margin-bottom:4px;letter-spacing:-.02em;}
 .auth-sub{font-size:11px;color:var(--text3);font-family:var(--mono);margin-bottom:28px;letter-spacing:.04em;}
@@ -437,10 +439,9 @@ tr:hover td{background:var(--bg3);}
 <!-- PANTALLA DE LOGIN -->
 <div class="auth-screen" id="auth-screen">
   <div class="auth-card">
-    <div class="auth-logo" style="background:none;box-shadow:none;width:72px;height:80px;padding:0;">
-      <svg width="72" height="80" viewBox="0 0 180 200" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <path d="M 0 55 C 0 25 25 0 55 0 L 125 0 C 155 0 180 25 180 55 L 180 200 L 0 200 Z" fill="#6B21A8"/>
-        <text x="90" y="130" font-family="Arial,sans-serif" font-weight="800" font-size="52" fill="white" text-anchor="middle" letter-spacing="-0.5">pibox</text>
+        <div class="auth-logo">
+      <svg width="28" height="28" fill="none" stroke="#fff" stroke-width="2.5" viewBox="0 0 24 24">
+        <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
       </svg>
     </div>
     <div class="auth-title">Pipeline TADA → Trump</div>
@@ -461,10 +462,9 @@ tr:hover td{background:var(--bg3);}
 <div class="layout">
 <nav>
   <div class="nav-brand">
-    <div class="nav-logo" style="background:none;box-shadow:none;width:28px;height:32px;padding:0;overflow:hidden;border-radius:0;">
-      <svg width="28" height="32" viewBox="0 0 180 200" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <path d="M 0 55 C 0 25 25 0 55 0 L 125 0 C 155 0 180 25 180 55 L 180 200 L 0 200 Z" fill="#6B21A8"/>
-        <text x="90" y="148" font-family="Arial,sans-serif" font-weight="800" font-size="78" fill="white" text-anchor="middle">p</text>
+        <div class="nav-logo">
+      <svg width="16" height="16" fill="none" stroke="#fff" stroke-width="2.5" viewBox="0 0 24 24">
+        <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
       </svg>
     </div>
     <div>
