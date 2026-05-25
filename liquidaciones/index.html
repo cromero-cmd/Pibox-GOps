@@ -187,16 +187,83 @@ tr:hover td{background:var(--bg3);}
 .ns-excl{background:var(--bg3);color:var(--text3);border:1px solid var(--border);}
 .nov-summary{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:12px 16px;margin-bottom:16px;display:flex;gap:20px;align-items:center;flex-wrap:wrap;}
 .ns-item{font-size:12px;font-family:var(--mono);}
+
+/* AUTH */
+.auth-screen{position:fixed;inset:0;background:var(--bg);z-index:1000;display:flex;align-items:center;justify-content:center;}
+.auth-card{background:var(--bg2);border:1px solid var(--border2);border-radius:14px;padding:36px 40px;width:380px;max-width:95vw;}
+.auth-logo{width:44px;height:44px;background:var(--accent);border-radius:10px;display:flex;align-items:center;justify-content:center;margin-bottom:20px;}
+.auth-title{font-size:18px;font-weight:600;margin-bottom:4px;}
+.auth-sub{font-size:11px;color:var(--text3);font-family:var(--mono);margin-bottom:24px;}
+.auth-field{margin-bottom:14px;}
+.auth-field label{display:block;font-size:11px;color:var(--text2);margin-bottom:5px;font-family:var(--mono);}
+.auth-field input{width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:7px;padding:10px 12px;color:var(--text);font-size:13px;outline:none;transition:border .2s;}
+.auth-field input:focus{border-color:var(--accent);}
+.auth-error{font-size:11px;color:var(--red);font-family:var(--mono);min-height:16px;margin-bottom:10px;}
+.btn-auth{width:100%;background:var(--accent);color:#fff;border:none;border-radius:7px;padding:11px;font-size:13px;font-weight:600;cursor:pointer;transition:background .2s;}
+.btn-auth:hover{background:var(--accent2);}
+/* USER BADGE en navbar */
+.user-badge{display:flex;align-items:center;gap:8px;font-size:11px;font-family:var(--mono);}
+.user-avatar{width:26px;height:26px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;}
+.user-role{color:var(--text3);}
+.user-menu{position:relative;}
+.user-dropdown{display:none;position:absolute;right:0;top:34px;background:var(--bg2);border:1px solid var(--border2);border-radius:8px;padding:6px;min-width:160px;z-index:200;}
+.user-menu:hover .user-dropdown{display:block;}
+.user-dropdown a{display:block;padding:7px 10px;font-size:11px;color:var(--text2);cursor:pointer;border-radius:5px;font-family:var(--mono);}
+.user-dropdown a:hover{background:var(--bg3);color:var(--text);}
+.user-dropdown .sep{border-top:1px solid var(--border);margin:4px 0;}
+/* PANEL USUARIOS (solo superadmin) */
+.users-table{width:100%;border-collapse:collapse;font-size:11px;font-family:var(--mono);}
+.users-table th{background:var(--bg3);color:var(--text2);padding:7px 10px;text-align:left;border-bottom:1px solid var(--border);}
+.users-table td{padding:7px 10px;border-bottom:1px solid var(--border);color:var(--text);vertical-align:middle;}
+.users-table tr:last-child td{border-bottom:none;}
+.role-badge{padding:2px 7px;border-radius:3px;font-size:10px;font-weight:600;}
+.role-superadmin{background:rgba(159,122,234,.15);color:var(--purple);border:1px solid var(--purpleBorder);}
+.role-analista{background:rgba(79,110,247,.12);color:var(--accent);border:1px solid rgba(79,110,247,.3);}
 </style>
 </head>
 <body>
+<!-- PANTALLA DE LOGIN -->
+<div class="auth-screen" id="auth-screen">
+  <div class="auth-card">
+    <div class="auth-logo"><svg width="20" height="20" fill="none" stroke="#fff" stroke-width="2" viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div>
+    <div class="auth-title">Pipeline TADA → Trump</div>
+    <div class="auth-sub">Liquidaciones Pibox · Inicia sesión para continuar</div>
+    <div class="auth-field">
+      <label>Usuario</label>
+      <input type="text" id="login-user" placeholder="tu_usuario" autocomplete="username"/>
+    </div>
+    <div class="auth-field">
+      <label>Contraseña</label>
+      <input type="password" id="login-pass" placeholder="••••••••" autocomplete="current-password"/>
+    </div>
+    <div class="auth-error" id="login-error"></div>
+    <button class="btn-auth" onclick="doLogin()">Ingresar →</button>
+  </div>
+</div>
+
 <div class="layout">
 <nav>
   <div class="nav-brand">
     <div class="nav-logo"><svg width="15" height="15" fill="none" stroke="#fff" stroke-width="2" viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div>
     <div><div class="nav-title">Pipeline TADA → Trump</div><div class="nav-sub">Liquidaciones Pibox · v5</div></div>
   </div>
-  <span id="nav-version">cargando tarifas...</span>
+  <div style="display:flex;align-items:center;gap:14px;">
+    <span id="nav-version">cargando tarifas...</span>
+    <div class="user-menu" id="user-menu" style="display:none;">
+      <div class="user-badge" style="cursor:pointer;">
+        <div class="user-avatar" id="user-avatar">?</div>
+        <div>
+          <div id="user-display-name" style="font-size:11px;color:var(--text);">—</div>
+          <div id="user-display-role" class="user-role">—</div>
+        </div>
+        <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="color:var(--text3)"><polyline points="6 9 12 15 18 9"/></svg>
+      </div>
+      <div class="user-dropdown">
+        <div id="nav-admin-link" style="display:none;"><a onclick="abrirPanelUsuarios()">👥 Gestionar usuarios</a><div class="sep"></div></div>
+        <a onclick="cerrarSesion()">← Cerrar sesión</a>
+      </div>
+    </div>
+  </div>
 </nav>
 
 <!-- BANNER PROCESANDO -->
@@ -752,7 +819,13 @@ function initTariffs(){
   currentEdits={...getAV().values};
   document.getElementById('nav-version').textContent=`Tarifas ${getAV().version}`;
 }
-function saveTariffs(){ try{ localStorage.setItem(LS_TAR,JSON.stringify(tariffStore)); }catch(e){} }
+function saveTariffs(){
+  try{ localStorage.setItem(LS_TAR,JSON.stringify(tariffStore)); }catch(e){}
+  // Sincronizar al storage compartido (solo superadmin puede modificar tarifas)
+  if(currentUser?.role==='superadmin'){
+    window.storage.set(SHARED_TARIFF_KEY, JSON.stringify(tariffStore), true).catch(()=>{});
+  }
+}
 function getAV(){ return tariffStore.versions.find(v=>v.version===tariffStore.active_version); }
 function getNextVer(){ const n=tariffStore.versions.map(v=>parseInt(v.version.replace('v',''))||0); return 'v'+(Math.max(...n)+1); }
 function renderTariffPanel(){
@@ -3041,8 +3114,50 @@ async function enviarPorCorreo(){
 // DICCIONARIO DE EQUIVALENCIAS
 // Estructura: [{id, tadaNombre, mallaNombre, fechaAprendido, usos, fuente}]
 // ═══════════════════════════════════════════
-function loadDict(){ try{ return JSON.parse(localStorage.getItem(LS_DICT)||'[]'); }catch{ return []; } }
-function saveDict(d){ try{ localStorage.setItem(LS_DICT,JSON.stringify(d)); }catch{} }
+const SHARED_DICT_KEY  = 'diccionario_v1';
+const SHARED_TARIFF_KEY = 'tariff_v1';
+
+function loadDict(){
+  // Primero intentar desde variable en memoria (cargada desde storage compartido)
+  if(window._dictCache) return window._dictCache;
+  // Fallback a localStorage
+  try{ return JSON.parse(localStorage.getItem(LS_DICT)||'[]'); }catch{ return []; }
+}
+function saveDict(d){
+  window._dictCache = d;
+  // Guardar en localStorage como cache local
+  try{ localStorage.setItem(LS_DICT, JSON.stringify(d)); }catch{}
+  // Guardar en storage compartido
+  window.storage.set(SHARED_DICT_KEY, JSON.stringify(d), true).catch(()=>{});
+}
+
+async function syncSharedData(){
+  // Sincronizar diccionario desde storage compartido
+  try{
+    const r = await window.storage.get(SHARED_DICT_KEY, true);
+    if(r){
+      const dict = JSON.parse(r.value);
+      window._dictCache = dict;
+      try{ localStorage.setItem(LS_DICT, JSON.stringify(dict)); }catch{}
+    }
+  }catch{}
+
+  // Sincronizar tarifas desde storage compartido (solo si hay versión más reciente)
+  try{
+    const r = await window.storage.get(SHARED_TARIFF_KEY, true);
+    if(r){
+      const sharedTariff = JSON.parse(r.value);
+      const localTariff  = JSON.parse(localStorage.getItem(LS_TAR)||'{}');
+      // Usar la versión con número de versión más alto
+      if(!localTariff.version || (sharedTariff.version && sharedTariff.version >= localTariff.version)){
+        localStorage.setItem(LS_TAR, JSON.stringify(sharedTariff));
+        initTariffs(); // recargar tarifas
+      }
+    }
+  }catch{}
+
+  actualizarDictSummary();
+}
 
 function dictFind(nombreTada){
   // Buscar equivalencia para un nombre TADA
@@ -3199,9 +3314,240 @@ function confirmarNuevaEquivalencia(){
 }
 
 // ═══════════════════════════════════════════
+// ═══════════════════════════════════════════
+// SISTEMA DE AUTENTICACIÓN Y ROLES
+// ═══════════════════════════════════════════
+const LS_SESSION = 'pibox:session_v1';
+const SHARED_USERS_KEY = 'users_v1';
+
+let currentUser = null; // {username, nombre, role:'superadmin'|'analista'}
+
+// Hash simple (sha256 simulado con suma de chars — suficiente para esta app)
+function hashPass(s){
+  let h=0;
+  for(let i=0;i<s.length;i++) h=(Math.imul(31,h)+s.charCodeAt(i))|0;
+  return Math.abs(h).toString(16).padStart(8,'0') + s.length.toString(16);
+}
+
+// Cargar usuarios desde storage compartido
+async function loadUsers(){
+  try{
+    const r = await window.storage.get(SHARED_USERS_KEY, true);
+    if(r) return JSON.parse(r.value);
+  }catch{}
+  return null;
+}
+
+// Guardar usuarios en storage compartido
+async function saveUsers(users){
+  try{ await window.storage.set(SHARED_USERS_KEY, JSON.stringify(users), true); }catch(e){ console.error('saveUsers',e); }
+}
+
+// Inicializar usuario superadmin por defecto si no existe
+async function initUsers(){
+  const users = await loadUsers();
+  if(!users || Object.keys(users).length===0){
+    const defaults = {
+      cromero: {
+        username: 'cromero',
+        nombre: 'Cristian Romero',
+        role: 'superadmin',
+        passHash: hashPass('pibox2026'),
+        creado: new Date().toISOString().slice(0,10),
+      }
+    };
+    await saveUsers(defaults);
+    return defaults;
+  }
+  return users;
+}
+
+async function doLogin(){
+  const username = document.getElementById('login-user').value.trim().toLowerCase();
+  const pass     = document.getElementById('login-pass').value;
+  const errEl    = document.getElementById('login-error');
+  errEl.textContent = '';
+
+  if(!username||!pass){ errEl.textContent='Ingresa usuario y contraseña'; return; }
+
+  const users = await loadUsers();
+  if(!users){ errEl.textContent='Error cargando usuarios — intenta de nuevo'; return; }
+
+  const user = users[username];
+  if(!user || user.passHash !== hashPass(pass)){
+    errEl.textContent='Usuario o contraseña incorrectos';
+    return;
+  }
+
+  // Guardar sesión en localStorage local
+  currentUser = {username: user.username, nombre: user.nombre, role: user.role};
+  try{ localStorage.setItem(LS_SESSION, JSON.stringify(currentUser)); }catch{}
+
+  aplicarSesion();
+}
+
+function aplicarSesion(){
+  if(!currentUser) return;
+
+  // Ocultar pantalla de login
+  document.getElementById('auth-screen').style.display='none';
+
+  // Mostrar user badge en navbar
+  const menu = document.getElementById('user-menu');
+  menu.style.display='flex';
+  document.getElementById('user-avatar').textContent = currentUser.nombre.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+  document.getElementById('user-display-name').textContent = currentUser.nombre;
+  document.getElementById('user-display-role').textContent = currentUser.role==='superadmin'?'Super Admin':'Analista';
+
+  // Mostrar link de admin solo para superadmin
+  if(currentUser.role==='superadmin')
+    document.getElementById('nav-admin-link').style.display='block';
+
+  // Restringir tarifas para analistas
+  aplicarRestriccionesRol();
+
+  // Sincronizar datos compartidos al entrar
+  syncSharedData();
+}
+
+function aplicarRestriccionesRol(){
+  if(!currentUser) return;
+  if(currentUser.role==='analista'){
+    // Deshabilitar botones de guardar tarifas
+    const btnGuardar = document.getElementById('btn-guardar-tarifa');
+    if(btnGuardar){ btnGuardar.disabled=true; btnGuardar.title='Solo el Super Admin puede modificar tarifas'; btnGuardar.style.opacity='.4'; }
+  }
+}
+
+function cerrarSesion(){
+  currentUser = null;
+  try{ localStorage.removeItem(LS_SESSION); }catch{}
+  document.getElementById('auth-screen').style.display='flex';
+  document.getElementById('user-menu').style.display='none';
+  document.getElementById('login-pass').value='';
+  document.getElementById('login-error').textContent='';
+}
+
+// Panel de gestión de usuarios (solo superadmin)
+async function abrirPanelUsuarios(){
+  const users = await loadUsers();
+  const modal = document.createElement('div');
+  modal.id='modal-usuarios';
+  modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:900;display:flex;align-items:center;justify-content:center;';
+
+  const rows = Object.values(users).map(u=>`
+    <tr>
+      <td>${u.username}</td>
+      <td>${u.nombre}</td>
+      <td><span class="role-badge ${u.role==='superadmin'?'role-superadmin':'role-analista'}">${u.role==='superadmin'?'Super Admin':'Analista'}</span></td>
+      <td>${u.creado||'—'}</td>
+      <td>
+        ${u.username!==currentUser.username?`<button class="btn btn-sm btn-danger" onclick="eliminarUsuario('${u.username}')" style="font-size:10px;padding:3px 8px;">🗑</button>`:'<span style="color:var(--text3);font-size:10px;">(tú)</span>'}
+      </td>
+    </tr>`).join('');
+
+  modal.innerHTML=`
+    <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:12px;padding:24px;width:560px;max-width:95vw;max-height:85vh;overflow-y:auto;">
+      <div style="font-size:14px;font-weight:600;margin-bottom:16px;">👥 Gestionar usuarios</div>
+
+      <div style="overflow:hidden;border-radius:8px;border:1px solid var(--border);margin-bottom:16px;">
+        <table class="users-table">
+          <thead><tr><th>Usuario</th><th>Nombre</th><th>Rol</th><th>Creado</th><th></th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+
+      <div style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:14px;">
+        <div style="font-size:11px;font-weight:600;color:var(--text2);margin-bottom:10px;font-family:var(--mono);">+ Nuevo usuario</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
+          <div><label style="font-size:10px;color:var(--text3);display:block;margin-bottom:3px;">Usuario</label>
+            <input id="nu-user" class="dict-input" placeholder="ej: sromero"/></div>
+          <div><label style="font-size:10px;color:var(--text3);display:block;margin-bottom:3px;">Nombre completo</label>
+            <input id="nu-nombre" class="dict-input" placeholder="ej: Sergio Romero"/></div>
+          <div><label style="font-size:10px;color:var(--text3);display:block;margin-bottom:3px;">Contraseña</label>
+            <input id="nu-pass" type="password" class="dict-input" placeholder="contraseña inicial"/></div>
+          <div><label style="font-size:10px;color:var(--text3);display:block;margin-bottom:3px;">Rol</label>
+            <select id="nu-role" class="dict-input">
+              <option value="analista">Analista</option>
+              <option value="superadmin">Super Admin</option>
+            </select></div>
+        </div>
+        <div id="nu-error" style="font-size:10px;color:var(--red);min-height:14px;margin-bottom:6px;font-family:var(--mono);"></div>
+        <button class="btn btn-primary btn-sm" onclick="crearUsuario()">Crear usuario →</button>
+      </div>
+
+      <div style="display:flex;justify-content:flex-end;">
+        <button class="btn" onclick="document.getElementById('modal-usuarios').remove()">Cerrar</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+}
+
+async function crearUsuario(){
+  const username = document.getElementById('nu-user').value.trim().toLowerCase();
+  const nombre   = document.getElementById('nu-nombre').value.trim();
+  const pass     = document.getElementById('nu-pass').value;
+  const role     = document.getElementById('nu-role').value;
+  const errEl    = document.getElementById('nu-error');
+  errEl.textContent='';
+
+  if(!username||!nombre||!pass){ errEl.textContent='Todos los campos son requeridos'; return; }
+  if(username.length<3){ errEl.textContent='El usuario debe tener al menos 3 caracteres'; return; }
+  if(pass.length<6){ errEl.textContent='La contraseña debe tener al menos 6 caracteres'; return; }
+
+  const users = await loadUsers();
+  if(users[username]){ errEl.textContent='Ese usuario ya existe'; return; }
+
+  users[username]={username, nombre, role, passHash:hashPass(pass), creado:new Date().toISOString().slice(0,10)};
+  await saveUsers(users);
+  toast(`✓ Usuario ${username} creado`);
+  document.getElementById('modal-usuarios').remove();
+  abrirPanelUsuarios();
+}
+
+async function eliminarUsuario(username){
+  if(!confirm(`¿Eliminar al usuario "${username}"?`)) return;
+  const users = await loadUsers();
+  delete users[username];
+  await saveUsers(users);
+  toast(`Usuario ${username} eliminado`);
+  document.getElementById('modal-usuarios').remove();
+  abrirPanelUsuarios();
+}
+
+// ── Enter en login ──────────────────────────────
+document.addEventListener('keydown', e=>{
+  if(e.key==='Enter' && document.getElementById('auth-screen').style.display!=='none'){
+    doLogin();
+  }
+});
+
 // BOOT
 initTariffs();
 actualizarDictSummary();
+
+// Verificar sesión guardada
+(async()=>{
+  await initUsers(); // asegurar que existe el usuario por defecto
+
+  try{
+    const sess = localStorage.getItem(LS_SESSION);
+    if(sess){
+      const saved = JSON.parse(sess);
+      // Verificar que el usuario aún existe en el storage compartido
+      const users = await loadUsers();
+      if(users && users[saved.username]){
+        currentUser = saved;
+        aplicarSesion();
+        return;
+      }
+    }
+  }catch{}
+
+  // No hay sesión válida — mostrar login
+  document.getElementById('auth-screen').style.display='flex';
+  document.getElementById('login-user').focus();
+})();
 </script>
 </body>
 </html>
