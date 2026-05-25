@@ -260,6 +260,8 @@ tr:hover td{background:var(--bg3);}
       </div>
       <div class="user-dropdown">
         <div id="nav-admin-link" style="display:none;"><a onclick="abrirPanelUsuarios()">👥 Gestionar usuarios</a><div class="sep"></div></div>
+        <a onclick="abrirCambiarPassword()">🔑 Cambiar contraseña</a>
+        <div class="sep"></div>
         <a onclick="cerrarSesion()">← Cerrar sesión</a>
       </div>
     </div>
@@ -3327,7 +3329,7 @@ function initUsers(){
     const defaults = {
       cromero: {
         username: 'cromero',
-        nombre: 'Cristian Romero',
+        nombre: 'Camilo Romero',
         role: 'superadmin',
         passHash: hashPass('pibox2026'),
         creado: new Date().toISOString().slice(0,10),
@@ -3490,6 +3492,62 @@ async function eliminarUsuario(username){
   toast(`Usuario ${username} eliminado`);
   document.getElementById('modal-usuarios').remove();
   abrirPanelUsuarios();
+}
+
+function abrirCambiarPassword(){
+  document.getElementById('user-menu').classList.remove('open');
+  const modal = document.createElement('div');
+  modal.id = 'modal-cambiar-pass';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:900;display:flex;align-items:center;justify-content:center;';
+  modal.innerHTML = `
+    <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:12px;padding:24px;width:360px;max-width:95vw;">
+      <div style="font-size:14px;font-weight:600;margin-bottom:16px;">🔑 Cambiar contraseña</div>
+      <div class="auth-field">
+        <label>Contraseña actual</label>
+        <input type="password" id="cp-actual" class="dict-input" placeholder="••••••••"/>
+      </div>
+      <div class="auth-field" style="margin-top:10px;">
+        <label>Nueva contraseña</label>
+        <input type="password" id="cp-nueva" class="dict-input" placeholder="••••••••"/>
+      </div>
+      <div class="auth-field" style="margin-top:10px;">
+        <label>Confirmar nueva contraseña</label>
+        <input type="password" id="cp-confirmar" class="dict-input" placeholder="••••••••"/>
+      </div>
+      <div id="cp-error" style="font-size:11px;color:var(--red);min-height:16px;margin:10px 0;font-family:var(--mono);"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;">
+        <button class="btn" onclick="document.getElementById('modal-cambiar-pass').remove()">Cancelar</button>
+        <button class="btn btn-primary" onclick="confirmarCambioPass()">Guardar →</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  document.getElementById('cp-actual').focus();
+}
+
+function confirmarCambioPass(){
+  const actual    = document.getElementById('cp-actual').value;
+  const nueva     = document.getElementById('cp-nueva').value;
+  const confirmar = document.getElementById('cp-confirmar').value;
+  const errEl     = document.getElementById('cp-error');
+  errEl.textContent = '';
+
+  if(!actual||!nueva||!confirmar){ errEl.textContent='Completa todos los campos'; return; }
+  if(nueva.length<6){ errEl.textContent='La nueva contraseña debe tener al menos 6 caracteres'; return; }
+  if(nueva !== confirmar){ errEl.textContent='Las contraseñas no coinciden'; return; }
+
+  const users = loadUsers();
+  if(!users){ errEl.textContent='Error cargando usuarios'; return; }
+
+  const user = users[currentUser.username];
+  if(!user || user.passHash !== hashPass(actual)){
+    errEl.textContent='La contraseña actual es incorrecta';
+    return;
+  }
+
+  user.passHash = hashPass(nueva);
+  saveUsers(users);
+  document.getElementById('modal-cambiar-pass').remove();
+  toast('✓ Contraseña actualizada correctamente');
 }
 
 function toggleUserMenu(){
