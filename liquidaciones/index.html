@@ -823,7 +823,7 @@ function saveTariffs(){
   try{ localStorage.setItem(LS_TAR,JSON.stringify(tariffStore)); }catch(e){}
   // Sincronizar al storage compartido (solo superadmin puede modificar tarifas)
   if(currentUser?.role==='superadmin'){
-    window.storage.set(SHARED_TARIFF_KEY, JSON.stringify(tariffStore), true).catch(()=>{});
+    // Sync compartido pendiente vía Apps Script
   }
 }
 function getAV(){ return tariffStore.versions.find(v=>v.version===tariffStore.active_version); }
@@ -3128,34 +3128,11 @@ function saveDict(d){
   // Guardar en localStorage como cache local
   try{ localStorage.setItem(LS_DICT, JSON.stringify(d)); }catch{}
   // Guardar en storage compartido
-  window.storage.set(SHARED_DICT_KEY, JSON.stringify(d), true).catch(()=>{});
+  try{ localStorage.setItem(LS_DICT, JSON.stringify(d)); }catch{}
 }
 
-async function syncSharedData(){
-  // Sincronizar diccionario desde storage compartido
-  try{
-    const r = await window.storage.get(SHARED_DICT_KEY, true);
-    if(r){
-      const dict = JSON.parse(r.value);
-      window._dictCache = dict;
-      try{ localStorage.setItem(LS_DICT, JSON.stringify(dict)); }catch{}
-    }
-  }catch{}
-
-  // Sincronizar tarifas desde storage compartido (solo si hay versión más reciente)
-  try{
-    const r = await window.storage.get(SHARED_TARIFF_KEY, true);
-    if(r){
-      const sharedTariff = JSON.parse(r.value);
-      const localTariff  = JSON.parse(localStorage.getItem(LS_TAR)||'{}');
-      // Usar la versión con número de versión más alto
-      if(!localTariff.version || (sharedTariff.version && sharedTariff.version >= localTariff.version)){
-        localStorage.setItem(LS_TAR, JSON.stringify(sharedTariff));
-        initTariffs(); // recargar tarifas
-      }
-    }
-  }catch{}
-
+function syncSharedData(){
+  // Por ahora sincroniza desde localStorage — en futuro vía Apps Script
   actualizarDictSummary();
 }
 
@@ -3330,22 +3307,22 @@ function hashPass(s){
 }
 
 // Cargar usuarios desde storage compartido
-async function loadUsers(){
+function loadUsers(){
   try{
-    const r = await window.storage.get(SHARED_USERS_KEY, true);
-    if(r) return JSON.parse(r.value);
+    const r = localStorage.getItem('pibox:users_v1');
+    if(r) return JSON.parse(r);
   }catch{}
   return null;
 }
 
 // Guardar usuarios en storage compartido
-async function saveUsers(users){
-  try{ await window.storage.set(SHARED_USERS_KEY, JSON.stringify(users), true); }catch(e){ console.error('saveUsers',e); }
+function saveUsers(users){
+  try{ localStorage.setItem('pibox:users_v1', JSON.stringify(users)); }catch(e){ console.error('saveUsers',e); }
 }
 
 // Inicializar usuario superadmin por defecto si no existe
-async function initUsers(){
-  const users = await loadUsers();
+function initUsers(){
+  const users = loadUsers();
   if(!users || Object.keys(users).length===0){
     const defaults = {
       cromero: {
@@ -3356,7 +3333,7 @@ async function initUsers(){
         creado: new Date().toISOString().slice(0,10),
       }
     };
-    await saveUsers(defaults);
+    saveUsers(defaults);
     return defaults;
   }
   return users;
@@ -3370,7 +3347,7 @@ async function doLogin(){
 
   if(!username||!pass){ errEl.textContent='Ingresa usuario y contraseña'; return; }
 
-  const users = await loadUsers();
+  const users = loadUsers();
   if(!users){ errEl.textContent='Error cargando usuarios — intenta de nuevo'; return; }
 
   const user = users[username];
@@ -3430,7 +3407,7 @@ function cerrarSesion(){
 
 // Panel de gestión de usuarios (solo superadmin)
 async function abrirPanelUsuarios(){
-  const users = await loadUsers();
+  const users = loadUsers();
   const modal = document.createElement('div');
   modal.id='modal-usuarios';
   modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:900;display:flex;align-items:center;justify-content:center;';
@@ -3495,11 +3472,11 @@ async function crearUsuario(){
   if(username.length<3){ errEl.textContent='El usuario debe tener al menos 3 caracteres'; return; }
   if(pass.length<6){ errEl.textContent='La contraseña debe tener al menos 6 caracteres'; return; }
 
-  const users = await loadUsers();
+  const users = loadUsers();
   if(users[username]){ errEl.textContent='Ese usuario ya existe'; return; }
 
   users[username]={username, nombre, role, passHash:hashPass(pass), creado:new Date().toISOString().slice(0,10)};
-  await saveUsers(users);
+  saveUsers(users);
   toast(`✓ Usuario ${username} creado`);
   document.getElementById('modal-usuarios').remove();
   abrirPanelUsuarios();
@@ -3507,9 +3484,9 @@ async function crearUsuario(){
 
 async function eliminarUsuario(username){
   if(!confirm(`¿Eliminar al usuario "${username}"?`)) return;
-  const users = await loadUsers();
+  const users = loadUsers();
   delete users[username];
-  await saveUsers(users);
+  saveUsers(users);
   toast(`Usuario ${username} eliminado`);
   document.getElementById('modal-usuarios').remove();
   abrirPanelUsuarios();
@@ -3535,7 +3512,7 @@ actualizarDictSummary();
     if(sess){
       const saved = JSON.parse(sess);
       // Verificar que el usuario aún existe en el storage compartido
-      const users = await loadUsers();
+      const users = loadUsers();
       if(users && users[saved.username]){
         currentUser = saved;
         aplicarSesion();
