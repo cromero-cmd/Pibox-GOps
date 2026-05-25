@@ -260,6 +260,7 @@ tr:hover td{background:var(--bg3);}
       </div>
       <div class="user-dropdown">
         <div id="nav-admin-link" style="display:none;"><a onclick="abrirPanelUsuarios()">👥 Gestionar usuarios</a><div class="sep"></div></div>
+        <a onclick="abrirEditarNombre()">✏ Editar mi nombre</a>
         <a onclick="abrirCambiarPassword()">🔑 Cambiar contraseña</a>
         <div class="sep"></div>
         <a onclick="cerrarSesion()">← Cerrar sesión</a>
@@ -3421,7 +3422,10 @@ async function abrirPanelUsuarios(){
       <td><span class="role-badge ${u.role==='superadmin'?'role-superadmin':'role-analista'}">${u.role==='superadmin'?'Super Admin':'Analista'}</span></td>
       <td>${u.creado||'—'}</td>
       <td>
-        ${u.username!==currentUser.username?`<button class="btn btn-sm btn-danger" onclick="eliminarUsuario('${u.username}')" style="font-size:10px;padding:3px 8px;">🗑</button>`:'<span style="color:var(--text3);font-size:10px;">(tú)</span>'}
+        <div style="display:flex;gap:4px;">
+          <button class="btn btn-sm" onclick="editarUsuario('${u.username}')" style="font-size:10px;padding:3px 8px;">✏</button>
+          ${u.username!==currentUser.username?`<button class="btn btn-sm btn-danger" onclick="eliminarUsuario('${u.username}')" style="font-size:10px;padding:3px 8px;">🗑</button>`:''}
+        </div>
       </td>
     </tr>`).join('');
 
@@ -3484,6 +3488,74 @@ async function crearUsuario(){
   abrirPanelUsuarios();
 }
 
+async function editarUsuario(username){
+  const users = loadUsers();
+  const u = users[username];
+  if(!u) return;
+
+  document.getElementById('modal-usuarios').remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'modal-editar-usuario';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:900;display:flex;align-items:center;justify-content:center;';
+  modal.innerHTML = `
+    <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:12px;padding:24px;width:380px;max-width:95vw;">
+      <div style="font-size:14px;font-weight:600;margin-bottom:16px;">✏ Editar usuario · ${username}</div>
+      <div class="auth-field">
+        <label>Nombre completo</label>
+        <input type="text" id="eu-nombre" class="dict-input" value="${u.nombre}"/>
+      </div>
+      <div class="auth-field" style="margin-top:10px;">
+        <label>Rol</label>
+        <select id="eu-role" class="dict-input">
+          <option value="analista" ${u.role==='analista'?'selected':''}>Analista</option>
+          <option value="superadmin" ${u.role==='superadmin'?'selected':''}>Super Admin</option>
+        </select>
+      </div>
+      <div class="auth-field" style="margin-top:10px;">
+        <label>Nueva contraseña <span style="color:var(--text3);font-size:10px;">(dejar vacío para no cambiar)</span></label>
+        <input type="password" id="eu-pass" class="dict-input" placeholder="••••••••"/>
+      </div>
+      <div id="eu-error" style="font-size:11px;color:var(--red);min-height:16px;margin:10px 0;font-family:var(--mono);"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;">
+        <button class="btn" onclick="document.getElementById('modal-editar-usuario').remove();abrirPanelUsuarios();">Cancelar</button>
+        <button class="btn btn-primary" onclick="guardarUsuario('${username}')">Guardar →</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  document.getElementById('eu-nombre').focus();
+}
+
+function guardarUsuario(username){
+  const nombre = document.getElementById('eu-nombre').value.trim();
+  const role   = document.getElementById('eu-role').value;
+  const pass   = document.getElementById('eu-pass').value;
+  const errEl  = document.getElementById('eu-error');
+  errEl.textContent = '';
+
+  if(!nombre){ errEl.textContent='El nombre no puede estar vacío'; return; }
+  if(pass && pass.length<6){ errEl.textContent='La contraseña debe tener al menos 6 caracteres'; return; }
+
+  const users = loadUsers();
+  users[username].nombre = nombre;
+  users[username].role   = role;
+  if(pass) users[username].passHash = hashPass(pass);
+  saveUsers(users);
+
+  // Si es el usuario actual, actualizar sesión
+  if(username === currentUser.username){
+    currentUser.nombre = nombre;
+    currentUser.role   = role;
+    try{ localStorage.setItem(LS_SESSION, JSON.stringify(currentUser)); }catch{}
+    document.getElementById('user-display-name').textContent = nombre;
+    document.getElementById('user-avatar').textContent = nombre.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+  }
+
+  document.getElementById('modal-editar-usuario').remove();
+  toast(`✓ Usuario ${username} actualizado`);
+  abrirPanelUsuarios();
+}
+
 async function eliminarUsuario(username){
   if(!confirm(`¿Eliminar al usuario "${username}"?`)) return;
   const users = loadUsers();
@@ -3492,6 +3564,50 @@ async function eliminarUsuario(username){
   toast(`Usuario ${username} eliminado`);
   document.getElementById('modal-usuarios').remove();
   abrirPanelUsuarios();
+}
+
+function abrirEditarNombre(){
+  document.getElementById('user-menu').classList.remove('open');
+  const modal = document.createElement('div');
+  modal.id = 'modal-editar-nombre';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:900;display:flex;align-items:center;justify-content:center;';
+  modal.innerHTML = `
+    <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:12px;padding:24px;width:340px;max-width:95vw;">
+      <div style="font-size:14px;font-weight:600;margin-bottom:16px;">✏ Editar mi nombre</div>
+      <div class="auth-field">
+        <label>Nombre completo</label>
+        <input type="text" id="en-nombre" class="dict-input" value="${currentUser.nombre}" placeholder="Tu nombre completo"/>
+      </div>
+      <div id="en-error" style="font-size:11px;color:var(--red);min-height:16px;margin:10px 0;font-family:var(--mono);"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:4px;">
+        <button class="btn" onclick="document.getElementById('modal-editar-nombre').remove()">Cancelar</button>
+        <button class="btn btn-primary" onclick="guardarNombre()">Guardar →</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  const inp = document.getElementById('en-nombre');
+  inp.focus(); inp.select();
+}
+
+function guardarNombre(){
+  const nombre = document.getElementById('en-nombre').value.trim();
+  const errEl  = document.getElementById('en-error');
+  if(!nombre){ errEl.textContent='El nombre no puede estar vacío'; return; }
+
+  const users = loadUsers();
+  if(!users){ errEl.textContent='Error cargando usuarios'; return; }
+
+  users[currentUser.username].nombre = nombre;
+  saveUsers(users);
+  currentUser.nombre = nombre;
+  try{ localStorage.setItem(LS_SESSION, JSON.stringify(currentUser)); }catch{}
+
+  // Actualizar navbar
+  document.getElementById('user-display-name').textContent = nombre;
+  document.getElementById('user-avatar').textContent = nombre.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+
+  document.getElementById('modal-editar-nombre').remove();
+  toast('✓ Nombre actualizado');
 }
 
 function abrirCambiarPassword(){
