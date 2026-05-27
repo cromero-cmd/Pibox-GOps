@@ -3568,6 +3568,7 @@ function hashPass(s){
 }
 
 // Cargar usuarios desde storage compartido
+// ── Cargar usuarios: localStorage primero, luego backend ──
 function loadUsers(){
   try{
     const r = localStorage.getItem('pibox:users_v1');
@@ -3576,12 +3577,38 @@ function loadUsers(){
   return null;
 }
 
-// Guardar usuarios en storage compartido
+// ── Guardar usuarios: localStorage + backend (async, no bloquea) ──
 function saveUsers(users){
-  try{ localStorage.setItem('pibox:users_v1', JSON.stringify(users)); }catch(e){ console.error('saveUsers',e); }
+  try{ localStorage.setItem('pibox:users_v1', JSON.stringify(users)); }catch(e){}
+  // Sincronizar al backend en segundo plano
+  const url = getBackendUrl();
+  if(url){
+    const payload = JSON.stringify({apiKey:'pibox-liq-2026-9605', accion:'saveUsuarios', usuarios: users});
+    fetch(url,{method:'POST',mode:'no-cors',
+      headers:{'Content-Type':'application/x-www-form-urlencoded'},
+      body:'payload='+encodeURIComponent(payload)
+    }).catch(()=>{});
+  }
 }
 
-// Inicializar usuario superadmin por defecto si no existe
+// ── Cargar usuarios desde el backend y sincronizar al localStorage ──
+async function syncUsersFromBackend(){
+  const url = getBackendUrl();
+  if(!url) return null;
+  try{
+    const params = new URLSearchParams({accion:'getUsuarios', apiKey:'pibox-liq-2026-9605'});
+    const resp   = await fetch(`${url}?${params}`);
+    const data   = await resp.json();
+    if(data.ok && data.usuarios && Object.keys(data.usuarios).length > 0){
+      // Guardar en localStorage para acceso offline
+      try{ localStorage.setItem('pibox:users_v1', JSON.stringify(data.usuarios)); }catch{}
+      return data.usuarios;
+    }
+  }catch{}
+  return null;
+}
+
+// ── Inicializar usuario superadmin por defecto si no existe ──
 function initUsers(){
   const users = loadUsers();
   if(!users || Object.keys(users).length===0){
@@ -3600,6 +3627,7 @@ function initUsers(){
   return users;
 }
 
+// ── Login: busca local primero, si falla sincroniza del backend ──
 async function doLogin(){
   const username = document.getElementById('login-user').value.trim().toLowerCase();
   const pass     = document.getElementById('login-pass').value;
@@ -3608,19 +3636,28 @@ async function doLogin(){
 
   if(!username||!pass){ errEl.textContent='Ingresa usuario y contraseña'; return; }
 
-  const users = loadUsers();
-  if(!users){ errEl.textContent='Error cargando usuarios — intenta de nuevo'; return; }
+  // Intentar con usuarios locales primero
+  let users = loadUsers();
+  let user  = users?.[username];
 
-  const user = users[username];
+  // Si no encontró localmente, sincronizar desde el backend
   if(!user || user.passHash !== hashPass(pass)){
-    errEl.textContent='Usuario o contraseña incorrectos';
+    errEl.textContent = '⏳ Verificando...';
+    const remoteUsers = await syncUsersFromBackend();
+    if(remoteUsers){
+      users = remoteUsers;
+      user  = users[username];
+    }
+  }
+
+  if(!user || user.passHash !== hashPass(pass)){
+    errEl.textContent = 'Usuario o contraseña incorrectos';
     return;
   }
 
-  // Guardar sesión en localStorage local
+  // Sesión válida
   currentUser = {username: user.username, nombre: user.nombre, role: user.role};
   try{ localStorage.setItem(LS_SESSION, JSON.stringify(currentUser)); }catch{}
-
   aplicarSesion();
 }
 
