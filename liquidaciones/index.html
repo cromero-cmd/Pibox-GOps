@@ -3983,7 +3983,7 @@ document.addEventListener('keydown', e=>{
 // HISTORIAL DE LIQUIDACIONES
 // ═══════════════════════════════════════════
 const LS_BACKEND_URL = 'pibox:backend_url';
-const DEFAULT_BACKEND_URL = 'https://script.google.com/macros/s/AKfycbxcttcw1WezWqivsKJd9qG8FZYlDppwZjYW-QROxauMYpY2WqPEfWyJtHJGMar7CDW58w/exec';
+const DEFAULT_BACKEND_URL = 'https://script.google.com/macros/s/AKfycbwmbBFIA_VbmC8P_W0igDb2tBP0Y9m73h00WGM9DbI-jd9Fd6toHcmRF0YyOOEAioTKYQ/exec';
 
 function getBackendUrl(){
   return localStorage.getItem(LS_BACKEND_URL) ||
@@ -4072,7 +4072,6 @@ async function ejecutarGuardarHistorial(){
     const tar  = r._tareas     || 0;
     const cobroTotal = r.COMPANY_FINAL_COST + r.ADDITIONAL_COMPANY_FINAL_COST;
     const pagoTotal  = r.FINAL_COST + r.ADDITIONAL_FINAL_COST;
-    const complem    = Math.max(0, pagoTotal - (paq*pPaq + inc*pInc + can*pCan + tar*pTar));
     return {
       id_piloto:          r._driver_id || '',
       piloto:             r._piloto    || '',
@@ -4090,8 +4089,12 @@ async function ejecutarGuardarHistorial(){
       cobro_cancelado:    can * cCan,
       cobro_tarea:        tar * cTar,
       cobro_total:        cobroTotal,
+      pago_paquete:       paq * pPaq,
+      pago_incentivo:     inc * pInc,
+      pago_cancelado:     can * pCan,
+      pago_tarea:         tar * pTar,
       pago_piloto:        pagoTotal,
-      complemento:        complem,
+      complemento:        r._complemento || 0,  // valor ya calculado en runTrump
     };
   });
 
@@ -4275,30 +4278,33 @@ function renderTablaHistorial(registros){
   }
 
   const cols = [
-    {k:'periodo',     l:'Semana'},
-    {k:'fecha',       l:'Fecha'},
-    {k:'dia',         l:'Día'},
-    {k:'id_piloto',   l:'ID Piloto'},
-    {k:'piloto',      l:'Piloto'},
-    {k:'ciudad',      l:'Ciudad'},
-    {k:'seller',      l:'Seller'},
-    {k:'booking_id',  l:'Booking ID'},
-    {k:'paquetes',    l:'Paq'},
-    {k:'incentivos',  l:'Inc'},
-    {k:'cancelados',  l:'Can'},
-    {k:'tareas',      l:'Tar'},
-    {k:'cobro_paquete',   l:'$ Cobro Paq'},
-    {k:'cobro_incentivo', l:'$ Cobro Inc'},
-    {k:'cobro_cancelado', l:'$ Cobro Can'},
-    {k:'cobro_tarea',     l:'$ Cobro Tar'},
-    {k:'cobro_total',     l:'$ Cobro Total'},
-    {k:'pago_piloto',     l:'$ Pago Piloto'},
-    {k:'complemento',     l:'$ Garantizado'},
+    {k:'periodo',         l:'Semana'},
+    {k:'fecha',           l:'Fecha'},
+    {k:'dia',             l:'Día'},
+    {k:'id_piloto',       l:'ID Piloto'},
+    {k:'piloto',          l:'Piloto'},
+    {k:'ciudad',          l:'Ciudad'},
+    {k:'seller',          l:'Seller'},
+    {k:'booking_id',      l:'Booking ID'},
+    // Unidades (enteros, sin moneda)
+    {k:'paquetes',        l:'Paq',    tipo:'int'},
+    {k:'incentivos',      l:'Inc',    tipo:'int'},
+    {k:'cancelados',      l:'Can',    tipo:'int'},
+    {k:'tareas',          l:'Tar',    tipo:'int'},
+    // Cobro a TaDa
+    {k:'cobro_paquete',   l:'Cobro Paq',   tipo:'cop'},
+    {k:'cobro_incentivo', l:'Cobro Inc',   tipo:'cop'},
+    {k:'cobro_cancelado', l:'Cobro Can',   tipo:'cop'},
+    {k:'cobro_tarea',     l:'Cobro Tar',   tipo:'cop'},
+    {k:'cobro_total',     l:'Cobro Total', tipo:'cop'},
+    // Pago al piloto
+    {k:'pago_paquete',    l:'Pago Paq',    tipo:'cop'},
+    {k:'pago_incentivo',  l:'Pago Inc',    tipo:'cop'},
+    {k:'pago_cancelado',  l:'Pago Can',    tipo:'cop'},
+    {k:'pago_tarea',      l:'Pago Tar',    tipo:'cop'},
+    {k:'pago_piloto',     l:'Pago Total',  tipo:'cop'},
+    {k:'complemento',     l:'Garantizado', tipo:'cop'},
   ];
-
-  const NUM_COLS = new Set(['paquetes','incentivos','cancelados','tareas',
-    'cobro_paquete','cobro_incentivo','cobro_cancelado','cobro_tarea',
-    'cobro_total','pago_piloto','complemento']);
 
   const thStyle = 'padding:7px 10px;text-align:left;background:var(--bg3);color:var(--text2);border-bottom:1px solid var(--border);white-space:nowrap;position:sticky;top:0;z-index:1;font-weight:500;';
   const tdStyle = 'padding:6px 10px;border-bottom:1px solid var(--border);white-space:nowrap;font-size:10px;';
@@ -4307,9 +4313,17 @@ function renderTablaHistorial(registros){
   const tbody = registros.map(r=>`<tr style="cursor:default;" onmouseover="this.style.background='var(--bg3)'" onmouseout="this.style.background=''">
     ${cols.map(c=>{
       const v = r[c.k];
-      const isNum = NUM_COLS.has(c.k);
-      const fmt = isNum ? cop(Number(v)||0) : (v||'—');
-      const color = c.k==='cobro_total'?'color:var(--blue);':c.k==='pago_piloto'?'color:var(--green);':c.k==='complemento'&&Number(v)>0?'color:var(--yellow);':'';
+      let fmt, color='';
+      if(c.tipo==='int'){
+        fmt = Number(v)||0;
+      } else if(c.tipo==='cop'){
+        fmt = cop(Number(v)||0);
+        if(c.k==='cobro_total')  color='color:var(--blue);';
+        if(c.k==='pago_piloto')  color='color:var(--green);';
+        if(c.k==='complemento'&&Number(v)>0) color='color:var(--yellow);';
+      } else {
+        fmt = v||'—';
+      }
       return `<td style="${tdStyle}${color}">${fmt}</td>`;
     }).join('')}
   </tr>`).join('');
