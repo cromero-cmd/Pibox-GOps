@@ -1324,7 +1324,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 
 <script>
-const APP_VERSION='15.8';
+const APP_VERSION='15.9';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -4088,15 +4088,38 @@ async function sendPayrollReport(){
       const td=t.startTime?.toDate?.();
       return td&&d&&td.toDateString()===d.toDateString();
     });
-    const rs=turno?turno.startTime.toDate():null;
-    const re=turno?.endTime?.toDate?.();
-    const secs=rs&&re?Math.max(0,Math.round((re-rs)/1000)):null;
+    const ss=parseTime(m.fecha,m.inicio); // inicio programado
+    const se=parseTime(m.fecha,m.fin);   // fin programado
+    const rs=turno?turno.startTime.toDate():null; // inicio real
+    const re=turno?.endTime?.toDate?.();           // fin real
+
+    // Lógica de entrada para reporte
+    let reportStart=ss; // por defecto: programado
+    if(rs&&ss){
+      const diffMins=Math.round((rs-ss)/60000);
+      if(diffMins>TOLERANCE_MINS) reportStart=rs; // tardanza → usar real
+      // inicio anticipado → usar programado (ya está por defecto)
+    }
+
+    // Lógica de salida para reporte
+    let reportEnd=se; // por defecto: programado
+    if(re&&se){
+      const extrasApproved=turno?.overtimeStatus==='approved';
+      const earlyLeaveNotJustified=turno?.earlyLeave&&turno?.earlyLeaveStatus==='not_justified';
+      if(extrasApproved) reportEnd=re;           // extras aprobadas → usar real
+      if(earlyLeaveNotJustified) reportEnd=re;   // salida anticipada injustificada → usar real
+      // salida anticipada justificada → usar programado (ya está por defecto)
+    }
+
+    // Calcular horas
+    const secs=reportStart&&reportEnd?Math.max(0,Math.round((reportEnd-reportStart)/1000)):null;
+
     return{
       name:m.nombre||m.usuario?.split('@')[0]||'—',
       date:d?fmtDate(d):'—',
-      checkIn:rs?rs.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):(m.novedad?'—':'Sin registro'),
-      checkOut:re?re.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):(m.novedad?'—':'Sin registro'),
-      hours:secs?formatDuration(secs):(m.novedad?'—':'Sin registro'),
+      checkIn:m.novedad?'—':(reportStart?reportStart.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'Sin registro'),
+      checkOut:m.novedad?'—':(reportEnd?reportEnd.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'Sin registro'),
+      hours:m.novedad?'—':(secs?formatDuration(secs):'Sin registro'),
       novedad:m.novedad||'—'
     };
   }).sort((a,b)=>a.name.localeCompare(b.name)||a.date.localeCompare(b.date));
