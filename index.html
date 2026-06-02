@@ -1324,13 +1324,13 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 
 <script>
-const APP_VERSION='15.6';
+const APP_VERSION='15.8';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
 const SCRIPT_URL='https://script.google.com/macros/s/AKfycbyam6j2MG1NH11120KjvAfxU1f_z9BYh4uamQw8QgNeGsjpwoo394IeqzbDSPXSO9e5/exec';
 const MALLA_SCRIPT='https://script.google.com/macros/s/AKfycbyxBZWba6M1eXcwQUdBBUTqTrgGd8zwHiM6wwecXI3mUYOUP-RT9LnxSwqeXRy9prCm/exec';
-const NOTIF_SCRIPT='https://script.google.com/macros/s/AKfycbwEBH_KZCQxHbepxzVQU_uFre1Fm53nhQ0VThC3ioZIa9Dw_iLtAXfX0J07JOTYXcHo0Q/exec';
+const NOTIF_SCRIPT='https://script.google.com/macros/s/AKfycbw-V82cZnRpV3GKWI1ThO70PttCEf-cz8kPNZWcwZbRdR9z1pIS9H4RfWQKRZ6MFNPZ/exec';
 const TOLERANCE_MINS=5;
 
 let apiKey='',sheetUrl='',vidUrl='',faqUrl='',sysBase='Eres Pi GOps, el asistente inteligente de operaciones de Pibox. Tu rol es ayudar al equipo operativo a tomar decisiones rápidas y correctas en campo.\n\nTienes acceso a un manual de operaciones. Úsalo como tu fuente principal, pero también puedes razonar e interpretar cuando la pregunta no esté respondida textualmente.\n\nCómo debes responder:\n- Sé claro, directo y práctico. El equipo está en campo y necesita respuestas rápidas.\n- Si la respuesta está en el manual, úsala y explícala con tus propias palabras.\n- Si definitivamente no está en el manual, dilo con honestidad y sugiere a quién escalar.\n- Nunca te quedes en blanco. Siempre da una respuesta útil.\n- Habla en español colombiano, de forma cercana y profesional.',history=[],streaming=false,sheetData='',allVideos=[],activeCat='Todos',allFAQs=[],activeFAQCat='Todos';
@@ -4048,62 +4048,59 @@ async function sendPayrollReport(){
   const payrollEmails=localStorage.getItem('pg_payroll_emails')||'';
   if(!payrollEmails){toast('Configura los correos de nómina primero ⚙');openConfig();return;}
   const recipients=payrollEmails.split(',').map(e=>e.trim()).filter(Boolean);
-  // Get last week dates
   const now=new Date();
   const lastMonday=new Date(now);lastMonday.setDate(now.getDate()-now.getDay()-6);lastMonday.setHours(0,0,0,0);
   const lastSunday=new Date(lastMonday);lastSunday.setDate(lastMonday.getDate()+6);lastSunday.setHours(23,59,59);
-  const fmtDate=d=>d.toLocaleDateString('es-CO',{day:'2-digit',month:'long',year:'numeric'});
+  const fmtDate=d=>{
+    const dd=String(d.getDate()).padStart(2,'0');
+    const meses=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+    const mm=meses[d.getMonth()];
+    const yyyy=d.getFullYear();
+    return`${dd}-${mm}-${yyyy}`;
+  };
   const weekStart=fmtDate(lastMonday);
   const weekEnd=fmtDate(lastSunday);
   toast('Generando reporte...');
-  // Get all turnos from last week
-  const allTurnos=await window.getRecentTurnos();
-  const weekTurnos=allTurnos.filter(t=>{
-    const s=t.startTime?.toDate?.();
-    return s&&s>=lastMonday&&s<=lastSunday&&t.status==='ended';
-  });
-  // Get malla for names/novedades
+
+  // Cargar malla completa de la semana anterior
   let mallaData=[];
   try{
-    const resp=await fetch(MALLA_SCRIPT+'?sheet=Malla',{signal:AbortSignal.timeout(8000)});
+    const resp=await fetch(MALLA_SCRIPT+'?sheet=Malla',{signal:AbortSignal.timeout(10000)});
     const csv=await resp.text();
-    mallaData=csv.trim().split('\n').slice(1).map(l=>{const c=parseCSVLine(l);return{fecha:c[1]?.trim(),usuario:c[2]?.trim(),nombre:c[3]?.trim(),lider:c[9]?.trim(),novedad:c[10]?.trim()};});
-  }catch(e){}
-  const adminEmails=new Set([...(window.ADMINS||ADMINS),SUPER_ADMIN]);
-  const records=weekTurnos.filter(t=>!adminEmails.has(t.userEmail)).map(t=>{
-    const start=t.startTime?.toDate?.();const end=t.endTime?.toDate?.();
-    const mallaEntry=mallaData.find(m=>{
-      const md=parseDate(m.fecha);return md&&start&&md.toDateString()===start.toDateString()&&m.usuario===t.userEmail;
+    mallaData=csv.trim().split('\n').slice(1).map(l=>{
+      const c=parseCSVLine(l);
+      return{fecha:c[1]?.trim(),usuario:c[2]?.trim(),nombre:c[3]?.trim(),inicio:c[5]?.trim(),fin:c[6]?.trim(),lider:c[9]?.trim(),novedad:c[10]?.trim()};
+    }).filter(m=>{
+      if(!m.fecha||!m.usuario)return false;
+      const d=parseDate(m.fecha);
+      return d&&d>=lastMonday&&d<=lastSunday;
     });
-    // Use scheduled end if extras were rejected or pending
-    const extrasApproved=t.overtimeStatus==='approved';
-    const hasExtras=t.overtimeStatus&&t.overtimeStatus!=='approved';
-    let reportEnd=end;
-    if(hasExtras&&mallaEntry){
-      const scheduledEnd=parseTime(mallaEntry.fecha,mallaEntry.fin);
-      if(scheduledEnd){
-        // Handle overnight
-        if(start&&scheduledEnd<start) scheduledEnd.setDate(scheduledEnd.getDate()+1);
-        reportEnd=scheduledEnd;
-      }
-    }
-    const scheduledSecs=mallaEntry?(()=>{
-      const ss=parseTime(mallaEntry.fecha,mallaEntry.inicio);
-      let se=parseTime(mallaEntry.fecha,mallaEntry.fin);
-      if(ss&&se&&se<ss)se.setDate(se.getDate()+1);
-      return ss&&se?Math.round((se-ss)/1000):null;
-    })():null;
-    const reportSecs=hasExtras&&scheduledSecs?scheduledSecs:t.accumulatedSeconds;
+  }catch(e){}
+
+  const allTurnos=await window.getRecentTurnos();
+  const adminEmails=new Set([...(window.ADMINS||ADMINS),SUPER_ADMIN]);
+
+  // Cruzar cada fila de malla con turno real
+  const records=mallaData.filter(m=>!adminEmails.has(m.usuario)).map(m=>{
+    const d=parseDate(m.fecha);
+    const turno=allTurnos.find(t=>{
+      if(t.userEmail!==m.usuario)return false;
+      const td=t.startTime?.toDate?.();
+      return td&&d&&td.toDateString()===d.toDateString();
+    });
+    const rs=turno?turno.startTime.toDate():null;
+    const re=turno?.endTime?.toDate?.();
+    const secs=rs&&re?Math.max(0,Math.round((re-rs)/1000)):null;
     return{
-      name:mallaEntry?.nombre||t.userName||t.userEmail?.split('@')[0]||'—',
-      date:start?start.toLocaleDateString('es-CO',{weekday:'short',day:'2-digit',month:'short'}):'—',
-      checkIn:start?start.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—',
-      checkOut:reportEnd?reportEnd.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—',
-      hours:reportSecs?formatDuration(reportSecs):'—',
-      novedad:mallaEntry?.novedad||'—',
-      extras:t.earlyLeave?(t.earlyLeaveStatus==='justified'?'🏁 Salida justificada':t.earlyLeaveStatus==='not_justified'?'❌ Salida no justificada':'🏁 Salida anticipada pendiente'):(t.overtimeStatus?({approved:'✅ Aprobada',rejected:'❌ Rechazada',pending_review:'⏳ Pendiente',pending_super_admin:'⏳ En revisión'}[t.overtimeStatus]||'—'):'—')
+      name:m.nombre||m.usuario?.split('@')[0]||'—',
+      date:d?fmtDate(d):'—',
+      checkIn:rs?rs.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):(m.novedad?'—':'Sin registro'),
+      checkOut:re?re.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):(m.novedad?'—':'Sin registro'),
+      hours:secs?formatDuration(secs):(m.novedad?'—':'Sin registro'),
+      novedad:m.novedad||'—'
     };
-  }).sort((a,b)=>a.name.localeCompare(b.name));
+  }).sort((a,b)=>a.name.localeCompare(b.name)||a.date.localeCompare(b.date));
+
   if(!records.length){toast('Sin registros para la semana anterior');return;}
   try{
     const payload=JSON.stringify({weekStart,weekEnd,records,recipients});
