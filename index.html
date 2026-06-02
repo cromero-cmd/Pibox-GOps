@@ -1324,13 +1324,13 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 
 <script>
-const APP_VERSION='15.9';
+const APP_VERSION='15.12';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
 const SCRIPT_URL='https://script.google.com/macros/s/AKfycbyam6j2MG1NH11120KjvAfxU1f_z9BYh4uamQw8QgNeGsjpwoo394IeqzbDSPXSO9e5/exec';
 const MALLA_SCRIPT='https://script.google.com/macros/s/AKfycbyxBZWba6M1eXcwQUdBBUTqTrgGd8zwHiM6wwecXI3mUYOUP-RT9LnxSwqeXRy9prCm/exec';
-const NOTIF_SCRIPT='https://script.google.com/macros/s/AKfycbw-V82cZnRpV3GKWI1ThO70PttCEf-cz8kPNZWcwZbRdR9z1pIS9H4RfWQKRZ6MFNPZ/exec';
+const NOTIF_SCRIPT='https://script.google.com/macros/s/AKfycbysTglUcw0fcTjOBcelNrd8FT8eURs4AWP5IUj0O8t1vcmIXe9ldJ5jTVwihHkZodErwg/exec';
 const TOLERANCE_MINS=5;
 
 let apiKey='',sheetUrl='',vidUrl='',faqUrl='',sysBase='Eres Pi GOps, el asistente inteligente de operaciones de Pibox. Tu rol es ayudar al equipo operativo a tomar decisiones rápidas y correctas en campo.\n\nTienes acceso a un manual de operaciones. Úsalo como tu fuente principal, pero también puedes razonar e interpretar cuando la pregunta no esté respondida textualmente.\n\nCómo debes responder:\n- Sé claro, directo y práctico. El equipo está en campo y necesita respuestas rápidas.\n- Si la respuesta está en el manual, úsala y explícala con tus propias palabras.\n- Si definitivamente no está en el manual, dilo con honestidad y sugiere a quién escalar.\n- Nunca te quedes en blanco. Siempre da una respuesta útil.\n- Habla en español colombiano, de forma cercana y profesional.',history=[],streaming=false,sheetData='',allVideos=[],activeCat='Todos',allFAQs=[],activeFAQCat='Todos';
@@ -4069,7 +4069,7 @@ async function sendPayrollReport(){
     const csv=await resp.text();
     mallaData=csv.trim().split('\n').slice(1).map(l=>{
       const c=parseCSVLine(l);
-      return{fecha:c[1]?.trim(),usuario:c[2]?.trim(),nombre:c[3]?.trim(),inicio:c[5]?.trim(),fin:c[6]?.trim(),lider:c[9]?.trim(),novedad:c[10]?.trim()};
+      return{fecha:c[1]?.trim(),usuario:c[2]?.trim(),nombre:c[3]?.trim(),inicio:c[5]?.trim(),fin:c[6]?.trim(),lider:c[9]?.trim(),novedad:c[10]?.trim(),almuerzo:c[12]?.trim()};
     }).filter(m=>{
       if(!m.fecha||!m.usuario)return false;
       const d=parseDate(m.fecha);
@@ -4111,22 +4111,33 @@ async function sendPayrollReport(){
       // salida anticipada justificada → usar programado (ya está por defecto)
     }
 
-    // Calcular horas
-    const secs=reportStart&&reportEnd?Math.max(0,Math.round((reportEnd-reportStart)/1000)):null;
+    // Calcular horas descontando almuerzo
+    const almuerzHrs=parseFloat(m.almuerzo||'0')||0;
+    const almuerzSecs=almuerzHrs*3600;
+    const secs=reportStart&&reportEnd?Math.max(0,Math.round((reportEnd-reportStart)/1000)-almuerzSecs):null;
 
     return{
       name:m.nombre||m.usuario?.split('@')[0]||'—',
+      email:m.usuario||'',
       date:d?fmtDate(d):'—',
       checkIn:m.novedad?'—':(reportStart?reportStart.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'Sin registro'),
       checkOut:m.novedad?'—':(reportEnd?reportEnd.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'Sin registro'),
+      almuerzo:m.novedad?'—':(almuerzHrs>0?almuerzHrs+'h':'—'),
       hours:m.novedad?'—':(secs?formatDuration(secs):'Sin registro'),
       novedad:m.novedad||'—'
     };
   }).sort((a,b)=>a.name.localeCompare(b.name)||a.date.localeCompare(b.date));
 
+  // Calcular extras aprobadas por agente para el resumen
+  const extrasByAgent={};
+  allTurnos.filter(t=>t.overtimeStatus==='approved'&&t.startTime?.toDate?.()>=lastMonday&&t.startTime?.toDate?.()<=lastSunday).forEach(t=>{
+    const u=t.userEmail||'';
+    extrasByAgent[u]=(extrasByAgent[u]||0)+(t.overtimeMinutes||0);
+  });
+
   if(!records.length){toast('Sin registros para la semana anterior');return;}
   try{
-    const payload=JSON.stringify({weekStart,weekEnd,records,recipients});
+    const payload=JSON.stringify({weekStart,weekEnd,records,recipients,extrasByAgent});
     await fetch(NOTIF_SCRIPT+'?type=payroll_report',{
       method:'POST',
       mode:'no-cors',
