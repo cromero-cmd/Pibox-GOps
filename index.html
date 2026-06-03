@@ -1324,7 +1324,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 
 <script>
-const APP_VERSION='15.14';
+const APP_VERSION='15.15';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -4111,10 +4111,13 @@ async function sendPayrollReport(){
       // salida anticipada justificada → usar programado (ya está por defecto)
     }
 
-    // Calcular horas descontando almuerzo
+    // Calcular horas descontando almuerzo — corregir si cruza medianoche
     const almuerzHrs=parseFloat(m.almuerzo||'0')||0;
     const almuerzSecs=almuerzHrs*3600;
-    const secs=reportStart&&reportEnd?Math.max(0,Math.round((reportEnd-reportStart)/1000)-almuerzSecs):null;
+    let diffSecs=reportStart&&reportEnd?Math.round((reportEnd-reportStart)/1000):null;
+    // Si cruza medianoche, sumar 24h
+    if(diffSecs!==null&&diffSecs<0) diffSecs+=86400;
+    const secs=diffSecs!==null?Math.max(0,diffSecs-almuerzSecs):null;
 
     return{
       name:m.nombre||m.usuario?.split('@')[0]||'—',
