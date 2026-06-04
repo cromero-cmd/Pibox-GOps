@@ -1099,15 +1099,64 @@ function renderTariffPanel(){
   };
 
   const mkFechasPico = () => {
-    const s = TARIFF_SCHEMA.find(x=>x.key==='fechas_pico_especiales');
-    const val = currentEdits[s.key] ?? '';
+    // Cargar fechas especiales desde tariff store
+    let fechasEspeciales = [];
+    try {
+      fechasEspeciales = JSON.parse(currentEdits['fechas_especiales'] || tariffStore.fechas_especiales || '[]');
+    } catch { fechasEspeciales = []; }
+
+    const rows = fechasEspeciales.map((f,i) => `
+      <tr id="fila-fe-${i}">
+        <td style="padding:5px 8px;">
+          <input class="dict-input" style="width:120px;" value="${f.fecha||''}"
+            placeholder="YYYY-MM-DD"
+            oninput="updateFechaEspecial(${i},'fecha',this.value)"/>
+        </td>
+        <td style="padding:5px 8px;">
+          <select class="dict-input" style="width:120px;"
+            onchange="updateFechaEspecial(${i},'tipo',this.value)">
+            <option value="pico" ${f.tipo==='pico'?'selected':''}>Pico (V-D)</option>
+            <option value="superpico" ${f.tipo==='superpico'?'selected':''}>Super pico</option>
+          </select>
+        </td>
+        <td style="padding:5px 8px;">
+          <input class="dict-input" style="width:110px;" type="number"
+            value="${f.tarifa_custom||''}"
+            placeholder="Ej: 100000"
+            oninput="updateFechaEspecial(${i},'tarifa_custom',parseFloat(this.value)||0)"
+            ${f.tipo!=='superpico'?'disabled style="opacity:.4;width:110px;"':''}/>
+        </td>
+        <td style="padding:5px 8px;">
+          <button class="btn btn-sm btn-danger" onclick="removeFechaEspecial(${i})">✕</button>
+        </td>
+      </tr>`).join('');
+
     return `<div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:10px;">
-      <div style="font-size:10px;font-family:var(--mono);color:var(--yellow);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;">Fechas pico especiales (festivos L-J liquidados como V-D)</div>
-      <input type="text" value="${val}"
-        placeholder="Ej: 2026-06-09, 2026-08-07, 2026-11-02"
-        style="width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:6px;padding:8px 10px;color:var(--text);font-family:var(--mono);font-size:12px;"
-        oninput="currentEdits['fechas_pico_especiales']=this.value"/>
-      <div style="font-size:10px;color:var(--text3);margin-top:5px;">Formato YYYY-MM-DD · Una o varias fechas separadas por coma · El sistema aplicará tarifa V-D en esos días sin importar el día de la semana.</div>
+      <div style="font-size:10px;font-family:var(--mono);color:var(--yellow);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px;">
+        Fechas especiales · Pico y Super pico
+      </div>
+      <div style="overflow:hidden;border-radius:6px;border:1px solid var(--border);margin-bottom:8px;">
+        <table style="width:100%;border-collapse:collapse;font-family:var(--mono);font-size:11px;">
+          <thead>
+            <tr style="background:var(--bg3);">
+              <th style="padding:6px 8px;text-align:left;color:var(--text2);border-bottom:1px solid var(--border);">Fecha</th>
+              <th style="padding:6px 8px;text-align:left;color:var(--text2);border-bottom:1px solid var(--border);">Tipo</th>
+              <th style="padding:6px 8px;text-align:left;color:var(--text2);border-bottom:1px solid var(--border);">Tarifa piloto neta</th>
+              <th style="padding:6px 8px;border-bottom:1px solid var(--border);"></th>
+            </tr>
+          </thead>
+          <tbody id="tbody-fechas-especiales">
+            ${rows || `<tr><td colspan="4" style="padding:10px 8px;color:var(--text3);font-family:var(--mono);font-size:11px;">Sin fechas especiales configuradas</td></tr>`}
+          </tbody>
+        </table>
+      </div>
+      <button class="btn btn-sm" onclick="addFechaEspecial()"
+        style="background:var(--yellowBg);border-color:var(--yellowBorder);color:var(--yellow);">
+        + Agregar fecha
+      </button>
+      <div style="font-size:10px;color:var(--text3);margin-top:8px;font-family:var(--mono);">
+        Pico → liquida L-J como V-D · Super pico → tarifa custom neta al piloto (se hará gross up para cobro)
+      </div>
     </div>`;
   };
 
@@ -2664,13 +2713,18 @@ function runTrump(){
     const DIAS_VD_SET = new Set(['viernes','sabado','sábado','domingo','friday','saturday','sunday']);
     const DIAS_LJ_SET = new Set(['lunes','martes','miercoles','miércoles','jueves','monday','tuesday','wednesday','thursday']);
 
-    // Fechas pico especiales — festivos L-J que se liquidan como V-D
-    const fechasPicoRaw = String(t.fechas_pico_especiales||'');
-    const todasFechasPico = fechasPicoRaw.split(',')
-      .map(f=>f.trim())
-      .filter(f=>/^\d{4}-\d{2}-\d{2}$/.test(f));
+    // Fechas especiales — pico y super pico
+    let fechasEspeciales = [];
+    try{ fechasEspeciales = JSON.parse(t.fechas_especiales||'[]'); }catch{}
 
-    // Detectar rango de fechas de la malla cargada
+    // Compatibilidad con formato anterior (campo fechas_pico_especiales de texto)
+    if(fechasEspeciales.length===0 && t.fechas_pico_especiales){
+      const viejas = String(t.fechas_pico_especiales).split(',')
+        .map(f=>f.trim()).filter(f=>/^\d{4}-\d{2}-\d{2}$/.test(f));
+      fechasEspeciales = viejas.map(f=>({fecha:f, tipo:'pico', tarifa_custom:0}));
+    }
+
+    // Filtrar por rango de malla
     const mFKeyT = Object.keys(mallaRaw[0]||{}).find(k=>/^fecha$/i.test(k.trim()))||'FECHA';
     const fechasMalla = mallaRaw
       .map(r=>String(r[mFKeyT]||'').trim())
@@ -2679,22 +2733,26 @@ function runTrump(){
     const mallaMin = fechasMalla[0]||'';
     const mallaMax = fechasMalla[fechasMalla.length-1]||'';
 
-    // Filtrar: solo fechas pico dentro del rango de la malla actual
-    const fechasPicoSet = new Set(
-      todasFechasPico.filter(f=>f>=mallaMin && f<=mallaMax)
-    );
-    const fechasPicoIgnoradas = todasFechasPico.filter(f=>!fechasPicoSet.has(f));
+    const fechasEspMap = {}; // fecha → {tipo, tarifa_custom}
+    const fechasIgnoradas = [];
+    fechasEspeciales.forEach(fe=>{
+      const f = String(fe.fecha||'').trim();
+      if(!/^\d{4}-\d{2}-\d{2}$/.test(f)){ return; }
+      if(f>=mallaMin && f<=mallaMax) fechasEspMap[f] = fe;
+      else fechasIgnoradas.push(f);
+    });
 
-    if(fechasPicoSet.size>0)
-      addLog('log-trump',`[INFO] Fechas pico especiales aplicadas (${fechasPicoSet.size}): ${[...fechasPicoSet].join(' · ')}`,'ok');
-    if(fechasPicoIgnoradas.length>0)
-      addLog('log-trump',`[INFO] Fechas pico fuera del rango de esta malla (${mallaMin} → ${mallaMax}) — ignoradas: ${fechasPicoIgnoradas.join(' · ')}`,'info');
+    const nEsp = Object.keys(fechasEspMap).length;
+    if(nEsp>0)
+      addLog('log-trump',`[INFO] Fechas especiales aplicadas (${nEsp}): ${Object.entries(fechasEspMap).map(([f,fe])=>`${f}(${fe.tipo}${fe.tarifa_custom?'/'+fe.tarifa_custom:''})`).join(' · ')}`,'ok');
+    if(fechasIgnoradas.length>0)
+      addLog('log-trump',`[INFO] Fechas especiales fuera del rango (${mallaMin} → ${mallaMax}) — ignoradas: ${fechasIgnoradas.join(' · ')}`,'info');
 
     function esDiaLJ(r){
       const fechaRef = String(r.fecha_malla||r.fecha||'').trim();
 
-      // Prioridad 0: fecha pico especial → siempre V-D
-      if(fechasPicoSet.has(fechaRef)) return false;
+      // Prioridad 0: fecha especial → siempre V-D (pico o super pico)
+      if(fechasEspMap[fechaRef]) return false;
 
       // Prioridad 1: nombre del día directo de la malla (más confiable)
       if(r.dia_malla){
@@ -2756,13 +2814,16 @@ function runTrump(){
                     + r.cancelados_dist * cCan;
 
       // ── Garantizado ───────────────────────────────────────
-      // Lógica de COMPLETAR, no de SUMAR:
-      // - Piloto: si ingresoNeto < mínimo → se completa hasta el mínimo
-      // - Cliente: si cobroOp < tarifa_garantizado → se cobra la tarifa fija
-      //   (la tarifa garantizado REEMPLAZA el cobro operativo, no se suma)
-      // - Si el piloto ya superó el mínimo → no aplica garantizado en ningún lado
-      const minimoNeto  = lj ? pMinLJ : pMinVD;
-      const tarifaGarCl = lj ? cGarLJ : cGarVD;
+      // Para fechas super pico con tarifa custom, se usa esa tarifa como mínimo
+      const fechaRef    = String(r.fecha_malla||r.fecha||'').trim();
+      const feEsp       = fechasEspMap[fechaRef];
+      const tarifaCustom = feEsp && feEsp.tipo==='superpico' && feEsp.tarifa_custom > 0
+                           ? feEsp.tarifa_custom : 0;
+
+      const minimoNeto  = tarifaCustom > 0 ? tarifaCustom : (lj ? pMinLJ : pMinVD);
+      const tarifaGarCl = tarifaCustom > 0
+                           ? Math.ceil(tarifaCustom / (1-pctMarg) / (1-pctPlat))
+                           : (lj ? cGarLJ : cGarVD);
 
       let complementoPiloto = 0;
       let cobroGarantizado  = 0;
@@ -4380,6 +4441,36 @@ function exportarHistorial(){
   XLSX.utils.book_append_sheet(wb, ws, 'Historial');
   XLSX.writeFile(wb, `Historial_Pibox_${new Date().toISOString().slice(0,10)}.xlsx`);
   toast('✓ Historial exportado');
+}
+
+function getFechasEspeciales(){
+  try{ return JSON.parse(tariffStore.fechas_especiales||'[]'); }catch{ return []; }
+}
+function saveFechasEspeciales(arr){
+  tariffStore.fechas_especiales = JSON.stringify(arr);
+  currentEdits['fechas_especiales'] = JSON.stringify(arr);
+}
+function addFechaEspecial(){
+  const arr = getFechasEspeciales();
+  arr.push({fecha:'', tipo:'pico', tarifa_custom:0});
+  saveFechasEspeciales(arr);
+  renderTariffPanel();
+}
+function removeFechaEspecial(i){
+  const arr = getFechasEspeciales();
+  arr.splice(i,1);
+  saveFechasEspeciales(arr);
+  renderTariffPanel();
+}
+function updateFechaEspecial(i, key, val){
+  const arr = getFechasEspeciales();
+  if(!arr[i]) return;
+  arr[i][key] = val;
+  // Si cambia a pico, limpiar tarifa_custom
+  if(key==='tipo' && val==='pico') arr[i].tarifa_custom = 0;
+  saveFechasEspeciales(arr);
+  // Re-render solo si cambió el tipo (para habilitar/deshabilitar el input)
+  if(key==='tipo') renderTariffPanel();
 }
 
 // BOOT
