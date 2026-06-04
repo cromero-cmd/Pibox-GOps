@@ -4070,8 +4070,36 @@ async function ejecutarGuardarHistorial(){
     const inc  = r._incentivos || 0;
     const can  = r._cancelados || 0;
     const tar  = r._tareas     || 0;
-    const cobroTotal = r.COMPANY_FINAL_COST + r.ADDITIONAL_COMPANY_FINAL_COST;
-    const pagoTotal  = r.FINAL_COST + r.ADDITIONAL_FINAL_COST;
+    const bono = r.bonos       || 0;
+
+    // Cobros (tarifas fijas × unidades)
+    const cobroPaqVal = paq * cPaq;
+    const cobroIncVal = inc * cInc;
+    const cobroCanVal = can * cCan;
+    const cobroTarVal = tar * cTar;
+    const productivoCobro = cobroPaqVal + cobroIncVal + cobroCanVal;
+    const minimoCobroVD = t.c_garantizado_vd ?? 97200;
+    const minimoCobroLJ = t.c_garantizado_lj ?? 85050;
+    const diasVD = new Set(['Viernes','Sabado','Domingo']);
+    const esVD   = diasVD.has(r._dia || '');
+    const minimoC = esVD ? minimoCobroVD : minimoCobroLJ;
+    const cobroGarVal = Math.max(0, minimoC - productivoCobro);
+    const cobroBonoVal = bono > 0 ? Math.round(bono / (1 - 0.03) / (1 - 0.15)) : 0;
+    const cobroTotVal = productivoCobro + cobroTarVal + cobroGarVal + cobroBonoVal;
+
+    // Pagos (tarifas netas × unidades)
+    const pagoPaqVal = paq * pPaq;
+    const pagoIncVal = inc * pInc;
+    const pagoCanVal = can * pCan;
+    const pagoTarVal = tar * pTar;
+    const productivoPago = pagoPaqVal + pagoIncVal + pagoCanVal;
+    const minimoPageVD = t.p_garantizado_vd ?? 80000;
+    const minimoPageLJ = t.p_garantizado_lj ?? 70000;
+    const minimoP = esVD ? minimoPageVD : minimoPageLJ;
+    const pagoGarVal  = Math.max(0, minimoP - productivoPago);
+    const pagoBonoVal = bono;
+    const pagoPilVal  = productivoPago + pagoTarVal + pagoGarVal + pagoBonoVal;
+
     return {
       id_piloto:          r._driver_id || '',
       piloto:             r._piloto    || '',
@@ -4084,17 +4112,20 @@ async function ejecutarGuardarHistorial(){
       incentivos:         inc,
       cancelados:         can,
       tareas:             tar,
-      cobro_paquete:      paq * cPaq,
-      cobro_incentivo:    inc * cInc,
-      cobro_cancelado:    can * cCan,
-      cobro_tarea:        tar * cTar,
-      cobro_total:        cobroTotal,
-      pago_paquete:       paq * pPaq,
-      pago_incentivo:     inc * pInc,
-      pago_cancelado:     can * pCan,
-      pago_tarea:         tar * pTar,
-      pago_piloto:        pagoTotal,
-      complemento:        r._complemento || 0,  // valor ya calculado en runTrump
+      cobro_paquete:      cobroPaqVal,
+      cobro_incentivo:    cobroIncVal,
+      cobro_cancelado:    cobroCanVal,
+      cobro_tarea:        cobroTarVal,
+      cobro_garantizado:  cobroGarVal,
+      cobro_bono:         cobroBonoVal,
+      cobro_total:        cobroTotVal,
+      pago_paquete:       pagoPaqVal,
+      pago_incentivo:     pagoIncVal,
+      pago_cancelado:     pagoCanVal,
+      pago_tarea:         pagoTarVal,
+      pago_garantizado:   pagoGarVal,
+      pago_bono:          pagoBonoVal,
+      pago_piloto:        pagoPilVal,
     };
   });
 
@@ -4254,12 +4285,12 @@ function renderTablaHistorial(registros){
   if(label) label.textContent = `${registros.length.toLocaleString('es-CO')} registros`;
 
   // Totales
-  const totPaq  = registros.reduce((a,r)=>a+(Number(r.paquetes)||0),0);
-  const totInc  = registros.reduce((a,r)=>a+(Number(r.incentivos)||0),0);
-  const totCan  = registros.reduce((a,r)=>a+(Number(r.cancelados)||0),0);
-  const totCobro= registros.reduce((a,r)=>a+(Number(r.cobro_total)||0),0);
-  const totPago = registros.reduce((a,r)=>a+(Number(r.pago_piloto)||0),0);
-  const totComp = registros.reduce((a,r)=>a+(Number(r.complemento)||0),0);
+  const totPaq   = registros.reduce((a,r)=>a+(Number(r.paquetes)||0),0);
+  const totInc   = registros.reduce((a,r)=>a+(Number(r.incentivos)||0),0);
+  const totCan   = registros.reduce((a,r)=>a+(Number(r.cancelados)||0),0);
+  const totCobro = registros.reduce((a,r)=>a+(Number(r.cobro_total)||0),0);
+  const totPago  = registros.reduce((a,r)=>a+(Number(r.pago_piloto)||0),0);
+  const totComp  = registros.reduce((a,r)=>a+(Number(r.pago_garantizado)||0),0);
 
   const totEl = document.getElementById('hist-totales');
   if(totEl) totEl.innerHTML = `
@@ -4278,32 +4309,32 @@ function renderTablaHistorial(registros){
   }
 
   const cols = [
-    {k:'periodo',         l:'Semana'},
-    {k:'fecha',           l:'Fecha'},
-    {k:'dia',             l:'Día'},
-    {k:'id_piloto',       l:'ID Piloto'},
-    {k:'piloto',          l:'Piloto'},
-    {k:'ciudad',          l:'Ciudad'},
-    {k:'seller',          l:'Seller'},
-    {k:'booking_id',      l:'Booking ID'},
-    // Unidades (enteros, sin moneda)
-    {k:'paquetes',        l:'Paq',    tipo:'int'},
-    {k:'incentivos',      l:'Inc',    tipo:'int'},
-    {k:'cancelados',      l:'Can',    tipo:'int'},
-    {k:'tareas',          l:'Tar',    tipo:'int'},
-    // Cobro a TaDa
-    {k:'cobro_paquete',   l:'Cobro Paq',   tipo:'cop'},
-    {k:'cobro_incentivo', l:'Cobro Inc',   tipo:'cop'},
-    {k:'cobro_cancelado', l:'Cobro Can',   tipo:'cop'},
-    {k:'cobro_tarea',     l:'Cobro Tar',   tipo:'cop'},
-    {k:'cobro_total',     l:'Cobro Total', tipo:'cop'},
-    // Pago al piloto
-    {k:'pago_paquete',    l:'Pago Paq',    tipo:'cop'},
-    {k:'pago_incentivo',  l:'Pago Inc',    tipo:'cop'},
-    {k:'pago_cancelado',  l:'Pago Can',    tipo:'cop'},
-    {k:'pago_tarea',      l:'Pago Tar',    tipo:'cop'},
-    {k:'pago_piloto',     l:'Pago Total',  tipo:'cop'},
-    {k:'complemento',     l:'Garantizado', tipo:'cop'},
+    {k:'periodo',           l:'Semana'},
+    {k:'fecha',             l:'Fecha'},
+    {k:'dia',               l:'Día'},
+    {k:'id_piloto',         l:'ID Piloto'},
+    {k:'piloto',            l:'Piloto'},
+    {k:'ciudad',            l:'Ciudad'},
+    {k:'seller',            l:'Seller'},
+    {k:'booking_id',        l:'Booking ID'},
+    {k:'paquetes',          l:'Paq',              tipo:'int'},
+    {k:'incentivos',        l:'Inc',              tipo:'int'},
+    {k:'cancelados',        l:'Can',              tipo:'int'},
+    {k:'tareas',            l:'Tar',              tipo:'int'},
+    {k:'cobro_paquete',     l:'Cobro Paq',        tipo:'cop'},
+    {k:'cobro_incentivo',   l:'Cobro Inc',        tipo:'cop'},
+    {k:'cobro_cancelado',   l:'Cobro Can',        tipo:'cop'},
+    {k:'cobro_tarea',       l:'Cobro Tar',        tipo:'cop'},
+    {k:'cobro_garantizado', l:'Cobro Garantizado',tipo:'cop'},
+    {k:'cobro_bono',        l:'Cobro Bono',       tipo:'cop'},
+    {k:'cobro_total',       l:'Cobro Total',      tipo:'cop'},
+    {k:'pago_paquete',      l:'Pago Paq',         tipo:'cop'},
+    {k:'pago_incentivo',    l:'Pago Inc',         tipo:'cop'},
+    {k:'pago_cancelado',    l:'Pago Can',         tipo:'cop'},
+    {k:'pago_tarea',        l:'Pago Tar',         tipo:'cop'},
+    {k:'pago_garantizado',  l:'Pago Garantizado', tipo:'cop'},
+    {k:'pago_bono',         l:'Pago Bono',        tipo:'cop'},
+    {k:'pago_piloto',       l:'Pago Total',       tipo:'cop'},
   ];
 
   const thStyle = 'padding:7px 10px;text-align:left;background:var(--bg3);color:var(--text2);border-bottom:1px solid var(--border);white-space:nowrap;position:sticky;top:0;z-index:1;font-weight:500;';
@@ -4318,9 +4349,12 @@ function renderTablaHistorial(registros){
         fmt = Number(v)||0;
       } else if(c.tipo==='cop'){
         fmt = cop(Number(v)||0);
-        if(c.k==='cobro_total')  color='color:var(--blue);';
-        if(c.k==='pago_piloto')  color='color:var(--green);';
-        if(c.k==='complemento'&&Number(v)>0) color='color:var(--yellow);';
+        if(c.k==='cobro_total')        color='color:var(--blue);';
+        if(c.k==='pago_piloto')        color='color:var(--green);';
+        if(c.k==='cobro_garantizado'&&Number(v)>0) color='color:var(--blue);opacity:.7;';
+        if(c.k==='pago_garantizado'&&Number(v)>0)  color='color:var(--yellow);';
+        if(c.k==='cobro_bono'&&Number(v)>0)        color='color:var(--purple);';
+        if(c.k==='pago_bono'&&Number(v)>0)         color='color:var(--purple);';
       } else {
         fmt = v||'—';
       }
