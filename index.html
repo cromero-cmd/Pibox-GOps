@@ -1324,7 +1324,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 
 <script>
-const APP_VERSION='15.19';
+const APP_VERSION='15.20';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -4186,7 +4186,7 @@ function editPayrollCell(td, rowIdx, field){
     // Actualizar celda de horas en la fila
     if(tr){const cells=tr.querySelectorAll('td');if(cells[5])cells[5].textContent=row.hours;}
   };
-  const save=()=>{
+  const save=async ()=>{
     const val=input.value.trim()||'—';
     window._payrollPreviewRecords[rowIdx][field]=val;
     td.textContent=val;
@@ -4196,8 +4196,21 @@ function editPayrollCell(td, rowIdx, field){
     if(['checkIn','checkOut','almuerzo'].includes(field)){
       recalcHours(window._payrollPreviewRecords[rowIdx],td.closest('tr'));
     }
+    // Actualizar Firestore si hay turnoId
+    const row=window._payrollPreviewRecords[rowIdx];
+    if(row.turnoId&&['checkIn','checkOut'].includes(field)){
+      try{
+        const fecha=row.date; // DD-MMM-YYYY
+        const updates={editedBy:'payroll-preview',editedAt:new Date().toISOString(),editReason:'Corrección prenómina'};
+        if(field==='checkIn'){const t=parseTime(fecha,val);if(t)updates.startTime=t;}
+        if(field==='checkOut'){const t=parseTime(fecha,val);if(t){updates.endTime=t;updates.status='ended';}}
+        if(updates.startTime&&updates.endTime)updates.accumulatedSeconds=Math.max(0,Math.round((updates.endTime-updates.startTime)/1000));
+        await window.updateTurnoInFirebase(row.turnoId,updates);
+        td.style.outline='2px solid #4ade80';setTimeout(()=>td.style.outline='',1500);
+      }catch(e){td.style.outline='2px solid #f87171';setTimeout(()=>td.style.outline='',1500);}
+    }
   };
-  input.onblur=save;
+  input.onblur=()=>save();
   input.onkeydown=e=>{if(e.key==='Enter')input.blur();if(e.key==='Escape'){td.textContent=current;input.remove();}};
 }
 
@@ -4305,6 +4318,7 @@ async function sendPayrollReport(){
     return{
       name:m.nombre||m.usuario?.split('@')[0]||'—',
       email:m.usuario||'',
+      turnoId:turno?.id||null,
       date:d?fmtDate(d):'—',
       checkIn:m.novedad?'—':(reportStart?reportStart.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'Sin registro'),
       checkOut:m.novedad?'—':(reportEnd?reportEnd.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'Sin registro'),
