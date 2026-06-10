@@ -1324,7 +1324,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 
 <script>
-const APP_VERSION='15.17';
+const APP_VERSION='15.18';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -4158,8 +4158,21 @@ function editPayrollCell(td, rowIdx, field){
   input.focus();
   input.select();
   const recalcHours=(row,tr)=>{
-    // Recalcular horas trabajadas desde entrada, salida y almuerzo
-    const toMins=t=>{if(!t||t==='00:00'||t==='—')return null;const p=t.split(':');if(p.length<2)return null;return parseInt(p[0])*60+parseInt(p[1]);};
+    const toMins=t=>{
+      if(!t||t==='00:00'||t==='—')return null;
+      // Normalizar formato: "09:00 a.m." → 540, "05:00 p.m." → 1020
+      const str=t.toLowerCase().replace(/\./g,'').trim();
+      const isPM=str.includes('pm');
+      const isAM=str.includes('am');
+      const cleaned=str.replace(/[ap]m/,'').trim();
+      const parts=cleaned.split(':');
+      if(parts.length<2)return null;
+      let h=parseInt(parts[0]),m=parseInt(parts[1]);
+      if(isNaN(h)||isNaN(m))return null;
+      if(isPM&&h!==12)h+=12;
+      if(isAM&&h===12)h=0;
+      return h*60+m;
+    };
     const startMins=toMins(row.checkIn);
     const endMins=toMins(row.checkOut);
     const almuerzHrs=parseFloat((row.almuerzo||'0').replace('h',''))||0;
