@@ -1032,7 +1032,7 @@ body.agent-preview-mode header{margin-top:34px;}
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
           <button class="turno-filter-btn" onclick="showOvertimeRequests()" style="border-color:rgba(251,146,60,0.4);color:#fb923c;" id="btn-overtime-requests">⏰ Horas extras <span id="overtime-badge" style="display:none;background:#fb923c;color:white;border-radius:100px;padding:1px 6px;font-size:10px;margin-left:4px;"></span></button>
           <button class="turno-filter-btn" onclick="showEarlyLeaveRequests()" style="border-color:rgba(96,165,250,0.4);color:#60a5fa;" id="btn-earlyleave-requests">🏁 Salidas anticipadas <span id="earlyleave-badge" style="display:none;background:#60a5fa;color:white;border-radius:100px;padding:1px 6px;font-size:10px;margin-left:4px;"></span></button>
-          <button class="turno-filter-btn" onclick="sendPayrollReport()" style="border-color:rgba(74,222,128,0.3);color:#4ade80;">📋 Nómina</button>
+          <button class="turno-filter-btn" onclick="openPayrollPreview()" style="border-color:rgba(74,222,128,0.3);color:#4ade80;">📋 Nómina</button>
           <button class="turno-filter-btn" onclick="exportPanel2XLSX()" style="border-color:rgba(74,222,128,0.3);color:#4ade80;">⬇ Excel</button>
           <button class="turno-filter-btn" onclick="loadPanel2()" style="padding:5px 12px;">↻</button>
         </div>
@@ -1324,7 +1324,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 
 <script>
-const APP_VERSION='15.15';
+const APP_VERSION='15.16';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -4041,6 +4041,156 @@ async function approveOvertime(eventId,approved,btn,turnoId){
     btn.textContent=approved?'Aprobar':'Rechazar';
     btn.disabled=false;
     toast('Error al guardar. Intenta de nuevo.');
+  }
+}
+
+async function openPayrollPreview(){
+  const payrollEmails=localStorage.getItem('pg_payroll_emails')||'';
+  if(!payrollEmails){toast('Configura los correos de nómina primero ⚙');openConfig();return;}
+
+  // Mostrar modal de carga
+  const overlay=document.createElement('div');
+  overlay.className='abs-overlay';
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:9999;display:flex;align-items:center;justify-content:center;';
+  overlay.innerHTML=`<div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;width:min(98vw,1100px);max-height:90vh;display:flex;flex-direction:column;box-shadow:var(--shadow);overflow:hidden;">
+    <div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+      <div>
+        <div style="font-size:15px;font-weight:700;color:var(--text);">📋 Pre-revisión de nómina</div>
+        <div id="payroll-preview-period" style="font-size:11px;color:var(--text-dim);font-family:var(--mono);margin-top:2px;">Cargando...</div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <button onclick="this.closest('.abs-overlay').remove()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text-muted);padding:6px 12px;border-radius:8px;font-size:12px;cursor:pointer;">✕ Cancelar</button>
+        <button id="payroll-send-btn" onclick="confirmAndSendPayroll()" style="background:rgba(74,222,128,0.12);border:1px solid rgba(74,222,128,0.4);color:#4ade80;padding:6px 14px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;display:none;">📤 Confirmar y enviar</button>
+      </div>
+    </div>
+    <div id="payroll-preview-body" style="overflow-y:auto;flex:1;padding:16px;">
+      <div style="text-align:center;padding:40px;color:var(--text-dim);">⏳ Generando prenómina...</div>
+    </div>
+  </div>`;
+  document.body.appendChild(overlay);
+
+  // Cargar datos
+  const now=new Date();
+  const lastMonday=new Date(now);lastMonday.setDate(now.getDate()-now.getDay()-6);lastMonday.setHours(0,0,0,0);
+  const lastSunday=new Date(lastMonday);lastSunday.setDate(lastMonday.getDate()+6);lastSunday.setHours(23,59,59);
+  const fmtDate=d=>{const dd=String(d.getDate()).padStart(2,'0');const meses=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];return`${dd}-${meses[d.getMonth()]}-${d.getFullYear()}`;};
+  const weekStart=fmtDate(lastMonday),weekEnd=fmtDate(lastSunday);
+  document.getElementById('payroll-preview-period').textContent=`Semana: ${weekStart} — ${weekEnd}`;
+
+  let mallaData=[];
+  try{
+    const resp=await fetch(MALLA_SCRIPT+'?sheet=Malla',{signal:AbortSignal.timeout(10000)});
+    const csv=await resp.text();
+    mallaData=csv.trim().split('\n').slice(1).map(l=>{const c=parseCSVLine(l);return{fecha:c[1]?.trim(),usuario:c[2]?.trim(),nombre:c[3]?.trim(),inicio:c[5]?.trim(),fin:c[6]?.trim(),lider:c[9]?.trim(),novedad:c[10]?.trim(),almuerzo:c[12]?.trim()};})
+      .filter(m=>{if(!m.fecha||!m.usuario)return false;const d=parseDate(m.fecha);return d&&d>=lastMonday&&d<=lastSunday;});
+  }catch(e){}
+
+  const allTurnos=await window.getRecentTurnos();
+  const adminEmails=new Set([...(window.ADMINS||ADMINS),SUPER_ADMIN]);
+
+  // Construir registros igual que sendPayrollReport
+  window._payrollPreviewRecords=mallaData.filter(m=>!adminEmails.has(m.usuario)).map(m=>{
+    const d=parseDate(m.fecha);
+    const turno=allTurnos.find(t=>{if(t.userEmail!==m.usuario)return false;const td=t.startTime?.toDate?.();return td&&d&&td.toDateString()===d.toDateString();});
+    const ss=parseTime(m.fecha,m.inicio),se=parseTime(m.fecha,m.fin);
+    const rs=turno?turno.startTime.toDate():null,re=turno?.endTime?.toDate?.();
+    let reportStart=ss;
+    if(rs&&ss){const diffMins=Math.round((rs-ss)/60000);if(diffMins>TOLERANCE_MINS)reportStart=rs;}
+    let reportEnd=se;
+    if(re&&se){if(turno?.overtimeStatus==='approved')reportEnd=re;if(turno?.earlyLeave&&turno?.earlyLeaveStatus==='not_justified')reportEnd=re;}
+    const almuerzHrs=parseFloat(m.almuerzo||'0')||0;
+    let diffSecs=reportStart&&reportEnd?Math.round((reportEnd-reportStart)/1000):null;
+    if(diffSecs!==null&&diffSecs<0)diffSecs+=86400;
+    const secs=diffSecs!==null?Math.max(0,diffSecs-(almuerzHrs*3600)):null;
+    return{
+      name:m.nombre||m.usuario?.split('@')[0]||'—',
+      email:m.usuario||'',
+      date:d?fmtDate(d):'—',
+      checkIn:m.novedad?'00:00':(reportStart?reportStart.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'00:00'),
+      checkOut:m.novedad?'00:00':(reportEnd?reportEnd.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'00:00'),
+      almuerzo:m.novedad?'0h':(almuerzHrs>0?almuerzHrs+'h':'0h'),
+      hours:m.novedad?'00:00:00':(secs?formatDuration(secs):'00:00:00'),
+      novedad:m.novedad||'—'
+    };
+  }).sort((a,b)=>a.name.localeCompare(b.name)||a.date.localeCompare(b.date));
+
+  window._payrollPreviewMeta={weekStart,weekEnd,payrollEmails};
+
+  // Renderizar tabla editable
+  const body=document.getElementById('payroll-preview-body');
+  const sendBtn=document.getElementById('payroll-send-btn');
+  if(!window._payrollPreviewRecords.length){body.innerHTML='<div style="padding:40px;text-align:center;color:var(--text-dim);">Sin registros para la semana anterior</div>';return;}
+  sendBtn.style.display='block';
+
+  const cols=['Nombre','Fecha','Entrada','Salida','Almuerzo','Horas trabajadas','Novedad'];
+  const fields=['name','date','checkIn','checkOut','almuerzo','hours','novedad'];
+  const editableCols=new Set(['checkIn','checkOut','almuerzo','hours','novedad']);
+
+  body.innerHTML=`<div style="font-size:11px;color:var(--text-dim);margin-bottom:10px;font-family:var(--mono);">💡 Haz clic en cualquier celda para editarla antes de enviar.</div>
+  <div style="overflow-x:auto;">
+  <table style="width:100%;border-collapse:collapse;font-size:12px;">
+    <thead>
+      <tr style="background:var(--surface2);">
+        ${cols.map(c=>`<th style="padding:8px 10px;border:1px solid var(--border);text-align:left;font-size:10px;color:var(--text-dim);font-family:var(--mono);text-transform:uppercase;white-space:nowrap;">${c}</th>`).join('')}
+      </tr>
+    </thead>
+    <tbody>
+      ${window._payrollPreviewRecords.map((r,ri)=>`<tr style="${ri%2===0?'':'background:var(--surface2);'}">
+        ${fields.map((f,fi)=>{
+          const val=r[f]||'—';
+          const editable=editableCols.has(f);
+          return`<td style="padding:6px 8px;border:1px solid var(--border);${editable?'cursor:pointer;':''}${f==='novedad'&&val!=='—'?'color:#a78bfa;':''}" ${editable?`onclick="editPayrollCell(this,${ri},'${f}')" title="Clic para editar"`:''}>${val}</td>`;
+        }).join('')}
+      </tr>`).join('')}
+    </tbody>
+  </table>
+  </div>`;
+}
+
+function editPayrollCell(td, rowIdx, field){
+  if(td.querySelector('input'))return;
+  const current=td.textContent;
+  const input=document.createElement('input');
+  input.value=current==='—'?'':current;
+  input.style.cssText='width:100%;background:var(--surface);border:1px solid var(--p2);border-radius:4px;padding:3px 6px;color:var(--text);font-size:12px;font-family:var(--mono);outline:none;';
+  td.textContent='';
+  td.appendChild(input);
+  input.focus();
+  input.select();
+  const save=()=>{
+    const val=input.value.trim()||'—';
+    window._payrollPreviewRecords[rowIdx][field]=val;
+    td.textContent=val;
+    if(field==='novedad'&&val!=='—')td.style.color='#a78bfa';
+    else td.style.color='';
+  };
+  input.onblur=save;
+  input.onkeydown=e=>{if(e.key==='Enter')input.blur();if(e.key==='Escape'){td.textContent=current;input.remove();}};
+}
+
+async function confirmAndSendPayroll(){
+  const btn=document.getElementById('payroll-send-btn');
+  if(!btn)return;
+  btn.textContent='Enviando...';btn.disabled=true;
+  const {weekStart,weekEnd,payrollEmails}=window._payrollPreviewMeta;
+  const recipients=payrollEmails.split(',').map(e=>e.trim()).filter(Boolean);
+  const records=window._payrollPreviewRecords;
+  const extrasByAgent={};
+  try{
+    const allTurnos=await window.getRecentTurnos();
+    const now=new Date();
+    const lastMonday=new Date(now);lastMonday.setDate(now.getDate()-now.getDay()-6);lastMonday.setHours(0,0,0,0);
+    const lastSunday=new Date(lastMonday);lastSunday.setDate(lastMonday.getDate()+6);lastSunday.setHours(23,59,59);
+    allTurnos.filter(t=>t.overtimeStatus==='approved'&&t.startTime?.toDate?.()>=lastMonday&&t.startTime?.toDate?.()<=lastSunday).forEach(t=>{
+      const u=t.userEmail||'';extrasByAgent[u]=(extrasByAgent[u]||0)+(t.overtimeMinutes||0);
+    });
+    const payload=JSON.stringify({weekStart,weekEnd,records,recipients,extrasByAgent});
+    await fetch(NOTIF_SCRIPT+'?type=payroll_report',{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain'},body:payload});
+    toast('📋 Nómina enviada a '+recipients.join(', '));
+    document.querySelector('.abs-overlay')?.remove();
+  }catch(e){
+    btn.textContent='📤 Confirmar y enviar';btn.disabled=false;
+    toast('❌ Error al enviar: '+e.message);
   }
 }
 
