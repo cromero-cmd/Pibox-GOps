@@ -1324,7 +1324,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 
 <script>
-const APP_VERSION='15.16';
+const APP_VERSION='15.17';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -4124,7 +4124,7 @@ async function openPayrollPreview(){
 
   const cols=['Nombre','Fecha','Entrada','Salida','Almuerzo','Horas trabajadas','Novedad'];
   const fields=['name','date','checkIn','checkOut','almuerzo','hours','novedad'];
-  const editableCols=new Set(['checkIn','checkOut','almuerzo','hours','novedad']);
+  const editableCols=new Set(['checkIn','checkOut','almuerzo','novedad']);
 
   body.innerHTML=`<div style="font-size:11px;color:var(--text-dim);margin-bottom:10px;font-family:var(--mono);">💡 Haz clic en cualquier celda para editarla antes de enviar.</div>
   <div style="overflow-x:auto;">
@@ -4157,12 +4157,32 @@ function editPayrollCell(td, rowIdx, field){
   td.appendChild(input);
   input.focus();
   input.select();
+  const recalcHours=(row,tr)=>{
+    // Recalcular horas trabajadas desde entrada, salida y almuerzo
+    const toMins=t=>{if(!t||t==='00:00'||t==='—')return null;const p=t.split(':');if(p.length<2)return null;return parseInt(p[0])*60+parseInt(p[1]);};
+    const startMins=toMins(row.checkIn);
+    const endMins=toMins(row.checkOut);
+    const almuerzHrs=parseFloat((row.almuerzo||'0').replace('h',''))||0;
+    if(startMins===null||endMins===null){row.hours='00:00:00';} else {
+      let diffMins=endMins-startMins;
+      if(diffMins<0)diffMins+=1440; // cruza medianoche
+      const workMins=Math.max(0,diffMins-(almuerzHrs*60));
+      const h=Math.floor(workMins/60),m=workMins%60;
+      row.hours=`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:00`;
+    }
+    // Actualizar celda de horas en la fila
+    if(tr){const cells=tr.querySelectorAll('td');if(cells[5])cells[5].textContent=row.hours;}
+  };
   const save=()=>{
     const val=input.value.trim()||'—';
     window._payrollPreviewRecords[rowIdx][field]=val;
     td.textContent=val;
     if(field==='novedad'&&val!=='—')td.style.color='#a78bfa';
     else td.style.color='';
+    // Recalcular si se editó entrada, salida o almuerzo
+    if(['checkIn','checkOut','almuerzo'].includes(field)){
+      recalcHours(window._payrollPreviewRecords[rowIdx],td.closest('tr'));
+    }
   };
   input.onblur=save;
   input.onkeydown=e=>{if(e.key==='Enter')input.blur();if(e.key==='Escape'){td.textContent=current;input.remove();}};
