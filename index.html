@@ -1324,7 +1324,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 
 <script>
-const APP_VERSION='15.18';
+const APP_VERSION='15.19';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -4160,11 +4160,11 @@ function editPayrollCell(td, rowIdx, field){
   const recalcHours=(row,tr)=>{
     const toMins=t=>{
       if(!t||t==='00:00'||t==='—')return null;
-      // Normalizar formato: "09:00 a.m." → 540, "05:00 p.m." → 1020
-      const str=t.toLowerCase().replace(/\./g,'').trim();
-      const isPM=str.includes('pm');
-      const isAM=str.includes('am');
-      const cleaned=str.replace(/[ap]m/,'').trim();
+      // Normalizar: quitar puntos y espacios extra → "09:00 a. m." → "09:00 am"
+      const str=t.toLowerCase().replace(/\.\s*/g,'').replace(/\s+/g,' ').trim();
+      const isPM=str.includes('pm')||str.includes('p m');
+      const isAM=str.includes('am')||str.includes('a m');
+      const cleaned=str.replace(/[ap]\s*m/g,'').trim();
       const parts=cleaned.split(':');
       if(parts.length<2)return null;
       let h=parseInt(parts[0]),m=parseInt(parts[1]);
