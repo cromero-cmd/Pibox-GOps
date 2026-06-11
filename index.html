@@ -1324,7 +1324,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 
 <script>
-const APP_VERSION='15.20';
+const APP_VERSION='15.21';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -3756,15 +3756,17 @@ function renderPanel2Insights(rows,allTurnos,fromDate,toDate){
   const userStats={};
   rows.forEach(r=>{
     const u=r.usuario||'—';
-    if(!userStats[u])userStats[u]={nombre:r.nombre||u.split('@')[0],tardanza:0,ausente:0,novedad:0,cumplió:0,strikeLeve:0,strikeModerado:0,strikeGrave:0,strikeNoDesconex:0};
+    if(!userStats[u])userStats[u]={nombre:r.nombre||u.split('@')[0],tardanza:0,ausente:0,novedad:0,cumplió:0,strikeLeve:0,strikeModerado:0,strikeGrave:0,strikeNoDesconex:0,strikeDetalle:[]};
     if(r.cumplStatus.cls==='tardanza'){
       userStats[u].tardanza++;
-      // Clasificar tipo de strike
       if(r.realStart&&r.scheduledStart){
         const mins=Math.round((r.realStart-r.scheduledStart)/60000);
-        if(mins>=60)userStats[u].strikeGrave++;
-        else if(mins>=20)userStats[u].strikeModerado++;
-        else if(mins>strikeTardanzaMins)userStats[u].strikeLeve++;
+        const fechaStr=r.fecha||'';
+        const realStr=r.realStart.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'});
+        const progStr=r.scheduledStart.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'});
+        if(mins>=60){userStats[u].strikeGrave++;userStats[u].strikeDetalle.push({tipo:'🔴 Grave',fecha:fechaStr,detalle:`+${mins} min tarde (${realStr}, prog. ${progStr})`});}
+        else if(mins>=20){userStats[u].strikeModerado++;userStats[u].strikeDetalle.push({tipo:'🟠 Moderada',fecha:fechaStr,detalle:`+${mins} min tarde (${realStr}, prog. ${progStr})`});}
+        else if(mins>strikeTardanzaMins){userStats[u].strikeLeve++;userStats[u].strikeDetalle.push({tipo:'🟡 Leve',fecha:fechaStr,detalle:`+${mins} min tarde (${realStr}, prog. ${progStr})`});}
       }
     }
     else if(r.cumplStatus.cls==='ausente')userStats[u].ausente++;
@@ -3773,7 +3775,12 @@ function renderPanel2Insights(rows,allTurnos,fromDate,toDate){
     // No desconexión
     if(r.realEnd&&r.scheduledEnd){
       const extraHrs=(r.realEnd-r.scheduledEnd)/3600000;
-      if(extraHrs>strikeNoDesconexionHrs)userStats[u].strikeNoDesconex++;
+      if(extraHrs>strikeNoDesconexionHrs){
+        userStats[u].strikeNoDesconex++;
+        const finProg=r.scheduledEnd.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'});
+        const finReal=r.realEnd.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'});
+        userStats[u].strikeDetalle.push({tipo:'🔵 No desconexión',fecha:r.fecha||'',detalle:`Salida prog. ${finProg}, salida real ${finReal} (+${Math.round(extraHrs*10)/10}h)`});
+      }
     }
   });
 
@@ -3807,18 +3814,47 @@ function renderPanel2Insights(rows,allTurnos,fromDate,toDate){
   }
 
   function strikesBlock(){
-    if(!topStrikes.length)return`<div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:14px;"><div style="font-size:11px;font-weight:700;color:#fbbf24;margin-bottom:8px;">⚡ Más strikes</div><div style="font-size:11px;color:var(--text-dim);">Sin registros</div></div>`;
-    return`<div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:14px;"><div style="font-size:11px;font-weight:700;color:#fbbf24;margin-bottom:8px;">⚡ Más strikes</div>${topStrikes.map(([u,v],i)=>{
-      const color=v.llamados>=3?'#f87171':v.llamados===2?'#fb923c':v.llamados===1?'#fbbf24':'var(--text-muted)';
-      return`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;">
-        <div style="display:flex;align-items:center;gap:6px;"><span style="font-size:11px;color:var(--text-dim);font-family:var(--mono);width:14px;">${i+1}.</span><span style="font-size:12px;color:var(--text);">${v.nombre}</span></div>
-        <div style="display:flex;align-items:center;gap:6px;">
-          <span style="font-size:10px;font-family:var(--mono);color:var(--text-dim);">${v.totalStrikes}⚡</span>
-          ${v.llamados>0?`<span style="font-size:10px;background:${color}22;color:${color};border:1px solid ${color}44;padding:1px 6px;border-radius:10px;font-family:var(--mono);">${v.llamados} llamado${v.llamados!==1?'s':''}</span>`:''}
-          ${v.llamados>=3?`<span style="font-size:10px;background:rgba(248,113,113,0.15);color:#f87171;border:1px solid rgba(248,113,113,0.4);padding:1px 6px;border-radius:10px;">⚖️</span>`:''}
-        </div>
-      </div>`;
-    }).join('')}</div>`;
+    if(!topStrikes.length)return`<div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:14px;grid-column:1/-1;"><div style="font-size:11px;font-weight:700;color:#fbbf24;margin-bottom:8px;">⚡ Ranking de strikes</div><div style="font-size:11px;color:var(--text-dim);">Sin strikes en este período</div></div>`;
+    return`<div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:14px;grid-column:1/-1;">
+      <div style="font-size:11px;font-weight:700;color:#fbbf24;margin-bottom:12px;">⚡ Ranking de strikes del período</div>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        ${topStrikes.map(([u,v],i)=>{
+          const color=v.llamados>=3?'#f87171':v.llamados===2?'#fb923c':v.llamados===1?'#fbbf24':'#9ca3af';
+          const id='strike-detail-'+i;
+          const detalleHTML=v.strikeDetalle.map(d=>`
+            <div style="display:grid;grid-template-columns:100px 1fr;gap:6px;padding:4px 0;border-bottom:1px solid var(--border);">
+              <span style="font-size:10px;color:var(--text-dim);font-family:var(--mono);">${d.fecha}</span>
+              <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                <span style="font-size:10px;background:${d.tipo.includes('Grave')?'rgba(248,113,113,0.1)':d.tipo.includes('Modera')?'rgba(251,146,60,0.1)':d.tipo.includes('Leve')?'rgba(251,191,36,0.1)':'rgba(96,165,250,0.1)'};color:${d.tipo.includes('Grave')?'#f87171':d.tipo.includes('Modera')?'#fb923c':d.tipo.includes('Leve')?'#fbbf24':'#60a5fa'};padding:1px 6px;border-radius:10px;white-space:nowrap;">${d.tipo}</span>
+                <span style="font-size:10px;color:var(--text-muted);">${d.detalle}</span>
+              </div>
+            </div>`).join('');
+          return`<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;">
+            <div onclick="document.getElementById('${id}').style.display=document.getElementById('${id}').style.display==='none'?'block':'none'"
+              style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;cursor:pointer;user-select:none;">
+              <div style="display:flex;align-items:center;gap:8px;">
+                <span style="font-size:12px;color:var(--text-dim);font-family:var(--mono);width:18px;">${i+1}.</span>
+                <span style="font-size:13px;font-weight:600;color:var(--text);">${v.nombre}</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:6px;">
+                ${v.strikeLeve>0?`<span style="font-size:10px;background:rgba(251,191,36,0.1);color:#fbbf24;border:1px solid rgba(251,191,36,0.3);padding:1px 7px;border-radius:10px;font-family:var(--mono);">🟡 ${v.strikeLeve}</span>`:''}
+                ${v.strikeModerado>0?`<span style="font-size:10px;background:rgba(251,146,60,0.1);color:#fb923c;border:1px solid rgba(251,146,60,0.3);padding:1px 7px;border-radius:10px;font-family:var(--mono);">🟠 ${v.strikeModerado}</span>`:''}
+                ${v.strikeGrave>0?`<span style="font-size:10px;background:rgba(248,113,113,0.1);color:#f87171;border:1px solid rgba(248,113,113,0.3);padding:1px 7px;border-radius:10px;font-family:var(--mono);">🔴 ${v.strikeGrave}</span>`:''}
+                ${v.strikeNoDesconex>0?`<span style="font-size:10px;background:rgba(96,165,250,0.1);color:#60a5fa;border:1px solid rgba(96,165,250,0.3);padding:1px 7px;border-radius:10px;font-family:var(--mono);">🔵 ${v.strikeNoDesconex}</span>`:''}
+                <span style="font-size:11px;font-weight:800;color:${color};background:${color}22;border:1px solid ${color}44;padding:2px 8px;border-radius:10px;font-family:var(--mono);">${v.totalStrikes} strike${v.totalStrikes!==1?'s':''}</span>
+                ${v.llamados>0?`<span style="font-size:10px;color:${color};font-family:var(--mono);">· ${v.llamados} llamado${v.llamados!==1?'s':''}</span>`:''}
+                ${v.llamados>=3?`<span style="font-size:11px;">⚖️</span>`:''}
+                <span style="font-size:10px;color:var(--text-dim);">▾</span>
+              </div>
+            </div>
+            <div id="${id}" style="display:none;padding:10px 14px;border-top:1px solid var(--border);background:var(--surface2);">
+              <div style="font-size:10px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;font-family:var(--mono);">Detalle de strikes</div>
+              ${detalleHTML||'<div style="font-size:11px;color:var(--text-dim);">Sin detalle disponible</div>'}
+            </div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>`;
   }
 
   el.innerHTML=`
@@ -3827,10 +3863,10 @@ function renderPanel2Insights(rows,allTurnos,fromDate,toDate){
       ${rankBlock('🟡 Más tardanzas','#fbbf24',topTardanza,'tardanza')}
       ${rankBlock('🔴 Más ausencias','#f87171',topAusente,'ausente')}
       ${rankBlock('📋 Más novedades','#a78bfa',topNovedad,'novedad')}
-      ${strikesBlock()}
       ${rankBlock('⚡ Más extras solicitadas','#fb923c',topExtrasReq,null)}
       ${rankBlock('✅ Más extras aprobadas','#4ade80',topExtrasAppr,null)}
-    </div>`;
+    </div>
+    <div style="margin-top:10px;">${strikesBlock()}</div>`;
 }
 
 // ── OVERTIME & PAYROLL ──
