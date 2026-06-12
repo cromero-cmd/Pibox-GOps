@@ -1324,7 +1324,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 
 <script>
-const APP_VERSION='15.23';
+const APP_VERSION='15.24';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -2933,12 +2933,27 @@ window.addEventListener('beforeunload',()=>{
 function parseDate(s){
   if(!s)return null;const str=String(s).trim();
   if(str.includes('/')){const p=str.split('/');if(p.length===3){const d=p[0].padStart(2,'0'),m=p[1].padStart(2,'0'),y=p[2].length===2?'20'+p[2]:p[2];const dt=new Date(`${y}-${m}-${d}T00:00:00`);if(!isNaN(dt))return dt;}}
+  // Formato DD-MMM-YYYY (ej: 30-may-2026)
+  const meses={ene:1,feb:2,mar:3,abr:4,may:5,jun:6,jul:7,ago:8,sep:9,oct:10,nov:11,'dic':12};
+  const mMatch=str.match(/^(\d{1,2})-([a-záéíóú]{3})-(\d{4})$/i);
+  if(mMatch){const mes=meses[mMatch[2].toLowerCase()];if(mes){const dt=new Date(`${mMatch[3]}-${String(mes).padStart(2,'0')}-${mMatch[1].padStart(2,'0')}T00:00:00`);if(!isNaN(dt))return dt;}}
   const dt=new Date(str+'T00:00:00');return isNaN(dt)?null:dt;
 }
 function parseTime(dateStr,timeStr){
   if(!dateStr||!timeStr||String(timeStr).trim()==='0'||String(timeStr).trim()==='')return null;
-  const p=String(timeStr).trim().split(':').map(Number);const d=parseDate(String(dateStr));
-  if(!d)return null;d.setHours(p[0]||0,p[1]||0,0,0);return d;
+  const d=parseDate(String(dateStr));if(!d)return null;
+  const ts=String(timeStr).trim();
+  // Formato militar HH:MM (sin am/pm)
+  if(/^\d{1,2}:\d{2}$/.test(ts)){const p=ts.split(':').map(Number);d.setHours(p[0]||0,p[1]||0,0,0);return d;}
+  // Formato con a.m./p.m.
+  const str=ts.toLowerCase().replace(/\.\s*/g,'').replace(/\s+/g,' ').trim();
+  const isPM=str.includes('pm')||str.includes('p m');
+  const isAM=str.includes('am')||str.includes('a m');
+  const cleaned=str.replace(/[ap]\s*m/g,'').trim();
+  const p=cleaned.split(':').map(Number);
+  let h=p[0]||0,m=p[1]||0;
+  if(isPM&&h!==12)h+=12;if(isAM&&h===12)h=0;
+  d.setHours(h,m,0,0);return d;
 }
 function getStatus(scheduledStart,realStart,novedad,now,absenceStatus,absenceMotivo,hasEnded){
   if(novedad&&novedad.trim())return{label:novedad.trim(),cls:'novedad',icon:'📋'};
