@@ -1324,7 +1324,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 
 <script>
-const APP_VERSION='15.21';
+const APP_VERSION='15.22';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -2734,17 +2734,30 @@ async function submitOvertimeResponse(approved,extraMins,overlayEl){
   const userName=document.getElementById('user-name').textContent;
   const today=new Date().toLocaleDateString('es-CO',{day:'2-digit',month:'long',year:'numeric'});
   const status=approved?'pending_review':'rejected';
+  const turnoId=window._lastTurnoId||null;
+
+  // Verificar si ya existe un evento de overtime para este turno — evitar duplicados
+  if(turnoId){
+    const existing=await window.getRecentTurnos();
+    const turno=existing.find(t=>t.id===turnoId);
+    if(turno?.overtimeStatus&&turno.overtimeStatus!=='rejected'){
+      toast('Ya existe una solicitud de extras para este turno');
+      setTimeout(()=>loadTurnoHistory(),300);
+      return;
+    }
+  }
+
   // Save overtime event
   const overtimeEventData={
     agentEmail:userEmail,agentName:userName,
     date:today,extraMins,approved,status,
     mallaEntry:window._overtimeMallaEntry,
-    turnoId:window._lastTurnoId||null
+    turnoId:turnoId
   };
   await window.trackEvent('overtime', overtimeEventData);
   // Also tag the turno record with overtime status
-  if(window._lastTurnoId){
-    await window.updateTurnoInFirebase(window._lastTurnoId,{
+  if(turnoId){
+    await window.updateTurnoInFirebase(turnoId,{
       overtimeStatus:status,
       overtimeExtraMins:extraMins,
       scheduledEndTime:window._overtimeMallaEntry?.fin||null
