@@ -1324,7 +1324,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 
 <script>
-const APP_VERSION='15.25';
+const APP_VERSION='15.26';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -4197,7 +4197,10 @@ async function openPayrollPreview(){
       if(p.length===3)totalSecsByAgent[r.name]=(totalSecsByAgent[r.name]||0)+parseInt(p[0])*3600+parseInt(p[1])*60+parseInt(p[2]);
     }
   });
-  function extrasForAgent(name){
+  function extrasForAgent(name,rowIdx){
+    // Solo mostrar en la última fila de este agente
+    const isLastRowForAgent=!window._payrollPreviewRecords.slice(rowIdx+1).some(r=>r.name===name);
+    if(!isLastRowForAgent)return'';
     const total=totalSecsByAgent[name]||0;
     const extra=Math.max(0,total-horasLegalesSecs);
     return extra>0?formatDuration(extra):'00:00:00';
@@ -4218,7 +4221,7 @@ async function openPayrollPreview(){
     <tbody>
       ${window._payrollPreviewRecords.map((r,ri)=>`<tr style="${ri%2===0?'':'background:var(--surface2);'}">
         ${fields.map((f,fi)=>{
-          const val=f==='extras'?extrasForAgent(r.name):(r[f]||'—');
+          const val=f==='extras'?extrasForAgent(r.name,ri):(r[f]||'—');
           const editable=editableCols.has(f);
           const isExtra=f==='extras'&&val!=='00:00:00';
           return`<td style="padding:6px 8px;border:1px solid var(--border);${editable?'cursor:pointer;':''}${f==='novedad'&&val!=='—'?'color:#a78bfa;':''}${isExtra?'color:#fb923c;font-weight:700;':''}" ${editable?`onclick="editPayrollCell(this,${ri},'${f}')" title="Clic para editar"`:''}>${val}</td>`;
@@ -4244,14 +4247,15 @@ function refreshPayrollExtrasColumn(){
   const rows=table.querySelectorAll('tbody tr');
   rows.forEach((tr,ri)=>{
     const r=window._payrollPreviewRecords[ri];
+    const isLastRowForAgent=!window._payrollPreviewRecords.slice(ri+1).some(x=>x.name===r.name);
     const total=totalSecsByAgent[r.name]||0;
     const extraSecs=Math.max(0,total-horasLegalesSecs);
-    const extraStr=extraSecs>0?formatDuration(extraSecs):'00:00:00';
+    const extraStr=isLastRowForAgent?(extraSecs>0?formatDuration(extraSecs):'00:00:00'):'';
     const cells=tr.querySelectorAll('td');
     if(cells[6]){
       cells[6].textContent=extraStr;
-      cells[6].style.color=extraSecs>0?'#fb923c':'';
-      cells[6].style.fontWeight=extraSecs>0?'700':'';
+      cells[6].style.color=extraSecs>0&&isLastRowForAgent?'#fb923c':'';
+      cells[6].style.fontWeight=extraSecs>0&&isLastRowForAgent?'700':'';
     }
   });
 }
@@ -4267,13 +4271,14 @@ function downloadPayrollXLS(){
       if(p.length===3)totalSecsByAgent[r.name]=(totalSecsByAgent[r.name]||0)+parseInt(p[0])*3600+parseInt(p[1])*60+parseInt(p[2]);
     }
   });
-  const rows=window._payrollPreviewRecords.map(r=>{
+  const rows=window._payrollPreviewRecords.map((r,ri)=>{
+    const isLastRowForAgent=!window._payrollPreviewRecords.slice(ri+1).some(x=>x.name===r.name);
     const total=totalSecsByAgent[r.name]||0;
     const extraSecs=Math.max(0,total-horasLegalesSecs);
     return{
       'Nombre':r.name,'Fecha':r.date,'Entrada':r.checkIn,'Salida':r.checkOut,
       'Almuerzo':r.almuerzo,'Horas trabajadas':r.hours,
-      'Extras':extraSecs>0?formatDuration(extraSecs):'00:00:00','Novedad':r.novedad
+      'Extras':isLastRowForAgent?(extraSecs>0?formatDuration(extraSecs):'00:00:00'):'','Novedad':r.novedad
     };
   });
   // Construir CSV simple (compatible con Excel)
