@@ -1324,7 +1324,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 
 <script>
-const APP_VERSION='15.24';
+const APP_VERSION='15.25';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -4123,6 +4123,7 @@ async function openPayrollPreview(){
         <div id="payroll-preview-period" style="font-size:11px;color:var(--text-dim);font-family:var(--mono);margin-top:2px;">Cargando...</div>
       </div>
       <div style="display:flex;gap:8px;align-items:center;">
+        <button onclick="downloadPayrollXLS()" style="background:rgba(74,222,128,0.08);border:1px solid rgba(74,222,128,0.3);color:#4ade80;padding:6px 12px;border-radius:8px;font-size:12px;cursor:pointer;">⬇ Descargar XLS</button>
         <button onclick="this.closest('.abs-overlay').remove()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text-muted);padding:6px 12px;border-radius:8px;font-size:12px;cursor:pointer;">✕ Cancelar</button>
         <button id="payroll-send-btn" onclick="confirmAndSendPayroll()" style="background:rgba(74,222,128,0.12);border:1px solid rgba(74,222,128,0.4);color:#4ade80;padding:6px 14px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;display:none;">📤 Confirmar y enviar</button>
       </div>
@@ -4186,13 +4187,29 @@ async function openPayrollPreview(){
   if(!window._payrollPreviewRecords.length){body.innerHTML='<div style="padding:40px;text-align:center;color:var(--text-dim);">Sin registros para la semana anterior</div>';return;}
   sendBtn.style.display='block';
 
-  const cols=['Nombre','Fecha','Entrada','Salida','Almuerzo','Horas trabajadas','Novedad'];
-  const fields=['name','date','checkIn','checkOut','almuerzo','hours','novedad'];
+  // Calcular total de horas por agente para determinar extras (excedente sobre 44h/42h semanales)
+  const horasLegales=(new Date()>=new Date('2026-07-15'))?42:44;
+  const horasLegalesSecs=horasLegales*3600;
+  const totalSecsByAgent={};
+  window._payrollPreviewRecords.forEach(r=>{
+    if(r.hours&&r.hours!=='00:00:00'){
+      const p=r.hours.split(':');
+      if(p.length===3)totalSecsByAgent[r.name]=(totalSecsByAgent[r.name]||0)+parseInt(p[0])*3600+parseInt(p[1])*60+parseInt(p[2]);
+    }
+  });
+  function extrasForAgent(name){
+    const total=totalSecsByAgent[name]||0;
+    const extra=Math.max(0,total-horasLegalesSecs);
+    return extra>0?formatDuration(extra):'00:00:00';
+  }
+
+  const cols=['Nombre','Fecha','Entrada','Salida','Almuerzo','Horas trabajadas','Extras','Novedad'];
+  const fields=['name','date','checkIn','checkOut','almuerzo','hours','extras','novedad'];
   const editableCols=new Set(['checkIn','checkOut','almuerzo','novedad']);
 
-  body.innerHTML=`<div style="font-size:11px;color:var(--text-dim);margin-bottom:10px;font-family:var(--mono);">💡 Haz clic en cualquier celda para editarla antes de enviar.</div>
+  body.innerHTML=`<div style="font-size:11px;color:var(--text-dim);margin-bottom:10px;font-family:var(--mono);">💡 Haz clic en cualquier celda para editarla antes de enviar. Extras = excedente sobre ${horasLegales}h semanales.</div>
   <div style="overflow-x:auto;">
-  <table style="width:100%;border-collapse:collapse;font-size:12px;">
+  <table id="payroll-preview-table" style="width:100%;border-collapse:collapse;font-size:12px;">
     <thead>
       <tr style="background:var(--surface2);">
         ${cols.map(c=>`<th style="padding:8px 10px;border:1px solid var(--border);text-align:left;font-size:10px;color:var(--text-dim);font-family:var(--mono);text-transform:uppercase;white-space:nowrap;">${c}</th>`).join('')}
@@ -4201,14 +4218,77 @@ async function openPayrollPreview(){
     <tbody>
       ${window._payrollPreviewRecords.map((r,ri)=>`<tr style="${ri%2===0?'':'background:var(--surface2);'}">
         ${fields.map((f,fi)=>{
-          const val=r[f]||'—';
+          const val=f==='extras'?extrasForAgent(r.name):(r[f]||'—');
           const editable=editableCols.has(f);
-          return`<td style="padding:6px 8px;border:1px solid var(--border);${editable?'cursor:pointer;':''}${f==='novedad'&&val!=='—'?'color:#a78bfa;':''}" ${editable?`onclick="editPayrollCell(this,${ri},'${f}')" title="Clic para editar"`:''}>${val}</td>`;
+          const isExtra=f==='extras'&&val!=='00:00:00';
+          return`<td style="padding:6px 8px;border:1px solid var(--border);${editable?'cursor:pointer;':''}${f==='novedad'&&val!=='—'?'color:#a78bfa;':''}${isExtra?'color:#fb923c;font-weight:700;':''}" ${editable?`onclick="editPayrollCell(this,${ri},'${f}')" title="Clic para editar"`:''}>${val}</td>`;
         }).join('')}
       </tr>`).join('')}
     </tbody>
   </table>
   </div>`;
+}
+
+function refreshPayrollExtrasColumn(){
+  const horasLegales=(new Date()>=new Date('2026-07-15'))?42:44;
+  const horasLegalesSecs=horasLegales*3600;
+  const totalSecsByAgent={};
+  window._payrollPreviewRecords.forEach(r=>{
+    if(r.hours&&r.hours!=='00:00:00'){
+      const p=r.hours.split(':');
+      if(p.length===3)totalSecsByAgent[r.name]=(totalSecsByAgent[r.name]||0)+parseInt(p[0])*3600+parseInt(p[1])*60+parseInt(p[2]);
+    }
+  });
+  const table=document.getElementById('payroll-preview-table');
+  if(!table)return;
+  const rows=table.querySelectorAll('tbody tr');
+  rows.forEach((tr,ri)=>{
+    const r=window._payrollPreviewRecords[ri];
+    const total=totalSecsByAgent[r.name]||0;
+    const extraSecs=Math.max(0,total-horasLegalesSecs);
+    const extraStr=extraSecs>0?formatDuration(extraSecs):'00:00:00';
+    const cells=tr.querySelectorAll('td');
+    if(cells[6]){
+      cells[6].textContent=extraStr;
+      cells[6].style.color=extraSecs>0?'#fb923c':'';
+      cells[6].style.fontWeight=extraSecs>0?'700':'';
+    }
+  });
+}
+
+function downloadPayrollXLS(){
+  if(!window._payrollPreviewRecords?.length){toast('No hay datos para descargar');return;}
+  const horasLegales=(new Date()>=new Date('2026-07-15'))?42:44;
+  const horasLegalesSecs=horasLegales*3600;
+  const totalSecsByAgent={};
+  window._payrollPreviewRecords.forEach(r=>{
+    if(r.hours&&r.hours!=='00:00:00'){
+      const p=r.hours.split(':');
+      if(p.length===3)totalSecsByAgent[r.name]=(totalSecsByAgent[r.name]||0)+parseInt(p[0])*3600+parseInt(p[1])*60+parseInt(p[2]);
+    }
+  });
+  const rows=window._payrollPreviewRecords.map(r=>{
+    const total=totalSecsByAgent[r.name]||0;
+    const extraSecs=Math.max(0,total-horasLegalesSecs);
+    return{
+      'Nombre':r.name,'Fecha':r.date,'Entrada':r.checkIn,'Salida':r.checkOut,
+      'Almuerzo':r.almuerzo,'Horas trabajadas':r.hours,
+      'Extras':extraSecs>0?formatDuration(extraSecs):'00:00:00','Novedad':r.novedad
+    };
+  });
+  // Construir CSV simple (compatible con Excel)
+  const headers=Object.keys(rows[0]);
+  let csv=headers.join(',')+'\n';
+  rows.forEach(r=>{csv+=headers.map(h=>`"${(r[h]||'').toString().replace(/"/g,'""')}"`).join(',')+'\n';});
+  const blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8;'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  const {weekStart,weekEnd}=window._payrollPreviewMeta||{};
+  a.href=url;
+  a.download=`prenomina_${weekStart||'reporte'}_al_${weekEnd||''}.csv`;
+  document.body.appendChild(a);a.click();a.remove();
+  URL.revokeObjectURL(url);
+  toast('⬇ Descarga iniciada');
 }
 
 function editPayrollCell(td, rowIdx, field){
@@ -4259,6 +4339,7 @@ function editPayrollCell(td, rowIdx, field){
     // Recalcular si se editó entrada, salida o almuerzo
     if(['checkIn','checkOut','almuerzo'].includes(field)){
       recalcHours(window._payrollPreviewRecords[rowIdx],td.closest('tr'));
+      refreshPayrollExtrasColumn();
     }
     // Actualizar Firestore si hay turnoId
     const row=window._payrollPreviewRecords[rowIdx];
