@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cd \"C:\\\\Users\\\\ADMIN\\\\Desktop\\\\pipeline-tada\" && mkdir -p css js && ls)",
+      "Bash(node -e ' *)",
+      "Bash(python3 -c ' *)",
+      "Bash(rm -f /tmp/fix.js /tmp/fix2.js /tmp/check.js)",
+      "mcp__Claude_in_Chrome__list_connected_browsers",
+      "Bash(rm -rf /tmp/synck /tmp/esmtest)",
+      "Bash(mkdir -p /tmp/esmtest/js)",
+      "Bash(cp js/*.js /tmp/esmtest/js/)",
+      "Bash(echo '{\"type\":\"module\"}')",
+      "Bash(sed -i \"s#'./js/#'../js/#g\" test/bugfix_test.mjs)",
+      "Bash(pkill -f \"http.server 8123\")",
+      "PowerShell(Get-Command node -ErrorAction SilentlyContinue)",
+      "PowerShell(Get-Command python -ErrorAction SilentlyContinue)",
+      "PowerShell(Get-Command py -ErrorAction SilentlyContinue)",
+      "PowerShell(node -v)",
+      "Bash(pkill -f \"node server.js\")",
+      "Bash(cd \"C:\\\\Users\\\\ADMIN\\\\Desktop\\\\pipeline-tada\" && rm -rf /tmp/esmtest2 && mkdir -p /tmp/esmtest2/js && cp js/*.js /tmp/esmtest2/js/ && echo '{\"type\":\"module\"}' > /tmp/esmtest2/package.json)",
+      "Read(//c/tmp/esmtest2/**)",
+      "Bash(node test_initusers.mjs)",
+      "Bash(ls -la /tmp/esmtest2/ 2>&1; echo \"---\"; find / -name \"test_initusers.mjs\" 2>/dev/null)",
+      "Bash(rm -rf /tmp/esmtest; echo cleaned)",
+      "Bash(grep -rn \"5b6ef8\\\\|4558f0\\\\|#070910\" css/ js/ index.html)",
+      "Bash(echo \"exit: $?\")"
+    ]
+  }
+}
