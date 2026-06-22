@@ -1324,7 +1324,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 
 <script>
-const APP_VERSION='15.26';
+const APP_VERSION='15.27';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -1454,6 +1454,8 @@ function initHomeView(){
     {id:'analytics',icon:'📊',title:'Métricas',desc:'Indicadores de uso del asistente, tasa de resolución y tiempos de respuesta.',color:'#10b981',grad:'linear-gradient(135deg,#10b981,#06b6d4)',roles:['admin','super']},
     {id:'turno-panel',icon:'👥',title:'Panel de control',desc:'Historial de turnos del equipo, gestión de extras y reportes de nómina.',color:'#f59e0b',grad:'linear-gradient(135deg,#f59e0b,#ef4444)',roles:['admin','super']},
     {id:'ext-tracker',icon:'🔍',title:'Pibox Tracker',desc:'Control de errores en transacciones de bookings y corrección de registros.',color:'#ef4444',grad:'linear-gradient(135deg,#ef4444,#f97316)',roles:['admin','super'],url:'https://pibox-facturacion.streamlit.app/'},
+    {id:'ext-tribus',icon:'🏢',title:'Tribus',desc:'Reservaciones de espacios en la oficina para el equipo.',color:'#0ea5e9',grad:'linear-gradient(135deg,#0ea5e9,#06b6d4)',roles:['admin','super'],url:'https://tribus.codi.com.co/app/reservations'},
+    {id:'ext-wms',icon:'📦',title:'WMS Pibox',desc:'Sistema de gestión de almacén — Storage de Pibox.',color:'#d97706',grad:'linear-gradient(135deg,#d97706,#f59e0b)',roles:['user','admin','super'],url:'https://wms.pibox.app/#/'},
     {id:'ext-trello',icon:'📋',title:'Trello',desc:'Gestión de tareas entre áreas: Marketing, Growth, Onboarding, BI y Tecnología.',color:'#0052CC',grad:'linear-gradient(135deg,#0052CC,#2684FF)',roles:['user','admin','super'],url:'https://trello.codi.com.co/'},
     {id:'ext-superset',icon:'📈',title:'Superset',desc:'Centro de control de datos y dashboards de Business Intelligence.',color:'#20A7C9',grad:'linear-gradient(135deg,#20A7C9,#45D0E8)',roles:['admin','super'],url:'https://superset.picap.co/dashboard/list/?pageIndex=0&sortColumn=changed_on_delta_humanized&sortOrder=desc&viewMode=table'},
     {id:'ext-soporte',icon:'🎫',title:'Soporte de Activos',desc:'Abre tickets para fallas con equipos, celulares, licencias y activos de trabajo.',color:'#64748b',grad:'linear-gradient(135deg,#64748b,#94a3b8)',roles:['user','admin','super'],url:'https://consolidador.picap.app/help_desk_tickets/new'},
