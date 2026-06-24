@@ -1,6 +1,7 @@
 // ═══════════════════════════════════════════
 // MÓDULO DE NOVEDADES — Resolución manual
 // ═══════════════════════════════════════════
+import { normStr } from './config.js';
 import { mallaRaw } from './parser.js';
 import { concResult } from './conciliacion.js';
 import { distResult, runDistribucionSilent } from './distribucion.js';
@@ -9,28 +10,60 @@ import { toast, navStep, setMaxStep } from './ui.js';
 import { showProcessing, hideProcessing } from './ui.js';
 
 export let novedades = [];    // lista construida una sola vez al abrir el módulo
-export let resoluciones = {}; // key → {accion, booking_id, driver_id, ...}
+// resoluciones{} se indexa por CLAVE ESTABLE (no por posición en novedades[]).
+// BUGFIX: indexar por índice numérico `i` rompía cuando novedades[] se
+// reconstruía en un nuevo procesamiento — los índices cambiaban de orden/longitud
+// pero resoluciones{} seguía apuntando a las posiciones viejas, desalineando
+// resoluciones manuales con pilotos incorrectos. La clave se calcula una sola
+// vez en buildNovedades() y viaja con cada entrada (`n.clave`), así que no
+// depende de en qué posición del array quede esa novedad.
+export let resoluciones = {}; // clave → {accion, booking_id, driver_id, ...}
 
 const TIPOS_NOVEDAD  = new Set(['LOW','FUZZY-LOW','AMBIGUOUS','SIN_MALLA','SIN_TADA']);
 const TIPOS_SIN_BOOKING = 'SIN_BOOKING';
+
+function claveNovedad(piloto, fecha, tipo){
+  return `${normStr(piloto)}||${fecha}||${tipo}`;
+}
+
+// Booking ID real de la malla asociado a una novedad, si existe — usado para
+// habilitar "Incluir en $0" (requiere un booking real, no un placeholder).
+// BUGFIX: para SIN_TADA, conciliacion.js ya resuelve el booking correcto una
+// sola vez (campo _booking_malla, propagado aquí como n.bookingMalla) — usar
+// ese valor en vez de volver a derivar la columna de booking desde cero con
+// la misma heurística de regex en un segundo archivo, que puede desalinearse
+// si la malla tiene más de una columna que contenga "booking" en el nombre.
+function bookingDeNovedad(n){
+  if(n.bookingMalla) return n.bookingMalla;
+  if(!n.matches || !n.matches.length) return '';
+  const mKeys = Object.keys(mallaRaw[0]||{});
+  const mBKey = mKeys.find(k=>/booking/i.test(k))||'BOOKING SERVICIO';
+  const bk = String(n.matches[0][mBKey]||'').trim();
+  return (bk && bk!=='SIN BOOKING') ? bk : '';
+}
 
 export function buildNovedades(){
   const nov = [];
   // 1. Registros de conciliación que requieren atención
   concResult.forEach((r,idx)=>{
     if(TIPOS_NOVEDAD.has(r.nivel_confianza)){
-      nov.push({tipo:r.nivel_confianza, fuente:'conc', idx,
-        piloto:r.piloto, ciudad:r.ciudad, seller:r.seller, fecha:r.fecha,
-        nota:r.nota||'', matches:r.matches||[], driver_id:r.driver_id||''});
+      const tipo=r.nivel_confianza, fecha=r.fecha;
+      nov.push({tipo, fuente:'conc', idx,
+        piloto:r.piloto, ciudad:r.ciudad, seller:r.seller, fecha,
+        nota:r.nota||'', matches:r.matches||[], driver_id:r.driver_id||'',
+        bookingMalla:r._booking_malla||'',
+        clave: claveNovedad(r.piloto, fecha, tipo)});
     }
   });
   // 2. Registros distribuidos SIN booking válido
   distResult.forEach((r,idx)=>{
     const bk = String(r.booking_id||'').trim();
     if(!bk || bk==='?' || bk==='SIN BOOKING' || bk==='__EXCLUIDO__'){
-      nov.push({tipo:TIPOS_SIN_BOOKING, fuente:'dist', idx,
-        piloto:r.piloto, ciudad:r.ciudad, seller:r.seller, fecha:r.fecha_malla||r.fecha,
-        nota:'Registro sin BOOKING SERVICIO en la malla', matches:[], driver_id:r.driver_id||''});
+      const tipo=TIPOS_SIN_BOOKING, fecha=r.fecha_malla||r.fecha;
+      nov.push({tipo, fuente:'dist', idx,
+        piloto:r.piloto, ciudad:r.ciudad, seller:r.seller, fecha,
+        nota:'Registro sin BOOKING SERVICIO en la malla', matches:[], driver_id:r.driver_id||'',
+        clave: claveNovedad(r.piloto, fecha, tipo)});
     }
   });
   return nov;
@@ -84,25 +117,26 @@ export function renderListaNovedades(){
     ? novedades.map((n,i)=>({n,i})).filter(({n})=>n.tipo===novFilter)
     : novedades.map((n,i)=>({n,i}));
 
-  // Filtro de estado: mostrar solo incluidos / excluidos / pendientes
-  if(novEstado==='ok')        todos = todos.filter(({i})=>resoluciones[i]?.accion==='ok');
-  else if(novEstado==='excluir') todos = todos.filter(({i})=>resoluciones[i]?.accion==='excluir');
-  else if(novEstado==='pendiente') todos = todos.filter(({i})=>!resoluciones[i]);
+  // Filtro de estado: mostrar solo incluidos / excluidos / en $0 / pendientes
+  if(novEstado==='ok')        todos = todos.filter(({n})=>resoluciones[n.clave]?.accion==='ok');
+  else if(novEstado==='excluir') todos = todos.filter(({n})=>resoluciones[n.clave]?.accion==='excluir');
+  else if(novEstado==='cero') todos = todos.filter(({n})=>resoluciones[n.clave]?.accion==='cero');
+  else if(novEstado==='pendiente') todos = todos.filter(({n})=>!resoluciones[n.clave]);
 
-  const pendientes = novEstado ? todos : todos.filter(({i})=>!resoluciones[i]);
-  const resueltos  = novEstado ? []    : todos.filter(({i})=> resoluciones[i]);
+  const pendientes = novEstado ? todos : todos.filter(({n})=>!resoluciones[n.clave]);
+  const resueltos  = novEstado ? []    : todos.filter(({n})=> resoluciones[n.clave]);
 
   let html = '';
 
   // Vista filtrada por estado: lista plana con botón revertir
   if(novEstado){
     if(todos.length===0){
-      const label = novEstado==='ok'?'incluidos':novEstado==='excluir'?'excluidos':'pendientes';
+      const label = novEstado==='ok'?'incluidos':novEstado==='excluir'?'excluidos':novEstado==='cero'?'en $0':'pendientes';
       html=`<div style="padding:20px;text-align:center;color:var(--text3);font-family:var(--mono);font-size:11px;">Sin registros en estado "${label}"</div>`;
     } else {
       html = todos.map(({n,i})=>{
-        const res = resoluciones[i];
-        const accion = res?.accion==='ok'?'✓ Incluido':res?.accion==='excluir'?'✗ Excluido':'⏳ Pendiente';
+        const res = resoluciones[n.clave];
+        const accion = res?.accion==='ok'?'✓ Incluido':res?.accion==='excluir'?'✗ Excluido':res?.accion==='cero'?'⓪ En $0':'⏳ Pendiente';
         const color  = res?.accion==='ok'?'var(--green)':res?.accion==='excluir'?'var(--text3)':'var(--yellow)';
         const detalle= res?.booking_id ? `· booking: ${res.booking_id}` : res?.nombre_malla ? `· ${res.nombre_malla}` : '';
         return `<div style="display:flex;align-items:center;gap:10px;padding:9px 14px;
@@ -135,8 +169,8 @@ export function renderListaNovedades(){
         list-style:none;display:flex;align-items:center;gap:8px;">
         <span>▶</span><span>Resueltos (${resueltos.length})</span>
         <span style="margin-left:auto;">
-          ${resueltos.filter(({i})=>resoluciones[i]?.accion==='ok').length} incluidos ·
-          ${resueltos.filter(({i})=>resoluciones[i]?.accion==='excluir').length} excluidos
+          ${resueltos.filter(({n})=>resoluciones[n.clave]?.accion==='ok').length} incluidos ·
+          ${resueltos.filter(({n})=>resoluciones[n.clave]?.accion==='excluir').length} excluidos
         </span>
       </summary>
       <div style="margin-top:6px;">${resueltos.map(({n,i})=>renderNovCardResuelto(n,i)).join('')}</div>
@@ -153,6 +187,8 @@ export function renderListaNovedades(){
     if(btnOk) btnOk.addEventListener('click',()=>confirmarOk(i));
     const btnEx = card.querySelector('.btn-nov-ex');
     if(btnEx) btnEx.addEventListener('click',()=>confirmarExcluir(i));
+    const btnCero = card.querySelector('.btn-nov-cero');
+    if(btnCero) btnCero.addEventListener('click',()=>confirmarCero(i));
     card.querySelectorAll('.nov-candidato').forEach(el=>{
       el.addEventListener('click',()=>seleccionarCandidato(i, el.dataset.bk, el.dataset.did, el.dataset.nom));
     });
@@ -166,8 +202,8 @@ export function renderListaNovedades(){
 }
 
 export function revertirResolucion(i){
-  delete resoluciones[i];
-  if(novedades[i]){ delete novedades[i]._booking_manual; delete novedades[i]._nombre_manual; delete novedades[i]._bk_manual; }
+  const n = novedades[i];
+  if(n){ delete resoluciones[n.clave]; delete n._booking_manual; delete n._nombre_manual; delete n._bk_manual; }
   novEstado = null;
   renderListaNovedades();
   actualizarSummary();
@@ -175,10 +211,12 @@ export function revertirResolucion(i){
 }
 // Tarjeta compacta para resueltos (sin acciones)
 export function renderNovCardResuelto(n, i){
-  const res = resoluciones[i];
-  const accion = res?.accion==='ok' ? '✓ Incluido' : '✗ Excluido';
-  const color  = res?.accion==='ok' ? 'var(--green)' : 'var(--text3)';
-  const detalle = res?.accion==='ok' && res?.booking_id
+  const res = resoluciones[n.clave];
+  const accion = res?.accion==='ok' ? '✓ Incluido' : res?.accion==='cero' ? '⓪ En $0' : '✗ Excluido';
+  const color  = res?.accion==='ok' ? 'var(--green)' : res?.accion==='cero' ? 'var(--yellow)' : 'var(--text3)';
+  const detalle = res?.accion==='cero'
+    ? `→ booking: ${res.booking_id}`
+    : res?.accion==='ok' && res?.booking_id
     ? `→ booking: ${res.booking_id}`
     : res?.accion==='ok' ? '→ match confirmado' : '→ excluido de la liquidación';
   return `<div style="display:flex;align-items:center;gap:10px;padding:7px 12px;
@@ -294,11 +332,12 @@ export function explicarNovedad(n){
 }
 
 export function renderNovCard(n, i){
-  const res = resoluciones[i];
-  const cardCls = res ? (res.accion==='ok'?'resuelto':'excluido') : '';
+  const res = resoluciones[n.clave];
+  const cardCls = res ? (res.accion==='ok'?'resuelto':res.accion==='cero'?'cero':'excluido') : '';
   const statusHtml = res
-    ? `<span class="nov-status ${res.accion==='ok'?'ns-ok':'ns-excl'}">${res.accion==='ok'?'✓ Incluido':'✗ Excluido'}</span>`
+    ? `<span class="nov-status ${res.accion==='ok'?'ns-ok':res.accion==='cero'?'ns-cero':'ns-excl'}">${res.accion==='ok'?'✓ Incluido':res.accion==='cero'?'⓪ En $0':'✗ Excluido'}</span>`
     : '';
+  const bookingDisponible = bookingDeNovedad(n);
 
   // Candidatos AMBIGUOUS
   let candidatosHtml='';
@@ -356,6 +395,7 @@ export function renderNovCard(n, i){
       ${bookingHtml}
       <div class="nov-actions">
         ${n.tipo!=='SIN_MALLA' ? `<button class="btn btn-sm btn-primary btn-nov-ok">✓ Confirmar</button>` : ''}
+        ${bookingDisponible ? `<button class="btn btn-sm btn-warn btn-nov-cero">⓪ Incluir en $0</button>` : ''}
         <button class="btn btn-sm btn-danger btn-nov-ex">✗ Excluir</button>
       </div>
     </div>
@@ -363,11 +403,13 @@ export function renderNovCard(n, i){
 }
 
 export function seleccionarCandidato(i, bk, did, nom){
+  const n = novedades[i];
+  if(!n) return;
   // Solo guardar la selección y marcar visualmente — NO confirmar aún
-  if(!resoluciones[i]) resoluciones[i]={};
-  resoluciones[i].booking_id  = bk;
-  resoluciones[i].driver_id   = did;
-  resoluciones[i].nombre_malla= nom;
+  if(!resoluciones[n.clave]) resoluciones[n.clave]={};
+  resoluciones[n.clave].booking_id  = bk;
+  resoluciones[n.clave].driver_id   = did;
+  resoluciones[n.clave].nombre_malla= nom;
   // NO setear accion='ok' todavía — el usuario debe presionar Confirmar
 
   // Actualizar visual: poner candidato en verde sin re-renderizar toda la lista
@@ -397,32 +439,44 @@ export function confirmarOk(i){
   if(n.tipo===TIPOS_SIN_BOOKING){
     const bk=n._booking_manual||'';
     if(!bk){ toast('Ingresa el Booking ID antes de confirmar'); return; }
-    resoluciones[i]={accion:'ok', booking_id:bk};
+    resoluciones[n.clave]={accion:'ok', booking_id:bk};
   } else if(n.tipo==='AMBIGUOUS'){
     const bkM=n._bk_manual||'';
-    if(!resoluciones[i]?.booking_id && !bkM){ toast('Selecciona un candidato o ingresa el booking'); return; }
-    if(bkM && !resoluciones[i]) resoluciones[i]={accion:'ok', booking_id:bkM, nombre_manual:n._nombre_manual||''};
-    else if(resoluciones[i]) resoluciones[i].accion='ok';
-    else resoluciones[i]={accion:'ok'};
+    if(!resoluciones[n.clave]?.booking_id && !bkM){ toast('Selecciona un candidato o ingresa el booking'); return; }
+    if(bkM && !resoluciones[n.clave]) resoluciones[n.clave]={accion:'ok', booking_id:bkM, nombre_manual:n._nombre_manual||''};
+    else if(resoluciones[n.clave]) resoluciones[n.clave].accion='ok';
+    else resoluciones[n.clave]={accion:'ok'};
     // Guardar en diccionario si hay nombre malla conocido
-    const nombreMalla = resoluciones[i].nombre_malla || n._nombre_manual || '';
+    const nombreMalla = resoluciones[n.clave].nombre_malla || n._nombre_manual || '';
     if(nombreMalla) dictSave(n.piloto, nombreMalla, 'auto');
   } else if(n.tipo==='FUZZY-LOW'||n.tipo==='LOW'){
-    resoluciones[i]={accion:'ok'};
+    resoluciones[n.clave]={accion:'ok'};
     // Para FUZZY-LOW guardar la equivalencia de nombre aprendida
     if(n.tipo==='FUZZY-LOW' && n.nota){
       const m = n.nota.match(/malla="([^"]+)"/);
       if(m) dictSave(n.piloto, m[1], 'auto');
     }
   } else {
-    resoluciones[i]={accion:'ok'};
+    resoluciones[n.clave]={accion:'ok'};
   }
   renderListaNovedades();
   actualizarSummary();
 }
 
+export function confirmarCero(i){
+  const n=novedades[i];
+  if(!n) return;
+  const bk = bookingDeNovedad(n);
+  if(!bk){ toast('No hay booking ID disponible en la malla para incluir en $0'); return; }
+  resoluciones[n.clave]={accion:'cero', booking_id:bk};
+  renderListaNovedades();
+  actualizarSummary();
+}
+
 export function confirmarExcluir(i){
-  resoluciones[i]={accion:'excluir'};
+  const n=novedades[i];
+  if(!n) return;
+  resoluciones[n.clave]={accion:'excluir'};
   renderListaNovedades();
   actualizarSummary();
 }
@@ -430,7 +484,8 @@ export function confirmarExcluir(i){
 export function actualizarSummary(){
   const resueltos=Object.values(resoluciones).filter(r=>r.accion==='ok').length;
   const excluidos=Object.values(resoluciones).filter(r=>r.accion==='excluir').length;
-  const pendientes=novedades.length-resueltos-excluidos;
+  const enCero=Object.values(resoluciones).filter(r=>r.accion==='cero').length;
+  const pendientes=novedades.length-resueltos-excluidos-enCero;
   const tipos=novedades.reduce((acc,n)=>{ acc[n.tipo]=(acc[n.tipo]||0)+1; return acc; },{});
   const sumEl=document.getElementById('nov-summary');
   if(!sumEl) return;
@@ -445,11 +500,12 @@ export function actualizarSummary(){
   // Estilo de cada contador de estado — resaltado si está activo
   const stOk  = novEstado==='ok'      ? 'font-weight:700;text-decoration:underline;' : '';
   const stEx  = novEstado==='excluir' ? 'font-weight:700;text-decoration:underline;' : '';
+  const stCe  = novEstado==='cero'    ? 'font-weight:700;text-decoration:underline;' : '';
   const stPe  = novEstado==='pendiente'?'font-weight:700;text-decoration:underline;' : '';
 
   // Determinar texto de ayuda contextual
   let ayuda = '';
-  if(novEstado)    ayuda=`· Mostrando: <strong style="color:var(--accent);">${novEstado==='ok'?'incluidos':novEstado==='excluir'?'excluidos':'pendientes'}</strong> <span style="cursor:pointer;color:var(--text3);" onclick="filterEstado(null)">[quitar]</span>`;
+  if(novEstado)    ayuda=`· Mostrando: <strong style="color:var(--accent);">${novEstado==='ok'?'incluidos':novEstado==='excluir'?'excluidos':novEstado==='cero'?'en $0':'pendientes'}</strong> <span style="cursor:pointer;color:var(--text3);" onclick="filterEstado(null)">[quitar]</span>`;
   else if(novFilter) ayuda=`· Filtro tipo: <strong style="color:var(--accent);">${novFilter}</strong>`;
   else               ayuda=`· Clic en badges o contadores para filtrar`;
 
@@ -458,13 +514,15 @@ export function actualizarSummary(){
       style="cursor:pointer;color:var(--green);${stOk}">✓ ${resueltos} incluidos</span>
     <span class="ns-item" onclick="filterEstado('excluir')"
       style="cursor:pointer;color:var(--text3);${stEx}">✗ ${excluidos} excluidos</span>
+    <span class="ns-item" onclick="filterEstado('cero')"
+      style="cursor:pointer;color:var(--yellow);${stCe}">⓪ ${enCero} en $0</span>
     <span class="ns-item" onclick="filterEstado('pendiente')"
       style="cursor:pointer;color:var(--yellow);${stPe}">⏳ ${pendientes} pendientes</span>
     <span class="ns-item" style="color:var(--text3);font-size:10px;font-family:var(--mono);">${ayuda}</span>`;
 }
 
 export function excluirTodas(){
-  novedades.forEach((_,i)=>{ resoluciones[i]={accion:'excluir'}; });
+  novedades.forEach(n=>{ resoluciones[n.clave]={accion:'excluir'}; });
   renderListaNovedades();
   actualizarSummary();
 }
@@ -474,7 +532,7 @@ export function aplicarResoluciones(){
   const bookingsExcluidos = new Set();
 
   novedades.forEach((n,i)=>{
-    const res=resoluciones[i];
+    const res=resoluciones[n.clave];
 
     if(n.tipo===TIPOS_SIN_BOOKING && n.fuente==='dist'){
       if(!res||res.accion==='excluir'){
@@ -530,6 +588,11 @@ export function aplicarResoluciones(){
           }
         }
         concResult[n.idx].nivel_confianza='MANUAL-OK';
+      } else if(res.accion==='cero'){
+        // Anulación a $0 — runTrump() inyecta la fila directamente desde
+        // resoluciones{}; solo marcamos el registro original para que
+        // buildExclusiones() no lo cuente también como SIN_TADA/AMBIGUOUS excluido.
+        concResult[n.idx]._resolucion_cero=true;
       }
     }
   });
@@ -543,7 +606,7 @@ export function aplicarResoluciones(){
       // Los SIN_BOOKING excluidos: marcarlos como __EXCLUIDO__ en el nuevo distResult
       // Identificarlos por piloto+fecha_malla+hora ya que idx cambió
       const excluirPorPiloto = novedades
-        .filter((_,i)=>{ const n=novedades[i]; return n.tipo===TIPOS_SIN_BOOKING && (!resoluciones[i]||resoluciones[i].accion==='excluir'); })
+        .filter(n=> n.tipo===TIPOS_SIN_BOOKING && (!resoluciones[n.clave]||resoluciones[n.clave].accion==='excluir'))
         .map(n=>(`${n.piloto}||${n.fecha}`));
 
       distResult.forEach(r=>{

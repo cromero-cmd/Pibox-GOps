@@ -23,7 +23,17 @@
       "Bash(ls -la /tmp/esmtest2/ 2>&1; echo \"---\"; find / -name \"test_initusers.mjs\" 2>/dev/null)",
       "Bash(rm -rf /tmp/esmtest; echo cleaned)",
       "Bash(grep -rn \"5b6ef8\\\\|4558f0\\\\|#070910\" css/ js/ index.html)",
-      "Bash(echo \"exit: $?\")"
+      "Bash(echo \"exit: $?\")",
+      "Bash(rm -rf /tmp/esmtest)",
+      "Bash(mkdir -p /tmp/esmtest)",
+      "Bash(cp -r \"/c/Users/ADMIN/Desktop/pipeline-tada/js\" /tmp/esmtest/js)",
+      "Bash(cp \"/c/Users/ADMIN/Desktop/pipeline-tada/test/novedades_resolution_test.mjs\" /tmp/esmtest/)",
+      "Read(//tmp/**)",
+      "Read(//tmp/esmtest/**)",
+      "Bash(mkdir -p /tmp/esmtest/test)",
+      "Bash(cp \"/c/Users/ADMIN/Desktop/pipeline-tada/test/novedades_resolution_test.mjs\" /tmp/esmtest/test/)",
+      "Bash(node test/booking_cero_sintada_test.mjs)",
+      "Bash(rm -rf /tmp/esmtest/js)"
     ]
   }
 }
