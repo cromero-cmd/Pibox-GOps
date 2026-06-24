@@ -260,6 +260,39 @@ export function buildTrumpRows(distResultIn, t, av, mallaRawIn){
 }
 
 // ═══════════════════════════════════════════
+// CÁLCULO PURO — filas de "Incluir en $0" (anulación de booking)
+// Registros marcados en Novedades con accion:'cero' — existen en la malla
+// con booking real pero deben entrar al template con todos los campos
+// financieros en 0 (anula cualquier valor previo que Trump tuviera para ese
+// booking). Aislado de buildTrumpRows porque no depende de distResult —
+// la fuente de verdad es resoluciones{}, no la distribución normal.
+// ═══════════════════════════════════════════
+export function buildCeroRows(novedadesIn, resolucionesIn){
+  return novedadesIn
+    .filter(n => resolucionesIn[n.clave]?.accion === 'cero')
+    .map(n => {
+      const res = resolucionesIn[n.clave];
+      return {
+        BOOKING_ID:                    res.booking_id,
+        COMPANY_FINAL_COST:            0,
+        ADDITIONAL_COMPANY_FINAL_COST: 0,
+        DISPUTED_COMPANY_FINAL_COST:   '',
+        FINAL_COST:                    0,
+        ADDITIONAL_FINAL_COST:         0,
+        DISPUTED_FINAL_COST:           '',
+        PACKAGES_COUNT:                0,
+        IS_PER_HOUR:                   0,
+        COMMENTS:                      'Anulacion $0',
+        COMMENTS_PILOTO:               'Anulacion $0',
+        _confianza:                    'CERO',
+        _piloto:                       n.piloto,
+        _ciudad:                       n.ciudad,
+        _fecha:                        n.fecha,
+      };
+    });
+}
+
+// ═══════════════════════════════════════════
 // ORQUESTADOR — DOM, logging, persistencia local
 // ═══════════════════════════════════════════
 export function runTrump(){
@@ -267,7 +300,8 @@ export function runTrump(){
   setTimeout(()=>{
     const t=getCurrentEdits(), av=getAV();
     const {rows, meta} = buildTrumpRows(distResult, t, av, mallaRaw);
-    trumpRows = rows;
+    const ceroRows = buildCeroRows(novedades, resoluciones);
+    trumpRows = rows.concat(ceroRows);
 
     if(meta.nEsp>0)
       addLog('log-trump',`[INFO] Fechas especiales aplicadas (${meta.nEsp}): ${Object.entries(meta.fechasEspMap).map(([f,fe])=>`${f}(${fe.tipo}${fe.tarifa_custom?'/'+fe.tarifa_custom:''})`).join(' · ')}`,'ok');
@@ -287,7 +321,8 @@ export function runTrump(){
       <div class="stat"><div class="stat-l">Margen bruto</div>
         <div class="stat-v ${margen>=0?'g':'r'}" style="font-size:13px;">${cop(margen)}</div>
         <div style="font-size:11px;font-family:var(--mono);color:${margen>=0?'var(--green)':'var(--red)'};margin-top:4px;">${margenPct}% sobre cobro</div>
-      </div>`;
+      </div>
+      ${ceroRows.length>0?`<div class="stat"><div class="stat-l">⓪ Registros en $0</div><div class="stat-v y">${ceroRows.length}</div></div>`:''}`;
 
     const TC=['BOOKING_ID','COMPANY_FINAL_COST','ADDITIONAL_COMPANY_FINAL_COST',
       'DISPUTED_COMPANY_FINAL_COST','FINAL_COST','ADDITIONAL_FINAL_COST',
@@ -309,6 +344,7 @@ export function runTrump(){
 
     trumpRows.filter(r=>r._confianza==='MEDIUM').forEach(r=>addLog('log-trump',`[MED] ${r.BOOKING_ID} — dist. equitativa`,'warn'));
     trumpRows.filter(r=>r._confianza==='LOW').forEach(r=>addLog('log-trump',`[LOW] ${r.BOOKING_ID} · ${r._piloto}`,'warn'));
+    ceroRows.forEach(r=>addLog('log-trump',`[CERO] ${r.BOOKING_ID} · ${r._piloto} · ${r._fecha}`,'warn'));
     concResult.filter(r=>r.nivel_confianza==='SIN_MALLA').forEach(r=>
       addLog('log-trump',`[EXCL] ${r.piloto} · ${r.fecha} — SIN_MALLA`,'err'));
     concResult.filter(r=>r._excluido_manual&&r._accion_manual==='excluir').forEach(r=>
@@ -364,8 +400,11 @@ export function downloadTrump(){
   ws1['!cols']=TC_TRUMP.map(c=>({wch:c==='COMMENTS'?55:c==='BOOKING_ID'?18:26}));
 
   // Hoja 1b: Referencia interna con COMMENTS detallado para auditoría
+  // TIPO distingue bookings normales de anulaciones a $0 (sin separarlos
+  // de la hoja "Template Trump" — ambos deben procesarse juntos en Trump).
   const ws1b=XLSX.utils.json_to_sheet(trumpRows.map(r=>({
     BOOKING_ID:       r.BOOKING_ID,
+    TIPO:             r._confianza==='CERO' ? 'ANULACION_CERO' : 'NORMAL',
     PILOTO:           r._piloto,
     CIUDAD:           r._ciudad,
     SELLER:           r._seller,
@@ -379,7 +418,7 @@ export function downloadTrump(){
     COMMENTS_DETALLE: r.COMMENTS,
     COMMENTS_PILOTO:  r.COMMENTS_PILOTO,
   })));
-  ws1b['!cols']=[{wch:18},{wch:24},{wch:10},{wch:30},{wch:12},{wch:8},{wch:14},{wch:14},{wch:14},{wch:18},{wch:12},{wch:80},{wch:55}];
+  ws1b['!cols']=[{wch:18},{wch:16},{wch:24},{wch:10},{wch:30},{wch:12},{wch:8},{wch:14},{wch:14},{wch:14},{wch:18},{wch:12},{wch:80},{wch:55}];
   const mKeys=Object.keys(mallaRaw[0]||{});
   const mBKey=mKeys.find(k=>/booking/i.test(k))||'BOOKING SERVICIO';
   const mFKey=mKeys.find(k=>/^fecha$/i.test(k.trim()))||mKeys.find(k=>/fecha/i.test(k))||'FECHA';
@@ -446,7 +485,7 @@ export function buildExclusiones(){
   });
 
   // 1b. SIN_TADA — en malla pero sin actividad en TADA
-  concResult.filter(r=>r.nivel_confianza==='SIN_TADA'&&!r._resolucion_manual&&!r._excluido_manual).forEach(r=>{
+  concResult.filter(r=>r.nivel_confianza==='SIN_TADA'&&!r._resolucion_manual&&!r._excluido_manual&&!r._resolucion_cero).forEach(r=>{
     excl.push({
       razon:'SIN_TADA',
       descripcion:'Booking en malla sin actividad reportada en TADA — pendiente de revisión',
@@ -487,10 +526,21 @@ export function buildExclusiones(){
     });
   });
 
+  // 3b. Anulados a $0 — incluidos en el template con booking real pero en $0,
+  // NO son una exclusión real (sí entran al template Trump) — categoría propia.
+  novedades.filter(n=>resoluciones[n.clave]?.accion==='cero').forEach(n=>{
+    excl.push({
+      razon:'ANULADO_CERO',
+      descripcion:'Incluido en el template con booking real y todos los campos financieros en $0',
+      piloto:n.piloto, ciudad:n.ciudad, seller:n.seller,
+      fecha:n.fecha, booking_id:resoluciones[n.clave].booking_id,
+    });
+  });
+
   // 4. Novedades pendientes — no resueltas → excluidas automáticamente
   if(typeof novedades !== 'undefined'){
-    novedades.forEach((n,i)=>{
-      if(!resoluciones[i]){
+    novedades.forEach(n=>{
+      if(!resoluciones[n.clave]){
         excl.push({
           razon:'NOVEDAD_PENDIENTE',
           descripcion:`Novedad tipo ${n.tipo} no resuelta — excluida automáticamente`,
@@ -526,12 +576,15 @@ export function renderResumenExclusiones(totalIncluidos){
     EXCLUIDO_MANUAL:  {bg:'rgba(234,179,8,.08)',  border:'#eab308', label:'EXCLUIDO MANUAL'},
     SIN_BOOKING:      {bg:'rgba(239,68,68,.08)',  border:'#ef4444', label:'SIN_BOOKING'},
     NOVEDAD_PENDIENTE:{bg:'rgba(234,179,8,.08)',  border:'#eab308', label:'PENDIENTE'},
+    ANULADO_CERO:     {bg:'rgba(245,200,66,.08)', border:'#f5c842', label:'INCLUIDO EN $0'},
   };
 
   const totalMalla = mallaRaw.filter(r=>{
     const mBKey=Object.keys(mallaRaw[0]||{}).find(k=>/booking/i.test(k))||'BOOKING SERVICIO';
     return r[mBKey];
   }).length;
+  // ANULADO_CERO no es una exclusión real — el booking sí entra al template (en $0).
+  const exclReales = excl.filter(e=>e.razon!=='ANULADO_CERO').length;
 
   let html = `<div style="padding:12px 14px;border-bottom:1px solid var(--border);background:var(--bg3);">
     <div style="display:flex;gap:24px;align-items:center;flex-wrap:wrap;">
@@ -540,7 +593,7 @@ export function renderResumenExclusiones(totalIncluidos){
         <span style="color:var(--text3);"> incluidos en template</span>
       </span>
       <span style="font-size:12px;font-family:var(--mono);">
-        <span style="color:var(--red);font-weight:600;">${excl.length}</span>
+        <span style="color:var(--red);font-weight:600;">${exclReales}</span>
         <span style="color:var(--text3);"> excluidos de ${totalMalla} bookings en malla</span>
       </span>
       ${Object.entries(grupos).map(([r,items])=>`

@@ -60,6 +60,8 @@
 .btn-green:hover{filter:brightness(1.2);transform:translateY(-1px);}
 .btn-danger{border-color:var(--redBorder);color:var(--red);background:transparent;}
 .btn-danger:hover{background:var(--redBg);}
+.btn-warn{border-color:var(--yellowBorder);color:var(--yellow);background:transparent;}
+.btn-warn:hover{background:var(--yellowBg);}
 .btn-sm{padding:4px 10px;font-size:11px;}
 .btn-export{
   padding:4px 10px;font-size:11px;
@@ -207,6 +209,7 @@ tr:hover td{background:var(--bg3);}
 .nov-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:10px;overflow:hidden;transition:all .2s cubic-bezier(.4,0,.2,1);box-shadow:var(--shadow-card);}
 .nov-card.resuelto{border-color:var(--green2);opacity:.7;}
 .nov-card.excluido{border-color:var(--border);opacity:.5;}
+.nov-card.cero{border-color:var(--yellowBorder);opacity:.7;}
 .nov-header{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border);background:var(--bg3);}
 .nov-badge{font-size:10px;font-family:var(--mono);font-weight:600;padding:2px 8px;border-radius:4px;flex-shrink:0;letter-spacing:.05em;}
 .nov-piloto{font-size:12px;font-weight:700;flex:1;}
@@ -222,6 +225,7 @@ tr:hover td{background:var(--bg3);}
 .nov-status{font-size:10px;font-family:var(--mono);padding:4px 10px;border-radius:4px;margin-left:auto;}
 .ns-ok{background:var(--greenBg);color:var(--green);border:1px solid var(--green2);}
 .ns-excl{background:var(--bg3);color:var(--text3);border:1px solid var(--border);}
+.ns-cero{background:var(--yellowBg);color:var(--yellow);border:1px solid var(--yellowBorder);}
 .nov-summary{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:12px 16px;margin-bottom:16px;display:flex;gap:20px;align-items:center;flex-wrap:wrap;box-shadow:var(--shadow-card);}
 .ns-item{font-size:12px;font-family:var(--mono);}
 

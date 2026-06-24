@@ -26,6 +26,16 @@ function claveNovedad(piloto, fecha, tipo){
   return `${normStr(piloto)}||${fecha}||${tipo}`;
 }
 
+// Booking ID real de la malla asociado a una novedad, si existe — usado para
+// habilitar "Incluir en $0" (requiere un booking real, no un placeholder).
+function bookingDeNovedad(n){
+  if(!n.matches || !n.matches.length) return '';
+  const mKeys = Object.keys(mallaRaw[0]||{});
+  const mBKey = mKeys.find(k=>/booking/i.test(k))||'BOOKING SERVICIO';
+  const bk = String(n.matches[0][mBKey]||'').trim();
+  return (bk && bk!=='SIN BOOKING') ? bk : '';
+}
+
 export function buildNovedades(){
   const nov = [];
   // 1. Registros de conciliación que requieren atención
@@ -100,9 +110,10 @@ export function renderListaNovedades(){
     ? novedades.map((n,i)=>({n,i})).filter(({n})=>n.tipo===novFilter)
     : novedades.map((n,i)=>({n,i}));
 
-  // Filtro de estado: mostrar solo incluidos / excluidos / pendientes
+  // Filtro de estado: mostrar solo incluidos / excluidos / en $0 / pendientes
   if(novEstado==='ok')        todos = todos.filter(({n})=>resoluciones[n.clave]?.accion==='ok');
   else if(novEstado==='excluir') todos = todos.filter(({n})=>resoluciones[n.clave]?.accion==='excluir');
+  else if(novEstado==='cero') todos = todos.filter(({n})=>resoluciones[n.clave]?.accion==='cero');
   else if(novEstado==='pendiente') todos = todos.filter(({n})=>!resoluciones[n.clave]);
 
   const pendientes = novEstado ? todos : todos.filter(({n})=>!resoluciones[n.clave]);
@@ -113,12 +124,12 @@ export function renderListaNovedades(){
   // Vista filtrada por estado: lista plana con botón revertir
   if(novEstado){
     if(todos.length===0){
-      const label = novEstado==='ok'?'incluidos':novEstado==='excluir'?'excluidos':'pendientes';
+      const label = novEstado==='ok'?'incluidos':novEstado==='excluir'?'excluidos':novEstado==='cero'?'en $0':'pendientes';
       html=`<div style="padding:20px;text-align:center;color:var(--text3);font-family:var(--mono);font-size:11px;">Sin registros en estado "${label}"</div>`;
     } else {
       html = todos.map(({n,i})=>{
         const res = resoluciones[n.clave];
-        const accion = res?.accion==='ok'?'✓ Incluido':res?.accion==='excluir'?'✗ Excluido':'⏳ Pendiente';
+        const accion = res?.accion==='ok'?'✓ Incluido':res?.accion==='excluir'?'✗ Excluido':res?.accion==='cero'?'⓪ En $0':'⏳ Pendiente';
         const color  = res?.accion==='ok'?'var(--green)':res?.accion==='excluir'?'var(--text3)':'var(--yellow)';
         const detalle= res?.booking_id ? `· booking: ${res.booking_id}` : res?.nombre_malla ? `· ${res.nombre_malla}` : '';
         return `<div style="display:flex;align-items:center;gap:10px;padding:9px 14px;
@@ -169,6 +180,8 @@ export function renderListaNovedades(){
     if(btnOk) btnOk.addEventListener('click',()=>confirmarOk(i));
     const btnEx = card.querySelector('.btn-nov-ex');
     if(btnEx) btnEx.addEventListener('click',()=>confirmarExcluir(i));
+    const btnCero = card.querySelector('.btn-nov-cero');
+    if(btnCero) btnCero.addEventListener('click',()=>confirmarCero(i));
     card.querySelectorAll('.nov-candidato').forEach(el=>{
       el.addEventListener('click',()=>seleccionarCandidato(i, el.dataset.bk, el.dataset.did, el.dataset.nom));
     });
@@ -192,9 +205,11 @@ export function revertirResolucion(i){
 // Tarjeta compacta para resueltos (sin acciones)
 export function renderNovCardResuelto(n, i){
   const res = resoluciones[n.clave];
-  const accion = res?.accion==='ok' ? '✓ Incluido' : '✗ Excluido';
-  const color  = res?.accion==='ok' ? 'var(--green)' : 'var(--text3)';
-  const detalle = res?.accion==='ok' && res?.booking_id
+  const accion = res?.accion==='ok' ? '✓ Incluido' : res?.accion==='cero' ? '⓪ En $0' : '✗ Excluido';
+  const color  = res?.accion==='ok' ? 'var(--green)' : res?.accion==='cero' ? 'var(--yellow)' : 'var(--text3)';
+  const detalle = res?.accion==='cero'
+    ? `→ booking: ${res.booking_id}`
+    : res?.accion==='ok' && res?.booking_id
     ? `→ booking: ${res.booking_id}`
     : res?.accion==='ok' ? '→ match confirmado' : '→ excluido de la liquidación';
   return `<div style="display:flex;align-items:center;gap:10px;padding:7px 12px;
@@ -311,10 +326,11 @@ export function explicarNovedad(n){
 
 export function renderNovCard(n, i){
   const res = resoluciones[n.clave];
-  const cardCls = res ? (res.accion==='ok'?'resuelto':'excluido') : '';
+  const cardCls = res ? (res.accion==='ok'?'resuelto':res.accion==='cero'?'cero':'excluido') : '';
   const statusHtml = res
-    ? `<span class="nov-status ${res.accion==='ok'?'ns-ok':'ns-excl'}">${res.accion==='ok'?'✓ Incluido':'✗ Excluido'}</span>`
+    ? `<span class="nov-status ${res.accion==='ok'?'ns-ok':res.accion==='cero'?'ns-cero':'ns-excl'}">${res.accion==='ok'?'✓ Incluido':res.accion==='cero'?'⓪ En $0':'✗ Excluido'}</span>`
     : '';
+  const bookingDisponible = bookingDeNovedad(n);
 
   // Candidatos AMBIGUOUS
   let candidatosHtml='';
@@ -372,6 +388,7 @@ export function renderNovCard(n, i){
       ${bookingHtml}
       <div class="nov-actions">
         ${n.tipo!=='SIN_MALLA' ? `<button class="btn btn-sm btn-primary btn-nov-ok">✓ Confirmar</button>` : ''}
+        ${bookingDisponible ? `<button class="btn btn-sm btn-warn btn-nov-cero">⓪ Incluir en $0</button>` : ''}
         <button class="btn btn-sm btn-danger btn-nov-ex">✗ Excluir</button>
       </div>
     </div>
@@ -439,6 +456,16 @@ export function confirmarOk(i){
   actualizarSummary();
 }
 
+export function confirmarCero(i){
+  const n=novedades[i];
+  if(!n) return;
+  const bk = bookingDeNovedad(n);
+  if(!bk){ toast('No hay booking ID disponible en la malla para incluir en $0'); return; }
+  resoluciones[n.clave]={accion:'cero', booking_id:bk};
+  renderListaNovedades();
+  actualizarSummary();
+}
+
 export function confirmarExcluir(i){
   const n=novedades[i];
   if(!n) return;
@@ -450,7 +477,8 @@ export function confirmarExcluir(i){
 export function actualizarSummary(){
   const resueltos=Object.values(resoluciones).filter(r=>r.accion==='ok').length;
   const excluidos=Object.values(resoluciones).filter(r=>r.accion==='excluir').length;
-  const pendientes=novedades.length-resueltos-excluidos;
+  const enCero=Object.values(resoluciones).filter(r=>r.accion==='cero').length;
+  const pendientes=novedades.length-resueltos-excluidos-enCero;
   const tipos=novedades.reduce((acc,n)=>{ acc[n.tipo]=(acc[n.tipo]||0)+1; return acc; },{});
   const sumEl=document.getElementById('nov-summary');
   if(!sumEl) return;
@@ -465,11 +493,12 @@ export function actualizarSummary(){
   // Estilo de cada contador de estado — resaltado si está activo
   const stOk  = novEstado==='ok'      ? 'font-weight:700;text-decoration:underline;' : '';
   const stEx  = novEstado==='excluir' ? 'font-weight:700;text-decoration:underline;' : '';
+  const stCe  = novEstado==='cero'    ? 'font-weight:700;text-decoration:underline;' : '';
   const stPe  = novEstado==='pendiente'?'font-weight:700;text-decoration:underline;' : '';
 
   // Determinar texto de ayuda contextual
   let ayuda = '';
-  if(novEstado)    ayuda=`· Mostrando: <strong style="color:var(--accent);">${novEstado==='ok'?'incluidos':novEstado==='excluir'?'excluidos':'pendientes'}</strong> <span style="cursor:pointer;color:var(--text3);" onclick="filterEstado(null)">[quitar]</span>`;
+  if(novEstado)    ayuda=`· Mostrando: <strong style="color:var(--accent);">${novEstado==='ok'?'incluidos':novEstado==='excluir'?'excluidos':novEstado==='cero'?'en $0':'pendientes'}</strong> <span style="cursor:pointer;color:var(--text3);" onclick="filterEstado(null)">[quitar]</span>`;
   else if(novFilter) ayuda=`· Filtro tipo: <strong style="color:var(--accent);">${novFilter}</strong>`;
   else               ayuda=`· Clic en badges o contadores para filtrar`;
 
@@ -478,6 +507,8 @@ export function actualizarSummary(){
       style="cursor:pointer;color:var(--green);${stOk}">✓ ${resueltos} incluidos</span>
     <span class="ns-item" onclick="filterEstado('excluir')"
       style="cursor:pointer;color:var(--text3);${stEx}">✗ ${excluidos} excluidos</span>
+    <span class="ns-item" onclick="filterEstado('cero')"
+      style="cursor:pointer;color:var(--yellow);${stCe}">⓪ ${enCero} en $0</span>
     <span class="ns-item" onclick="filterEstado('pendiente')"
       style="cursor:pointer;color:var(--yellow);${stPe}">⏳ ${pendientes} pendientes</span>
     <span class="ns-item" style="color:var(--text3);font-size:10px;font-family:var(--mono);">${ayuda}</span>`;
@@ -550,6 +581,11 @@ export function aplicarResoluciones(){
           }
         }
         concResult[n.idx].nivel_confianza='MANUAL-OK';
+      } else if(res.accion==='cero'){
+        // Anulación a $0 — runTrump() inyecta la fila directamente desde
+        // resoluciones{}; solo marcamos el registro original para que
+        // buildExclusiones() no lo cuente también como SIN_TADA/AMBIGUOUS excluido.
+        concResult[n.idx]._resolucion_cero=true;
       }
     }
   });
