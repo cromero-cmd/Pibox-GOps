@@ -34,11 +34,29 @@ function claveNovedad(piloto, fecha, tipo){
 // la misma heurística de regex en un segundo archivo, que puede desalinearse
 // si la malla tiene más de una columna que contenga "booking" en el nombre.
 function bookingDeNovedad(n){
+  // DIAGNÓSTICO TEMPORAL — remover una vez resuelto el caso de "Incluir en $0"
+  // que no aparece para SIN_TADA en producción (piloto: ${n.piloto}).
+  console.log('[DIAG bookingDeNovedad]', {
+    piloto: n.piloto,
+    tipo: n.tipo,
+    bookingMalla: n.bookingMalla,
+  });
   if(n.bookingMalla) return n.bookingMalla;
-  if(!n.matches || !n.matches.length) return '';
+  if(!n.matches || !n.matches.length){
+    console.log('[DIAG bookingDeNovedad] sin matches — matches.length:', n.matches?.length);
+    return '';
+  }
   const mKeys = Object.keys(mallaRaw[0]||{});
   const mBKey = mKeys.find(k=>/booking/i.test(k))||'BOOKING SERVICIO';
   const bk = String(n.matches[0][mBKey]||'').trim();
+  console.log('[DIAG bookingDeNovedad]', {
+    matchesLength: n.matches.length,
+    mallaRawKeys: mKeys,
+    mBKeyDetectado: mBKey,
+    matches0RawValue: n.matches[0][mBKey],
+    bkExtraido: bk,
+    valorFinal: (bk && bk!=='SIN BOOKING') ? bk : '',
+  });
   return (bk && bk!=='SIN BOOKING') ? bk : '';
 }
 
