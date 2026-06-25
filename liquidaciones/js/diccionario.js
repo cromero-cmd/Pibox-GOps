@@ -3,7 +3,7 @@
 // Estructura: [{id, tadaNombre, mallaNombre, fechaAprendido, usos, fuente}]
 // ═══════════════════════════════════════════
 import { LS_DICT, normStr } from './config.js';
-import { toast, emptyStateHtml } from './ui.js';
+import { toast, emptyStateHtml, addLog } from './ui.js';
 
 // Claves de storage compartido — no usadas hoy (reservadas para sync futura vía Apps Script),
 // se conservan tal cual existían en el archivo original.
@@ -38,10 +38,14 @@ export function dictFind(nombreTada){
 
 export function dictSave(tadaNombre, mallaNombre, fuente){
   const dict = loadDict();
+  // Clave única: SIEMPRE por tadaNombre. Nunca se busca/compara por
+  // mallaNombre — dos pilotos TADA distintos pueden mapear legítimamente
+  // al mismo nombre de malla (ej. homónimos) sin que eso cuente como conflicto.
   const nTada = normStr(tadaNombre);
   const idx = dict.findIndex(e => normStr(e.tadaNombre) === nTada);
+  const esNueva = idx < 0;
   if(idx >= 0){
-    // Actualizar existente
+    // Actualizar existente — solo mallaNombre/fuente, tadaNombre nunca cambia aquí
     dict[idx].mallaNombre = mallaNombre;
     dict[idx].fuente = fuente;
     dict[idx].fechaActualizado = new Date().toISOString().slice(0,10);
@@ -55,6 +59,7 @@ export function dictSave(tadaNombre, mallaNombre, fuente){
   }
   saveDict(dict);
   actualizarDictSummary();
+  if(esNueva) addLog('log-conc', `[DICT] Aprendido: "${tadaNombre}" → "${mallaNombre}" (${fuente})`, 'ok');
 }
 
 export function dictIncrementarUso(tadaNombre){

@@ -52,7 +52,9 @@
       "Bash(cp \"/c/Users/ADMIN/Desktop/pipeline-tada/test/_audit_sintada.mjs\" /tmp/esmtest/test/)",
       "Bash(node test/_audit_sintada.mjs)",
       "Bash(cp \"/c/Users/ADMIN/Desktop/pipeline-tada/test/\"*.mjs /tmp/esmtest/test/)",
-      "Bash(node test/sinmalla_novedad_test.mjs)"
+      "Bash(node test/sinmalla_novedad_test.mjs)",
+      "Bash(cp \"/c/Users/ADMIN/Desktop/pipeline-tada/test/diccionario_fix_test.mjs\" /tmp/esmtest/test/)",
+      "Bash(node test/diccionario_fix_test.mjs)"
     ]
   }
 }

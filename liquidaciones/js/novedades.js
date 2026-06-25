@@ -486,8 +486,15 @@ export function confirmarOk(i){
     if(nombreMalla) dictSave(n.piloto, nombreMalla, 'auto');
   } else if(n.tipo==='FUZZY-LOW'||n.tipo==='LOW'){
     resoluciones[n.clave]={accion:'ok'};
-    // Para FUZZY-LOW guardar la equivalencia de nombre aprendida
+    // Solo FUZZY-LOW aprende equivalencia de NOMBRE — LOW por definición ya
+    // tiene match exacto de piloto+fecha (idx2 en conciliacion.js exige
+    // normStr(piloto) idéntico); lo único que difiere ahí es el seller, no
+    // el nombre. Guardar dictSave(piloto, piloto) en LOW no aprendería nada
+    // y dejaría una entrada inútil en el diccionario.
     if(n.tipo==='FUZZY-LOW' && n.nota){
+      // Si no se puede extraer el nombre malla de la nota, NO llamar
+      // dictSave() — guardar con un valor vacío/incorrecto sería peor que
+      // no guardar nada (corrompería el diccionario silenciosamente).
       const m = n.nota.match(/malla="([^"]+)"/);
       if(m) dictSave(n.piloto, m[1], 'auto');
     }

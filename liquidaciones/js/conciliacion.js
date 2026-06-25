@@ -177,15 +177,19 @@ export function runConciliacion(){
       };
 
       // ── NIVEL 0: Diccionario de equivalencias aprendidas (fuzzy) ──
-      // BUGFIX: antes se buscaba con comparación estricta (normStr(e.tadaNombre)===rp),
-      // lo que ignoraba en silencio una equivalencia ya aprendida cuando el nombre
-      // TADA variaba mínimamente semana a semana (causó overbilling real en una
-      // prefactura). Ahora se usa fuzzyNameMatch() — mismo criterio que el resto
-      // del archivo usa para desambiguar (≥2 palabras y ≥50% del nombre más corto).
+      // BUGFIX (lookup): antes se buscaba con comparación estricta
+      // (normStr(e.tadaNombre)===rp), lo que ignoraba en silencio una
+      // equivalencia ya aprendida cuando el nombre TADA variaba mínimamente
+      // semana a semana (causó overbilling real en una prefactura). Ahora se
+      // incluye también fuzzyNameMatch() — mismo criterio que el resto del
+      // archivo usa para desambiguar (≥2 palabras y ≥50% del nombre más
+      // corto) — más el match exacto explícito (cubre nombres de 1 sola
+      // palabra, que fuzzyNameMatch nunca acepta por su mínimo de 2).
       const dictMatches = dict
-        .map(e => ({ entry: e, score: scoreNames(row.piloto, e.tadaNombre).score }))
-        .filter(({entry}) => fuzzyNameMatch(row.piloto, entry.tadaNombre))
-        .sort((x,y) => y.score - x.score);
+        .map(e => ({ entry: e, ...scoreNames(row.piloto, e.tadaNombre) }))
+        .filter(m => normStr(m.entry.tadaNombre) === rp || fuzzyNameMatch(row.piloto, m.entry.tadaNombre))
+        // Empate de score → prioriza la entrada aprendida más recientemente.
+        .sort((x,y) => y.score - x.score || new Date(y.entry.fechaAprendido||0) - new Date(x.entry.fechaAprendido||0));
 
       let dictEntry = dictMatches.length ? dictMatches[0].entry : null;
       if(dictMatches.length > 1){
@@ -193,10 +197,20 @@ export function runConciliacion(){
           `[WARN] ${dictMatches.length} entradas del diccionario coinciden con "${row.piloto}" — se priorizó "${dictEntry.tadaNombre}" (score ${dictMatches[0].score})`,
           'warn');
       }
-      if(dictEntry && normStr(dictEntry.tadaNombre) !== rp){
-        // Aprendizaje continuo: el nombre TADA de esta semana reemplaza al guardado
-        dictEntry.tadaNombre = row.piloto;
-        saveDict(dict);
+      if(dictEntry){
+        const exact = normStr(dictEntry.tadaNombre) === rp;
+        // BUGFIX (corrupción): antes se renombraba dictEntry.tadaNombre con
+        // CUALQUIER match fuzzy, incluyendo coincidencias parciales (ej. un
+        // nombre de 4 palabras que solo comparte 2 con un homónimo distinto)
+        // — eso sobreescribía la entrada de OTRO piloto con el nombre del
+        // piloto equivocado. Ahora solo se renombra (aprendizaje continuo)
+        // cuando el match cubre el 100% de las palabras del nombre más corto
+        // (score===minWords) — variantes de tildes/typos sí califican,
+        // homónimos parciales no.
+        if(!exact && dictMatches[0].score === dictMatches[0].minWords){
+          dictEntry.tadaNombre = row.piloto;
+          saveDict(dict);
+        }
       }
 
       if(dictEntry){
