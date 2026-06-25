@@ -52,10 +52,10 @@ export function wordMatch(w1, w2){
 }
 
 export function scoreNames(nameA, nameB){
-  // Retorna {score, minWords} — score = nº de palabras con match
+  // Retorna {score, minWords, maxWords} — score = nº de palabras con match
   const wordsA = normStr(nameA).split(' ').filter(w=>w.length>1);
   const wordsB = normStr(nameB).split(' ').filter(w=>w.length>1);
-  if(!wordsA.length||!wordsB.length) return {score:0, minWords:0};
+  if(!wordsA.length||!wordsB.length) return {score:0, minWords:0, maxWords:0};
 
   // Dirección A→B: cuántas palabras de A encuentran match en B
   let matchAB=0;
@@ -72,6 +72,7 @@ export function scoreNames(nameA, nameB){
   return {
     score:    Math.max(matchAB, matchBA),
     minWords: Math.min(wordsA.length, wordsB.length),
+    maxWords: Math.max(wordsA.length, wordsB.length),
   };
 }
 
@@ -113,9 +114,19 @@ function resolverPorDiccionario(piloto, fecha, dict, idxF, mPKey, mDKey){
   }
   if(dictEntry){
     const exact = normStr(dictEntry.tadaNombre) === rp;
-    // Aprendizaje continuo solo con match de alta confianza (ver BUGFIX
-    // de corrupción en runConciliacion más abajo — mismo criterio aquí).
-    if(!exact && dictMatches[0].score === dictMatches[0].minWords){
+    // Aprendizaje continuo SOLO con match de alta confianza: exigir
+    // minWords===maxWords (mismo número de palabras en ambos nombres) y
+    // score===minWords (cobertura del 100%). BUGFIX: antes solo se exigía
+    // score===minWords, que es asimétrico — si el piloto actual tiene 2
+    // palabras y la entrada del diccionario tiene 4, basta que esas 2
+    // palabras encuentren match parcial en las 4 para disparar el
+    // renombrado, sobreescribiendo una entrada de OTRO piloto sin relación
+    // real (ej. "Marlon Parada" renombrando silenciosamente la entrada de
+    // "Miguel Angel Parra Garzon" porque "Parada"≈"Parra" — homónimo
+    // parcial, no la misma persona). Exigir minWords===maxWords descarta
+    // cualquier match contra un nombre con distinto número de palabras.
+    const m = dictMatches[0];
+    if(!exact && m.score === m.minWords && m.minWords === m.maxWords){
       dictEntry.tadaNombre = piloto;
       saveDict(dict);
     }
@@ -235,8 +246,9 @@ export async function runConciliacion(){
       // match exacto explícito (cubre nombres de 1 sola palabra, que
       // fuzzyNameMatch nunca acepta por su mínimo de 2). El renombrado de
       // "aprendizaje continuo" (BUGFIX de corrupción) vive dentro de la
-      // función — solo renombra con match de alta confianza (100% de las
-      // palabras del nombre más corto), nunca con homónimos parciales.
+      // función — solo renombra cuando ambos nombres tienen el MISMO número
+      // de palabras y coinciden el 100% (typo/tilde, nunca un nombre más
+      // corto matcheando parcialmente dentro de uno más largo).
       const r0 = resolverPorDiccionario(row.piloto, rf, dict, idxF, mPKey, mDKey);
       if(r0){
         matches = r0.matches; nivel = r0.nivel; nota = r0.nota;

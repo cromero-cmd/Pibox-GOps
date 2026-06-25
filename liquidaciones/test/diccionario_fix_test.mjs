@@ -135,4 +135,41 @@ assert.ok(rTorres.nota.includes('MallaReciente'), `debe priorizar la entrada má
 assert.ok(logEls['log-conc'].innerHTML.includes('[WARN] 2 entradas del diccionario coinciden'), 'debe loguear WARN por ambigüedad');
 console.log('OK: empate de score se resuelve por fechaAprendido (más reciente gana)');
 
+// ═══════════════════════════════════════════
+// Bug 4 — homónimo de DISTINTO número de palabras NO debe corromper la
+// entrada (caso real reportado: "Miguel Angel Parra Garzon" → "Adrian
+// Parada" con 18 usos desapareció al confirmar "Marlon Parada" → "Adrian
+// Parada" — un piloto de 2 palabras compartiendo solo el apellido con un
+// piloto de 4 palabras). El gate anterior solo exigía score===minWords
+// (cobertura del nombre MÁS CORTO), lo cual es asimétrico: si el piloto
+// actual tiene menos palabras que la entrada ya guardada, basta que esas
+// pocas palabras encuentren match parcial en el nombre largo para que se
+// dispare el renombrado. Ahora también se exige minWords===maxWords (mismo
+// número de palabras en ambos nombres).
+// ═══════════════════════════════════════════
+window._dictCache = null; localStorage.removeItem('pibox:diccionario_v1');
+d = loadDict();
+d.push({id:'e3', tadaNombre:'Miguel Angel Parra Garzon', mallaNombre:'Adrian Parada', fechaAprendido:'2026-01-01', usos:18});
+window._dictCache = d; localStorage.setItem('pibox:diccionario_v1', JSON.stringify(d));
+
+parser.mallaRaw.length = 0;
+parser.mallaRaw.push({ 'NOMBRE':'Otro Booking Cualquiera', 'FECHA':'2026-06-25', 'SELLER':'BOG-W', 'BOOKING SERVICIO':'BK-YYY', 'ID PILOTO':'D-4' });
+normalizer.tadaNorm.length = 0;
+// "Marlon Garzon" (2 palabras) comparte "Garzon" con la entrada de 4
+// palabras — score=1 con el algoritmo real (Marlon no matchea nada), pero
+// el test cubre el caso límite explícitamente con un nombre de 2 palabras
+// que SÍ alcanza score=2 contra las 4 (comparte "Miguel" y "Garzon", los
+// extremos del nombre completo) para probar el gate, no la heurística de
+// scoreNames en sí.
+normalizer.tadaNorm.push({ piloto:'Miguel Garzon', ciudad:'BOG', seller:'BOG-W', dia:'jueves', fecha:'2026-06-25', paquetes:6, incentivos:1, cancelados:0, tareas:0, garantizado:0, bonos:0, ajustes:0 });
+
+conciliacion.runConciliacion();
+await new Promise(r=>setTimeout(r, 150));
+const dictTrasHomonimo = loadDict();
+assert.equal(dictTrasHomonimo.length, 1, 'no debe crearse una entrada nueva ni duplicarse');
+assert.equal(dictTrasHomonimo[0].tadaNombre, 'Miguel Angel Parra Garzon',
+  'la entrada de 18 usos NO debe ser renombrada por un piloto de distinto número de palabras que comparte solo extremos del nombre');
+assert.equal(dictTrasHomonimo[0].usos, 18, 'el contador de usos de la entrada original debe conservarse intacto');
+console.log('OK: un homónimo con distinto número de palabras no corrompe/renombra una entrada existente');
+
 console.log('\n✓ TODOS LOS CHECKS DE LOS FIXES DEL DICCIONARIO PASARON');

@@ -62,7 +62,11 @@
       "Bash(cp \"/c/Users/ADMIN/Desktop/pipeline-tada/test/sintada_candidatos_test.mjs\" /tmp/esmtest/test/)",
       "Bash(node test/sintada_candidatos_test.mjs)",
       "Bash(cp \"/c/Users/ADMIN/Desktop/pipeline-tada/test/diccionario_backend_sync_test.mjs\" /tmp/esmtest/test/)",
-      "Bash(node test/diccionario_backend_sync_test.mjs)"
+      "Bash(node test/diccionario_backend_sync_test.mjs)",
+      "Bash(rm -rf js test)",
+      "Bash(mkdir test *)",
+      "Bash(cp -r \"/c/Users/ADMIN/Desktop/pipeline-tada/js\" js)",
+      "Bash(cp -r \"/c/Users/ADMIN/Desktop/pipeline-tada/test\"/* test/)"
     ]
   }
 }
