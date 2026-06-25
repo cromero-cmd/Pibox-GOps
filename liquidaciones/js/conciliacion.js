@@ -586,25 +586,34 @@ export function renderConcStats(){
     st>0?item('SIN_TADA','SIN_TADA · no en reporte',st,'selected-sin','y'):'',
   ].join('');
 
-  // ── Diferencias: filas TADA con actividad vs. bookings en la malla ──
-  // (recalculado aquí en vez de reutilizar la variable local de
-  // runConciliacion() — misma fuente de verdad, tadaNorm/mallaRaw, y este
-  // stat también debe reflejarse tras reaplicarDiccionario(), que no
-  // recorre tadaNorm).
-  const totalTada  = tadaNorm.filter(r=>r.paquetes>0||r.incentivos>0||r.cancelados>0).length;
+  // ── Diferencias ──
+  // BUGFIX: la versión anterior mostraba filasConActividad.length ("filas
+  // TADA procesadas") como si fuera comparable 1:1 contra concResult.length
+  // (liquidación directa + revisión) — pero esos dos números miden cosas
+  // distintas: concResult incluye también los SIN_TADA (bookings de la
+  // MALLA sin actividad en TADA), que nunca fueron una "fila TADA". Eso
+  // hacía que el total mostrado no cuadrara con la suma real de los grupos.
+  //
+  // Ahora se muestran los 3 totales que sí son comparables entre sí
+  // (totalProcesadas = totalDirecta + totalRevision, siempre exacto por
+  // construcción) y se usa filasConActividad.length SOLO internamente, para
+  // decidir si hay bookings de malla sin actividad en TADA — no se expone
+  // como si fuera "lo mismo" que totalProcesadas.
+  const totalProcesadas = concResult.length; // = totalDirecta + totalRevision
   const totalMalla = mallaRaw.length;
-  const diferencia = Math.abs(totalTada - totalMalla);
-  let explicacionDiff, explicacionCls;
-  if(totalTada > totalMalla){
-    explicacionDiff = 'Un piloto puede tener actividad en varios días, pero un solo booking en la malla no cubre todos esos días — por eso hay más filas TADA con actividad que bookings en la malla.';
-    explicacionCls = '';
-  } else if(totalTada < totalMalla){
-    explicacionDiff = 'Hay bookings en la malla sin actividad reportada en TADA (aparecen como SIN_TADA).';
-    explicacionCls = '';
-  } else {
-    explicacionDiff = '✓ Todos los bookings de la malla tienen correspondencia en TADA';
-    explicacionCls = 'g';
+  const totalTadaConActividad = tadaNorm.filter(r=>r.paquetes>0||r.incentivos>0||r.cancelados>0).length;
+
+  const notas = [];
+  if(totalProcesadas > totalMalla){
+    notas.push(`${sn} filas de TADA no tienen booking correspondiente en la malla (SIN_MALLA)`);
   }
+  if(totalMalla > totalTadaConActividad){
+    notas.push(`${st} bookings de la malla no tienen actividad reportada en TADA (SIN_TADA)`);
+  }
+  const explicacionCls = notas.length ? '' : 'g';
+  const explicacionDiff = notas.length
+    ? notas.join(' · ')
+    : '✓ Todas las filas procesadas tienen booking correspondiente y todos los bookings de la malla tienen actividad en TADA';
 
   document.getElementById('stats-conc').innerHTML=`
     <div class="conc-groups">
@@ -624,7 +633,7 @@ export function renderConcStats(){
       </div>
     </div>
     <div class="conc-diff-box">
-      <div class="conc-diff-nums">${totalTada} filas TADA procesadas · ${totalMalla} bookings en malla · ${diferencia} filas sin booking correspondiente</div>
+      <div class="conc-diff-nums">${totalProcesadas} filas procesadas · ${totalDirecta} liquidación directa · ${totalRevision} revisión · ${totalMalla} bookings en malla</div>
       <div class="conc-diff-explicacion ${explicacionCls}">${explicacionDiff}</div>
       <div class="conc-diff-omitidas">${omitidas} días sin actividad — omitidos del match</div>
     </div>

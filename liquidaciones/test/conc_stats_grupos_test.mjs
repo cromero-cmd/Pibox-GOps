@@ -73,53 +73,66 @@ conciliacion.filterConc(null, 'HIGH'); // deseleccionar para no afectar los sigu
 console.log('OK: el filtro activo (concFilter) sigue reflejándose en las tarjetas individuales');
 
 // ═══════════════════════════════════════════
-// 2 — Sección de diferencias: TADA > malla
+// 2 — Bug real reportado: el total mostrado no cuadraba porque se usaba
+// filasConActividad.length (que excluye los SIN_TADA, filas de la MALLA sin
+// actividad en TADA) como si fuera comparable 1:1 contra concResult.length.
+// Ahora totalProcesadas = concResult.length = totalDirecta + totalRevision,
+// siempre exacto por construcción, y filasConActividad.length solo se usa
+// internamente para decidir la nota de SIN_TADA — nunca se muestra como si
+// fuera "lo mismo" que totalProcesadas. Caso: ambas notas simultáneas.
 // ═══════════════════════════════════════════
-parser.mallaRaw.length = 0;
-parser.mallaRaw.push({ 'NOMBRE':'X', 'FECHA':'2026-06-20', 'SELLER':'S', 'BOOKING SERVICIO':'BK-1', 'ID PILOTO':'D-1' });
-normalizer.tadaNorm.length = 0;
-normalizer.tadaNorm.push({ piloto:'X', fecha:'2026-06-20', paquetes:5, incentivos:0, cancelados:0 });
-normalizer.tadaNorm.push({ piloto:'X', fecha:'2026-06-21', paquetes:3, incentivos:0, cancelados:0 }); // mismo piloto, otro día
-
-conciliacion.renderConcStats();
-let diffHtml = els['stats-conc'].innerHTML;
-assert.ok(diffHtml.includes('2 filas TADA procesadas · 1 bookings en malla · 1 filas sin booking correspondiente'),
-  `debe mostrar los números correctos (TADA>malla) — actual: ${diffHtml}`);
-assert.ok(diffHtml.includes('actividad en varios días'),
-  'debe explicar que un piloto puede tener actividad en varios días sin booking propio para cada uno');
-console.log('OK: explicación correcta cuando hay más filas TADA con actividad que bookings en malla');
-
-// ═══════════════════════════════════════════
-// 3 — Sección de diferencias: TADA < malla
-// ═══════════════════════════════════════════
+setConc([
+  { piloto:'A', fecha:'2026-06-20', nivel_confianza:'HIGH',      matches:[], nota:'' },
+  { piloto:'B', fecha:'2026-06-20', nivel_confianza:'HIGH',      matches:[], nota:'' },
+  { piloto:'C', fecha:'2026-06-20', nivel_confianza:'HIGH',      matches:[], nota:'' },
+  { piloto:'D', fecha:'2026-06-20', nivel_confianza:'SIN_MALLA', matches:[], nota:'' },
+  { piloto:'E', fecha:'2026-06-20', nivel_confianza:'SIN_TADA',  matches:[], nota:'' },
+]);
+// totalDirecta=3, totalRevision=2 (SIN_MALLA+SIN_TADA), totalProcesadas=5
 parser.mallaRaw.length = 0;
 parser.mallaRaw.push({ 'NOMBRE':'X', 'FECHA':'2026-06-20', 'SELLER':'S', 'BOOKING SERVICIO':'BK-1', 'ID PILOTO':'D-1' });
 parser.mallaRaw.push({ 'NOMBRE':'Y', 'FECHA':'2026-06-20', 'SELLER':'S', 'BOOKING SERVICIO':'BK-2', 'ID PILOTO':'D-2' });
+parser.mallaRaw.push({ 'NOMBRE':'Z', 'FECHA':'2026-06-20', 'SELLER':'S', 'BOOKING SERVICIO':'BK-3', 'ID PILOTO':'D-3' });
+// totalMalla=3 (< totalProcesadas=5 → dispara nota SIN_MALLA)
 normalizer.tadaNorm.length = 0;
 normalizer.tadaNorm.push({ piloto:'X', fecha:'2026-06-20', paquetes:5, incentivos:0, cancelados:0 });
+normalizer.tadaNorm.push({ piloto:'Y', fecha:'2026-06-20', paquetes:2, incentivos:0, cancelados:0 });
+// filasConActividad.length=2 (< totalMalla=3 → dispara nota SIN_TADA)
 
 conciliacion.renderConcStats();
-diffHtml = els['stats-conc'].innerHTML;
-assert.ok(diffHtml.includes('1 filas TADA procesadas · 2 bookings en malla · 1 filas sin booking correspondiente'),
-  `debe mostrar los números correctos (TADA<malla) — actual: ${diffHtml}`);
-assert.ok(diffHtml.includes('SIN_TADA'),
-  'debe explicar que hay bookings en malla sin actividad reportada en TADA (SIN_TADA)');
-console.log('OK: explicación correcta cuando hay más bookings en malla que filas TADA con actividad');
+let diffHtml = els['stats-conc'].innerHTML;
+assert.ok(diffHtml.includes('5 filas procesadas · 3 liquidación directa · 2 revisión · 3 bookings en malla'),
+  `el resumen debe cuadrar exactamente con los grupos (619+55=674 en el caso real) — actual: ${diffHtml}`);
+assert.ok(diffHtml.includes('1 filas de TADA no tienen booking correspondiente en la malla (SIN_MALLA)'),
+  'debe mostrar la nota de SIN_MALLA cuando totalProcesadas > bookings en malla');
+assert.ok(diffHtml.includes('1 bookings de la malla no tienen actividad reportada en TADA (SIN_TADA)'),
+  'debe mostrar la nota de SIN_TADA cuando bookings en malla > filas TADA con actividad');
+console.log('OK: el resumen ya no mezcla filasConActividad.length con concResult.length — los números cuadran');
+console.log('OK: ambas notas (SIN_MALLA y SIN_TADA) pueden mostrarse simultáneamente');
 
 // ═══════════════════════════════════════════
-// 4 — Sección de diferencias: TADA === malla
+// 3 — Ninguna de las dos condiciones se cumple → mensaje de confirmación
 // ═══════════════════════════════════════════
+setConc([
+  { piloto:'A', fecha:'2026-06-20', nivel_confianza:'HIGH',      matches:[], nota:'' },
+  { piloto:'B', fecha:'2026-06-20', nivel_confianza:'AMBIGUOUS', matches:[], nota:'' },
+]);
+// totalProcesadas=2
 parser.mallaRaw.length = 0;
 parser.mallaRaw.push({ 'NOMBRE':'X', 'FECHA':'2026-06-20', 'SELLER':'S', 'BOOKING SERVICIO':'BK-1', 'ID PILOTO':'D-1' });
+parser.mallaRaw.push({ 'NOMBRE':'Y', 'FECHA':'2026-06-20', 'SELLER':'S', 'BOOKING SERVICIO':'BK-2', 'ID PILOTO':'D-2' });
+// totalMalla=2 (no es > totalProcesadas=2 → no dispara SIN_MALLA)
 normalizer.tadaNorm.length = 0;
 normalizer.tadaNorm.push({ piloto:'X', fecha:'2026-06-20', paquetes:5, incentivos:0, cancelados:0 });
+normalizer.tadaNorm.push({ piloto:'Y', fecha:'2026-06-20', paquetes:2, incentivos:0, cancelados:0 });
+normalizer.tadaNorm.push({ piloto:'Z', fecha:'2026-06-20', paquetes:1, incentivos:0, cancelados:0 });
+// filasConActividad.length=3 (totalMalla=2 no es > 3 → no dispara SIN_TADA)
 
 conciliacion.renderConcStats();
 diffHtml = els['stats-conc'].innerHTML;
-assert.ok(diffHtml.includes('1 filas TADA procesadas · 1 bookings en malla · 0 filas sin booking correspondiente'),
-  `debe mostrar los números correctos (iguales) — actual: ${diffHtml}`);
-assert.ok(diffHtml.includes('✓ Todos los bookings de la malla tienen correspondencia en TADA'),
-  'debe mostrar el mensaje de confirmación cuando los totales coinciden');
-console.log('OK: mensaje de confirmación correcto cuando TADA y malla coinciden exactamente');
+assert.ok(diffHtml.includes('2 filas procesadas · 1 liquidación directa · 1 revisión · 2 bookings en malla'));
+assert.ok(diffHtml.includes('✓ Todas las filas procesadas tienen booking correspondiente y todos los bookings de la malla tienen actividad en TADA'),
+  'sin diferencias en ningún sentido, debe mostrar el mensaje de confirmación');
+console.log('OK: mensaje de confirmación cuando ninguna de las dos condiciones se cumple');
 
 console.log('\n✓ TODOS LOS CHECKS DE LOS GRUPOS DE CONCILIACIÓN CON TOTALES PASARON');
