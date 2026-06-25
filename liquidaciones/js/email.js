@@ -3,7 +3,6 @@
 // ═══════════════════════════════════════════
 import { LS_EMAIL, DEFAULT_BACKEND_URL, cop } from './config.js';
 import { calcularPeriodoMalla } from './parser.js';
-import { concResult } from './conciliacion.js';
 import { trumpRows } from './trump.js';
 import { getAV } from './tariffs.js';
 import { addLog, toast } from './ui.js';
@@ -52,7 +51,6 @@ export async function enviarPorCorreo(){
   // Guardar config para próxima vez
   try{ localStorage.setItem(LS_EMAIL, JSON.stringify({url, apikey, analista, emailAnalista})); }catch{}
 
-  // Generar el Excel en memoria (mismo que downloadTrump pero sin descargar)
   const av    = getAV();
   const runId = trumpRows[0]?._run_id || 'LIQ';
   const tc    = trumpRows.reduce((a,r)=>a+r.COMPANY_FINAL_COST+r.ADDITIONAL_COMPANY_FINAL_COST,0);
@@ -60,10 +58,9 @@ export async function enviarPorCorreo(){
   const margen= tc - tp;
   const periodo = calcularPeriodoMalla() || 'período no especificado';
 
-  // Construir workbook
-  const TC=['BOOKING_ID','COMPANY_FINAL_COST','ADDITIONAL_COMPANY_FINAL_COST',
-    'DISPUTED_COMPANY_FINAL_COST','FINAL_COST','ADDITIONAL_FINAL_COST',
-    'DISPUTED_FINAL_COST','PACKAGES_COUNT','IS_PER_HOUR','COMMENTS'];
+  // El adjunto del correo es solo la hoja "Template Trump", como CSV — el
+  // botón de descarga local (downloadTrump) sigue generando el XLSX
+  // completo de 4 hojas sin cambios, esto es exclusivo del adjunto del correo.
   const ws1=XLSX.utils.json_to_sheet(trumpRows.map(r=>({
     BOOKING_ID:r.BOOKING_ID, COMPANY_FINAL_COST:r.COMPANY_FINAL_COST,
     ADDITIONAL_COMPANY_FINAL_COST:r.ADDITIONAL_COMPANY_FINAL_COST,
@@ -71,33 +68,16 @@ export async function enviarPorCorreo(){
     ADDITIONAL_FINAL_COST:r.ADDITIONAL_FINAL_COST, DISPUTED_FINAL_COST:'',
     PACKAGES_COUNT:r.PACKAGES_COUNT, IS_PER_HOUR:0, COMMENTS:r.COMMENTS_PILOTO,
   })));
+  const csvText = XLSX.utils.sheet_to_csv(ws1, {FS:',', RS:'\n'});
 
-  const incon=[];
-  concResult.filter(r=>r.nivel_confianza==='SIN_MALLA').forEach(r=>
-    incon.push({tipo:'SIN_MALLA',piloto:r.piloto,fecha:r.fecha,seller:r.seller,booking_id:'—',nota:'Sin match'}));
-  concResult.filter(r=>r._excluido_manual).forEach(r=>
-    incon.push({tipo:'EXCLUIDO_MANUAL',piloto:r.piloto,fecha:r.fecha,seller:r.seller,booking_id:'—',nota:'Excluido en Novedades'}));
-  const ws2=XLSX.utils.json_to_sheet(incon.length?incon:[{tipo:'Sin inconsistencias'}]);
-  const ws3=XLSX.utils.json_to_sheet([
-    {campo:'run_id',valor:runId},{campo:'periodo',valor:periodo},
-    {campo:'fecha_generacion',valor:new Date().toLocaleString('es-CO')},
-    {campo:'analista',valor:analista},{campo:'version_tarifas',valor:av.version},
-    {campo:'bookings_generados',valor:trumpRows.length},
-    {campo:'cobro_tada',valor:tc},{campo:'pago_pilotos',valor:tp},{campo:'margen',valor:margen},
-  ]);
-
-  const wb=XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb,ws1,'Template Trump');
-  XLSX.utils.book_append_sheet(wb,ws2,'Inconsistencias');
-  XLSX.utils.book_append_sheet(wb,ws3,'Auditoria');
-
-  // Convertir a base64
-  const wbArray  = XLSX.write(wb, {type:'array', bookType:'xlsx'});
-  const uint8    = new Uint8Array(wbArray);
-  let binary     = '';
-  uint8.forEach(b=>binary+=String.fromCharCode(b));
-  const base64   = btoa(binary);
-  const nombreArchivo = `${runId}.xlsx`;
+  // Convertir a base64 — TextEncoder (no btoa directo) porque el CSV puede
+  // tener tildes/ñ en COMMENTS y btoa() solo acepta Latin1; TextEncoder
+  // codifica a UTF-8 real sin anteponer BOM.
+  const csvBytes = new TextEncoder().encode(csvText);
+  let binary = '';
+  csvBytes.forEach(b=>binary+=String.fromCharCode(b));
+  const base64 = btoa(binary);
+  const nombreArchivo = `${runId}.csv`;
 
   // Enviar al Apps Script
   btnEnviar.disabled = true;
