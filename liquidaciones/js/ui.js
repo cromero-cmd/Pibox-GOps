@@ -4,8 +4,46 @@
 import { cop, PAGE_SIZE } from './config.js';
 
 // ── LOG ──────────────────────────────────────
-export function addLog(id,msg,cls='info'){ const el=document.getElementById(id); if(!el)return; el.innerHTML+=`<div class="${cls}">${msg}</div>`; el.scrollTop=el.scrollHeight; }
-export function clearLog(id){ const el=document.getElementById(id); if(el) el.innerHTML=''; }
+// Resumen dinámico para los logs colapsables (panel de Conciliación y
+// Template Trump) — el conteo se mantiene en JS en vez de contar hijos del
+// DOM, así funciona igual en navegador real y en los tests headless.
+const LOG_SUMMARY = {
+  'log-conc':  { summaryId:'log-conc-summary',  label:'Log de conciliación', colorBySeverity:false },
+  'log-trump': { summaryId:'log-trump-summary', label:'Log final',           colorBySeverity:true  },
+};
+const logState = {};
+
+function actualizarResumenLog(id){
+  const cfg = LOG_SUMMARY[id];
+  if(!cfg) return;
+  const summaryEl = document.getElementById(cfg.summaryId);
+  if(!summaryEl) return;
+  const st = logState[id] || {count:0, hasErr:false, hasWarn:false};
+  summaryEl.textContent = `📋 ${cfg.label} (${st.count} líneas)`;
+  if(cfg.colorBySeverity){
+    summaryEl.style.color = st.hasErr ? 'var(--red)' : st.hasWarn ? 'var(--yellow)' : 'var(--green)';
+  }
+}
+
+export function addLog(id,msg,cls='info'){
+  const el=document.getElementById(id); if(!el)return;
+  el.innerHTML+=`<div class="${cls}">${msg}</div>`;
+  el.scrollTop=el.scrollHeight;
+  if(LOG_SUMMARY[id]){
+    const st = logState[id] || (logState[id]={count:0, hasErr:false, hasWarn:false});
+    st.count++;
+    if(cls==='err') st.hasErr=true;
+    if(cls==='warn') st.hasWarn=true;
+    actualizarResumenLog(id);
+  }
+}
+export function clearLog(id){
+  const el=document.getElementById(id); if(el) el.innerHTML='';
+  if(LOG_SUMMARY[id]){
+    logState[id] = {count:0, hasErr:false, hasWarn:false};
+    actualizarResumenLog(id);
+  }
+}
 
 // ── TOAST — con ícono y duración por tipo ────
 const TOAST_META = {

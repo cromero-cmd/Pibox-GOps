@@ -68,7 +68,9 @@
       "Bash(cp -r \"/c/Users/ADMIN/Desktop/pipeline-tada/js\" js)",
       "Bash(cp -r \"/c/Users/ADMIN/Desktop/pipeline-tada/test\"/* test/)",
       "Bash(cp \"/c/Users/ADMIN/Desktop/pipeline-tada/test/diccionario_ux_refresh_test.mjs\" /tmp/esmtest/test/)",
-      "Bash(node test/diccionario_ux_refresh_test.mjs)"
+      "Bash(node test/diccionario_ux_refresh_test.mjs)",
+      "Bash(cp \"/c/Users/ADMIN/Desktop/pipeline-tada/test/log_collapsible_test.mjs\" /tmp/esmtest/test/)",
+      "Bash(node test/log_collapsible_test.mjs)"
     ]
   }
 }
