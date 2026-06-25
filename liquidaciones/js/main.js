@@ -160,12 +160,6 @@ document.addEventListener('keydown', e=>{
 // ═══════════════════════════════════════════
 // BOOT
 // ═══════════════════════════════════════════
-// DIAG TEMPORAL — marcador de versión inconfundible para descartar caché del
-// navegador. Si este log no aparece (o muestra un build_id distinto) al
-// recargar, el navegador NO está ejecutando este código — ningún cambio en
-// los módulos va a tener efecto hasta resolver eso. Remover una vez resuelto.
-console.log('[BUILD]', { archivo:'main.js', build_id:'diag-sintada-2026-06-25', mensaje:'Si ves esto, el navegador SÍ está cargando el JS actualizado.' });
-
 initTariffs();
 actualizarDictSummary();
 

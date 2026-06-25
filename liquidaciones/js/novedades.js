@@ -3,10 +3,11 @@
 // ═══════════════════════════════════════════
 import { normStr } from './config.js';
 import { mallaRaw } from './parser.js';
+import { tadaNorm } from './normalizer.js';
 import { concResult } from './conciliacion.js';
 import { distResult, runDistribucionSilent } from './distribucion.js';
 import { dictSave } from './diccionario.js';
-import { toast, navStep, setMaxStep } from './ui.js';
+import { toast, navStep, setMaxStep, addLog } from './ui.js';
 import { showProcessing, hideProcessing } from './ui.js';
 
 export let novedades = [];    // lista construida una sola vez al abrir el módulo
@@ -34,29 +35,11 @@ function claveNovedad(piloto, fecha, tipo){
 // la misma heurística de regex en un segundo archivo, que puede desalinearse
 // si la malla tiene más de una columna que contenga "booking" en el nombre.
 function bookingDeNovedad(n){
-  // DIAGNÓSTICO TEMPORAL — remover una vez resuelto el caso de "Incluir en $0"
-  // que no aparece para SIN_TADA en producción (piloto: ${n.piloto}).
-  console.log('[DIAG bookingDeNovedad]', {
-    piloto: n.piloto,
-    tipo: n.tipo,
-    bookingMalla: n.bookingMalla,
-  });
   if(n.bookingMalla) return n.bookingMalla;
-  if(!n.matches || !n.matches.length){
-    console.log('[DIAG bookingDeNovedad] sin matches — matches.length:', n.matches?.length);
-    return '';
-  }
+  if(!n.matches || !n.matches.length) return '';
   const mKeys = Object.keys(mallaRaw[0]||{});
   const mBKey = mKeys.find(k=>/booking/i.test(k))||'BOOKING SERVICIO';
   const bk = String(n.matches[0][mBKey]||'').trim();
-  console.log('[DIAG bookingDeNovedad]', {
-    matchesLength: n.matches.length,
-    mallaRawKeys: mKeys,
-    mBKeyDetectado: mBKey,
-    matches0RawValue: n.matches[0][mBKey],
-    bkExtraido: bk,
-    valorFinal: (bk && bk!=='SIN BOOKING') ? bk : '',
-  });
   return (bk && bk!=='SIN BOOKING') ? bk : '';
 }
 
@@ -70,6 +53,7 @@ export function buildNovedades(){
         piloto:r.piloto, ciudad:r.ciudad, seller:r.seller, fecha,
         nota:r.nota||'', matches:r.matches||[], driver_id:r.driver_id||'',
         bookingMalla:r._booking_malla||'',
+        candidatosTada:r._candidatosTada||[],
         clave: claveNovedad(r.piloto, fecha, tipo)});
     }
   });
@@ -208,7 +192,8 @@ export function renderListaNovedades(){
     const btnCero = card.querySelector('.btn-nov-cero');
     if(btnCero) btnCero.addEventListener('click',()=>confirmarCero(i));
     card.querySelectorAll('.nov-candidato').forEach(el=>{
-      el.addEventListener('click',()=>seleccionarCandidato(i, el.dataset.bk, el.dataset.did, el.dataset.nom));
+      if(n.tipo==='SIN_TADA') el.addEventListener('click',()=>seleccionarCandidatoTada(i, el.dataset.nom));
+      else el.addEventListener('click',()=>seleccionarCandidato(i, el.dataset.bk, el.dataset.did, el.dataset.nom));
     });
     const inpBk = card.querySelector('.inp-booking');
     if(inpBk) inpBk.addEventListener('input',e=>{ novedades[i]._booking_manual=e.target.value.trim(); });
@@ -333,15 +318,18 @@ export function explicarNovedad(n){
   }
 
   if(tipo === 'SIN_TADA'){
-    const bk = n.nota.match(/booking: ([a-f0-9]+)/)?.[1] || '—';
+    const bk = n.bookingMalla || n.nota.match(/booking: ([a-f0-9]+)/)?.[1] || '—';
+    const hayCandidatos = n.candidatosTada && n.candidatosTada.length>0;
     return `<div style="margin-bottom:10px;">
       <div style="font-size:11px;font-weight:600;color:var(--yellow);margin-bottom:6px;">⚠ Este booking está en la malla Pibox pero no aparece en el reporte de TADA.</div>
       <div style="display:grid;grid-template-columns:90px 1fr;gap:4px;font-size:11px;font-family:var(--mono);line-height:1.8;">
         <span style="color:var(--text3);">Booking ID:</span><span style="color:var(--text);">${bk}</span>
       </div>
       <div style="margin-top:8px;font-size:11px;color:var(--text2);">
-        Posibles causas: el piloto trabajó ese día pero TADA no reportó actividad, o hay un desfase entre los sistemas.<br>
-        → <strong>Confirma</strong> si debe incluirse en la liquidación (se liquidará con garantizado mínimo).<br>
+        ${hayCandidatos
+          ? `El nombre no coincide exactamente con TADA. Estos son los pilotos con actividad en la misma fecha y punto de venta — selecciona el correcto o ingresa manualmente.`
+          : `No se encontraron pilotos con actividad en esta fecha y punto de venta. Si conoces el nombre correcto en TADA, ingrésalo manualmente.`}<br>
+        → <strong>Confirma</strong> ${hayCandidatos ? 'con el piloto correcto para liquidar con sus valores reales de TADA' : 'si debe incluirse en la liquidación'}.<br>
         → <strong>Excluye</strong> si no debe pagarse en este ciclo.
       </div>
     </div>`;
@@ -406,6 +394,37 @@ export function renderNovCard(n, i){
     </div>`;
   }
 
+  // Candidatos SIN_TADA — pilotos con actividad real en TADA, misma
+  // fecha+seller, que conciliacion.js no pudo asignar por nombre. El booking
+  // ya es conocido (es el de la malla, n.bookingMalla) — lo que falta es el
+  // nombre del lado TADA, por eso (a diferencia de AMBIGUOUS) no se pide un
+  // Booking ID manual aquí: pedirlo sería redundante y confuso, ya que no
+  // hay nada que desambiguar de ese lado.
+  let sinTadaHtml='';
+  if(n.tipo==='SIN_TADA'){
+    const seleccionado = resoluciones[n.clave]?.nombre_tada || '';
+    if(n.candidatosTada && n.candidatosTada.length>0){
+      sinTadaHtml=`<div style="margin-bottom:8px;font-size:11px;color:var(--text3);font-family:var(--mono);">Pilotos con actividad en TADA en esta fecha y punto de venta:</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;">
+          ${n.candidatosTada.map(c=>{
+            const selCls = seleccionado===c.piloto ? 'selected' : '';
+            return `<div class="nov-candidato ${selCls}" data-nom="${c.piloto}">
+              <div style="font-weight:600;font-size:11px;">${c.piloto}</div>
+              <div style="color:var(--text3);font-size:10px;">${c.paquetes} paq · ${c.incentivos} inc · ${c.fecha}</div>
+            </div>`;
+          }).join('')}
+        </div>
+        <div style="font-size:10px;color:var(--text3);font-family:var(--mono);margin-bottom:4px;">O ninguno es correcto — ingresar manualmente:</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">
+          <input class="nov-input inp-nom-manual" type="text" placeholder="Nombre del piloto en TADA..." value="${n._nombre_manual||''}"/>
+        </div>`;
+    } else {
+      sinTadaHtml=`<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">
+        <input class="nov-input inp-nom-manual" type="text" placeholder="Nombre del piloto en TADA (si lo conoces)..." value="${n._nombre_manual||''}"/>
+      </div>`;
+    }
+  }
+
   return `<div class="nov-card ${cardCls}" id="nov-card-${i}">
     <div class="nov-header">
       <span class="nov-badge ${badgeClass(n.tipo)}">${n.tipo}</span>
@@ -424,9 +443,10 @@ export function renderNovCard(n, i){
       ${candidatosHtml}
       ${bookingHtml}
       ${sinMallaHtml}
+      ${sinTadaHtml}
       <div class="nov-actions">
         <button class="btn btn-sm btn-primary btn-nov-ok">✓ Confirmar</button>
-        ${bookingDisponible ? `<button class="btn btn-sm btn-warn btn-nov-cero">⓪ Incluir en $0</button>` : ''}
+        ${(bookingDisponible && n.tipo!=='SIN_TADA') ? `<button class="btn btn-sm btn-warn btn-nov-cero">⓪ Incluir en $0</button>` : ''}
         <button class="btn btn-sm btn-danger btn-nov-ex">✗ Excluir</button>
       </div>
     </div>
@@ -464,6 +484,36 @@ export function seleccionarCandidato(i, bk, did, nom){
   }
 }
 
+// Selección de candidato TADA para SIN_TADA — análoga a seleccionarCandidato()
+// pero solo guarda el nombre (nombre_tada): el booking ya es conocido de
+// antemano (es el de la malla, fijo para este registro), a diferencia de
+// AMBIGUOUS donde lo que se desambigua es justamente cuál booking de malla
+// corresponde.
+export function seleccionarCandidatoTada(i, nom){
+  const n = novedades[i];
+  if(!n) return;
+  if(!resoluciones[n.clave]) resoluciones[n.clave]={};
+  resoluciones[n.clave].nombre_tada = nom;
+
+  const card = document.getElementById(`nov-card-${i}`);
+  if(card){
+    card.querySelectorAll('.nov-candidato').forEach(el=>{
+      el.classList.toggle('selected', el.dataset.nom===nom);
+    });
+    let hint = card.querySelector('.sel-hint');
+    if(!hint){
+      const actions = card.querySelector('.nov-actions');
+      if(actions){
+        hint = document.createElement('span');
+        hint.className = 'sel-hint';
+        hint.style.cssText = 'font-size:10px;font-family:var(--mono);color:var(--green);margin-right:auto;';
+        actions.insertBefore(hint, actions.firstChild);
+      }
+    }
+    if(hint) hint.textContent = `✓ Seleccionado: ${nom.split(' ').slice(0,2).join(' ')} — presiona Confirmar`;
+  }
+}
+
 export function confirmarOk(i){
   const n=novedades[i];
   if(!n) return;
@@ -475,6 +525,26 @@ export function confirmarOk(i){
     const bk=n._booking_manual||'';
     if(!bk){ toast('Ingresa el Booking ID antes de confirmar'); return; }
     resoluciones[n.clave]={accion:'ok', booking_id:bk, driver_id:n._driver_manual||''};
+  } else if(n.tipo==='SIN_TADA'){
+    const nombreTada = resoluciones[n.clave]?.nombre_tada || n._nombre_manual || '';
+    if(n.candidatosTada?.length>0 && !nombreTada){
+      toast('Selecciona un candidato o ingresa el nombre del piloto en TADA');
+      return;
+    }
+    resoluciones[n.clave]={
+      accion:'ok',
+      booking_id: n.bookingMalla,
+      driver_id: n.driver_id||'',
+      nombre_tada: nombreTada,
+    };
+    // Aprender la equivalencia para que la próxima liquidación resuelva este
+    // piloto como APRENDIDO sin pasar otra vez por Novedades. n.piloto es el
+    // nombre de MALLA para SIN_TADA (a diferencia de los demás niveles,
+    // donde piloto es el nombre de TADA) — ver huerfanosMalla en conciliacion.js.
+    if(nombreTada){
+      dictSave(nombreTada, n.piloto, 'auto-sintada');
+      addLog('log-conc', `[DICT] SIN_TADA resuelto: "${n.piloto}" → "${nombreTada}"`, 'ok');
+    }
   } else if(n.tipo==='AMBIGUOUS'){
     const bkM=n._bk_manual||'';
     if(!resoluciones[n.clave]?.booking_id && !bkM){ toast('Selecciona un candidato o ingresa el booking'); return; }
@@ -600,6 +670,27 @@ export function aplicarResoluciones(){
       } else if(res.accion==='ok'){
         concResult[n.idx]._resolucion_manual=true;
         if(res.driver_id) concResult[n.idx].driver_id=res.driver_id;
+
+        // SIN_TADA resuelto con nombre real de TADA — copiar sus valores
+        // reales (paquetes, incentivos, etc.) al registro de malla. Si el
+        // nombre ingresado manualmente no existe en tadaNorm (typo, o
+        // realmente no reportó actividad), los campos financieros quedan en
+        // 0 — los mismos valores con los que se creó el SIN_TADA, igual que
+        // el "Confirmar" simple de antes de esta función.
+        if(n.tipo==='SIN_TADA' && res.nombre_tada){
+          const filaTada = tadaNorm.find(r=>
+            normStr(r.piloto)===normStr(res.nombre_tada) &&
+            r.fecha===n.fecha && normStr(r.seller)===normStr(n.seller));
+          if(filaTada){
+            concResult[n.idx].paquetes    = filaTada.paquetes||0;
+            concResult[n.idx].incentivos  = filaTada.incentivos||0;
+            concResult[n.idx].cancelados  = filaTada.cancelados||0;
+            concResult[n.idx].tareas      = filaTada.tareas||0;
+            concResult[n.idx].garantizado = filaTada.garantizado||0;
+            concResult[n.idx].bonos       = filaTada.bonos||0;
+            concResult[n.idx].ajustes     = filaTada.ajustes||0;
+          }
+        }
 
         const mKeys=Object.keys(mallaRaw[0]||{});
         const mBKey=mKeys.find(k=>/booking/i.test(k))||'BOOKING SERVICIO';
