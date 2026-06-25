@@ -5,7 +5,7 @@ import { normStr } from './config.js';
 import { mallaRaw } from './parser.js';
 import { tadaNorm } from './normalizer.js';
 import { loadDict, saveDict, dictIncrementarUso } from './diccionario.js';
-import { addLog, clearLog, showProcessing, hideProcessing, mkTable, unlock } from './ui.js';
+import { addLog, clearLog, showProcessing, hideProcessing, mkTable, unlock, toast } from './ui.js';
 import { actualizarDictSummary } from './diccionario.js';
 
 export let concResult=[];
@@ -86,6 +86,58 @@ export function fuzzyNameMatch1(nameA, nameB){
   // Match débil: al menos 1 palabra coincide (solo se usa cuando seller+fecha confirman)
   const {score} = scoreNames(nameA, nameB);
   return score >= 1;
+}
+
+// ══════════════════════════════════════════════════════
+// NIVEL 0 — resolución por diccionario de equivalencias, extraído como
+// función pura reutilizable: la usa tanto runConciliacion() (primera
+// pasada completa) como reaplicarDiccionario() (re-intento puntual sobre
+// concResult ya existente, sin reiniciar el pipeline). Misma lógica,
+// un solo lugar — evita que ambos flujos diverjan con el tiempo.
+// Retorna {nivel, matches, nota} si encuentra equivalencia aplicable,
+// o null si no hay ninguna entrada del diccionario utilizable para este
+// piloto+fecha (el llamador decide qué hacer con el registro en ese caso).
+// ══════════════════════════════════════════════════════
+function resolverPorDiccionario(piloto, fecha, dict, idxF, mPKey, mDKey){
+  const rp = normStr(piloto);
+  const dictMatches = dict
+    .map(e => ({ entry: e, ...scoreNames(piloto, e.tadaNombre) }))
+    .filter(m => normStr(m.entry.tadaNombre) === rp || fuzzyNameMatch(piloto, m.entry.tadaNombre))
+    .sort((x,y) => y.score - x.score || new Date(y.entry.fechaAprendido||0) - new Date(x.entry.fechaAprendido||0));
+
+  let dictEntry = dictMatches.length ? dictMatches[0].entry : null;
+  if(dictMatches.length > 1){
+    addLog('log-conc',
+      `[WARN] ${dictMatches.length} entradas del diccionario coinciden con "${piloto}" — se priorizó "${dictEntry.tadaNombre}" (score ${dictMatches[0].score})`,
+      'warn');
+  }
+  if(dictEntry){
+    const exact = normStr(dictEntry.tadaNombre) === rp;
+    // Aprendizaje continuo solo con match de alta confianza (ver BUGFIX
+    // de corrupción en runConciliacion más abajo — mismo criterio aquí).
+    if(!exact && dictMatches[0].score === dictMatches[0].minWords){
+      dictEntry.tadaNombre = piloto;
+      saveDict(dict);
+    }
+  }
+  if(!dictEntry) return null;
+
+  const mallaNorm = normStr(dictEntry.mallaNombre);
+  const candidatos = (idxF[fecha]||[]).filter(m => normStr(String(m[mPKey]||'')) === mallaNorm);
+  if(candidatos.length===1){
+    return {
+      nivel:'APRENDIDO', matches:[candidatos[0]],
+      nota:`Diccionario: "${piloto}" → "${dictEntry.mallaNombre}"`,
+      driver_id: candidatos[0][mDKey]||'PENDIENTE',
+    };
+  } else if(candidatos.length>1){
+    return {
+      nivel:'MEDIUM', matches:candidatos,
+      nota:`Diccionario (${candidatos.length} bookings): "${piloto}" → "${dictEntry.mallaNombre}"`,
+      driver_id: candidatos[0][mDKey]||'PENDIENTE',
+    };
+  }
+  return null;
 }
 
 export function runConciliacion(){
@@ -180,58 +232,20 @@ export function runConciliacion(){
       // BUGFIX (lookup): antes se buscaba con comparación estricta
       // (normStr(e.tadaNombre)===rp), lo que ignoraba en silencio una
       // equivalencia ya aprendida cuando el nombre TADA variaba mínimamente
-      // semana a semana (causó overbilling real en una prefactura). Ahora se
-      // incluye también fuzzyNameMatch() — mismo criterio que el resto del
-      // archivo usa para desambiguar (≥2 palabras y ≥50% del nombre más
-      // corto) — más el match exacto explícito (cubre nombres de 1 sola
-      // palabra, que fuzzyNameMatch nunca acepta por su mínimo de 2).
-      const dictMatches = dict
-        .map(e => ({ entry: e, ...scoreNames(row.piloto, e.tadaNombre) }))
-        .filter(m => normStr(m.entry.tadaNombre) === rp || fuzzyNameMatch(row.piloto, m.entry.tadaNombre))
-        // Empate de score → prioriza la entrada aprendida más recientemente.
-        .sort((x,y) => y.score - x.score || new Date(y.entry.fechaAprendido||0) - new Date(x.entry.fechaAprendido||0));
-
-      let dictEntry = dictMatches.length ? dictMatches[0].entry : null;
-      if(dictMatches.length > 1){
-        addLog('log-conc',
-          `[WARN] ${dictMatches.length} entradas del diccionario coinciden con "${row.piloto}" — se priorizó "${dictEntry.tadaNombre}" (score ${dictMatches[0].score})`,
-          'warn');
-      }
-      if(dictEntry){
-        const exact = normStr(dictEntry.tadaNombre) === rp;
-        // BUGFIX (corrupción): antes se renombraba dictEntry.tadaNombre con
-        // CUALQUIER match fuzzy, incluyendo coincidencias parciales (ej. un
-        // nombre de 4 palabras que solo comparte 2 con un homónimo distinto)
-        // — eso sobreescribía la entrada de OTRO piloto con el nombre del
-        // piloto equivocado. Ahora solo se renombra (aprendizaje continuo)
-        // cuando el match cubre el 100% de las palabras del nombre más corto
-        // (score===minWords) — variantes de tildes/typos sí califican,
-        // homónimos parciales no.
-        if(!exact && dictMatches[0].score === dictMatches[0].minWords){
-          dictEntry.tadaNombre = row.piloto;
-          saveDict(dict);
-        }
-      }
-
-      if(dictEntry){
-        const mallaNorm = normStr(dictEntry.mallaNombre);
-        // Buscar en la malla por nombre equivalente + fecha
-        const candidatos = (idxF[rf]||[]).filter(m => normStr(String(m[mPKey]||'')) === mallaNorm);
-        if(candidatos.length===1){
-          matches=[candidatos[0]]; nivel='APRENDIDO';
-          nota=`Diccionario: "${row.piloto}" → "${dictEntry.mallaNombre}"`;
-          matches.forEach(m=>matchados.add(m[mBKey]));
-          dictIncrementarUso(row.piloto);
-          dictAplicados++;
-        } else if(candidatos.length>1){
-          // Múltiples bookings del mismo piloto equivalente ese día → MEDIUM
-          matches=candidatos; nivel='MEDIUM';
-          nota=`Diccionario (${candidatos.length} bookings): "${row.piloto}" → "${dictEntry.mallaNombre}"`;
-          matches.forEach(m=>matchados.add(m[mBKey]));
-          dictIncrementarUso(row.piloto);
-          dictAplicados++;
-        }
-        // Si no hay candidatos, continuar con matching normal
+      // semana a semana (causó overbilling real en una prefactura). Ahora
+      // resolverPorDiccionario() incluye también fuzzyNameMatch() — mismo
+      // criterio que el resto del archivo usa para desambiguar — más el
+      // match exacto explícito (cubre nombres de 1 sola palabra, que
+      // fuzzyNameMatch nunca acepta por su mínimo de 2). El renombrado de
+      // "aprendizaje continuo" (BUGFIX de corrupción) vive dentro de la
+      // función — solo renombra con match de alta confianza (100% de las
+      // palabras del nombre más corto), nunca con homónimos parciales.
+      const r0 = resolverPorDiccionario(row.piloto, rf, dict, idxF, mPKey, mDKey);
+      if(r0){
+        matches = r0.matches; nivel = r0.nivel; nota = r0.nota;
+        matches.forEach(m=>matchados.add(m[mBKey]));
+        dictIncrementarUso(row.piloto);
+        dictAplicados++;
       }
 
       if(nivel !== 'SIN_MALLA'){
@@ -460,6 +474,77 @@ export function runConciliacion(){
       hideProcessing();
     }
   },50);
+}
+
+// ══════════════════════════════════════════════════════
+// RE-APLICAR DICCIONARIO — sin reiniciar el pipeline
+//
+// Reutiliza resolverPorDiccionario() (misma lógica de NIVEL 0 que
+// runConciliacion()) contra concResult ya existente, para que agregar una
+// equivalencia nueva no obligue a recargar los Excel ni rehacer todo el
+// fuzzy matching. Solo toca registros sin match resuelto (AMBIGUOUS,
+// FUZZY-HIGH, FUZZY-LOW, LOW, SIN_MALLA) — HIGH/MEDIUM/APRENDIDO quedan
+// intactos, igual que tadaNorm/mallaRaw.
+// ══════════════════════════════════════════════════════
+const APLICABLES_REAPLICAR = new Set(['AMBIGUOUS','FUZZY-HIGH','FUZZY-LOW','LOW','SIN_MALLA']);
+
+export function reaplicarDiccionario(){
+  const btn = document.getElementById('btn-reaplicar-dict');
+  const label = btn ? btn.innerHTML : null;
+  if(btn){ btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Re-aplicando...'; }
+
+  setTimeout(()=>{
+    try{
+      if(!mallaRaw.length || !concResult.length){
+        toast('No hay conciliación para re-aplicar');
+        return;
+      }
+
+      window._dictCache = null; // forzar relectura real desde localStorage
+      const dict = loadDict();
+
+      const mKeys=Object.keys(mallaRaw[0]);
+      const mFKey=mKeys.find(k=>/fecha/i.test(k))||'FECHA';
+      const mPKey=mKeys.find(k=>!/id/i.test(k) && /nombre.*piloto|nombre de piloto/i.test(k))||
+                  mKeys.find(k=>!/id/i.test(k) && /nombre.*conductor|nombre.*driver/i.test(k))||
+                  mKeys.find(k=>!/id/i.test(k) && /^nombre$/i.test(k.trim()))||
+                  mKeys.find(k=>!/id/i.test(k) && /nombre/i.test(k))||
+                  mKeys.find(k=>!/id/i.test(k) && /piloto|conductor/i.test(k))||
+                  'NOMBRE';
+      const mDKey=mKeys.find(k=>/^id[\s_]?piloto$/i.test(k.trim()))||
+                  mKeys.find(k=>/id.*piloto|driver.?id/i.test(k))||'ID PILOTO';
+
+      const idxF={};
+      mallaRaw.forEach(m=>{
+        const mf=String(m[mFKey]||'').trim();
+        (idxF[mf]||(idxF[mf]=[])).push(m);
+      });
+
+      let nuevosAprendido=0, sinCambios=0;
+      concResult.forEach(r=>{
+        if(!APLICABLES_REAPLICAR.has(r.nivel_confianza)){ return; }
+        const r0 = resolverPorDiccionario(r.piloto, r.fecha, dict, idxF, mPKey, mDKey);
+        if(r0){
+          r.nivel_confianza = r0.nivel;
+          r.matches = r0.matches;
+          r.nota = r0.nota;
+          r.driver_id = r0.matches[0]?.[mDKey] || 'PENDIENTE';
+          if(r0.nivel==='APRENDIDO') nuevosAprendido++;
+        } else {
+          sinCambios++;
+        }
+      });
+
+      renderConcStats();
+      renderConcTable();
+      toast(`✓ ${nuevosAprendido} registros actualizados por diccionario`);
+      addLog('log-conc',
+        `[DICT] Re-aplicado: ${nuevosAprendido} nuevos APRENDIDO, ${sinCambios} sin cambios`,
+        nuevosAprendido?'ok':'dim');
+    } finally {
+      if(btn){ btn.disabled = false; btn.innerHTML = label; }
+    }
+  }, 0);
 }
 
 export function renderConcStats(){

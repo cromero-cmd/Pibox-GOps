@@ -70,6 +70,14 @@
   font-family:var(--sans);font-weight:600;
 }
 .btn-export:hover{background:var(--bg3);color:var(--text);}
+.btn-export:disabled{opacity:0.6;cursor:not-allowed;}
+.spinner{
+  display:inline-block;width:10px;height:10px;
+  border:2px solid var(--border2);border-top-color:var(--accent);
+  border-radius:50%;vertical-align:-1px;margin-right:4px;
+  animation:spin 0.7s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg);}}
 
 /* ── CONTINUE BUTTON SPECIAL ── */
 #btn-continuar{

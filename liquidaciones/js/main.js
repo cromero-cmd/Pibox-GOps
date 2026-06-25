@@ -6,7 +6,7 @@ import { setOnNavStep6, navStep, exportTable, chPage, showProcessing, hideProces
 
 import { tadaRaw, mallaRaw, buildColMap, setColMap, doDrag, doDrop, loadFile, replaceFile, removeFile, runDiagnostico } from './parser.js';
 import { tadaNorm, setTadaNorm, runNorm } from './normalizer.js';
-import { runConciliacion, filterConc } from './conciliacion.js';
+import { runConciliacion, filterConc, reaplicarDiccionario } from './conciliacion.js';
 import { runDistribucion } from './distribucion.js';
 import { abrirNovedades, excluirTodas, aplicarResoluciones, filterNovedades, filterEstado, revertirResolucion } from './novedades.js';
 import { initTariffs, renderTariffPanel, publishTariff, activateVersion, addFechaEspecial, removeFechaEspecial, updateFechaEspecial } from './tariffs.js';
@@ -119,7 +119,7 @@ Object.assign(window, {
   // normalización
   runNorm,
   // conciliación
-  runConciliacion, filterConc,
+  runConciliacion, filterConc, reaplicarDiccionario,
   // diccionario
   renderDiccionario, agregarEquivalencia, confirmarNuevaEquivalencia, editarEquivalencia, guardarEdicion, eliminarEquivalencia,
   // distribución
