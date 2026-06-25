@@ -33,7 +33,20 @@
       "Bash(mkdir -p /tmp/esmtest/test)",
       "Bash(cp \"/c/Users/ADMIN/Desktop/pipeline-tada/test/novedades_resolution_test.mjs\" /tmp/esmtest/test/)",
       "Bash(node test/booking_cero_sintada_test.mjs)",
-      "Bash(rm -rf /tmp/esmtest/js)"
+      "Bash(rm -rf /tmp/esmtest/js)",
+      "Bash(node -e \"require\\('xlsx'\\); console.log\\('ok'\\)\")",
+      "Bash(npm ls *)",
+      "Bash(npm install *)",
+      "Bash(cp \"/c/Users/ADMIN/Desktop/pipeline-tada/test/_inspect_xlsx.cjs\" /tmp/esmtest/)",
+      "Bash(node _inspect_xlsx.cjs)",
+      "Bash(node --input-type=module -e ' *)",
+      "Bash(rm -rf /tmp/esmtest/test)",
+      "Bash(cp \"/c/Users/ADMIN/Desktop/pipeline-tada/test/_real_data_repro.mjs\" /tmp/esmtest/test/)",
+      "Bash(node test/_real_data_repro.mjs)",
+      "Bash(cp \"/c/Users/ADMIN/Desktop/pipeline-tada/test/_search_sanchez.mjs\" /tmp/esmtest/)",
+      "Bash(node _search_sanchez.mjs)",
+      "Bash(cp \"/c/Users/ADMIN/Desktop/pipeline-tada/test/_inspect_data_sheet.mjs\" /tmp/esmtest/)",
+      "Bash(node _inspect_data_sheet.mjs)"
     ]
   }
 }

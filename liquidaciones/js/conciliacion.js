@@ -355,6 +355,24 @@ export function runConciliacion(){
         }
       }
 
+      // DIAG TEMPORAL — verificación de normStr()/tildes para los 3 pilotos
+      // reportados. Remover una vez confirmada la causa real del SIN_TADA.
+      const DIAG_WATCH = ['yoverty matta sanchez','erick santiago suarez suarez','maria cristina sanchez diaz'];
+      if(DIAG_WATCH.includes(rp)){
+        console.log('[DIAG conciliacion]', {
+          piloto_tada_raw: row.piloto,
+          normStr_piloto_tada: rp,
+          fecha: rf,
+          seller_tada_raw: row.seller,
+          normStr_seller_tada: rs,
+          idx3_key: a, idx3_match_count: idx3[a]?.length||0,
+          idx2_key: b, idx2_match_count: idx2[b]?.length||0,
+          idx2_candidatos: (idx2[b]||[]).map(m=>({nombre_raw:m[mPKey], normStr_nombre:normStr(String(m[mPKey]||''))})),
+          idxF_candidatos_misma_fecha: (idxF[rf]||[]).map(m=>({nombre_raw:m[mPKey], normStr_nombre:normStr(String(m[mPKey]||''))})),
+          nivel_asignado: nivel,
+        });
+      }
+
       concResult.push({...row, nivel_confianza:nivel, matches, nota, driver_id:matches[0]?.[mDKey]||'PENDIENTE'});
       const cls=nivel==='HIGH'||nivel==='FUZZY-HIGH'?'ok': nivel==='SIN_MALLA'||nivel==='AMBIGUOUS'?'err':'warn';
       addLog('log-conc',`[${nivel}] ${row.piloto} · ${row.fecha} · ${row.seller} — ${nota||'Sin match'}`,cls);
