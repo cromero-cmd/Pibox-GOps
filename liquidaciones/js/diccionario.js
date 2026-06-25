@@ -12,6 +12,16 @@ const SHARED_TARIFF_KEY = 'tariff_v1';
 
 const API_KEY = 'pibox-liq-2026-9605';
 
+// El panel del diccionario vive dentro de un <details> en el paso de
+// Conciliación — #dict-lista existe en el DOM incluso cuando el panel está
+// colapsado o el usuario está en otro paso del stepper, pero en esos casos
+// no se renderiza (offsetParent===null). Evita trabajo innecesario y deja
+// claro que el refresco solo importa cuando el usuario lo puede ver.
+function panelDiccionarioVisible(){
+  const lista = document.getElementById('dict-lista');
+  return !!(lista && lista.offsetParent !== null);
+}
+
 export function loadDict(){
   // Primero intentar desde variable en memoria (cargada desde storage compartido)
   if(window._dictCache) return window._dictCache;
@@ -62,6 +72,16 @@ export function dictSave(tadaNombre, mallaNombre, fuente){
   saveDict(dict);
   actualizarDictSummary();
   if(esNueva) addLog('log-conc', `[DICT] Aprendido: "${tadaNombre}" → "${mallaNombre}" (${fuente})`, 'ok');
+
+  // BUGFIX UX: dictSave() se llama desde otros pasos del stepper (ej.
+  // confirmarOk() en novedades.js, paso de Novedades) donde el panel del
+  // diccionario (en el paso de Conciliación) no está a la vista — antes la
+  // lista solo se refrescaba si el usuario recargaba la página por completo.
+  // Si el panel SÍ está visible en este momento, refrescarlo de inmediato.
+  if(panelDiccionarioVisible()){
+    actualizarDictSummary();
+    renderDiccionario();
+  }
 
   // Sincronizar al backend compartido (Google Sheets) en segundo plano —
   // fetch no-cors igual que el resto de llamadas al backend (auth.js,
@@ -127,6 +147,16 @@ export async function syncDiccionarioFromBackend(){
   }catch{
     return { total: local.length, delServidor: 0, locales: local.length, offline: true };
   }
+}
+
+// ── Botón "🔄" del panel — sincronización manual a pedido del usuario.
+// Útil para capturar equivalencias que agregó OTRO usuario sin tener que
+// esperar a la próxima conciliación (que es cuando se sincroniza automáticamente).
+export async function refrescarDiccionario(){
+  const result = await syncDiccionarioFromBackend();
+  renderDiccionario();
+  if(result.offline) toast('⚠ No se pudo conectar al servidor — se muestra el diccionario local', 'warn');
+  else toast('✓ Diccionario sincronizado');
 }
 
 export function dictIncrementarUso(tadaNombre){

@@ -13,7 +13,7 @@ import { initTariffs, renderTariffPanel, publishTariff, activateVersion, addFech
 import { runTrump, downloadTrump } from './trump.js';
 import { abrirModalEnvio, cerrarModalEnvio, enviarPorCorreo } from './email.js';
 import { abrirModalHistorial, ejecutarGuardarHistorial, abrirHistorialConsulta, aplicarFiltrosHist, limpiarFiltrosHist, exportarHistorial } from './historial.js';
-import { actualizarDictSummary, renderDiccionario, agregarEquivalencia, confirmarNuevaEquivalencia, editarEquivalencia, guardarEdicion, eliminarEquivalencia } from './diccionario.js';
+import { actualizarDictSummary, renderDiccionario, agregarEquivalencia, confirmarNuevaEquivalencia, editarEquivalencia, guardarEdicion, eliminarEquivalencia, refrescarDiccionario } from './diccionario.js';
 import {
   doLogin, toggleUserMenu, abrirPanelUsuarios, abrirEditarNombre, abrirCambiarPassword, cerrarSesion,
   crearUsuario, editarUsuario, guardarUsuario, eliminarUsuario, guardarNombre, confirmarCambioPass,
@@ -121,7 +121,7 @@ Object.assign(window, {
   // conciliación
   runConciliacion, filterConc, reaplicarDiccionario,
   // diccionario
-  renderDiccionario, agregarEquivalencia, confirmarNuevaEquivalencia, editarEquivalencia, guardarEdicion, eliminarEquivalencia,
+  renderDiccionario, agregarEquivalencia, confirmarNuevaEquivalencia, editarEquivalencia, guardarEdicion, eliminarEquivalencia, refrescarDiccionario,
   // distribución
   runDistribucion,
   // novedades

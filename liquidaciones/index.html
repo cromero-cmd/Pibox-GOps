@@ -218,6 +218,9 @@
       list-style:none;display:flex;align-items:center;gap:8px;" onclick="renderDiccionario()">
       <span>📚</span>
       <span id="dict-summary-label">Diccionario de equivalencias</span>
+      <button class="btn btn-sm" title="Sincronizar con el servidor"
+        onclick="event.stopPropagation(); refrescarDiccionario();"
+        style="padding:2px 7px;font-size:11px;">🔄</button>
       <span style="margin-left:auto;font-size:10px;">Gestionar →</span>
     </summary>
     <div style="background:var(--bg2);border:1px solid var(--border);border-top:none;border-radius:0 0 6px 6px;padding:14px;">
