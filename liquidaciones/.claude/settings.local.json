@@ -76,7 +76,8 @@
       "Bash(node test/email_csv_adjunto_test.mjs)",
       "Bash(cp \"/c/Users/ADMIN/Desktop/pipeline-tada/test/historial_array_columnas_test.mjs\" /tmp/esmtest/test/)",
       "Bash(node test/historial_array_columnas_test.mjs)",
-      "Bash(node test/historial_sobrescribir_test.mjs)"
+      "Bash(node test/historial_sobrescribir_test.mjs)",
+      "Bash(node test/historial_duplicado_booking_test.mjs)"
     ]
   }
 }

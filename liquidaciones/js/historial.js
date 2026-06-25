@@ -176,6 +176,20 @@ export async function ejecutarGuardarHistorial(){
     const data = await resp.json();
 
     if(!data.ok){
+      if(data.tipo === 'duplicado_booking'){
+        status.innerHTML = '';
+        mostrarConfirmacionBookingsDuplicados({
+          url, periodo, registros, guardadoPor, apiKey,
+          runIdExistente:         data.runIdExistente,
+          periodoExistente:       data.periodoExistente,
+          guardadoPorExistente:   data.guardadoPorExistente,
+          fechaGuardadoExistente: data.fechaGuardadoExistente,
+          totalExistentes:        data.totalExistentes,
+          totalNuevos:            data.totalNuevos ?? registros.length,
+          bookingsDuplicados:     data.bookingsDuplicados || [],
+        });
+        return;
+      }
       if(/ya fue guardado/i.test(data.error||'')){
         status.innerHTML = '<span style="color:var(--blue);">⏳ Verificando registros existentes...</span>';
         const existentes = await contarRegistrosRun(url, runId);
@@ -226,6 +240,58 @@ function mostrarConfirmacionSobrescritura({url, runId, periodo, registros, guard
         ¿Deseas reemplazarlo con los <strong style="color:var(--text);">${registros.length}</strong> registros actuales?<br/>
         <span style="color:var(--text3);">Esta acción no se puede deshacer.</span>
       </div>
+      <div id="sobrescritura-status" style="min-height:18px;font-size:11px;font-family:var(--mono);margin-bottom:10px;"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;">
+        <button class="btn" onclick="cancelarSobrescribirHistorial()">Cancelar</button>
+        <button class="btn" id="btn-confirmar-sobrescritura" onclick="confirmarSobrescribirHistorial()"
+          style="background:rgba(239,68,68,.12);border-color:var(--red);color:var(--red);">
+          Sí, reemplazar
+        </button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+}
+
+function escapeHtml(s){
+  return String(s ?? '').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// El run_id real a reemplazar es el del run EXISTENTE en el Sheets
+// (runIdExistente), no el run_id nuevo recién generado — los registros que
+// se reenvían siguen llevando el run_id nuevo en su columna 0 (ya construidos
+// más arriba): se borra el run viejo completo y se inserta la liquidación
+// actual como un run nuevo.
+function mostrarConfirmacionBookingsDuplicados({
+  url, periodo, registros, guardadoPor, apiKey,
+  runIdExistente, periodoExistente, guardadoPorExistente, fechaGuardadoExistente,
+  totalExistentes, totalNuevos, bookingsDuplicados,
+}){
+  _pendingOverwrite = { url, runId: runIdExistente, periodo, registros, guardadoPor, apiKey };
+
+  const totalDuplicados = bookingsDuplicados.length;
+  const listaHtml = bookingsDuplicados.map(b=>escapeHtml(b)).join('<br/>');
+
+  const modal = document.createElement('div');
+  modal.id    = 'modal-confirmar-sobrescritura';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:900;display:flex;align-items:center;justify-content:center;';
+  modal.innerHTML = `
+    <div style="background:var(--bg2);border:1px solid var(--red);border-radius:12px;padding:24px;width:460px;max-width:95vw;">
+      <div style="font-size:14px;font-weight:600;margin-bottom:10px;color:var(--red);">⚠️ Bookings duplicados detectados</div>
+      <div style="font-size:12px;color:var(--text2);line-height:1.6;margin-bottom:14px;">
+        Se encontraron <strong style="color:var(--text);">${totalDuplicados}</strong> bookings que ya existen en el historial,
+        pertenecientes al run <strong style="color:var(--text);font-family:var(--mono);">${escapeHtml(runIdExistente)}</strong>
+        del período <strong style="color:var(--text);">${escapeHtml(periodoExistente)}</strong>,
+        guardado el <strong style="color:var(--text);">${escapeHtml(fechaGuardadoExistente)}</strong>
+        por <strong style="color:var(--text);">${escapeHtml(guardadoPorExistente)}</strong>.<br/><br/>
+        ¿Deseas reemplazar ese run completo con los <strong style="color:var(--text);">${totalNuevos}</strong> registros actuales?<br/>
+        <span style="color:var(--text3);">Esta acción no se puede deshacer.</span>
+      </div>
+      <details style="margin-bottom:14px;">
+        <summary style="cursor:pointer;font-size:11px;color:var(--text3);font-family:var(--mono);">Ver bookings en conflicto (${totalDuplicados})</summary>
+        <div style="max-height:200px;overflow:auto;font-family:var(--mono);font-size:11px;color:var(--text2);background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:8px 10px;margin-top:8px;">
+          ${listaHtml}
+        </div>
+      </details>
       <div id="sobrescritura-status" style="min-height:18px;font-size:11px;font-family:var(--mono);margin-bottom:10px;"></div>
       <div style="display:flex;gap:8px;justify-content:flex-end;">
         <button class="btn" onclick="cancelarSobrescribirHistorial()">Cancelar</button>
