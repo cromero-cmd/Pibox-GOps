@@ -67,6 +67,8 @@ export async function ejecutarGuardarHistorial(){
   const t       = av.values;
   const periodo = calcularPeriodoMalla() || 'período no especificado';
   const runId   = trumpRows[0]?._run_id || 'LIQ';
+  const guardadoPor   = currentUser?.nombre || 'sistema';
+  const fechaGuardado = new Date().toISOString();
 
   // Construir registros con toda la info necesaria
   const pPaq = t.p_paquete   ?? 7300;
@@ -113,33 +115,45 @@ export async function ejecutarGuardarHistorial(){
     const pagoBonoVal = bono;
     const pagoPilVal  = productivoPago + pagoTarVal + pagoGarVal + pagoBonoVal;
 
-    return {
-      id_piloto:          r._driver_id || '',
-      piloto:             r._piloto    || '',
-      ciudad:             r._ciudad    || '',
-      seller:             r._seller    || '',
-      fecha:              r._fecha     || '',
-      dia:                r._dia       || '',
-      booking_id:         r.BOOKING_ID || '',
-      paquetes:           paq,
-      incentivos:         inc,
-      cancelados:         can,
-      tareas:             tar,
-      cobro_paquete:      cobroPaqVal,
-      cobro_incentivo:    cobroIncVal,
-      cobro_cancelado:    cobroCanVal,
-      cobro_tarea:        cobroTarVal,
-      cobro_garantizado:  cobroGarVal,
-      cobro_bono:         cobroBonoVal,
-      cobro_total:        cobroTotVal,
-      pago_paquete:       pagoPaqVal,
-      pago_incentivo:     pagoIncVal,
-      pago_cancelado:     pagoCanVal,
-      pago_tarea:         pagoTarVal,
-      pago_garantizado:   pagoGarVal,
-      pago_bono:          pagoBonoVal,
-      pago_piloto:        pagoPilVal,
-    };
+    // BUGFIX: el backend espera un ARRAY posicional de exactamente 29
+    // valores en el mismo orden que HEADERS en Apps Script — antes se
+    // enviaba un objeto con nombres de campo (sin run_id/guardado_por/
+    // fecha_guardado, que viajaban sueltos en el payload, no por fila).
+    // Cualquier desajuste de cantidad/orden desplaza todo lo que viene
+    // después en la fila del Sheet (visto en producción: cobro_bono en
+    // col S terminaba con el valor de pago_garantizado, y guardado_por/
+    // fecha_guardado se colaban en pago_paquete/pago_incentivo).
+    return [
+      runId,               // run_id
+      periodo,             // periodo
+      r._driver_id || '',  // id_piloto
+      r._piloto    || '',  // piloto
+      r._ciudad    || '',  // ciudad
+      r._seller    || '',  // seller
+      r._fecha     || '',  // fecha
+      r._dia       || '',  // dia
+      r.BOOKING_ID || '',  // booking_id
+      paq,                 // paquetes
+      inc,                 // incentivos
+      can,                 // cancelados
+      tar,                 // tareas
+      cobroPaqVal,         // cobro_paquete
+      cobroIncVal,         // cobro_incentivo
+      cobroCanVal,         // cobro_cancelado
+      cobroTarVal,         // cobro_tarea
+      cobroGarVal,         // cobro_garantizado
+      cobroBonoVal,        // cobro_bono
+      cobroTotVal,         // cobro_total
+      pagoPaqVal,          // pago_paquete
+      pagoIncVal,          // pago_incentivo
+      pagoCanVal,          // pago_cancelado
+      pagoTarVal,          // pago_tarea
+      pagoGarVal,          // pago_garantizado
+      pagoBonoVal,         // pago_bono
+      pagoPilVal,          // pago_piloto
+      guardadoPor,         // guardado_por
+      fechaGuardado,       // fecha_guardado
+    ];
   });
 
   btn.disabled = true;
@@ -149,8 +163,7 @@ export async function ejecutarGuardarHistorial(){
     const payload = JSON.stringify({
       apiKey:      t.API_KEY || 'pibox-liq-2026-9605',
       accion:      'guardarHistorial',
-      runId, periodo,
-      guardadoPor: currentUser?.nombre || 'sistema',
+      runId, periodo, guardadoPor,
       registros,
     });
     await fetch(url,{method:'POST',mode:'no-cors',
