@@ -553,32 +553,82 @@ export function renderConcStats(){
   const h  =concResult.filter(r=>r.nivel_confianza==='HIGH').length;
   const ap =concResult.filter(r=>r.nivel_confianza==='APRENDIDO').length;
   const md =concResult.filter(r=>r.nivel_confianza==='MEDIUM').length;
-  const lo =concResult.filter(r=>r.nivel_confianza==='LOW').length;
   const fh =concResult.filter(r=>r.nivel_confianza==='FUZZY-HIGH').length;
   const fl =concResult.filter(r=>r.nivel_confianza==='FUZZY-LOW').length;
+  const lo =concResult.filter(r=>r.nivel_confianza==='LOW').length;
   const amb=concResult.filter(r=>r.nivel_confianza==='AMBIGUOUS').length;
   const sn =concResult.filter(r=>r.nivel_confianza==='SIN_MALLA').length;
   const st =concResult.filter(r=>r.nivel_confianza==='SIN_TADA').length;
   const omitidas=tadaNorm.filter(r=>r.paquetes===0&&r.incentivos===0&&r.cancelados===0).length;
 
+  const totalDirecta  = h+ap+md+fh;
+  const totalRevision = fl+lo+amb+sn+st;
+
   const selCls=(n,base)=>concFilter.has(n)?` ${base}`:'';
+  const item=(nivel,label,valor,base,colorCls)=>`
+    <div class="stat-sm clickable${selCls(nivel,base)}" onclick="filterConc(event,'${nivel}')">
+      <div class="stat-sm-l">${label}</div>
+      <div class="stat-sm-v ${colorCls}">${valor}</div>
+    </div>`;
+
+  const itemsDirecta=[
+    item('HIGH','HIGH · exacto',h,'selected-high','g'),
+    ap>0?item('APRENDIDO','APRENDIDO · diccionario',ap,'selected-high','b'):'',
+    item('MEDIUM','MEDIUM · franja horaria',md,'selected-med','y'),
+    item('FUZZY-HIGH','FUZZY-HIGH · 1 candidato',fh,'selected-high','g'),
+  ].join('');
+
+  const itemsRevision=[
+    item('FUZZY-LOW','FUZZY-LOW · sin seller',fl,'selected-med','y'),
+    item('LOW','LOW · seller distinto',lo,'selected-low','r'),
+    item('AMBIGUOUS','AMBIGUOUS · varios cand.',amb,'selected-low','r'),
+    item('SIN_MALLA','SIN_MALLA · sin match',sn,'selected-sin',''),
+    st>0?item('SIN_TADA','SIN_TADA · no en reporte',st,'selected-sin','y'):'',
+  ].join('');
+
+  // ── Diferencias: filas TADA con actividad vs. bookings en la malla ──
+  // (recalculado aquí en vez de reutilizar la variable local de
+  // runConciliacion() — misma fuente de verdad, tadaNorm/mallaRaw, y este
+  // stat también debe reflejarse tras reaplicarDiccionario(), que no
+  // recorre tadaNorm).
+  const totalTada  = tadaNorm.filter(r=>r.paquetes>0||r.incentivos>0||r.cancelados>0).length;
+  const totalMalla = mallaRaw.length;
+  const diferencia = Math.abs(totalTada - totalMalla);
+  let explicacionDiff, explicacionCls;
+  if(totalTada > totalMalla){
+    explicacionDiff = 'Un piloto puede tener actividad en varios días, pero un solo booking en la malla no cubre todos esos días — por eso hay más filas TADA con actividad que bookings en la malla.';
+    explicacionCls = '';
+  } else if(totalTada < totalMalla){
+    explicacionDiff = 'Hay bookings en la malla sin actividad reportada en TADA (aparecen como SIN_TADA).';
+    explicacionCls = '';
+  } else {
+    explicacionDiff = '✓ Todos los bookings de la malla tienen correspondencia en TADA';
+    explicacionCls = 'g';
+  }
 
   document.getElementById('stats-conc').innerHTML=`
-    <div class="stat clickable${selCls('HIGH','selected-high')}"       onclick="filterConc(event,'HIGH')">       <div class="stat-l">HIGH · exacto</div>         <div class="stat-v g">${h}</div>  <div class="stat-hint">→ liquidación directa</div></div>
-    ${ap>0?`<div class="stat clickable${selCls('APRENDIDO','selected-high')}" onclick="filterConc(event,'APRENDIDO')"><div class="stat-l">APRENDIDO · diccionario</div><div class="stat-v" style="color:#60a5fa;">${ap}</div><div class="stat-hint">→ liquidación directa</div></div>`:''}
-    <div class="stat clickable${selCls('MEDIUM','selected-med')}"      onclick="filterConc(event,'MEDIUM')">     <div class="stat-l">MEDIUM · franja horaria</div><div class="stat-v y">${md}</div> <div class="stat-hint">→ liquidación directa</div></div>
-    <div class="stat clickable${selCls('FUZZY-HIGH','selected-high')}" onclick="filterConc(event,'FUZZY-HIGH')"> <div class="stat-l">FUZZY-HIGH · 1 candidato</div><div class="stat-v g">${fh}</div><div class="stat-hint">→ liquidación directa</div></div>
-    <div class="stat clickable${selCls('FUZZY-LOW','selected-med')}"   onclick="filterConc(event,'FUZZY-LOW')">  <div class="stat-l">FUZZY-LOW · sin seller</div><div class="stat-v y">${fl}</div> <div class="stat-hint">→ marcado revisión</div></div>
-    <div class="stat clickable${selCls('LOW','selected-low')}"         onclick="filterConc(event,'LOW')">        <div class="stat-l">LOW · seller distinto</div><div class="stat-v r">${lo}</div>  <div class="stat-hint">→ marcado revisión</div></div>
-    <div class="stat clickable${selCls('AMBIGUOUS','selected-low')}"   onclick="filterConc(event,'AMBIGUOUS')">  <div class="stat-l">AMBIGUOUS · varios cand.</div><div class="stat-v r">${amb}</div><div class="stat-hint">→ revisión manual</div></div>
-    <div class="stat clickable${selCls('SIN_MALLA','selected-sin')}"   onclick="filterConc(event,'SIN_MALLA')">  <div class="stat-l">SIN_MALLA · sin match</div><div class="stat-v" style="color:var(--text2)">${sn}</div><div class="stat-hint">→ revisar en Novedades</div></div>
-    ${st>0?`<div class="stat clickable${selCls('SIN_TADA','selected-sin')}" onclick="filterConc(event,'SIN_TADA')"><div class="stat-l">SIN_TADA · no en reporte</div><div class="stat-v" style="color:var(--yellow);">${st}</div><div class="stat-hint">→ revisar en Novedades</div></div>`:''}
-    <div class="stat" style="border-color:var(--border2);background:var(--bg3);">
-      <div class="stat-l">Días sin actividad</div>
-      <div class="stat-v" style="font-size:13px;color:var(--text3)">${omitidas}</div>
-      <div class="stat-hint">omitidos del match</div>
+    <div class="conc-groups">
+      <div class="conc-group conc-group-green">
+        <div class="conc-group-head">
+          <span class="conc-group-title">✓ Liquidación directa</span>
+          <span class="conc-group-total g">${totalDirecta}</span>
+        </div>
+        <div class="conc-group-items">${itemsDirecta}</div>
+      </div>
+      <div class="conc-group conc-group-yellow">
+        <div class="conc-group-head">
+          <span class="conc-group-title">⚠ Revisión en Novedades</span>
+          <span class="conc-group-total y">${totalRevision}</span>
+        </div>
+        <div class="conc-group-items">${itemsRevision}</div>
+      </div>
     </div>
-    <div style="grid-column:span 4;font-size:10px;font-family:var(--mono);color:var(--text3);padding:4px 2px;">
+    <div class="conc-diff-box">
+      <div class="conc-diff-nums">${totalTada} filas TADA procesadas · ${totalMalla} bookings en malla · ${diferencia} filas sin booking correspondiente</div>
+      <div class="conc-diff-explicacion ${explicacionCls}">${explicacionDiff}</div>
+      <div class="conc-diff-omitidas">${omitidas} días sin actividad — omitidos del match</div>
+    </div>
+    <div style="grid-column:1/-1;font-size:10px;font-family:var(--mono);color:var(--text3);padding:4px 2px;">
       Clic para filtrar · Ctrl+Clic para seleccionar múltiples · Clic en activo para deseleccionar
     </div>`;
 }
