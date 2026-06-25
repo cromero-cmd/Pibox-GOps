@@ -12,7 +12,7 @@ import { abrirNovedades, excluirTodas, aplicarResoluciones, filterNovedades, fil
 import { initTariffs, renderTariffPanel, publishTariff, activateVersion, addFechaEspecial, removeFechaEspecial, updateFechaEspecial } from './tariffs.js';
 import { runTrump, downloadTrump } from './trump.js';
 import { abrirModalEnvio, cerrarModalEnvio, enviarPorCorreo } from './email.js';
-import { abrirModalHistorial, ejecutarGuardarHistorial, abrirHistorialConsulta, aplicarFiltrosHist, limpiarFiltrosHist, exportarHistorial } from './historial.js';
+import { abrirModalHistorial, ejecutarGuardarHistorial, abrirHistorialConsulta, aplicarFiltrosHist, limpiarFiltrosHist, exportarHistorial, cancelarSobrescribirHistorial, confirmarSobrescribirHistorial } from './historial.js';
 import { actualizarDictSummary, renderDiccionario, agregarEquivalencia, confirmarNuevaEquivalencia, editarEquivalencia, guardarEdicion, eliminarEquivalencia, refrescarDiccionario } from './diccionario.js';
 import {
   doLogin, toggleUserMenu, abrirPanelUsuarios, abrirEditarNombre, abrirCambiarPassword, cerrarSesion,
@@ -136,6 +136,7 @@ Object.assign(window, {
   abrirModalEnvio, cerrarModalEnvio, enviarPorCorreo,
   // historial
   abrirModalHistorial, ejecutarGuardarHistorial, abrirHistorialConsulta, aplicarFiltrosHist, limpiarFiltrosHist, exportarHistorial,
+  cancelarSobrescribirHistorial, confirmarSobrescribirHistorial,
 });
 
 // El panel de tarifas usa oninput="currentEdits['key']=..." inline (scope

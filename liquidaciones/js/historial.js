@@ -159,23 +159,116 @@ export async function ejecutarGuardarHistorial(){
   btn.disabled = true;
   status.innerHTML = '<span style="color:var(--blue);">⏳ Guardando...</span>';
 
+  const apiKey = t.API_KEY || 'pibox-liq-2026-9605';
+
   try{
-    const payload = JSON.stringify({
-      apiKey:      t.API_KEY || 'pibox-liq-2026-9605',
-      accion:      'guardarHistorial',
-      runId, periodo, guardadoPor,
-      registros,
-    });
-    await fetch(url,{method:'POST',mode:'no-cors',
+    // NOTA: sin mode:'no-cors' — a diferencia de enviarPorCorreo() (donde no
+    // se necesita leer la respuesta), aquí SÍ necesitamos leer {ok, error}
+    // para detectar el caso "run ya guardado" y ofrecer sobreescritura. El
+    // mismo backend ya responde JSON legible para accion=consultarHistorial
+    // (ver cargarHistorial() más abajo) bajo el mismo despliegue de Apps
+    // Script, así que un POST simple (x-www-form-urlencoded, sin headers
+    // custom) debería ser igualmente legible.
+    const payload = JSON.stringify({ apiKey, accion:'guardarHistorial', runId, periodo, guardadoPor, registros });
+    const resp = await fetch(url,{method:'POST',
       headers:{'Content-Type':'application/x-www-form-urlencoded'},
       body:'payload='+encodeURIComponent(payload)});
+    const data = await resp.json();
+
+    if(!data.ok){
+      if(/ya fue guardado/i.test(data.error||'')){
+        status.innerHTML = '<span style="color:var(--blue);">⏳ Verificando registros existentes...</span>';
+        const existentes = await contarRegistrosRun(url, runId);
+        status.innerHTML = '';
+        mostrarConfirmacionSobrescritura({ url, runId, periodo, registros, guardadoPor, apiKey, existentes });
+        return;
+      }
+      throw new Error(data.error || 'Error desconocido');
+    }
 
     status.innerHTML='<span style="color:var(--green);">✓ Historial guardado correctamente</span>';
-    addLog('log-trump',`[OK] Historial guardado en Google Sheets · ${registros.length} registros · por ${currentUser?.nombre||'sistema'}`,'ok');
+    addLog('log-trump',`[OK] Historial guardado en Google Sheets · ${registros.length} registros · por ${guardadoPor}`,'ok');
     setTimeout(()=>{ document.getElementById('modal-guardar-historial')?.remove(); }, 2000);
   }catch(err){
     status.innerHTML=`<span style="color:var(--red);">✗ Error: ${err.message}</span>`;
   }finally{
+    btn.disabled = false;
+  }
+}
+
+// ── Sobreescritura de un run ya existente ────────────────
+async function contarRegistrosRun(url, runId){
+  try{
+    const params = new URLSearchParams({accion:'consultarHistorial', apiKey:'pibox-liq-2026-9605'});
+    const resp   = await fetch(`${url}?${params}`);
+    const data   = await resp.json();
+    if(!data.ok) return 0;
+    return (data.registros||[]).filter(r=>r.run_id===runId).length;
+  }catch{
+    return 0;
+  }
+}
+
+let _pendingOverwrite = null;
+
+function mostrarConfirmacionSobrescritura({url, runId, periodo, registros, guardadoPor, apiKey, existentes}){
+  _pendingOverwrite = {url, runId, periodo, registros, guardadoPor, apiKey};
+
+  const modal = document.createElement('div');
+  modal.id    = 'modal-confirmar-sobrescritura';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:900;display:flex;align-items:center;justify-content:center;';
+  modal.innerHTML = `
+    <div style="background:var(--bg2);border:1px solid var(--red);border-radius:12px;padding:24px;width:440px;max-width:95vw;">
+      <div style="font-size:14px;font-weight:600;margin-bottom:10px;color:var(--red);">⚠️ El run ya existe en el historial</div>
+      <div style="font-size:12px;color:var(--text2);line-height:1.6;margin-bottom:16px;">
+        El run <strong style="color:var(--text);font-family:var(--mono);">${runId}</strong> ya existe en el historial con
+        <strong style="color:var(--text);">${existentes}</strong> registros.<br/>
+        ¿Deseas reemplazarlo con los <strong style="color:var(--text);">${registros.length}</strong> registros actuales?<br/>
+        <span style="color:var(--text3);">Esta acción no se puede deshacer.</span>
+      </div>
+      <div id="sobrescritura-status" style="min-height:18px;font-size:11px;font-family:var(--mono);margin-bottom:10px;"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;">
+        <button class="btn" onclick="cancelarSobrescribirHistorial()">Cancelar</button>
+        <button class="btn" id="btn-confirmar-sobrescritura" onclick="confirmarSobrescribirHistorial()"
+          style="background:rgba(239,68,68,.12);border-color:var(--red);color:var(--red);">
+          Sí, reemplazar
+        </button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+}
+
+export function cancelarSobrescribirHistorial(){
+  _pendingOverwrite = null;
+  document.getElementById('modal-confirmar-sobrescritura')?.remove();
+}
+
+export async function confirmarSobrescribirHistorial(){
+  if(!_pendingOverwrite) return;
+  const { url, runId, periodo, registros, guardadoPor, apiKey } = _pendingOverwrite;
+
+  const status = document.getElementById('sobrescritura-status');
+  const btn    = document.getElementById('btn-confirmar-sobrescritura');
+  btn.disabled = true;
+  status.innerHTML = '<span style="color:var(--blue);">⏳ Reemplazando...</span>';
+
+  try{
+    const payload = JSON.stringify({ apiKey, accion:'sobreescribirHistorial', runId, periodo, registros, guardadoPor });
+    const resp = await fetch(url,{method:'POST',
+      headers:{'Content-Type':'application/x-www-form-urlencoded'},
+      body:'payload='+encodeURIComponent(payload)});
+    const data = await resp.json();
+    if(!data.ok) throw new Error(data.error || 'Error desconocido');
+
+    status.innerHTML = '<span style="color:var(--green);">✓ Run reemplazado correctamente</span>';
+    addLog('log-trump', `[OK] ${data.mensaje || `Run ${runId} reemplazado en el historial`} · por ${guardadoPor}`, 'ok');
+    _pendingOverwrite = null;
+    setTimeout(()=>{
+      document.getElementById('modal-confirmar-sobrescritura')?.remove();
+      document.getElementById('modal-guardar-historial')?.remove();
+    }, 1500);
+  }catch(err){
+    status.innerHTML = `<span style="color:var(--red);">✗ Error: ${err.message}</span>`;
     btn.disabled = false;
   }
 }

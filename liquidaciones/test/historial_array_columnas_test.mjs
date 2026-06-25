@@ -23,7 +23,7 @@ function fakeEl(id){
 global.document = { getElementById:(id)=>fakeEl(id), createElement:()=>fakeEl('__tmp__'), body:{appendChild(){}} };
 
 let fetchCalls = [];
-global.fetch = (url, opts) => { fetchCalls.push({url, opts}); return Promise.resolve({}); };
+global.fetch = (url, opts) => { fetchCalls.push({url, opts}); return Promise.resolve({ json: async () => ({ ok: true }) }); };
 
 const tariffs = await import('../js/tariffs.js');
 const trumpMod = await import('../js/trump.js');
