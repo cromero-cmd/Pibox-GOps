@@ -4,7 +4,7 @@
 import { normStr } from './config.js';
 import { mallaRaw } from './parser.js';
 import { tadaNorm } from './normalizer.js';
-import { loadDict, saveDict, dictIncrementarUso } from './diccionario.js';
+import { loadDict, saveDict, dictIncrementarUso, syncDiccionarioFromBackend } from './diccionario.js';
 import { addLog, clearLog, showProcessing, hideProcessing, mkTable, unlock, toast } from './ui.js';
 import { actualizarDictSummary } from './diccionario.js';
 
@@ -140,10 +140,22 @@ function resolverPorDiccionario(piloto, fecha, dict, idxF, mPKey, mDKey){
   return null;
 }
 
-export function runConciliacion(){
+export async function runConciliacion(){
   clearLog('log-conc');
-  showProcessing('Ejecutando conciliación...');
+  showProcessing('Sincronizando diccionario...');
   concFilter=new Set();
+
+  // Descargar el diccionario compartido (Google Sheets) antes de matchear —
+  // así una equivalencia que aprendió otro usuario esta semana se aplica
+  // automáticamente sin que nadie tenga que hacer nada manual. Si el backend
+  // no responde, syncDiccionarioFromBackend() devuelve el diccionario local
+  // tal cual estaba — el pipeline sigue funcionando sin bloquearse.
+  const syncResult = await syncDiccionarioFromBackend();
+  addLog('log-conc',
+    `[DICT] Diccionario sincronizado: ${syncResult.total} entradas (${syncResult.delServidor} del servidor, ${syncResult.locales} locales)`,
+    syncResult.offline ? 'warn' : 'info');
+
+  showProcessing('Ejecutando conciliación...');
   setTimeout(()=>{
     try{
       concResult=[];

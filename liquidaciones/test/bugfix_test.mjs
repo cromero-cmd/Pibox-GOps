@@ -29,6 +29,11 @@ global.document = {
   body: fakeEl(),
 };
 global.window = global;
+// Sin esto, runConciliacion() llamaría al fetch() nativo de Node (18+) y
+// pegaría de verdad al backend de Apps Script en producción al sincronizar
+// el diccionario compartido — igual que el resto de los tests, se simula
+// "sin red" para que el test sea hermético y no dependa de la red real.
+global.fetch = () => Promise.reject(new Error('sin red en este test'));
 
 const logs = [];
 const origLog = console.log;

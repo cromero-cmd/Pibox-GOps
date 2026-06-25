@@ -2,13 +2,15 @@
 // DICCIONARIO DE EQUIVALENCIAS
 // Estructura: [{id, tadaNombre, mallaNombre, fechaAprendido, usos, fuente}]
 // ═══════════════════════════════════════════
-import { LS_DICT, normStr } from './config.js';
+import { LS_DICT, normStr, getBackendUrl } from './config.js';
 import { toast, emptyStateHtml, addLog } from './ui.js';
 
 // Claves de storage compartido — no usadas hoy (reservadas para sync futura vía Apps Script),
 // se conservan tal cual existían en el archivo original.
 const SHARED_DICT_KEY  = 'diccionario_v1';
 const SHARED_TARIFF_KEY = 'tariff_v1';
+
+const API_KEY = 'pibox-liq-2026-9605';
 
 export function loadDict(){
   // Primero intentar desde variable en memoria (cargada desde storage compartido)
@@ -60,6 +62,71 @@ export function dictSave(tadaNombre, mallaNombre, fuente){
   saveDict(dict);
   actualizarDictSummary();
   if(esNueva) addLog('log-conc', `[DICT] Aprendido: "${tadaNombre}" → "${mallaNombre}" (${fuente})`, 'ok');
+
+  // Sincronizar al backend compartido (Google Sheets) en segundo plano —
+  // fetch no-cors igual que el resto de llamadas al backend (auth.js,
+  // email.js): no bloquea el flujo ni espera respuesta. Si falla (sin red,
+  // backend caído), el localStorage ya quedó guardado arriba y sigue
+  // sirviendo como fuente de verdad local — ningún usuario pierde su trabajo
+  // por un fallo de sincronización.
+  const entry = idx>=0 ? dict[idx] : dict[dict.length-1];
+  syncDictEntryToBackend(entry);
+}
+
+function syncDictEntryToBackend(entry){
+  const url = getBackendUrl();
+  if(!url) return;
+  const payload = JSON.stringify({
+    apiKey: API_KEY,
+    accion: 'saveDiccionario',
+    entrada: {
+      tadaNombre: entry.tadaNombre,
+      mallaNombre: entry.mallaNombre,
+      fuente: entry.fuente,
+      fechaAprendido: entry.fechaActualizado || entry.fechaAprendido,
+    },
+  });
+  fetch(url,{method:'POST',mode:'no-cors',
+    headers:{'Content-Type':'application/x-www-form-urlencoded'},
+    body:'payload='+encodeURIComponent(payload),
+  }).catch(()=>{});
+}
+
+// ── Descargar el diccionario compartido desde el backend y mezclarlo con el
+// local. Sheets tiene prioridad por tadaNombre (refleja lo que aprendieron
+// TODOS los usuarios); entradas locales que aún no llegaron al servidor
+// (por ejemplo, aprendidas en esta misma sesión justo antes de sincronizar)
+// se conservan para no perder trabajo reciente. Si el backend no responde,
+// se sigue con el diccionario local tal cual estaba — el pipeline nunca
+// queda bloqueado por esto.
+export async function syncDiccionarioFromBackend(){
+  const local = loadDict();
+  const url = getBackendUrl();
+  if(!url) return { total: local.length, delServidor: 0, locales: local.length, offline: true };
+
+  try{
+    const params = new URLSearchParams({accion:'getDiccionario', apiKey:API_KEY});
+    const resp = await fetch(`${url}?${params}`);
+    const data = await resp.json();
+    if(!data.ok || !Array.isArray(data.entradas)) throw new Error('respuesta inválida del backend');
+
+    const remoto = data.entradas.map(r => ({
+      id: r.id || `srv-${normStr(r.tadaNombre)}`,
+      tadaNombre: r.tadaNombre,
+      mallaNombre: r.mallaNombre,
+      fuente: r.fuente || 'auto',
+      fechaAprendido: r.fechaAprendido || '',
+      usos: Number(r.usos) || 0,
+    }));
+    const remotoKeys = new Set(remoto.map(e => normStr(e.tadaNombre)));
+    const merged = remoto.concat(local.filter(e => !remotoKeys.has(normStr(e.tadaNombre))));
+
+    saveDict(merged);
+    actualizarDictSummary();
+    return { total: merged.length, delServidor: remoto.length, locales: merged.length - remoto.length };
+  }catch{
+    return { total: local.length, delServidor: 0, locales: local.length, offline: true };
+  }
 }
 
 export function dictIncrementarUso(tadaNombre){
