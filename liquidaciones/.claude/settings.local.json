@@ -46,7 +46,9 @@
       "Bash(cp \"/c/Users/ADMIN/Desktop/pipeline-tada/test/_search_sanchez.mjs\" /tmp/esmtest/)",
       "Bash(node _search_sanchez.mjs)",
       "Bash(cp \"/c/Users/ADMIN/Desktop/pipeline-tada/test/_inspect_data_sheet.mjs\" /tmp/esmtest/)",
-      "Bash(node _inspect_data_sheet.mjs)"
+      "Bash(node _inspect_data_sheet.mjs)",
+      "Bash(cp \"/c/Users/ADMIN/Desktop/pipeline-tada/test/_real_data_repro2.mjs\" /tmp/esmtest/test/)",
+      "Bash(node test/_real_data_repro2.mjs)"
     ]
   }
 }

@@ -143,6 +143,21 @@ export function runConciliacion(){
     addLog('log-conc',`[INFO] Filas con actividad (a conciliar): ${filasConActividad.length}`,'info');
     addLog('log-conc',`[INFO] Filas sin actividad (omitidas): ${filasVacias.length}`,'dim');
 
+    // DIAG TEMPORAL — todas las filas de tadaNorm (con o sin actividad) cuyo
+    // piloto contiene "yoverty" — para confirmar si la fila con actividad real
+    // está siendo excluida de filasConActividad o llega con otra fecha/nombre.
+    const diagYoverty = tadaNorm.filter(r=>String(r.piloto||'').toLowerCase().includes('yoverty'));
+    if(diagYoverty.length){
+      console.log('[DIAG tadaNorm — todas las filas "yoverty"]', diagYoverty.map(r=>({
+        piloto_raw: r.piloto, normStr_piloto: normStr(r.piloto), fecha: r.fecha,
+        paquetes: r.paquetes, incentivos: r.incentivos, cancelados: r.cancelados,
+        seller: r.seller, ciudad: r.ciudad,
+        tieneActividad: (r.paquetes>0||r.incentivos>0||r.cancelados>0),
+      })));
+    } else {
+      console.log('[DIAG tadaNorm] NINGUNA fila de tadaNorm contiene "yoverty" en el piloto — el problema está en normalizer.js/parser.js, no en conciliacion.js');
+    }
+
     const matchados=new Set();
     // Cargar diccionario para aplicar equivalencias aprendidas
     const dict = loadDict();
@@ -356,19 +371,30 @@ export function runConciliacion(){
       }
 
       // DIAG TEMPORAL — verificación de normStr()/tildes para los 3 pilotos
-      // reportados. Remover una vez confirmada la causa real del SIN_TADA.
-      const DIAG_WATCH = ['yoverty matta sanchez','erick santiago suarez suarez','maria cristina sanchez diaz'];
-      if(DIAG_WATCH.includes(rp)){
+      // reportados. Sustring (no exacto) para detectar si rp llega con un
+      // valor ligeramente distinto al esperado (espacios, orden, etc.).
+      // Remover una vez confirmada la causa real del SIN_TADA.
+      const DIAG_WATCH = ['yoverty','suarez suarez','sanchez diaz'];
+      if(DIAG_WATCH.some(w=>rp.includes(w))){
+        // Candidatos en la malla con el MISMO piloto (normStr) sin importar
+        // la fecha — para comparar el formato exacto de fecha de cada lado
+        // incluso cuando idx2/idxF no encuentran nada por un mismatch de fecha.
+        const mallaMismoPilotoCualquierFecha = mallaRaw
+          .filter(m=>normStr(String(m[mPKey]||''))===rp)
+          .map(m=>({fecha_malla_raw: m[mFKey], fecha_malla_tipo: typeof m[mFKey], fecha_malla_json: JSON.stringify(m[mFKey])}));
         console.log('[DIAG conciliacion]', {
           piloto_tada_raw: row.piloto,
           normStr_piloto_tada: rp,
-          fecha: rf,
+          fecha_tada_raw: rf,
+          fecha_tada_tipo: typeof rf,
+          fecha_tada_json: JSON.stringify(rf),
           seller_tada_raw: row.seller,
           normStr_seller_tada: rs,
           idx3_key: a, idx3_match_count: idx3[a]?.length||0,
           idx2_key: b, idx2_match_count: idx2[b]?.length||0,
-          idx2_candidatos: (idx2[b]||[]).map(m=>({nombre_raw:m[mPKey], normStr_nombre:normStr(String(m[mPKey]||''))})),
+          idx2_candidatos: (idx2[b]||[]).map(m=>({nombre_raw:m[mPKey], normStr_nombre:normStr(String(m[mPKey]||'')), fecha_malla:m[mFKey]})),
           idxF_candidatos_misma_fecha: (idxF[rf]||[]).map(m=>({nombre_raw:m[mPKey], normStr_nombre:normStr(String(m[mPKey]||''))})),
+          mallaMismoPilotoCualquierFecha,
           nivel_asignado: nivel,
         });
       }
