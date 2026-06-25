@@ -212,6 +212,8 @@ export function renderListaNovedades(){
     });
     const inpBk = card.querySelector('.inp-booking');
     if(inpBk) inpBk.addEventListener('input',e=>{ novedades[i]._booking_manual=e.target.value.trim(); });
+    const inpDriver = card.querySelector('.inp-driver');
+    if(inpDriver) inpDriver.addEventListener('input',e=>{ novedades[i]._driver_manual=e.target.value.trim(); });
     const inpNom = card.querySelector('.inp-nom-manual');
     const inpBkM = card.querySelector('.inp-bk-manual');
     if(inpNom) inpNom.addEventListener('input',e=>{ novedades[i]._nombre_manual=e.target.value.trim(); });
@@ -321,11 +323,11 @@ export function explicarNovedad(n){
 
   if(tipo === 'SIN_MALLA'){
     return `<div style="margin-bottom:10px;">
-      <div style="font-size:11px;font-weight:600;color:var(--text3);margin-bottom:6px;">ℹ Este piloto aparece en TADA pero no tiene ningún registro en la malla Pibox para esa fecha.</div>
+      <div style="font-size:11px;font-weight:600;color:var(--text3);margin-bottom:6px;">ℹ Este piloto aparece en TADA con actividad pero no tiene registro en la malla. Puede que el booking se haya omitido.</div>
       <div style="font-size:11px;color:var(--text2);">
         Posibles causas: el servicio no se registró en la malla, la fecha no coincide, o el piloto no estaba activo ese día.<br>
-        → Este registro ya está excluido de la liquidación.<br>
-        → Confirma la exclusión o revisa la malla antes de reliquidar.
+        → <strong>Ingresa el Booking ID</strong> manualmente si lo tienes disponible y confirma — se liquidará con sus valores reales de TADA.<br>
+        → <strong>Excluye</strong> si el servicio no debe liquidarse en este ciclo.
       </div>
     </div>`;
   }
@@ -394,6 +396,16 @@ export function renderNovCard(n, i){
     </div>`;
   }
 
+  // Inputs booking + driver SIN_MALLA — sin estos no hay forma de rescatar
+  // el registro al template, ya que no existe ningún candidato en la malla.
+  let sinMallaHtml='';
+  if(n.tipo==='SIN_MALLA'){
+    sinMallaHtml=`<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">
+      <input class="nov-input inp-booking" type="text" placeholder="Booking ID..." value="${n._booking_manual||''}"/>
+      <input class="nov-input inp-driver" type="text" placeholder="Driver ID (opcional)..." value="${n._driver_manual||''}"/>
+    </div>`;
+  }
+
   return `<div class="nov-card ${cardCls}" id="nov-card-${i}">
     <div class="nov-header">
       <span class="nov-badge ${badgeClass(n.tipo)}">${n.tipo}</span>
@@ -411,8 +423,9 @@ export function renderNovCard(n, i){
       </details>
       ${candidatosHtml}
       ${bookingHtml}
+      ${sinMallaHtml}
       <div class="nov-actions">
-        ${n.tipo!=='SIN_MALLA' ? `<button class="btn btn-sm btn-primary btn-nov-ok">✓ Confirmar</button>` : ''}
+        <button class="btn btn-sm btn-primary btn-nov-ok">✓ Confirmar</button>
         ${bookingDisponible ? `<button class="btn btn-sm btn-warn btn-nov-cero">⓪ Incluir en $0</button>` : ''}
         <button class="btn btn-sm btn-danger btn-nov-ex">✗ Excluir</button>
       </div>
@@ -458,6 +471,10 @@ export function confirmarOk(i){
     const bk=n._booking_manual||'';
     if(!bk){ toast('Ingresa el Booking ID antes de confirmar'); return; }
     resoluciones[n.clave]={accion:'ok', booking_id:bk};
+  } else if(n.tipo==='SIN_MALLA'){
+    const bk=n._booking_manual||'';
+    if(!bk){ toast('Ingresa el Booking ID antes de confirmar'); return; }
+    resoluciones[n.clave]={accion:'ok', booking_id:bk, driver_id:n._driver_manual||''};
   } else if(n.tipo==='AMBIGUOUS'){
     const bkM=n._bk_manual||'';
     if(!resoluciones[n.clave]?.booking_id && !bkM){ toast('Selecciona un candidato o ingresa el booking'); return; }

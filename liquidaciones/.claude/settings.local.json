@@ -48,7 +48,11 @@
       "Bash(cp \"/c/Users/ADMIN/Desktop/pipeline-tada/test/_inspect_data_sheet.mjs\" /tmp/esmtest/)",
       "Bash(node _inspect_data_sheet.mjs)",
       "Bash(cp \"/c/Users/ADMIN/Desktop/pipeline-tada/test/_real_data_repro2.mjs\" /tmp/esmtest/test/)",
-      "Bash(node test/_real_data_repro2.mjs)"
+      "Bash(node test/_real_data_repro2.mjs)",
+      "Bash(cp \"/c/Users/ADMIN/Desktop/pipeline-tada/test/_audit_sintada.mjs\" /tmp/esmtest/test/)",
+      "Bash(node test/_audit_sintada.mjs)",
+      "Bash(cp \"/c/Users/ADMIN/Desktop/pipeline-tada/test/\"*.mjs /tmp/esmtest/test/)",
+      "Bash(node test/sinmalla_novedad_test.mjs)"
     ]
   }
 }

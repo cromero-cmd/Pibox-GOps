@@ -470,7 +470,7 @@ export function renderConcStats(){
     <div class="stat clickable${selCls('FUZZY-LOW','selected-med')}"   onclick="filterConc(event,'FUZZY-LOW')">  <div class="stat-l">FUZZY-LOW · sin seller</div><div class="stat-v y">${fl}</div> <div class="stat-hint">→ marcado revisión</div></div>
     <div class="stat clickable${selCls('LOW','selected-low')}"         onclick="filterConc(event,'LOW')">        <div class="stat-l">LOW · seller distinto</div><div class="stat-v r">${lo}</div>  <div class="stat-hint">→ marcado revisión</div></div>
     <div class="stat clickable${selCls('AMBIGUOUS','selected-low')}"   onclick="filterConc(event,'AMBIGUOUS')">  <div class="stat-l">AMBIGUOUS · varios cand.</div><div class="stat-v r">${amb}</div><div class="stat-hint">→ revisión manual</div></div>
-    <div class="stat clickable${selCls('SIN_MALLA','selected-sin')}"   onclick="filterConc(event,'SIN_MALLA')">  <div class="stat-l">SIN_MALLA · sin match</div><div class="stat-v" style="color:var(--text2)">${sn}</div><div class="stat-hint">→ excluido</div></div>
+    <div class="stat clickable${selCls('SIN_MALLA','selected-sin')}"   onclick="filterConc(event,'SIN_MALLA')">  <div class="stat-l">SIN_MALLA · sin match</div><div class="stat-v" style="color:var(--text2)">${sn}</div><div class="stat-hint">→ revisar en Novedades</div></div>
     ${st>0?`<div class="stat clickable${selCls('SIN_TADA','selected-sin')}" onclick="filterConc(event,'SIN_TADA')"><div class="stat-l">SIN_TADA · no en reporte</div><div class="stat-v" style="color:var(--yellow);">${st}</div><div class="stat-hint">→ revisar en Novedades</div></div>`:''}
     <div class="stat" style="border-color:var(--border2);background:var(--bg3);">
       <div class="stat-l">Días sin actividad</div>

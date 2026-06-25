@@ -345,7 +345,10 @@ export function runTrump(){
     trumpRows.filter(r=>r._confianza==='MEDIUM').forEach(r=>addLog('log-trump',`[MED] ${r.BOOKING_ID} — dist. equitativa`,'warn'));
     trumpRows.filter(r=>r._confianza==='LOW').forEach(r=>addLog('log-trump',`[LOW] ${r.BOOKING_ID} · ${r._piloto}`,'warn'));
     ceroRows.forEach(r=>addLog('log-trump',`[CERO] ${r.BOOKING_ID} · ${r._piloto} · ${r._fecha}`,'warn'));
-    concResult.filter(r=>r.nivel_confianza==='SIN_MALLA').forEach(r=>
+    // Mismo criterio que el bucket SIN_MALLA de buildExclusiones() — una vez
+    // resuelto (ok/excluir/pendiente) ya lo cubren los logs [PEND]/[EXCL] de
+    // abajo; loguearlo aquí también duplicaría la línea.
+    concResult.filter(r=>r.nivel_confianza==='SIN_MALLA'&&!r._resolucion_manual&&!r._excluido_manual).forEach(r=>
       addLog('log-trump',`[EXCL] ${r.piloto} · ${r.fecha} — SIN_MALLA`,'err'));
     concResult.filter(r=>r._excluido_manual&&r._accion_manual==='excluir').forEach(r=>
       addLog('log-trump',`[EXCL] ${r.piloto} · ${r.fecha} — excluido manualmente`,'err'));
@@ -474,8 +477,11 @@ export function downloadTrump(){
 export function buildExclusiones(){
   const excl = [];
 
-  // 1. SIN_MALLA — en TADA pero sin match en la malla
-  concResult.filter(r=>r.nivel_confianza==='SIN_MALLA').forEach(r=>{
+  // 1. SIN_MALLA — en TADA pero sin match en la malla, sin resolver en Novedades.
+  // BUGFIX: ahora que SIN_MALLA pasa por Novedades, una vez resuelto el flag
+  // _excluido_manual (excluir o pendiente) ya lo cubren los buckets 2/3 más
+  // abajo — sin este filtro quedaba contado dos veces en el reporte.
+  concResult.filter(r=>r.nivel_confianza==='SIN_MALLA'&&!r._resolucion_manual&&!r._excluido_manual).forEach(r=>{
     excl.push({
       razon:'SIN_MALLA',
       descripcion:'Piloto en TADA sin coincidencia en la malla Pibox',
@@ -537,19 +543,13 @@ export function buildExclusiones(){
     });
   });
 
-  // 4. Novedades pendientes — no resueltas → excluidas automáticamente
-  if(typeof novedades !== 'undefined'){
-    novedades.forEach(n=>{
-      if(!resoluciones[n.clave]){
-        excl.push({
-          razon:'NOVEDAD_PENDIENTE',
-          descripcion:`Novedad tipo ${n.tipo} no resuelta — excluida automáticamente`,
-          piloto:n.piloto, ciudad:n.ciudad, seller:n.seller,
-          fecha:n.fecha, booking_id:'—',
-        });
-      }
-    });
-  }
+  // NOTA: no existe un bucket "4. Novedades pendientes" separado por diseño —
+  // BUGFIX: existía antes y contaba doble. Toda novedad de fuente 'conc' sin
+  // resolver ya queda marcada _excluido_manual (sin _accion_manual) por
+  // aplicarResoluciones() y la captura el bucket "3. Pendientes" arriba; toda
+  // novedad de fuente 'dist' (SIN_BOOKING) sin resolver ya queda con
+  // booking_id='__EXCLUIDO__' y la captura el bucket "SIN_BOOKING". Un bucket
+  // adicional que recorriera novedades{} sin resolver las contaría dos veces.
 
   return excl;
 }
