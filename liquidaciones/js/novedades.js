@@ -28,14 +28,20 @@ function claveNovedad(piloto, fecha, tipo){
 }
 
 // Booking ID real de la malla asociado a una novedad, si existe — usado para
-// habilitar "Incluir en $0" (requiere un booking real, no un placeholder).
+// habilitar "Incluir en $0" (requiere un booking real, no un placeholder)
+// para CUALQUIER tipo de novedad, no solo SIN_TADA.
 // BUGFIX: para SIN_TADA, conciliacion.js ya resuelve el booking correcto una
 // sola vez (campo _booking_malla, propagado aquí como n.bookingMalla) — usar
 // ese valor en vez de volver a derivar la columna de booking desde cero con
 // la misma heurística de regex en un segundo archivo, que puede desalinearse
 // si la malla tiene más de una columna que contenga "booking" en el nombre.
+// Para AMBIGUOUS, si el usuario ya seleccionó un candidato (seleccionarCandidato
+// guarda resoluciones[clave].booking_id antes de confirmar), ese es el booking
+// correcto a anular — no el primer match por defecto, que puede ser otro piloto.
 function bookingDeNovedad(n){
   if(n.bookingMalla) return n.bookingMalla;
+  const seleccionado = resoluciones[n.clave]?.booking_id;
+  if(seleccionado) return seleccionado;
   if(!n.matches || !n.matches.length) return '';
   const mKeys = Object.keys(mallaRaw[0]||{});
   const mBKey = mKeys.find(k=>/booking/i.test(k))||'BOOKING SERVICIO';
@@ -446,7 +452,7 @@ export function renderNovCard(n, i){
       ${sinTadaHtml}
       <div class="nov-actions">
         <button class="btn btn-sm btn-primary btn-nov-ok">✓ Confirmar</button>
-        ${(bookingDisponible && n.tipo!=='SIN_TADA') ? `<button class="btn btn-sm btn-warn btn-nov-cero">⓪ Incluir en $0</button>` : ''}
+        ${bookingDisponible ? `<button class="btn btn-sm btn-warn btn-nov-cero">⓪ Incluir en $0</button>` : ''}
         <button class="btn btn-sm btn-danger btn-nov-ex">✗ Excluir</button>
       </div>
     </div>
