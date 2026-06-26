@@ -185,14 +185,38 @@ export function renderTariffPanel(){
   }).join('');
 
   // Log de cambios
+  const TIPO_FECHA_LABEL = {pico:'Pico (V-D)', superpico:'Super pico'};
   const log=(tariffStore.log||[]).slice().reverse().slice(0,10);
   const logHtml=log.length===0
     ? '<div style="font-size:11px;color:var(--text3);font-family:var(--mono);padding:8px 0;">Sin cambios registrados aún</div>'
     : log.map(e=>{
         const ts=fmtDT(e.timestamp);
-        const accion=e.accion==='publicar'
-          ? `<span style="color:var(--green);">publicó ${e.version}</span>`
-          : `<span style="color:var(--blue);">activó ${e.version}</span>`;
+        let accion;
+        if(e.accion==='publicar'){
+          accion = `<span style="color:var(--green);">publicó ${e.version}</span>`;
+        } else if(e.accion==='activar'){
+          accion = `<span style="color:var(--blue);">activó ${e.version}</span>`;
+        } else { // fecha_especial
+          const tipoLabel = TIPO_FECHA_LABEL[e.tipo]||e.tipo;
+          let texto;
+          if(e.operacion==='agregar'){
+            texto = `📅 Agregada fecha especial: ${e.fecha||'—'} · ${tipoLabel}`;
+          } else if(e.operacion==='eliminar'){
+            texto = `📅 Eliminada fecha especial: ${e.fecha||'—'} · ${tipoLabel}`;
+          } else if(e.campo==='tipo'){
+            // El brief usa "Pico" (sin el sufijo "(V-D)") en la transición de
+            // tipo de "modificar", a diferencia de "agregar"/"eliminar" que sí
+            // lo incluyen — se respeta tal cual el formato exacto pedido.
+            const TIPO_LABEL_CORTO = {pico:'Pico', superpico:'Super pico'};
+            const antLabel=TIPO_LABEL_CORTO[e.valor_anterior]||e.valor_anterior;
+            const nvoLabel=TIPO_LABEL_CORTO[e.valor_nuevo]||e.valor_nuevo;
+            texto = `📅 Modificada: ${e.fecha||'—'} · ${antLabel} → ${nvoLabel}`;
+            if(e.tipo==='superpico' && e.tarifa_custom>0) texto += ` · Tarifa: ${cop(e.tarifa_custom)}`;
+          } else { // campo==='tarifa_custom'
+            texto = `📅 Modificada: ${e.fecha||'—'} · ${tipoLabel} · Tarifa: ${cop(e.valor_anterior||0)} → ${cop(e.valor_nuevo||0)}`;
+          }
+          accion = `<span style="color:var(--yellow);">${texto}</span>`;
+        }
         const cambiosHtml=e.cambios?.length
           ? e.cambios.map(c=>`<div style="font-size:10px;color:var(--text3);padding-left:8px;border-left:2px solid var(--border2);margin-top:3px;">${c}</div>`).join('')
           : '';
@@ -255,25 +279,57 @@ export function saveFechasEspeciales(arr){
   tariffStore.fechas_especiales = JSON.stringify(arr);
   currentEdits['fechas_especiales'] = JSON.stringify(arr);
 }
+function logFechaEspecial(operacion, fe, extra={}){
+  if(!tariffStore.log) tariffStore.log=[];
+  tariffStore.log.push({
+    timestamp: new Date().toISOString(),
+    accion: 'fecha_especial',
+    operacion,
+    fecha: fe.fecha,
+    tipo: fe.tipo,
+    tarifa_custom: fe.tarifa_custom || 0,
+    autor: currentUser?.nombre || 'sistema',
+    ...extra,
+  });
+}
+
 export function addFechaEspecial(){
   const arr = getFechasEspeciales();
-  arr.push({fecha:'', tipo:'pico', tarifa_custom:0});
+  const fe = {fecha:'', tipo:'pico', tarifa_custom:0};
+  arr.push(fe);
   saveFechasEspeciales(arr);
+  logFechaEspecial('agregar', fe);
+  saveTariffs();
   renderTariffPanel();
 }
 export function removeFechaEspecial(i){
   const arr = getFechasEspeciales();
+  const fe = arr[i];
+  if(!fe) return;
   arr.splice(i,1);
   saveFechasEspeciales(arr);
+  logFechaEspecial('eliminar', fe);
+  saveTariffs();
   renderTariffPanel();
 }
 export function updateFechaEspecial(i, key, val){
   const arr = getFechasEspeciales();
   if(!arr[i]) return;
+  const anterior = arr[i][key];
   arr[i][key] = val;
   // Si cambia a pico, limpiar tarifa_custom
   if(key==='tipo' && val==='pico') arr[i].tarifa_custom = 0;
   saveFechasEspeciales(arr);
+
+  // Solo registrar cambios significativos — no cada tecla escrita en el
+  // campo de fecha (oninput dispararía un log por carácter).
+  if(key==='tipo' && val!==anterior){
+    logFechaEspecial('modificar', arr[i], {campo:'tipo', valor_anterior:anterior, valor_nuevo:val});
+  } else if(key==='tarifa_custom' && Math.abs((val||0)-(anterior||0))>0){
+    logFechaEspecial('modificar', arr[i], {campo:'tarifa_custom', valor_anterior:anterior||0, valor_nuevo:val||0});
+  }
+  saveTariffs();
+
   // Re-render solo si cambió el tipo (para habilitar/deshabilitar el input)
   if(key==='tipo') renderTariffPanel();
 }
