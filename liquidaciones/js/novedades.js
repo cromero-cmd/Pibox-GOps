@@ -664,18 +664,29 @@ export function aplicarResoluciones(){
     }
 
     if(TIPOS_NOVEDAD.has(n.tipo)&&n.fuente==='conc'){
+      let _dbgRes='(sin cambio)';
       if(!res){
         // Pendiente no resuelto — excluir automáticamente
         concResult[n.idx]._excluido_manual=true;
         concResult[n.idx]._nivel_original=n.tipo;
         // SIN marcar _accion_manual → buildExclusiones lo identifica como PENDIENTE
+        _dbgRes='pendiente→excluido_auto';
       } else if(res.accion==='excluir'){
         concResult[n.idx]._excluido_manual=true;
         concResult[n.idx]._accion_manual='excluir'; // exclusión explícita del analista
         concResult[n.idx]._nivel_original=n.tipo;
+        _dbgRes='excluir→_excluido_manual';
       } else if(res.accion==='ok'){
+        // BUGFIX: si el registro tenía flags de exclusión de una pasada previa
+        // (el usuario excluyó en la pasada 1 y confirmó en la pasada 2 sin
+        // volver a correr conciliación), borrarlos antes de marcar ok — de lo
+        // contrario runDistribucionSilent() lo filtra fuera por _excluido_manual
+        // y runTrump() lo loguea como [EXCL] a pesar de que fue confirmado.
+        delete concResult[n.idx]._excluido_manual;
+        delete concResult[n.idx]._accion_manual;
         concResult[n.idx]._resolucion_manual=true;
         if(res.driver_id) concResult[n.idx].driver_id=res.driver_id;
+        _dbgRes='ok→MANUAL-OK';
 
         // SIN_TADA resuelto con nombre real de TADA — copiar sus valores
         // reales (paquetes, incentivos, etc.) al registro de malla. Si el
@@ -732,7 +743,9 @@ export function aplicarResoluciones(){
         // resoluciones{}; solo marcamos el registro original para que
         // buildExclusiones() no lo cuente también como SIN_TADA/AMBIGUOUS excluido.
         concResult[n.idx]._resolucion_cero=true;
+        _dbgRes='cero→_resolucion_cero';
       }
+      console.log(`[DEBUG-NOV] ${n.clave} | res=${res?.accion||'(pendiente)'} → ${_dbgRes}`);
     }
   });
 
