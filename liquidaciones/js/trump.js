@@ -564,7 +564,11 @@ export function renderResumenExclusiones(totalIncluidos){
   const tbl  = document.getElementById('exclusiones-tabla');
   if(!el||!tbl) return;
 
-  if(excl.length===0){
+  // Calcular manualOkCount ANTES del early-return: si el usuario confirmó todas las
+  // novedades sin excluir ninguna, excl.length===0 pero el badge aún debe aparecer.
+  const manualOkCount = trumpRows.filter(r=>r._confianza==='MANUAL-OK').length;
+
+  if(excl.length===0 && manualOkCount===0){
     el.style.display='none';
     return;
   }
@@ -588,8 +592,7 @@ export function renderResumenExclusiones(totalIncluidos){
     return r[mBKey];
   }).length;
   // ANULADO_CERO no es una exclusión real — el booking sí entra al template (en $0).
-  const exclReales    = excl.filter(e=>e.razon!=='ANULADO_CERO').length;
-  const manualOkCount = trumpRows.filter(r=>r._confianza==='MANUAL-OK').length;
+  const exclReales = excl.filter(e=>e.razon!=='ANULADO_CERO').length;
 
   let html = `<div style="padding:12px 14px;border-bottom:1px solid var(--border);background:var(--bg3);">
     <div style="display:flex;gap:24px;align-items:center;flex-wrap:wrap;">

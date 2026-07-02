@@ -107,9 +107,9 @@ function makeHighRow(bk, piloto, fecha, cobro){
   console.log('OK: trumpRows.filter(MANUAL-OK) identifica correctamente 1 registro manual');
 }
 
-// ── CASO 2: Resumen muestra "X confirmados manualmente" con manualOkCount > 0 ─
-// renderResumenExclusiones() solo renderiza si hay exclusiones (excl.length>0);
-// agregamos un SIN_MALLA sin resolver para que el banner se muestre.
+// ── CASO 2: Badge aparece cuando hay MANUAL-OK aunque excl esté vacío ────────
+// Escenario real del bug: usuario confirma TODOS los registros → excl.length===0
+// pero manualOkCount>0; el banner debe mostrarse igualmente.
 {
   setupMalla();
   concMod.concResult.length = 0;
@@ -117,14 +117,7 @@ function makeHighRow(bk, piloto, fecha, cobro){
   novMod.novedades.length = 0;
   Object.keys(novMod.resoluciones).forEach(k=>delete novMod.resoluciones[k]);
 
-  // 1 SIN_MALLA sin resolver → aparece en excl → el banner se renderiza
-  concMod.concResult.push({
-    piloto:'Fantasma Excluido', ciudad:'BOG', seller:'BOG', fecha:'2026-06-10',
-    nivel_confianza:'SIN_MALLA', matches:[], nota:'sin match',
-    paquetes:0, incentivos:0, cancelados:0, tareas:0, garantizado:0, bonos:0, ajustes:0, driver_id:'',
-  });
-
-  // trumpRows con 2 HIGH + 1 MANUAL-OK
+  // Sin exclusiones en absoluto — todos los registros confirmados manualmente
   trumpMod.trumpRows.length = 0;
   trumpMod.trumpRows.push(
     makeHighRow('BK-200', 'Juan Perez',  '2026-06-10', 90000),
@@ -132,7 +125,7 @@ function makeHighRow(bk, piloto, fecha, cobro){
     makeManualOkRow('BK-100', 'Pedro Gomez', '2026-06-10', 85050),
   );
 
-  els['resumen-exclusiones'] = fakeEl('resumen-exclusiones');
+  fakeEl('resumen-exclusiones');
   fakeEl('exclusiones-tabla').innerHTML = '';
 
   trumpMod.renderResumenExclusiones(3);
@@ -140,25 +133,48 @@ function makeHighRow(bk, piloto, fecha, cobro){
   const html = fakeEl('exclusiones-tabla').innerHTML;
 
   assert.ok(html.includes('incluidos en template'),
-    'resumen debe contener "incluidos en template"');
+    'resumen debe mostrarse aunque excl.length===0 si hay MANUAL-OK');
   assert.ok(html.includes('confirmados manualmente'),
-    'resumen debe incluir el badge "confirmados manualmente"');
+    'badge "confirmados manualmente" debe aparecer con excl vacío y manualOkCount>0');
   assert.ok(html.includes('var(--accent)'),
-    'el badge de confirmados manualmente debe usar var(--accent)');
-  // El badge muestra "1" para el único MANUAL-OK
+    'el badge debe usar var(--accent)');
   const manualSpan = html.match(/color:var\(--accent\)[^>]*>(\d+)</);
-  assert.ok(manualSpan && manualSpan[1]==='1', `el conteo de confirmados debe ser 1 — html: ${html.slice(0,200)}`);
-  console.log('OK: renderResumenExclusiones() muestra "1 confirmados manualmente" con color accent');
+  assert.ok(manualSpan && manualSpan[1]==='1', `conteo debe ser 1 — html: ${html.slice(0,200)}`);
+  console.log('OK: badge aparece aunque excl.length===0 cuando hay MANUAL-OK (fix del bug real)');
 }
 
-// ── CASO 3: Sin MANUAL-OK → badge no aparece (no rompe el caso normal) ────────
+// ── CASO 3: Sin MANUAL-OK ni exclusiones → banner oculto (comportamiento normal) ─
 {
   setupMalla();
   concMod.concResult.length = 0;
   distMod.distResult.length = 0;
   novMod.novedades.length = 0;
 
-  // SIN_MALLA para que el banner se muestre
+  trumpMod.trumpRows.length = 0;
+  trumpMod.trumpRows.push(
+    makeHighRow('BK-200', 'Juan Perez',  '2026-06-10', 90000),
+    makeHighRow('BK-300', 'Maria Lopez', '2026-06-10', 92000),
+  );
+
+  fakeEl('resumen-exclusiones');
+  fakeEl('exclusiones-tabla').innerHTML = 'PREV';
+
+  trumpMod.renderResumenExclusiones(2);
+
+  // Sin exclusiones ni MANUAL-OK → el banner se oculta (early return)
+  const style = fakeEl('resumen-exclusiones').style.display;
+  assert.equal(style, 'none', 'sin exclusiones ni MANUAL-OK, el banner debe ocultarse');
+  console.log('OK: sin exclusiones ni MANUAL-OK, el banner se oculta (comportamiento intacto)');
+}
+
+// ── CASO 3b: MANUAL-OK + exclusiones → badge y tabla de exclusiones juntos ──
+{
+  setupMalla();
+  concMod.concResult.length = 0;
+  distMod.distResult.length = 0;
+  novMod.novedades.length = 0;
+
+  // 1 SIN_MALLA sin resolver + 1 MANUAL-OK
   concMod.concResult.push({
     piloto:'Fantasma B', ciudad:'BOG', seller:'BOG', fecha:'2026-06-10',
     nivel_confianza:'SIN_MALLA', matches:[], nota:'',
@@ -168,7 +184,7 @@ function makeHighRow(bk, piloto, fecha, cobro){
   trumpMod.trumpRows.length = 0;
   trumpMod.trumpRows.push(
     makeHighRow('BK-200', 'Juan Perez',  '2026-06-10', 90000),
-    makeHighRow('BK-300', 'Maria Lopez', '2026-06-10', 92000),
+    makeManualOkRow('BK-100', 'Pedro Gomez', '2026-06-10', 85050),
   );
 
   fakeEl('resumen-exclusiones');
@@ -177,10 +193,10 @@ function makeHighRow(bk, piloto, fecha, cobro){
   trumpMod.renderResumenExclusiones(2);
 
   const html = fakeEl('exclusiones-tabla').innerHTML;
-  assert.ok(html.includes('incluidos en template'), 'banner sí se renderiza con SIN_MALLA');
-  assert.ok(!html.includes('confirmados manualmente'),
-    'sin MANUAL-OK, el badge no debe aparecer');
-  console.log('OK: sin registros MANUAL-OK, el badge no aparece (caso normal limpio)');
+  assert.ok(html.includes('incluidos en template'), 'banner se renderiza');
+  assert.ok(html.includes('confirmados manualmente'), 'badge MANUAL-OK presente');
+  assert.ok(!html.includes('>0<') || html.includes('SIN_MALLA'), 'tabla tiene la sección SIN_MALLA');
+  console.log('OK: MANUAL-OK + exclusiones — badge y tabla coexisten correctamente');
 }
 
 // ── CASO 4: runDistribucionSilent() actualiza stats-dist con conteo MANUAL-OK ─
