@@ -345,6 +345,10 @@ export function runTrump(){
     trumpRows.filter(r=>r._confianza==='MEDIUM').forEach(r=>addLog('log-trump',`[MED] ${r.BOOKING_ID} — dist. equitativa`,'warn'));
     trumpRows.filter(r=>r._confianza==='LOW').forEach(r=>addLog('log-trump',`[LOW] ${r.BOOKING_ID} · ${r._piloto}`,'warn'));
     ceroRows.forEach(r=>addLog('log-trump',`[CERO] ${r.BOOKING_ID} · ${r._piloto} · ${r._fecha}`,'warn'));
+    trumpRows.filter(r=>r._confianza==='MANUAL-OK').forEach(r=>
+      addLog('log-trump',
+        `[MANUAL-OK] ${r._piloto} · ${r._fecha} · ${r.BOOKING_ID} · ${cop(r.COMPANY_FINAL_COST+r.ADDITIONAL_COMPANY_FINAL_COST)}`,
+        'info'));
     // Mismo criterio que el bucket SIN_MALLA de buildExclusiones() — una vez
     // resuelto (ok/excluir/pendiente) ya lo cubren los logs [PEND]/[EXCL] de
     // abajo; loguearlo aquí también duplicaría la línea.
@@ -584,7 +588,8 @@ export function renderResumenExclusiones(totalIncluidos){
     return r[mBKey];
   }).length;
   // ANULADO_CERO no es una exclusión real — el booking sí entra al template (en $0).
-  const exclReales = excl.filter(e=>e.razon!=='ANULADO_CERO').length;
+  const exclReales    = excl.filter(e=>e.razon!=='ANULADO_CERO').length;
+  const manualOkCount = trumpRows.filter(r=>r._confianza==='MANUAL-OK').length;
 
   let html = `<div style="padding:12px 14px;border-bottom:1px solid var(--border);background:var(--bg3);">
     <div style="display:flex;gap:24px;align-items:center;flex-wrap:wrap;">
@@ -592,6 +597,10 @@ export function renderResumenExclusiones(totalIncluidos){
         <span style="color:var(--green);font-weight:600;">${totalIncluidos}</span>
         <span style="color:var(--text3);"> incluidos en template</span>
       </span>
+      ${manualOkCount > 0 ? `<span style="font-size:12px;font-family:var(--mono);">
+        <span style="color:var(--accent);font-weight:600;">${manualOkCount}</span>
+        <span style="color:var(--text3);"> confirmados manualmente</span>
+      </span>` : ''}
       <span style="font-size:12px;font-family:var(--mono);">
         <span style="color:var(--red);font-weight:600;">${exclReales}</span>
         <span style="color:var(--text3);"> excluidos de ${totalMalla} bookings en malla</span>
