@@ -155,6 +155,12 @@ export async function runConciliacion(){
   clearLog('log-conc');
   showProcessing('Sincronizando diccionario...');
   concFilter=new Set();
+  // Al correr conciliación desde cero, concResult se reconstruye entero y los
+  // idx que guardaban novedades.js apuntan a posiciones ya inválidas. Se limpia
+  // resoluciones{} antes de que el usuario llegue a Novedades con datos viejos.
+  // El call usa optional chaining porque en tests resetNovedades puede no estar
+  // en window (no se expone al scope global en el harness de Node).
+  window.resetNovedades?.();
 
   // Descargar el diccionario compartido (Google Sheets) antes de matchear —
   // así una equivalencia que aprendió otro usuario esta semana se aplica

@@ -87,9 +87,24 @@ export function badgeClass(tipo){
 let novFilter = null;  // filtro por tipo (AMBIGUOUS, LOW, etc.)
 let novEstado = null;  // filtro por estado: 'ok' | 'excluir' | 'pendiente'
 
+// Limpia completamente novedades y resoluciones — llamado por runConciliacion()
+// al inicio de una pasada fresca, para que los idx del concResult anterior no
+// apunten a registros incorrectos del nuevo concResult.
+export function resetNovedades(){
+  novedades = [];
+  resoluciones = {};
+}
+
 export function abrirNovedades(){
   novedades = buildNovedades();
-  resoluciones = {};
+  // Limpiar solo las claves obsoletas — novedades que el diccionario resolvió
+  // (APRENDIDO, etc.) ya no aparecen en buildNovedades(), y sus entradas en
+  // resoluciones{} harían que actualizarSummary() sobre-contara los totales.
+  // Las claves todavía válidas se PRESERVAN, para que el usuario no pierda
+  // confirmaciones manuales al regresar a esta pantalla tras re-aplicar el
+  // diccionario o navegar hacia atrás. Solo resetNovedades() limpia todo.
+  const clavesActivas = new Set(novedades.map(n=>n.clave));
+  Object.keys(resoluciones).forEach(k=>{ if(!clavesActivas.has(k)) delete resoluciones[k]; });
   novFilter = null;
   novEstado = null;
   // Inicializar summary y lista
