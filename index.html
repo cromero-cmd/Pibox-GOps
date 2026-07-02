@@ -1324,7 +1324,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 
 <script>
-const APP_VERSION='15.29';
+const APP_VERSION='15.27';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -1629,10 +1629,7 @@ async function loadStrikes(){
     const rs=turno?turno.startTime.toDate():null;
     const re=turno?.endTime?.toDate?.();
 
-    const NOVEDADES_VOTACIONES=['1/2 DIA DE VOTACIONES','MEDIO DIA VOTACIONES','1/2 VOTACIONES'];
-    const esVotaciones=m.novedad&&NOVEDADES_VOTACIONES.some(n=>m.novedad.toUpperCase().includes(n.toUpperCase()));
-
-    if(rs&&ss&&!esVotaciones){
+    if(rs&&ss){
       const diffMins=Math.round((rs-ss)/60000);
       if(diffMins>=60){
         strikesGrave.push({fecha:m.fecha,detalle:`Llegó ${diffMins} min tarde (${rs.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'})}, programado ${m.inicio})`});
@@ -1642,7 +1639,7 @@ async function loadStrikes(){
         strikesLeve.push({fecha:m.fecha,detalle:`Llegó ${diffMins} min tarde (${rs.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'})}, programado ${m.inicio})`});
       }
     }
-    if(se&&re&&!esVotaciones){
+    if(se&&re){
       const extraHrs=(re-se)/3600000;
       if(extraHrs>strikeNoDesconexionHrs){
         strikesNoDesconex.push({fecha:m.fecha,detalle:`No se desconectó a tiempo — salida ${m.fin}, salida real ${re.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'})}`});
@@ -2441,10 +2438,7 @@ async function checkTodayNovedad(){
     if(!todayEntry){
       showTurnoBlocked('No tienes un turno programado para hoy en la malla.');
     } else if(todayEntry.novedad){
-      const NOVEDADES_PERM=['1/2 DIA DE VOTACIONES','MEDIO DIA VOTACIONES','1/2 VOTACIONES'];
-      if(!NOVEDADES_PERM.some(n=>todayEntry.novedad.toUpperCase().includes(n.toUpperCase()))){
-        showTurnoBlocked(todayEntry.novedad);
-      }
+      showTurnoBlocked(todayEntry.novedad);
     }
   }catch(e){}
 }
@@ -2504,12 +2498,7 @@ async function _doStartTurno(){
       });
     if(todayEntries.length===0){showTurnoBlocked('No tienes un turno programado para hoy en la malla.');return;}
     mallaEntry=todayEntries[0];
-    if(mallaEntry.novedad){
-      // Novedades que permiten iniciar turno (media jornada remunerada)
-      const NOVEDADES_PERMITIDAS=['1/2 DIA DE VOTACIONES','MEDIO DIA VOTACIONES','1/2 VOTACIONES'];
-      const esPermitida=NOVEDADES_PERMITIDAS.some(n=>mallaEntry.novedad.toUpperCase().includes(n.toUpperCase()));
-      if(!esPermitida){showTurnoBlocked(mallaEntry.novedad);return;}
-    }
+    if(mallaEntry.novedad){showTurnoBlocked(mallaEntry.novedad);return;}
     // Punto 3: bloquear inicio anticipado (máximo TOLERANCE_MINS antes)
     const scheduledStart=parseTime(mallaEntry.fecha,mallaEntry.inicio);
     if(scheduledStart){
@@ -2602,48 +2591,36 @@ async function checkOvertimeAndDiscrepancy(endTime,elapsedSecs){
         return d&&d.toDateString()===today.toDateString();
       });
     if(!todayEntry)return;
-
-    // Bug 1: novedades que permiten trabajar media jornada (remunerada completa)
-    const NOVEDADES_MEDIA_JORNADA=['1/2 DIA DE VOTACIONES','MEDIO DIA VOTACIONES','1/2 VOTACIONES'];
-    const eaMediaJornada=todayEntry.novedad&&NOVEDADES_MEDIA_JORNADA.some(n=>todayEntry.novedad.toUpperCase().includes(n.toUpperCase()));
-
     const scheduledStart=parseTime(todayEntry.fecha,todayEntry.inicio);
     let scheduledEnd=parseTime(todayEntry.fecha,todayEntry.fin);
     if(!scheduledStart||!scheduledEnd)return;
 
-    // Turnos nocturnos: si fin < inicio, agregar 24h
+    // Handle overnight shifts (e.g. 17:00 to 01:00 next day)
     if(scheduledEnd<=scheduledStart){
       scheduledEnd=new Date(scheduledEnd.getTime()+24*60*60*1000);
     }
 
     const scheduledSecs=Math.round((scheduledEnd-scheduledStart)/1000);
 
-    // Bug 2: para turnos nocturnos, verificar que el agente realmente salió antes
-    // usando la hora real de fin vs scheduledEnd, no elapsed vs scheduled
-    const now=new Date();
-    const realEndTime=new Date(turnoStartTime.getTime()+elapsedSecs*1000);
-    const earlySecsByTime=Math.round((scheduledEnd-realEndTime)/1000);
-    const extraSecsByTime=Math.round((realEndTime-scheduledEnd)/1000);
-
     // Check late start discrepancy (>60 min late from scheduled start)
     const lateStartMins=Math.round((turnoStartTime-scheduledStart)/60000);
     if(lateStartMins>60){
       await window.trackEvent('discrepancy',{
-        type:'late_start',lateStartMins,
+        type:'late_start',
+        lateStartMins,
         userEmail:document.getElementById('user-email').textContent,
         userName:document.getElementById('user-name').textContent,
         date:new Date().toLocaleDateString('es-CO')
       });
     }
 
-    // Para 1/2 Día de Votaciones: no generar salida anticipada ni extras
-    if(eaMediaJornada)return;
-
-    if(extraSecsByTime>60){
-      const extraMins=Math.round(extraSecsByTime/60);
+    // Only show overtime if worked MORE than scheduled
+    const extraSecs=elapsedSecs-scheduledSecs;
+    if(extraSecs>60){ // at least 1 min extra to avoid rounding noise
+      const extraMins=Math.round(extraSecs/60);
       showOvertimePrompt(extraMins,scheduledSecs,elapsedSecs,todayEntry);
-    } else if(earlySecsByTime>60){
-      const earlyMins=Math.round(earlySecsByTime/60);
+    } else if(extraSecs < -60){ // finished early by more than 1 min
+      const earlyMins=Math.round(Math.abs(extraSecs)/60);
       showEarlyLeavePrompt(earlyMins,scheduledSecs,elapsedSecs,todayEntry);
     }
   }catch(e){console.warn('Overtime check failed:',e);}
@@ -2869,10 +2846,7 @@ async function checkTodayNovedad(){
     if(!todayEntry){
       showTurnoBlocked('No tienes un turno programado para hoy en la malla.');
     } else if(todayEntry.novedad){
-      const NVPERM=['1/2 DIA DE VOTACIONES','MEDIO DIA VOTACIONES','1/2 VOTACIONES'];
-      if(!NVPERM.some(n=>todayEntry.novedad.toUpperCase().includes(n.toUpperCase()))){
-        showTurnoBlocked(todayEntry.novedad);
-      }
+      showTurnoBlocked(todayEntry.novedad);
     }
   }catch(e){}
 }
@@ -3817,15 +3791,12 @@ function renderPanel2Insights(rows,allTurnos,fromDate,toDate){
       userStats[u].tardanza++;
       if(r.realStart&&r.scheduledStart){
         const mins=Math.round((r.realStart-r.scheduledStart)/60000);
-        const esVot=r.novedad&&['1/2 DIA DE VOTACIONES','MEDIO DIA VOTACIONES','1/2 VOTACIONES'].some(n=>r.novedad.toUpperCase().includes(n.toUpperCase()));
         const fechaStr=r.fecha||'';
         const realStr=r.realStart.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'});
         const progStr=r.scheduledStart.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'});
-        if(!esVot){
-          if(mins>=60){userStats[u].strikeGrave++;userStats[u].strikeDetalle.push({tipo:'🔴 Grave',fecha:fechaStr,detalle:`+${mins} min tarde (${realStr}, prog. ${progStr})`});}
-          else if(mins>=20){userStats[u].strikeModerado++;userStats[u].strikeDetalle.push({tipo:'🟠 Moderada',fecha:fechaStr,detalle:`+${mins} min tarde (${realStr}, prog. ${progStr})`});}
-          else if(mins>strikeTardanzaMins){userStats[u].strikeLeve++;userStats[u].strikeDetalle.push({tipo:'🟡 Leve',fecha:fechaStr,detalle:`+${mins} min tarde (${realStr}, prog. ${progStr})`});}
-        }
+        if(mins>=60){userStats[u].strikeGrave++;userStats[u].strikeDetalle.push({tipo:'🔴 Grave',fecha:fechaStr,detalle:`+${mins} min tarde (${realStr}, prog. ${progStr})`});}
+        else if(mins>=20){userStats[u].strikeModerado++;userStats[u].strikeDetalle.push({tipo:'🟠 Moderada',fecha:fechaStr,detalle:`+${mins} min tarde (${realStr}, prog. ${progStr})`});}
+        else if(mins>strikeTardanzaMins){userStats[u].strikeLeve++;userStats[u].strikeDetalle.push({tipo:'🟡 Leve',fecha:fechaStr,detalle:`+${mins} min tarde (${realStr}, prog. ${progStr})`});}
       }
     }
     else if(r.cumplStatus.cls==='ausente')userStats[u].ausente++;
@@ -4228,10 +4199,7 @@ async function openPayrollPreview(){
       if(p.length===3)totalSecsByAgent[r.name]=(totalSecsByAgent[r.name]||0)+parseInt(p[0])*3600+parseInt(p[1])*60+parseInt(p[2]);
     }
   });
-  function extrasForAgent(name,rowIdx){
-    // Solo mostrar en la última fila de este agente
-    const isLastRowForAgent=!window._payrollPreviewRecords.slice(rowIdx+1).some(r=>r.name===name);
-    if(!isLastRowForAgent)return'';
+  function extrasForAgent(name){
     const total=totalSecsByAgent[name]||0;
     const extra=Math.max(0,total-horasLegalesSecs);
     return extra>0?formatDuration(extra):'00:00:00';
@@ -4252,7 +4220,7 @@ async function openPayrollPreview(){
     <tbody>
       ${window._payrollPreviewRecords.map((r,ri)=>`<tr style="${ri%2===0?'':'background:var(--surface2);'}">
         ${fields.map((f,fi)=>{
-          const val=f==='extras'?extrasForAgent(r.name,ri):(r[f]||'—');
+          const val=f==='extras'?extrasForAgent(r.name):(r[f]||'—');
           const editable=editableCols.has(f);
           const isExtra=f==='extras'&&val!=='00:00:00';
           return`<td style="padding:6px 8px;border:1px solid var(--border);${editable?'cursor:pointer;':''}${f==='novedad'&&val!=='—'?'color:#a78bfa;':''}${isExtra?'color:#fb923c;font-weight:700;':''}" ${editable?`onclick="editPayrollCell(this,${ri},'${f}')" title="Clic para editar"`:''}>${val}</td>`;
@@ -4278,15 +4246,14 @@ function refreshPayrollExtrasColumn(){
   const rows=table.querySelectorAll('tbody tr');
   rows.forEach((tr,ri)=>{
     const r=window._payrollPreviewRecords[ri];
-    const isLastRowForAgent=!window._payrollPreviewRecords.slice(ri+1).some(x=>x.name===r.name);
     const total=totalSecsByAgent[r.name]||0;
     const extraSecs=Math.max(0,total-horasLegalesSecs);
-    const extraStr=isLastRowForAgent?(extraSecs>0?formatDuration(extraSecs):'00:00:00'):'';
+    const extraStr=extraSecs>0?formatDuration(extraSecs):'00:00:00';
     const cells=tr.querySelectorAll('td');
     if(cells[6]){
       cells[6].textContent=extraStr;
-      cells[6].style.color=extraSecs>0&&isLastRowForAgent?'#fb923c':'';
-      cells[6].style.fontWeight=extraSecs>0&&isLastRowForAgent?'700':'';
+      cells[6].style.color=extraSecs>0?'#fb923c':'';
+      cells[6].style.fontWeight=extraSecs>0?'700':'';
     }
   });
 }
@@ -4302,14 +4269,13 @@ function downloadPayrollXLS(){
       if(p.length===3)totalSecsByAgent[r.name]=(totalSecsByAgent[r.name]||0)+parseInt(p[0])*3600+parseInt(p[1])*60+parseInt(p[2]);
     }
   });
-  const rows=window._payrollPreviewRecords.map((r,ri)=>{
-    const isLastRowForAgent=!window._payrollPreviewRecords.slice(ri+1).some(x=>x.name===r.name);
+  const rows=window._payrollPreviewRecords.map(r=>{
     const total=totalSecsByAgent[r.name]||0;
     const extraSecs=Math.max(0,total-horasLegalesSecs);
     return{
       'Nombre':r.name,'Fecha':r.date,'Entrada':r.checkIn,'Salida':r.checkOut,
       'Almuerzo':r.almuerzo,'Horas trabajadas':r.hours,
-      'Extras':isLastRowForAgent?(extraSecs>0?formatDuration(extraSecs):'00:00:00'):'','Novedad':r.novedad
+      'Extras':extraSecs>0?formatDuration(extraSecs):'00:00:00','Novedad':r.novedad
     };
   });
   // Construir CSV simple (compatible con Excel)
