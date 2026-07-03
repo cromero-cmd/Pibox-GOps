@@ -25,8 +25,10 @@ const db = getFirestore(app);
 const provider = new GoogleAuthProvider();
 provider.setCustomParameters({ hd: 'pibox.app' });
 let currentUser = null;
-// Asegurar persistencia LOCAL — evita deslogueo automático
-setPersistence(auth, browserLocalPersistence).catch(e => console.warn('setPersistence:', e));
+// Asegurar persistencia LOCAL solo si no hay sesión activa aún
+if (!auth.currentUser) {
+  setPersistence(auth, browserLocalPersistence).catch(e => console.warn('setPersistence:', e));
+}
 onAuthStateChanged(auth, async user => {
  if (user) {
  currentUser = user;
@@ -1241,7 +1243,7 @@ body.agent-preview-mode header{margin-top:34px;}
  </div>
 </div>
 <script>
-const APP_VERSION='15.33';
+const APP_VERSION='15.35';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -1526,7 +1528,7 @@ async function loadStrikes(){
  const turno=myTurnos.find(t=>{const td=t.startTime?.toDate?.();return td&&td.toDateString()===d.toDateString();});
  const rs=turno?turno.startTime.toDate():null;
  const re=turno?.endTime?.toDate?.();
- const NOVEDADES_VOTACIONES=['1/2 DIA DE VOTACIONES','MEDIO DIA VOTACIONES','1/2 VOTACIONES'];
+ const NOVEDADES_VOTACIONES=['1/2 DIA DE VOTACIONES','1/2 DIA DE VOTACION','MEDIO DIA VOTACIONES','MEDIO DIA VOTACION','1/2 VOTACIONES','1/2 VOTACION'];
  const esVotaciones=m.novedad&&NOVEDADES_VOTACIONES.some(n=>m.novedad.toUpperCase().includes(n.toUpperCase()));
  if(rs&&ss&&!esVotaciones){
  const diffMins=Math.round((rs-ss)/60000);
@@ -2300,7 +2302,7 @@ async function checkTodayNovedad(){
  if(!todayEntry){
  showTurnoBlocked('No tienes un turno programado para hoy en la malla.');
  } else if(todayEntry.novedad){
- const NOVEDADES_PERM=['1/2 DIA DE VOTACIONES','MEDIO DIA VOTACIONES','1/2 VOTACIONES'];
+ const NOVEDADES_PERM=['1/2 DIA DE VOTACIONES','1/2 DIA DE VOTACION','MEDIO DIA VOTACIONES','MEDIO DIA VOTACION','1/2 VOTACIONES','1/2 VOTACION'];
  if(!NOVEDADES_PERM.some(n=>todayEntry.novedad.toUpperCase().includes(n.toUpperCase()))){
  showTurnoBlocked(todayEntry.novedad);
  }
@@ -2362,7 +2364,7 @@ async function _doStartTurno(){
  mallaEntry=todayEntries[0];
  if(mallaEntry.novedad){
  // Novedades que permiten iniciar turno (media jornada remunerada)
- const NOVEDADES_PERMITIDAS=['1/2 DIA DE VOTACIONES','MEDIO DIA VOTACIONES','1/2 VOTACIONES'];
+ const NOVEDADES_PERMITIDAS=['1/2 DIA DE VOTACIONES','1/2 DIA DE VOTACION','MEDIO DIA VOTACIONES','MEDIO DIA VOTACION','1/2 VOTACIONES','1/2 VOTACION'];
  const esPermitida=NOVEDADES_PERMITIDAS.some(n=>mallaEntry.novedad.toUpperCase().includes(n.toUpperCase()));
  if(!esPermitida){showTurnoBlocked(mallaEntry.novedad);return;}
  }
@@ -2455,7 +2457,7 @@ async function checkOvertimeAndDiscrepancy(endTime,elapsedSecs){
  });
  if(!todayEntry)return;
  // Bug 1: novedades que permiten trabajar media jornada (remunerada completa)
- const NOVEDADES_MEDIA_JORNADA=['1/2 DIA DE VOTACIONES','MEDIO DIA VOTACIONES','1/2 VOTACIONES'];
+ const NOVEDADES_MEDIA_JORNADA=['1/2 DIA DE VOTACIONES','1/2 DIA DE VOTACION','MEDIO DIA VOTACIONES','MEDIO DIA VOTACION','1/2 VOTACIONES','1/2 VOTACION'];
  const eaMediaJornada=todayEntry.novedad&&NOVEDADES_MEDIA_JORNADA.some(n=>todayEntry.novedad.toUpperCase().includes(n.toUpperCase()));
  const scheduledStart=parseTime(todayEntry.fecha,todayEntry.inicio);
  let scheduledEnd=parseTime(todayEntry.fecha,todayEntry.fin);
@@ -2701,7 +2703,7 @@ async function checkTodayNovedad(){
  if(!todayEntry){
  showTurnoBlocked('No tienes un turno programado para hoy en la malla.');
  } else if(todayEntry.novedad){
- const NVPERM=['1/2 DIA DE VOTACIONES','MEDIO DIA VOTACIONES','1/2 VOTACIONES'];
+ const NVPERM=['1/2 DIA DE VOTACIONES','1/2 DIA DE VOTACION','MEDIO DIA VOTACIONES','MEDIO DIA VOTACION','1/2 VOTACIONES','1/2 VOTACION'];
  if(!NVPERM.some(n=>todayEntry.novedad.toUpperCase().includes(n.toUpperCase()))){
  showTurnoBlocked(todayEntry.novedad);
  }
@@ -3595,7 +3597,7 @@ function renderPanel2Insights(rows,allTurnos,fromDate,toDate){
  userStats[u].tardanza++;
  if(r.realStart&&r.scheduledStart){
  const mins=Math.round((r.realStart-r.scheduledStart)/60000);
- const esVot=r.novedad&&['1/2 DIA DE VOTACIONES','MEDIO DIA VOTACIONES','1/2 VOTACIONES'].some(n=>r.novedad.toUpperCase().includes(n.toUpperCase()));
+ const esVot=r.novedad&&['1/2 DIA DE VOTACIONES','1/2 DIA DE VOTACION','MEDIO DIA VOTACIONES','MEDIO DIA VOTACION','1/2 VOTACIONES','1/2 VOTACION'].some(n=>r.novedad.toUpperCase().includes(n.toUpperCase()));
  const fechaStr=r.fecha||'';
  const realStr=r.realStart.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'});
  const progStr=r.scheduledStart.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'});
