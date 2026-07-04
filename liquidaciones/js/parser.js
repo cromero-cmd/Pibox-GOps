@@ -65,6 +65,7 @@ export function buildColMap(raw){
     if(!v) continue;
     let name=null;
     if(v.includes('tarea')) name='tareas';
+    else if(v==='garantizado basico') name='garantizado_tada';
     else if(v.includes('garantiza')) name='garantizado';
     else if(v.includes('bono')) name='bonos';
     else if(v.includes('ajuste')||v.includes('novedad')) name='ajustes';

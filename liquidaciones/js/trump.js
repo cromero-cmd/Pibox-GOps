@@ -6,7 +6,7 @@ import { mallaRaw } from './parser.js';
 import { concResult } from './conciliacion.js';
 import { distResult } from './distribucion.js';
 import { novedades, resoluciones } from './novedades.js';
-import { TARIFF_SCHEMA, getAV, getCurrentEdits } from './tariffs.js';
+import { TARIFF_SCHEMA, getAV, getCurrentEdits, getModoGarantizado } from './tariffs.js';
 import { addLog, clearLog, showProcessing, hideProcessing, mkTable, unlock, toast } from './ui.js';
 
 export let trumpRows = [];
@@ -16,7 +16,7 @@ export let trumpRows = [];
 // Calco exacto de la lógica financiera original (gross-up, garantizados,
 // % Cali, fechas pico/super-pico).
 // ═══════════════════════════════════════════
-export function buildTrumpRows(distResultIn, t, av, mallaRawIn){
+export function buildTrumpRows(distResultIn, t, av, mallaRawIn, modoGarantizado='automatico'){
   const runId=`LIQ-${new Date().toISOString().slice(0,10).replace(/-/g,'')}-${av.version}`;
 
   // ── Porcentajes nacionales ────────────────────────────────
@@ -138,8 +138,18 @@ export function buildTrumpRows(distResultIn, t, av, mallaRawIn){
 
     let complementoPiloto = 0;
     let cobroGarantizado  = 0;
+    let modoGarantizadoFila = 'automatico';
 
-    if(ingresoNeto < minimoNeto){
+    if(modoGarantizado==='tada' && r.garantizado_tada != null){
+      // Modo TaDa: el garantizado viene directo del archivo TADA (complemento
+      // semanal neto ya calculado por TaDa) — reemplaza el cálculo automático.
+      // Gross-up con los mismos % de margen/plataforma ya resueltos por ciudad.
+      complementoPiloto = Number(r.garantizado_tada) || 0;
+      cobroGarantizado  = complementoPiloto > 0
+        ? Math.ceil(complementoPiloto / (1-pctMarg) / (1-pctPlat))
+        : 0;
+      modoGarantizadoFila = 'tada';
+    } else if(ingresoNeto < minimoNeto){
       complementoPiloto = minimoNeto - ingresoNeto;
       cobroGarantizado = tarifaGarCl > cobroOp ? tarifaGarCl : cobroOp;
     }
@@ -246,6 +256,8 @@ export function buildTrumpRows(distResultIn, t, av, mallaRawIn){
       _tareas:      r.tareas_dist||0,
       _ingreso_neto:ingresoNeto,
       _complemento: complementoPiloto,
+      _cobro_garantizado: cobroGarantizado,
+      _modo_garantizado:  modoGarantizadoFila,
       _confianza:   r.nivel_confianza,
       _run_id:      runId,
       _ver:         av.version,
@@ -299,9 +311,13 @@ export function runTrump(){
   showProcessing('Generando template Trump...');
   setTimeout(()=>{
     const t=getCurrentEdits(), av=getAV();
-    const {rows, meta} = buildTrumpRows(distResult, t, av, mallaRaw);
+    const modoGarantizado = getModoGarantizado();
+    const {rows, meta} = buildTrumpRows(distResult, t, av, mallaRaw, modoGarantizado);
     const ceroRows = buildCeroRows(novedades, resoluciones);
     trumpRows = rows.concat(ceroRows);
+
+    if(modoGarantizado==='tada' && !distResult.some(r=>r.garantizado_tada!=null))
+      addLog('log-trump','[WARN] Columna "Garantizado Basico" no encontrada en TADA — usando cálculo automático','warn');
 
     if(meta.nEsp>0)
       addLog('log-trump',`[INFO] Fechas especiales aplicadas (${meta.nEsp}): ${Object.entries(meta.fechasEspMap).map(([f,fe])=>`${f}(${fe.tipo}${fe.tarifa_custom?'/'+fe.tarifa_custom:''})`).join(' · ')}`,'ok');
@@ -322,7 +338,8 @@ export function runTrump(){
         <div class="stat-v ${margen>=0?'g':'r'}" style="font-size:13px;">${cop(margen)}</div>
         <div style="font-size:11px;font-family:var(--mono);color:${margen>=0?'var(--green)':'var(--red)'};margin-top:4px;">${margenPct}% sobre cobro</div>
       </div>
-      ${ceroRows.length>0?`<div class="stat"><div class="stat-l">⓪ Registros en $0</div><div class="stat-v y">${ceroRows.length}</div></div>`:''}`;
+      ${ceroRows.length>0?`<div class="stat"><div class="stat-l">⓪ Registros en $0</div><div class="stat-v y">${ceroRows.length}</div></div>`:''}
+      ${modoGarantizado==='tada'?`<div class="stat"><div class="stat-l">📋 Garantizado</div><div class="stat-v" style="color:var(--purple);">Modo TaDa activo</div></div>`:''}`;
 
     const TC=['BOOKING_ID','COMPANY_FINAL_COST','ADDITIONAL_COMPANY_FINAL_COST',
       'DISPUTED_COMPANY_FINAL_COST','FINAL_COST','ADDITIONAL_FINAL_COST',
@@ -340,7 +357,15 @@ export function runTrump(){
 
     // Detalle de garantizados aplicados
     const conGar = trumpRows.filter(r=>r._complemento>0);
-    if(conGar.length) addLog('log-trump',`[INFO] ${conGar.length} bookings con garantizado aplicado`,'info');
+    if(conGar.length){
+      addLog('log-trump',`[INFO] ${conGar.length} bookings con garantizado aplicado`,'info');
+      conGar.forEach(r=>{
+        if(r._modo_garantizado==='tada')
+          addLog('log-trump',`[MODO-TADA] Garantizado TaDa aplicado: ${r._piloto} · pago ${cop(r._complemento)} · cobro ${cop(r._cobro_garantizado)}`,'info');
+        else
+          addLog('log-trump',`[AUTO] Garantizado automático: ${r._piloto} · pago ${cop(r._complemento)} · cobro ${cop(r._cobro_garantizado)}`,'info');
+      });
+    }
 
     trumpRows.filter(r=>r._confianza==='MEDIUM').forEach(r=>addLog('log-trump',`[MED] ${r.BOOKING_ID} — dist. equitativa`,'warn'));
     trumpRows.filter(r=>r._confianza==='LOW').forEach(r=>addLog('log-trump',`[LOW] ${r.BOOKING_ID} · ${r._piloto}`,'warn'));

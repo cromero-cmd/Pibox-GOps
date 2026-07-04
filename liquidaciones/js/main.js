@@ -9,7 +9,7 @@ import { tadaNorm, setTadaNorm, runNorm } from './normalizer.js';
 import { runConciliacion, filterConc, reaplicarDiccionario } from './conciliacion.js';
 import { runDistribucion } from './distribucion.js';
 import { abrirNovedades, excluirTodas, aplicarResoluciones, filterNovedades, filterEstado, revertirResolucion, resetNovedades } from './novedades.js';
-import { initTariffs, renderTariffPanel, publishTariff, activateVersion, addFechaEspecial, removeFechaEspecial, updateFechaEspecial } from './tariffs.js';
+import { initTariffs, renderTariffPanel, publishTariff, activateVersion, addFechaEspecial, removeFechaEspecial, updateFechaEspecial, setModoGarantizado } from './tariffs.js';
 import { runTrump, downloadTrump } from './trump.js';
 import { abrirModalEnvio, cerrarModalEnvio, enviarPorCorreo } from './email.js';
 import { abrirModalHistorial, ejecutarGuardarHistorial, abrirHistorialConsulta, aplicarFiltrosHist, limpiarFiltrosHist, exportarHistorial, cancelarSobrescribirHistorial, confirmarSobrescribirHistorial } from './historial.js';
@@ -51,6 +51,7 @@ function proceedToConciliacion(){
     const sortedGroups=Object.values(groups).sort((a,b)=>a.fecha.localeCompare(b.fecha));
     const parseMoney=v=>{ if(typeof v==='number') return v; if(!v&&v!==0) return 0; return parseFloat(String(v).replace(/[$\s.]/g,'').replace(',','.'))||0; };
     const getExtra=(row,name)=>{ const col=extraCols.find(c=>c.n===name); return col?row[col.i]:0; };
+    const colGarTada=extraCols.find(c=>c.n==='garantizado_tada');
     const dataRows=tadaRaw.slice(3).filter(r=>r.some(v=>v!==''&&v!==null&&v!==undefined&&v!==0));
 
     dataRows.forEach(row=>{
@@ -61,6 +62,7 @@ function proceedToConciliacion(){
       const garantizado=parseMoney(getExtra(row,'garantizado'));
       const bonos      =parseMoney(getExtra(row,'bonos'));
       const ajustes    =parseMoney(getExtra(row,'ajustes'));
+      const garantizadoTada=colGarTada?parseMoney(row[colGarTada.i]):null;
       const filas=sortedGroups.map(g=>({
         piloto:fixed.piloto,
         // Si ciudad está vacía, inferir desde el seller (ej: 'CAL-TD-FLORESTA...' → 'CAL')
@@ -71,11 +73,13 @@ function proceedToConciliacion(){
         incentivos:parseInt(row[g.cols.incentivos])||0,
         cancelados:parseInt(row[g.cols.cancelados])||0,
         tareas:0, garantizado:0, bonos:0, ajustes:0,
+        garantizado_tada: colGarTada?0:null,
       }));
       let targetIdx=filas.findIndex(f=>f.paquetes>0||f.incentivos>0||f.cancelados>0);
       if(targetIdx===-1) targetIdx=0;
       filas[targetIdx].tareas=tareas; filas[targetIdx].garantizado=garantizado;
       filas[targetIdx].bonos=bonos; filas[targetIdx].ajustes=ajustes;
+      filas[targetIdx].garantizado_tada=garantizadoTada;
       tadaNorm.push(...filas);
     });
 
@@ -129,7 +133,7 @@ Object.assign(window, {
   // tarifas — NOTA: resetTarifas() no se expone: el botón "Descartar" referencia
   // una función que nunca existió en el original (bug preexistente, no introducido
   // por esta migración — se documenta, no se corrige sin pedirlo explícitamente).
-  publishTariff, activateVersion, addFechaEspecial, removeFechaEspecial, updateFechaEspecial,
+  publishTariff, activateVersion, addFechaEspecial, removeFechaEspecial, updateFechaEspecial, setModoGarantizado,
   // trump
   runTrump, downloadTrump,
   // email

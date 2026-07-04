@@ -46,6 +46,7 @@ export function runDistribucion(){
             garantizado:    first?row.garantizado:0,
             bonos:          first?row.bonos:0,
             ajustes:        first?row.ajustes:0,
+            garantizado_tada: first?row.garantizado_tada:(row.garantizado_tada===null?null:0),
             nivel_confianza:row.nivel_confianza, n_bookings:n,
           });
         });
@@ -97,6 +98,7 @@ export function runDistribucionSilent(){
         cancelados_dist:Math.round(row.cancelados/n),
         tareas_dist:first?row.tareas:0, garantizado:first?row.garantizado:0,
         bonos:first?row.bonos:0, ajustes:first?row.ajustes:0,
+        garantizado_tada: first?row.garantizado_tada:(row.garantizado_tada===null?null:0),
         nivel_confianza:row.nivel_confianza, n_bookings:n,
         _manual:row._resolucion_manual||false,
       });
