@@ -93,12 +93,14 @@ export async function ejecutarGuardarHistorial(){
     const cobroCanVal = can * cCan;
     const cobroTarVal = tar * cTar;
     const productivoCobro = cobroPaqVal + cobroIncVal + cobroCanVal;
-    const minimoCobroVD = t.c_garantizado_vd ?? 97200;
-    const minimoCobroLJ = t.c_garantizado_lj ?? 85050;
-    const diasVD = new Set(['Viernes','Sabado','Domingo']);
-    const esVD   = diasVD.has(r._dia || '');
-    const minimoC = esVD ? minimoCobroVD : minimoCobroLJ;
-    const cobroGarVal = Math.max(0, minimoC - productivoCobro);
+    // cobro_garantizado/pago_garantizado NO se recalculan aquí — se leen
+    // directo de buildTrumpRows() (r._cobro_garantizado / r._complemento),
+    // que ya resuelve el modo activo (automático o TaDa), la ciudad (Cali vs
+    // nacional), fechas especiales y el día real de la malla. Recalcularlos
+    // con una fórmula propia (como se hacía antes) ignoraba Modo TaDa por
+    // completo y usaba llaves de tarifa inexistentes (c_garantizado_vd/lj en
+    // vez de c_gar_vd/lj), cayendo siempre a los valores por defecto.
+    const cobroGarVal = r._cobro_garantizado || 0;
     const cobroBonoVal = bono > 0 ? Math.round(bono / (1 - 0.03) / (1 - 0.15)) : 0;
     const cobroTotVal = productivoCobro + cobroTarVal + cobroGarVal + cobroBonoVal;
 
@@ -108,10 +110,7 @@ export async function ejecutarGuardarHistorial(){
     const pagoCanVal = can * pCan;
     const pagoTarVal = tar * pTar;
     const productivoPago = pagoPaqVal + pagoIncVal + pagoCanVal;
-    const minimoPageVD = t.p_garantizado_vd ?? 80000;
-    const minimoPageLJ = t.p_garantizado_lj ?? 70000;
-    const minimoP = esVD ? minimoPageVD : minimoPageLJ;
-    const pagoGarVal  = Math.max(0, minimoP - productivoPago);
+    const pagoGarVal  = r._complemento || 0;
     const pagoBonoVal = bono;
     const pagoPilVal  = productivoPago + pagoTarVal + pagoGarVal + pagoBonoVal;
 

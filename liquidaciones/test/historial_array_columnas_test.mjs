@@ -53,6 +53,12 @@ trumpMod.trumpRows.push({
   _run_id:'LIQ-2026-06-25', _driver_id:'D-100', _piloto:'Pedro Gomez', _ciudad:'BOG', _seller:'BOG-X',
   _fecha:'2026-06-20', _dia:'Sabado', BOOKING_ID:'6a35fdc99a8d66a14311ebac',
   _paquetes:0, _incentivos:0, _cancelados:0, _tareas:0, bonos:0,
+  // cobro_garantizado/pago_garantizado ahora se leen directo de buildTrumpRows()
+  // (ya no se recalculan en historial.js) — se simulan aquí los valores que
+  // produciría el cálculo automático para un VD (Sabado) sin productivo:
+  // cobro_garantizado = tarifa_garantizado_vd (97200, delta completo ya que
+  // cobro_operativo=0) y pago_garantizado = minimo_vd (80000).
+  _cobro_garantizado:97200, _complemento:80000,
   COMPANY_FINAL_COST:97200, ADDITIONAL_COMPANY_FINAL_COST:0, FINAL_COST:80000, ADDITIONAL_FINAL_COST:0,
 });
 

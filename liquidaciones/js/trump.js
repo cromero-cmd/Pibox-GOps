@@ -153,9 +153,16 @@ export function buildTrumpRows(distResultIn, t, av, mallaRawIn, modoGarantizado=
       modoGarantizadoFila = 'tada';
       companyFinalCostGar = cobroOp + cobroGarantizado;
     } else if(ingresoNeto < minimoNeto){
+      // pago_garantizado = MAX(0, minimo_piloto - pago_operativo)
+      // cobro_garantizado = MAX(0, tarifa_garantizado - cobro_operativo) — el
+      // "delta" que se suma al cobro operativo, no el reemplazo completo.
+      // cobroOp + cobroGarantizado === MAX(cobroOp, tarifaGarCl) (idéntico al
+      // COMPANY_FINAL_COST de siempre), pero ahora cobro_garantizado exportado
+      // es la porción real de garantizado — necesario para que historial.js
+      // pueda descomponer cobro_total en sus columnas sin recalcular nada.
       complementoPiloto = minimoNeto - ingresoNeto;
-      cobroGarantizado = tarifaGarCl > cobroOp ? tarifaGarCl : cobroOp;
-      companyFinalCostGar = cobroGarantizado;
+      cobroGarantizado = Math.max(0, tarifaGarCl - cobroOp);
+      companyFinalCostGar = cobroOp + cobroGarantizado;
     } else {
       companyFinalCostGar = cobroOp;
     }
