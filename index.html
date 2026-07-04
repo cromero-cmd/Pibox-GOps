@@ -9,7 +9,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, setPersistence, browserLocalPersistence } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
 import { getFirestore, collection, addDoc, getDocs, query, orderBy, limit, serverTimestamp, doc, setDoc, getDoc, deleteDoc, enableNetwork, disableNetwork } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 const firebaseConfig = {
  apiKey: "AIzaSyBvF_cChu_PQ_RvaVGh0AaXvphzGCRmV5A",
@@ -25,10 +25,6 @@ const db = getFirestore(app);
 const provider = new GoogleAuthProvider();
 provider.setCustomParameters({ hd: 'pibox.app' });
 let currentUser = null;
-// Asegurar persistencia LOCAL solo si no hay sesión activa aún
-if (!auth.currentUser) {
-  setPersistence(auth, browserLocalPersistence).catch(e => console.warn('setPersistence:', e));
-}
 onAuthStateChanged(auth, async user => {
  if (user) {
  currentUser = user;
@@ -1243,7 +1239,7 @@ body.agent-preview-mode header{margin-top:34px;}
  </div>
 </div>
 <script>
-const APP_VERSION='15.35';
+const APP_VERSION='15.37';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -2420,7 +2416,6 @@ async function endTurno(status='ended'){
  alert('⚠️ El registro de turno solo está disponible desde un computador de escritorio.\n\nPor favor finaliza tu turno desde tu computador.');
  return;
  }
- // Punto 4: Confirmación antes de finalizar
  if(status==='ended'){
  const elapsed=Math.floor((new Date()-turnoStartTime)/1000)+accumulatedSeconds;
  const durStr=formatDuration(elapsed);
@@ -2430,10 +2425,32 @@ async function endTurno(status='ended'){
  if(turnoInterval){clearInterval(turnoInterval);turnoInterval=null;}
  const endTime=new Date();
  const elapsed=Math.floor((endTime-turnoStartTime)/1000)+accumulatedSeconds;
- await window.updateTurnoInFirebase(currentTurnoId,{endTime,accumulatedSeconds:elapsed,status});
+
+ // Intentar guardar en Firestore con reintentos — crítico que quede guardado
+ let saved=false;
+ for(let attempt=1;attempt<=3;attempt++){
+   try{
+     await window.updateTurnoInFirebase(currentTurnoId,{endTime,accumulatedSeconds:elapsed,status});
+     saved=true;
+     break;
+   }catch(e){
+     console.error(`endTurno attempt ${attempt} failed:`,e);
+     if(attempt<3){
+       await new Promise(r=>setTimeout(r,1500*attempt));
+     }
+   }
+ }
+
+ if(!saved){
+   // Restaurar el timer y alertar al agente
+   if(!turnoInterval)startTimer();
+   const retry=confirm('❌ Error al registrar el cierre del turno — sin conexión.\n\nPor favor verifica tu conexión a internet e intenta de nuevo.\n\n¿Reintentar ahora?');
+   if(retry)return endTurno(status);
+   return;
+ }
+
  window._lastTurnoId=currentTurnoId;
  if(status==='ended'){
- // Check for overtime and schedule discrepancy
  await checkOvertimeAndDiscrepancy(endTime,elapsed);
  setTurnoInactive();
  toast('👋 Turno finalizado — duración: '+formatDuration(elapsed));
