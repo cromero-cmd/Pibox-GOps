@@ -8,7 +8,7 @@ import { tadaRaw, mallaRaw, buildColMap, setColMap, doDrag, doDrop, loadFile, re
 import { tadaNorm, setTadaNorm, runNorm } from './normalizer.js';
 import { runConciliacion, filterConc, reaplicarDiccionario } from './conciliacion.js';
 import { runDistribucion } from './distribucion.js';
-import { abrirNovedades, excluirTodas, aplicarResoluciones, filterNovedades, filterEstado, revertirResolucion } from './novedades.js';
+import { abrirNovedades, excluirTodas, aplicarResoluciones, filterNovedades, filterEstado, revertirResolucion, resetNovedades } from './novedades.js';
 import { initTariffs, renderTariffPanel, publishTariff, activateVersion, addFechaEspecial, removeFechaEspecial, updateFechaEspecial } from './tariffs.js';
 import { runTrump, downloadTrump } from './trump.js';
 import { abrirModalEnvio, cerrarModalEnvio, enviarPorCorreo } from './email.js';
@@ -125,7 +125,7 @@ Object.assign(window, {
   // distribución
   runDistribucion,
   // novedades
-  abrirNovedades, excluirTodas, aplicarResoluciones, filterNovedades, filterEstado, revertirResolucion,
+  abrirNovedades, excluirTodas, aplicarResoluciones, filterNovedades, filterEstado, revertirResolucion, resetNovedades,
   // tarifas — NOTA: resetTarifas() no se expone: el botón "Descartar" referencia
   // una función que nunca existió en el original (bug preexistente, no introducido
   // por esta migración — se documenta, no se corrige sin pedirlo explícitamente).

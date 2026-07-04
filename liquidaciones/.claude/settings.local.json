@@ -82,7 +82,12 @@
       "Bash(node test/fechas_especiales_log_test.mjs)",
       "Bash(node -e \"console.log\\(\\(110000\\).toLocaleString\\('es-CO'\\)\\)\")",
       "Bash(node test/_debug.mjs)",
-      "Bash(rm test/_debug.mjs)"
+      "Bash(rm test/_debug.mjs)",
+      "Bash(cp ../../../Desktop/pipeline-tada/test/manual_ok_visual_test.mjs test/)",
+      "Bash(node test/manual_ok_visual_test.mjs)",
+      "Bash(mkdir /tmp/esmtest)",
+      "Bash(cp -r /c/Users/ADMIN/Desktop/pipeline-tada/js /c/Users/ADMIN/Desktop/pipeline-tada/test /tmp/esmtest/)",
+      "Bash(cp -r /c/Users/ADMIN/Desktop/pipeline-tada/js /c/Users/ADMIN/Desktop/pipeline-tada/test .)"
     ]
   }
 }

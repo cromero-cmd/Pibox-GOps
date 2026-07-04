@@ -102,4 +102,14 @@ export function runDistribucionSilent(){
       });
     });
   });
+
+  // Actualizar stats-dist para reflejar el estado post-novedades (incluye MANUAL-OK)
+  const manualOkCount = distResult.filter(r=>r.nivel_confianza==='MANUAL-OK').length;
+  if(manualOkCount > 0){
+    document.getElementById('stats-dist').innerHTML=`
+      <div class="stat"><div class="stat-l">Bookings generados</div><div class="stat-v">${distResult.length}</div></div>
+      <div class="stat"><div class="stat-l">✓ Confirmados manualmente</div><div class="stat-v" style="color:var(--accent);">${manualOkCount}</div></div>
+      <div class="stat"><div class="stat-l">Match exacto (HIGH+MEDIUM)</div><div class="stat-v g">${distResult.filter(r=>['HIGH','MEDIUM','APRENDIDO','FUZZY-HIGH'].includes(r.nivel_confianza)).length}</div></div>
+      <div class="stat"><div class="stat-l">Fuzzy + LOW</div><div class="stat-v y">${distResult.filter(r=>['FUZZY-LOW','LOW'].includes(r.nivel_confianza)).length}</div></div>`;
+  }
 }
