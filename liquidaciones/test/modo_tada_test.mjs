@@ -27,6 +27,7 @@ const { buildColMap } = await import('../js/parser.js');
 const tariffs = await import('../js/tariffs.js');
 const auth    = await import('../js/auth.js');
 const { buildTrumpRows } = await import('../js/trump.js');
+const { cop } = await import('../js/config.js');
 
 // ══════════════════════════════════════════════════════
 // PARTE A — buildColMap(): detección exacta de "Garantizado Basico"
@@ -134,38 +135,58 @@ const baseRow = {
   garantizado:0, bonos:0, ajustes:0, nivel_confianza:'HIGH', n_bookings:1,
 };
 
-// C1 — Modo TaDa, ciudad nacional (BOG): pago = valor exacto de TADA, cobro = gross-up 3%/15%
+// C1 — Modo TaDa, ciudad nacional (BOG): COMPANY_FINAL_COST = cobro_operativo + gross-up
+// (SUMA, no reemplaza) — caso real: Alberto Jose Chamorro Salas, booking 26 jun (bugfix)
 {
-  const distResult = [{ ...baseRow, garantizado_tada:50000 }];
+  const distResult = [{
+    ...baseRow, piloto:'Alberto Jose Chamorro Salas',
+    paquetes_dist:6, incentivos_dist:6, cancelados_dist:0, tareas_dist:0,
+    garantizado_tada:48400, bonos:66000,
+  }];
   const { rows } = buildTrumpRows(distResult, t, av, mallaRaw, 'tada');
   const r = rows[0];
-  const cobroEsperado = Math.ceil(50000 / (1-0.03) / (1-0.15));
+  const cobroOp = 6*8870 + 6*1580; // 62700
+  const grossGar = Math.ceil(48400 / (1-0.03) / (1-0.15)); // 58703
+  const companyEsperado = cobroOp + grossGar; // SUMA — no MAX/reemplazo
+  const finalEsperado = Math.floor(companyEsperado * (1-0.03));
+  const addCompanyEsperado = Math.round(66000 / (1-0.03) / (1-0.15)); // sin cambios (solo bono)
+
   assert.equal(r._modo_garantizado, 'tada');
-  assert.equal(r._complemento, 50000, 'pago_garantizado debe ser el valor exacto de la columna TADA');
-  assert.equal(r._cobro_garantizado, cobroEsperado, 'cobro_garantizado debe ser el gross-up nacional (÷0.97÷0.85)');
-  assert.equal(r.COMPANY_FINAL_COST, cobroEsperado);
-  assert.equal(r.FINAL_COST, Math.floor(cobroEsperado*0.97));
-  console.log('OK: Modo TaDa nacional — pago exacto de TADA + gross-up 3%/15% correcto');
+  assert.equal(r._complemento, 48400, 'pago_garantizado debe ser el valor exacto de la columna TADA');
+  assert.equal(r._cobro_garantizado, grossGar, 'cobro_garantizado = gross-up nacional (÷0.97÷0.85)');
+  assert.equal(r.COMPANY_FINAL_COST, companyEsperado, 'COMPANY_FINAL_COST = cobro_operativo + gross-up del garantizado');
+  assert.equal(r.FINAL_COST, finalEsperado, 'FINAL_COST = floor(COMPANY_FINAL_COST × 0.97)');
+  assert.equal(r.ADDITIONAL_COMPANY_FINAL_COST, addCompanyEsperado, 'ADDITIONAL_COMPANY_FINAL_COST sin cambios (solo bono, sin garantizado)');
+  assert.equal(r.ADDITIONAL_FINAL_COST, 66000, 'ADDITIONAL_FINAL_COST sin cambios (bono neto)');
+  assert.ok(r.COMMENTS.includes(`GarTaDa:${cop(48400)} gross:${cop(grossGar)}`), 'COMMENTS debe incluir el detalle GarTaDa/gross');
+  assert.ok(r.COMMENTS_PILOTO.includes(`Garantizado ${Math.round(48400).toLocaleString('es-CO').replace(/[^0-9]/g,'')}`),
+    'COMMENTS_PILOTO debe mostrar el complemento real de TADA, no el mínimo automático');
+  console.log('OK: Modo TaDa nacional — COMPANY_FINAL_COST/FINAL_COST/ADDITIONAL se suman correctamente (caso real Alberto Chamorro)');
 }
 
-// C2 — Modo TaDa, ciudad Cali: gross-up con % de Cali (7%/10%)
+// C2 — Modo TaDa, ciudad Cali: gross-up con % de Cali configurados en tarifas (SUMA, no reemplaza)
 {
   const distResult = [{ ...baseRow, ciudad:'CAL', garantizado_tada:50000 }];
   const { rows } = buildTrumpRows(distResult, t, av, mallaRaw, 'tada');
   const r = rows[0];
-  const cobroEsperado = Math.ceil(50000 / (1-0.07) / (1-0.10));
-  assert.equal(r._cobro_garantizado, cobroEsperado, 'cobro_garantizado debe usar % de Cali (÷0.93÷0.90)');
-  console.log('OK: Modo TaDa Cali — gross-up con % de Cali correcto');
+  const cobroOp = 2*8870; // baseRow: paquetes_dist:2
+  const grossGar = Math.ceil(50000 / (1-t.pct_margen_cal/100) / (1-t.pct_plataforma_cal/100));
+  assert.equal(r._cobro_garantizado, grossGar, 'cobro_garantizado debe usar % de Cali configurados');
+  assert.equal(r.COMPANY_FINAL_COST, cobroOp + grossGar, 'COMPANY_FINAL_COST = cobro_operativo + gross-up (Cali)');
+  console.log('OK: Modo TaDa Cali — gross-up con % de Cali + suma sobre cobro operativo correcto');
 }
 
-// C3 — Modo TaDa pero garantizado_tada===null (columna ausente en TADA) → fallback automático
+// C3 — Modo TaDa con garantizado_tada===null (columna ausente en TADA): NO usar tarifa
+// automática — simplemente sin garantizado esa fila (cobro = solo operativo)
 {
   const distResult = [{ ...baseRow, garantizado_tada:null }];
   const { rows } = buildTrumpRows(distResult, t, av, mallaRaw, 'tada');
   const r = rows[0];
-  assert.equal(r._modo_garantizado, 'automatico', 'sin columna TADA debe caer al cálculo automático');
-  assert.equal(r.COMPANY_FINAL_COST, 85050, 'garantizado automático L-J nacional de cobro');
-  console.log('OK: Modo TaDa con garantizado_tada=null cae al cálculo automático (fallback)');
+  assert.equal(r._modo_garantizado, 'tada', 'sigue en modo tada, no cae a automático');
+  assert.equal(r._complemento, 0);
+  assert.equal(r._cobro_garantizado, 0);
+  assert.equal(r.COMPANY_FINAL_COST, 2*8870, 'sin columna TADA, COMPANY_FINAL_COST = solo cobro operativo (nunca la tarifa automática)');
+  console.log('OK: Modo TaDa con garantizado_tada=null → cobro = solo operativo, sin usar tarifa automática');
 }
 
 // C4 — Modo automático (default): garantizado_tada presente pero se ignora — sin regresión

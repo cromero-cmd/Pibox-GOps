@@ -139,19 +139,25 @@ export function buildTrumpRows(distResultIn, t, av, mallaRawIn, modoGarantizado=
     let complementoPiloto = 0;
     let cobroGarantizado  = 0;
     let modoGarantizadoFila = 'automatico';
+    let companyFinalCostGar; // COMPANY_FINAL_COST final, considerando garantizado
 
-    if(modoGarantizado==='tada' && r.garantizado_tada != null){
+    if(modoGarantizado==='tada'){
       // Modo TaDa: el garantizado viene directo del archivo TADA (complemento
-      // semanal neto ya calculado por TaDa) — reemplaza el cálculo automático.
-      // Gross-up con los mismos % de margen/plataforma ya resueltos por ciudad.
+      // semanal neto ya calculado por TaDa) — SE SUMA al cobro operativo, no
+      // lo reemplaza, y nunca usa la tarifa de garantizado automática (0/null
+      // en garantizado_tada significa simplemente "sin garantizado esa semana").
       complementoPiloto = Number(r.garantizado_tada) || 0;
       cobroGarantizado  = complementoPiloto > 0
         ? Math.ceil(complementoPiloto / (1-pctMarg) / (1-pctPlat))
         : 0;
       modoGarantizadoFila = 'tada';
+      companyFinalCostGar = cobroOp + cobroGarantizado;
     } else if(ingresoNeto < minimoNeto){
       complementoPiloto = minimoNeto - ingresoNeto;
       cobroGarantizado = tarifaGarCl > cobroOp ? tarifaGarCl : cobroOp;
+      companyFinalCostGar = cobroGarantizado;
+    } else {
+      companyFinalCostGar = cobroOp;
     }
 
     // ── Additional: tareas + bonos + ajustes ─────────────
@@ -165,7 +171,7 @@ export function buildTrumpRows(distResultIn, t, av, mallaRawIn, modoGarantizado=
     const adicCliente = vTarCliente + bonos + ajustes; // base para gross-up cliente
 
     // ── COMPANY_FINAL_COST (cobro a TaDa) ────────────────
-    const COMPANY_FINAL_COST = cobroGarantizado > 0 ? cobroGarantizado : cobroOp;
+    const COMPANY_FINAL_COST = companyFinalCostGar;
 
     // ── FINAL_COST ────────────────────────────────────────
     // Cascada desde COMPANY_FINAL_COST replicando la lógica de Trump:
@@ -199,7 +205,8 @@ export function buildTrumpRows(distResultIn, t, av, mallaRawIn, modoGarantizado=
       `Can:${r.cancelados_dist}x${cop(pCan)}=${cop(r.cancelados_dist*pCan)} | `+
       `[Additional] Tar:${r.tareas_dist}x${cop(pTar)}=${cop(vTarPiloto)} | `+
       `Min:${cop(minimoNeto)} Ingreso:${cop(ingresoNeto)} Compl:${cop(complementoPiloto)} | `+
-      `Bonos:${cop(bonos)} Aj:${cop(ajustes)} | Conf:${r.nivel_confianza}`;
+      `Bonos:${cop(bonos)} Aj:${cop(ajustes)} | Conf:${r.nivel_confianza}`+
+      (modoGarantizadoFila==='tada' ? ` | GarTaDa:${cop(complementoPiloto)} gross:${cop(cobroGarantizado)}` : '');
 
     // ── COMMENTS_PILOTO para Trump (sin caracteres especiales) ──
     // Sin tildes, comas, puntos, simbolos, enes — solo letras numeros y espacios
@@ -224,7 +231,7 @@ export function buildTrumpRows(distResultIn, t, av, mallaRawIn, modoGarantizado=
       `Inc ${r.incentivos_dist} `+
       `Can ${r.cancelados_dist} `+
       `Tar ${r.tareas_dist} `+
-      (complementoPiloto>0 ? `Garantizado ${copClean(minimoNeto)} ` : '')+
+      (complementoPiloto>0 ? `Garantizado ${copClean(modoGarantizadoFila==='tada'?complementoPiloto:minimoNeto)} ` : '')+
       (vTarPiloto>0        ? `Tareas ${r.tareas_dist} `              : '')+
       (bonos>0             ? `Bonos ${copClean(bonos)} `             : '')+
       (ajustes!==0         ? `Aj ${copClean(Math.abs(ajustes))} `    : '')+
@@ -317,7 +324,7 @@ export function runTrump(){
     trumpRows = rows.concat(ceroRows);
 
     if(modoGarantizado==='tada' && !distResult.some(r=>r.garantizado_tada!=null))
-      addLog('log-trump','[WARN] Columna "Garantizado Basico" no encontrada en TADA — usando cálculo automático','warn');
+      addLog('log-trump','[WARN] Columna "Garantizado Basico" no encontrada en TADA — sin garantizado en Modo TaDa (cobro = solo operativo)','warn');
 
     if(meta.nEsp>0)
       addLog('log-trump',`[INFO] Fechas especiales aplicadas (${meta.nEsp}): ${Object.entries(meta.fechasEspMap).map(([f,fe])=>`${f}(${fe.tipo}${fe.tarifa_custom?'/'+fe.tarifa_custom:''})`).join(' · ')}`,'ok');
