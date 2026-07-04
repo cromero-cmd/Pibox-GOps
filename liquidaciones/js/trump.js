@@ -204,6 +204,13 @@ export function buildTrumpRows(distResultIn, t, av, mallaRawIn, modoGarantizado=
       : 0;
     const ADDITIONAL_COMPANY_FINAL_COST = vTarCliente + adicBonosAjustesGrossed;
 
+    // ── cobro_bono / pago_bono (para historial.js) ───────
+    // Aislado de adicBonosAjustesGrossed (que combina bonos+ajustes para no
+    // alterar ADDITIONAL_COMPANY_FINAL_COST) — mismo % de margen/plataforma
+    // ya resueltos por ciudad (Cali vs nacional).
+    const cobroBono = bonos > 0 ? Math.round(bonos / (1 - pctMarg) / (1 - pctPlat)) : 0;
+    const pagoBono  = bonos;
+
     // ── COMMENTS detallado (auditoría interna) ───────────
     const COMMENTS =
       `Fecha malla:${r.fecha_malla||r.fecha} Dia:${lj?'L-J':'V-D'} ${esCali?'[CAL plat:'+Math.round(pctPlat*100)+'%]':''} | `+
@@ -271,6 +278,8 @@ export function buildTrumpRows(distResultIn, t, av, mallaRawIn, modoGarantizado=
       _ingreso_neto:ingresoNeto,
       _complemento: complementoPiloto,
       _cobro_garantizado: cobroGarantizado,
+      _cobro_bono:  cobroBono,
+      _pago_bono:   pagoBono,
       _modo_garantizado:  modoGarantizadoFila,
       _confianza:   r.nivel_confianza,
       _run_id:      runId,

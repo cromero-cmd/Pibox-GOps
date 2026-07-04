@@ -85,7 +85,6 @@ export async function ejecutarGuardarHistorial(){
     const inc  = r._incentivos || 0;
     const can  = r._cancelados || 0;
     const tar  = r._tareas     || 0;
-    const bono = r.bonos       || 0;
 
     // Cobros (tarifas fijas × unidades)
     const cobroPaqVal = paq * cPaq;
@@ -93,15 +92,18 @@ export async function ejecutarGuardarHistorial(){
     const cobroCanVal = can * cCan;
     const cobroTarVal = tar * cTar;
     const productivoCobro = cobroPaqVal + cobroIncVal + cobroCanVal;
-    // cobro_garantizado/pago_garantizado NO se recalculan aquí — se leen
-    // directo de buildTrumpRows() (r._cobro_garantizado / r._complemento),
-    // que ya resuelve el modo activo (automático o TaDa), la ciudad (Cali vs
-    // nacional), fechas especiales y el día real de la malla. Recalcularlos
-    // con una fórmula propia (como se hacía antes) ignoraba Modo TaDa por
-    // completo y usaba llaves de tarifa inexistentes (c_garantizado_vd/lj en
-    // vez de c_gar_vd/lj), cayendo siempre a los valores por defecto.
+    // cobro_garantizado/pago_garantizado y cobro_bono/pago_bono NO se
+    // recalculan aquí — se leen directo de buildTrumpRows() (r._cobro_garantizado
+    // / r._complemento / r._cobro_bono / r._pago_bono), que ya resuelve el modo
+    // activo (automático o TaDa), la ciudad (Cali vs nacional), fechas
+    // especiales y el día real de la malla. Recalcularlos con una fórmula
+    // propia (como se hacía antes) ignoraba Modo TaDa por completo, usaba
+    // llaves de tarifa inexistentes (c_garantizado_vd/lj en vez de
+    // c_gar_vd/lj) y leía "r.bonos" de un trumpRow que nunca tuvo ese campo
+    // (siempre undefined → cobro_bono/pago_bono quedaban en 0 sin importar
+    // el bono real).
     const cobroGarVal = r._cobro_garantizado || 0;
-    const cobroBonoVal = bono > 0 ? Math.round(bono / (1 - 0.03) / (1 - 0.15)) : 0;
+    const cobroBonoVal = r._cobro_bono || 0;
     const cobroTotVal = productivoCobro + cobroTarVal + cobroGarVal + cobroBonoVal;
 
     // Pagos (tarifas netas × unidades)
@@ -111,7 +113,7 @@ export async function ejecutarGuardarHistorial(){
     const pagoTarVal = tar * pTar;
     const productivoPago = pagoPaqVal + pagoIncVal + pagoCanVal;
     const pagoGarVal  = r._complemento || 0;
-    const pagoBonoVal = bono;
+    const pagoBonoVal = r._pago_bono || 0;
     const pagoPilVal  = productivoPago + pagoTarVal + pagoGarVal + pagoBonoVal;
 
     // BUGFIX: el backend espera un ARRAY posicional de exactamente 29
