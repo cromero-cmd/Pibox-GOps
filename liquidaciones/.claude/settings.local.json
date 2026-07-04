@@ -87,7 +87,9 @@
       "Bash(node test/manual_ok_visual_test.mjs)",
       "Bash(mkdir /tmp/esmtest)",
       "Bash(cp -r /c/Users/ADMIN/Desktop/pipeline-tada/js /c/Users/ADMIN/Desktop/pipeline-tada/test /tmp/esmtest/)",
-      "Bash(cp -r /c/Users/ADMIN/Desktop/pipeline-tada/js /c/Users/ADMIN/Desktop/pipeline-tada/test .)"
+      "Bash(cp -r /c/Users/ADMIN/Desktop/pipeline-tada/js /c/Users/ADMIN/Desktop/pipeline-tada/test .)",
+      "Bash(node test/modo_tada_test.mjs)",
+      "Bash(echo \"EXIT: $?\")"
     ]
   }
 }

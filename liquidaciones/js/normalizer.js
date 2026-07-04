@@ -34,6 +34,10 @@ export function runNorm(){
 
     const parseMoney=v=>{ if(typeof v==='number') return v; if(!v&&v!==0) return 0; return parseFloat(String(v).replace(/[$\s.]/g,'').replace(',','.'))||0; };
     const getExtra=(row,name)=>{ const col=extraCols.find(c=>c.n===name); return col?row[col.i]:0; };
+    // Columna "Garantizado Basico" de TaDa — a diferencia de las demás extras,
+    // su ausencia se distingue con null (ver Modo TaDa en trump.js), por eso
+    // no reutiliza getExtra() (que devuelve 0 por defecto).
+    const colGarTada=extraCols.find(c=>c.n==='garantizado_tada');
 
     const dataRows=tadaRaw.slice(3).filter(r=>r.some(v=>v!==''&&v!==null&&v!==undefined));
 
@@ -47,6 +51,7 @@ export function runNorm(){
       const garantizado=parseMoney(getExtra(row,'garantizado'));
       const bonos      =parseMoney(getExtra(row,'bonos'));
       const ajustes    =parseMoney(getExtra(row,'ajustes'));
+      const garantizadoTada=colGarTada?parseMoney(row[colGarTada.i]):null;
 
       // Construir las 7 filas diarias (sin valores semanales aún)
       const filas=sortedGroups.map(g=>({
@@ -59,6 +64,7 @@ export function runNorm(){
         incentivos:parseInt(row[g.cols.incentivos])||0,
         cancelados:parseInt(row[g.cols.cancelados])||0,
         tareas:0, garantizado:0, bonos:0, ajustes:0, // inicializar en 0
+        garantizado_tada: colGarTada?0:null, // null solo si la columna no existe en el archivo
       }));
 
       // ★ Asignar valores semanales UNA SOLA VEZ
@@ -69,6 +75,7 @@ export function runNorm(){
       filas[targetIdx].garantizado=garantizado;
       filas[targetIdx].bonos      =bonos;
       filas[targetIdx].ajustes    =ajustes;
+      filas[targetIdx].garantizado_tada=garantizadoTada;
 
       tadaNorm.push(...filas);
     });

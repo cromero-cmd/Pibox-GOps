@@ -94,6 +94,30 @@ export function renderTariffPanel(){
     </div>`;
   };
 
+  const mkModoGarantizado = () => {
+    const modo = tariffStore.modo_garantizado || 'automatico';
+    return `<div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:10px;">
+      <div style="font-size:10px;font-family:var(--mono);color:var(--purple);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px;">
+        Modo de garantizado
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;">
+          <input type="radio" name="modo-garantizado" value="automatico" ${modo==='automatico'?'checked':''}
+            onchange="setModoGarantizado('automatico')"/>
+          🔢 Automático — calcular según tarifas configuradas
+        </label>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;">
+          <input type="radio" name="modo-garantizado" value="tada" ${modo==='tada'?'checked':''}
+            onchange="setModoGarantizado('tada')"/>
+          📋 Modo TaDa — usar columna "Garantizado Basico" del archivo TADA
+        </label>
+      </div>
+      ${modo==='tada'?`<div style="margin-top:10px;font-size:11px;font-family:var(--mono);color:var(--yellow);">
+        ⚠ Modo TaDa activo — el garantizado viene del archivo TADA, no de las tarifas configuradas
+      </div>`:''}
+    </div>`;
+  };
+
   const mkFechasPico = () => {
     // Cargar fechas especiales desde tariff store
     let fechasEspeciales = [];
@@ -161,6 +185,7 @@ export function renderTariffPanel(){
     mkGroup('pago',    'Tarifas de pago al piloto — neto (COP por unidad)',   'var(--green)')+
     mkGroup('pct',     'Porcentajes · Nacional',                              'var(--yellow)')+
     mkGroup('pct_cal', 'Porcentajes · Cali (ciudad CAL)',                     'var(--purple)')+
+    mkModoGarantizado()+
     mkFechasPico();
 
   // Historial de versiones
@@ -196,6 +221,9 @@ export function renderTariffPanel(){
           accion = `<span style="color:var(--green);">publicó ${e.version}</span>`;
         } else if(e.accion==='activar'){
           accion = `<span style="color:var(--blue);">activó ${e.version}</span>`;
+        } else if(e.accion==='modo_garantizado'){
+          const modoLabel = e.modo==='tada' ? '📋 Modo TaDa' : '🔢 Automático';
+          accion = `<span style="color:var(--purple);">Cambió modo de garantizado → ${modoLabel}</span>`;
         } else { // fecha_especial
           const tipoLabel = TIPO_FECHA_LABEL[e.tipo]||e.tipo;
           let texto;
@@ -270,6 +298,21 @@ export function activateVersion(ver){
 }
 
 export function getCurrentEdits(){ return currentEdits; }
+
+// ── Modo de garantizado — 'automatico' | 'tada' ───
+export function getModoGarantizado(){ return tariffStore?.modo_garantizado || 'automatico'; }
+export function setModoGarantizado(modo){
+  if(tariffStore.modo_garantizado===modo) return;
+  tariffStore.modo_garantizado = modo;
+  if(!tariffStore.log) tariffStore.log=[];
+  tariffStore.log.push({
+    timestamp:new Date().toISOString(), accion:'modo_garantizado',
+    modo, autor: currentUser?.nombre || 'sistema',
+  });
+  saveTariffs();
+  renderTariffPanel();
+  toast(`✓ Modo de garantizado: ${modo==='tada'?'Modo TaDa':'Automático'}`);
+}
 
 // ── Fechas especiales ─────────────────────────────
 export function getFechasEspeciales(){
