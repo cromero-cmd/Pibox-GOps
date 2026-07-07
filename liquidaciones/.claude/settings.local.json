@@ -90,7 +90,8 @@
       "Bash(cp -r /c/Users/ADMIN/Desktop/pipeline-tada/js /c/Users/ADMIN/Desktop/pipeline-tada/test .)",
       "Bash(node test/modo_tada_test.mjs)",
       "Bash(echo \"EXIT: $?\")",
-      "Bash(node test/bono_historial_test.mjs)"
+      "Bash(node test/bono_historial_test.mjs)",
+      "Bash(node test/cero_actividad_test.mjs)"
     ]
   }
 }

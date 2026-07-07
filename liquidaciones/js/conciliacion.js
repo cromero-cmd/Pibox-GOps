@@ -428,6 +428,33 @@ export async function runConciliacion(){
       const ciudadMalla = String(m[mCKey]||'');
       const bookingId   = String(m[mBKey]||'');
 
+      // ── CERO_ACTIVIDAD: el piloto SÍ aparece en TADA (mismo piloto+fecha+
+      // seller) pero con paq=inc=can=0 — no es un huérfano real, TADA ya
+      // confirmó que no hubo actividad. Va directo al template en $0, sin
+      // pasar por Novedades ni pagar garantizado.
+      const tadaCeroActividad = tadaNorm.filter(r =>
+        r.fecha === fechaMalla && normStr(r.seller) === normStr(sellerMalla) &&
+        r.paquetes===0 && r.incentivos===0 && r.cancelados===0 &&
+        (normStr(r.piloto)===normStr(nombreMalla) || fuzzyNameMatch(nombreMalla, r.piloto)));
+
+      if(tadaCeroActividad.length > 0){
+        concResult.push({
+          piloto:    nombreMalla,
+          ciudad:    ciudadMalla,
+          seller:    sellerMalla,
+          fecha:     fechaMalla,
+          driver_id: String(m[mDKey]||'PENDIENTE'),
+          paquetes:0, incentivos:0, cancelados:0, tareas:0,
+          garantizado:0, bonos:0, ajustes:0, garantizado_tada:0,
+          nivel_confianza: 'CERO_ACTIVIDAD',
+          matches: [m],
+          nota: `Piloto con actividad 0 en TADA (paq/inc/can=0) · booking: ${bookingId}`,
+          _booking_malla: bookingId,
+        });
+        addLog('log-conc', `[CERO-ACT] ${nombreMalla} · ${fechaMalla} · ${bookingId}`, 'info');
+        return;
+      }
+
       // Candidatos en TADA con actividad real, misma fecha+seller — el
       // piloto probablemente SÍ existe en TADA pero con un nombre distinto
       // al de la malla (variante, apodo, orden de apellidos), por eso no

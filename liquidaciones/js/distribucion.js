@@ -26,7 +26,7 @@ export function runDistribucion(){
                     mKeys.find(k=>/d[íi]a/i.test(k))||null;
 
       // Niveles que pasan a distribución (los demás se excluyen)
-      const NIVELES_OK=new Set(['HIGH','MEDIUM','LOW','FUZZY-HIGH','FUZZY-LOW','MANUAL-OK']);
+      const NIVELES_OK=new Set(['HIGH','MEDIUM','LOW','FUZZY-HIGH','FUZZY-LOW','MANUAL-OK','CERO_ACTIVIDAD']);
       concResult.filter(r=>NIVELES_OK.has(r.nivel_confianza)).forEach(row=>{
         const n=row.matches.length;
         [...row.matches].sort((a,b)=>String(a[mHKey]||'').localeCompare(String(b[mHKey]||''))).forEach((m,i)=>{
@@ -52,7 +52,7 @@ export function runDistribucion(){
         });
       });
 
-      const excluidos=concResult.filter(r=>!['HIGH','MEDIUM','LOW','FUZZY-HIGH','FUZZY-LOW'].includes(r.nivel_confianza)).length;
+      const excluidos=concResult.filter(r=>!['HIGH','MEDIUM','LOW','FUZZY-HIGH','FUZZY-LOW','CERO_ACTIVIDAD'].includes(r.nivel_confianza)).length;
       document.getElementById('stats-dist').innerHTML=`
         <div class="stat"><div class="stat-l">Bookings generados</div><div class="stat-v">${distResult.length}</div></div>
         <div class="stat"><div class="stat-l">Excluidos (SIN_MALLA + AMBIGUOUS)</div><div class="stat-v r">${excluidos}</div></div>
@@ -82,7 +82,7 @@ export function runDistribucionSilent(){
   const mHKey=mKeys.find(k=>/inicio.*turno|hora.*inicio/i.test(k))||'INICIO DE TURNO';
   const mFKey=mKeys.find(k=>/^fecha$/i.test(k.trim()))||'FECHA';
   const mDiaKey=mKeys.find(k=>/^d[íi]a$/i.test(k.trim()))||null;
-  const NIVELES_OK=new Set(['HIGH','MEDIUM','LOW','FUZZY-HIGH','FUZZY-LOW','MANUAL-OK']);
+  const NIVELES_OK=new Set(['HIGH','MEDIUM','LOW','FUZZY-HIGH','FUZZY-LOW','MANUAL-OK','CERO_ACTIVIDAD']);
   distResult=[];
   concResult.filter(r=>NIVELES_OK.has(r.nivel_confianza)&&!r._excluido_manual).forEach(row=>{
     const n=row.matches.length||1;

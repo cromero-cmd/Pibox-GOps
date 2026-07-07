@@ -87,6 +87,41 @@ export function buildTrumpRows(distResultIn, t, av, mallaRawIn, modoGarantizado=
   const rows = distResultIn
     .filter(r=>r.booking_id!=='__EXCLUIDO__' && r.booking_id!=='?' && r.booking_id!=='SIN BOOKING')
     .map(r=>{
+    // ── CERO_ACTIVIDAD: piloto confirmado en TADA con paq=inc=can=0 esa
+    // fecha — va al template en $0 sin pasar por el cálculo normal. Bypass
+    // total ANTES de calcular ingresoNeto/garantizado: si se dejara caer al
+    // flujo normal, ingresoNeto=0 quedaría bajo el mínimo diario y el
+    // garantizado automático pagaría el salario mínimo completo — justo lo
+    // que este caso no debe hacer (no se debe pagar garantizado).
+    if(r.nivel_confianza === 'CERO_ACTIVIDAD'){
+      return {
+        BOOKING_ID:                    r.booking_id,
+        COMPANY_FINAL_COST:            0,
+        ADDITIONAL_COMPANY_FINAL_COST: 0,
+        DISPUTED_COMPANY_FINAL_COST:   '',
+        FINAL_COST:                    0,
+        ADDITIONAL_FINAL_COST:         0,
+        DISPUTED_FINAL_COST:           '',
+        PACKAGES_COUNT:                0,
+        IS_PER_HOUR:                   0,
+        COMMENTS:                      `Cero actividad TADA (sin garantizado) | Piloto:${r.piloto} Fecha:${r.fecha_malla||r.fecha}`,
+        COMMENTS_PILOTO:               'Sin actividad COP',
+        _driver_id:   r.driver_id,
+        _piloto:      r.piloto,
+        _ciudad:      r.ciudad,
+        _seller:      r.seller,
+        _fecha:       r.fecha_malla||r.fecha,
+        _dia:         r.dia_malla||'',
+        _dia_tipo:    esDiaLJ(r)?'L-J':'V-D',
+        _paquetes:0, _incentivos:0, _cancelados:0, _tareas:0,
+        _ingreso_neto:0, _complemento:0, _cobro_garantizado:0, _cobro_bono:0, _pago_bono:0,
+        _modo_garantizado: 'cero_actividad',
+        _confianza:   'CERO_ACTIVIDAD',
+        _run_id:      runId,
+        _ver:         av.version,
+      };
+    }
+
     const lj = esDiaLJ(r);
 
     // ── Seleccionar porcentajes según ciudad ─────────────
@@ -390,6 +425,8 @@ export function runTrump(){
       });
     }
 
+    trumpRows.filter(r=>r._confianza==='CERO_ACTIVIDAD').forEach(r=>
+      addLog('log-trump',`[CERO-ACT] ${r._piloto} · ${r._fecha} · ${r.BOOKING_ID} — sin actividad en TADA, incluido en $0`,'info'));
     trumpRows.filter(r=>r._confianza==='MEDIUM').forEach(r=>addLog('log-trump',`[MED] ${r.BOOKING_ID} — dist. equitativa`,'warn'));
     trumpRows.filter(r=>r._confianza==='LOW').forEach(r=>addLog('log-trump',`[LOW] ${r.BOOKING_ID} · ${r._piloto}`,'warn'));
     ceroRows.forEach(r=>addLog('log-trump',`[CERO] ${r.BOOKING_ID} · ${r._piloto} · ${r._fecha}`,'warn'));
