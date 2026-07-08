@@ -1239,7 +1239,7 @@ body.agent-preview-mode header{margin-top:34px;}
  </div>
 </div>
 <script>
-const APP_VERSION='15.47';
+const APP_VERSION='15.48';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -3983,13 +3983,18 @@ async function openPayrollPreview(){
  const fmtDate=d=>{const dd=String(d.getDate()).padStart(2,'0');const meses=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];return`${dd}-${meses[d.getMonth()]}-${d.getFullYear()}`;};
  const weekStart=fmtDate(lastMonday),weekEnd=fmtDate(lastSunday);
  document.getElementById('payroll-preview-period').textContent=`Semana: ${weekStart} — ${weekEnd}`;
+ console.log('[openPayrollPreview] lastMonday:',lastMonday,'lastSunday:',lastSunday);
  let mallaData=[];
  try{
- const resp=await fetch(MALLA_SCRIPT+'?sheet=Malla',{signal:AbortSignal.timeout(10000)});
+ // Timeout ampliado a 20s — el Apps Script puede tardar en "cold start" con el CSV actual (~300KB+)
+ const resp=await fetch(MALLA_SCRIPT+'?sheet=Malla',{signal:AbortSignal.timeout(20000)});
+ console.log('[openPayrollPreview] MALLA_SCRIPT status:',resp.status,resp.ok);
+ if(!resp.ok)throw new Error(`MALLA_SCRIPT respondió ${resp.status}`);
  const csv=await resp.text();
  mallaData=csv.trim().split('\n').slice(1).map(l=>{const c=parseCSVLine(l);return{fecha:c[1]?.trim(),usuario:c[2]?.trim(),nombre:c[3]?.trim(),inicio:c[5]?.trim(),fin:c[6]?.trim(),lider:c[9]?.trim(),novedad:c[10]?.trim(),almuerzo:c[12]?.trim()};})
  .filter(m=>{if(!m.fecha||!m.usuario)return false;const d=parseDate(m.fecha);return d&&d>=lastMonday&&d<=lastSunday;});
- }catch(e){}
+ console.log('[openPayrollPreview] filas de malla en el rango:',mallaData.length);
+ }catch(e){console.error('[openPayrollPreview] fetch MALLA_SCRIPT falló:',e);}
  const allTurnos=await window.getRecentTurnos();
  const adminEmails=new Set([...(window.ADMINS||ADMINS),SUPER_ADMIN]);
  // Construir registros igual que sendPayrollReport
