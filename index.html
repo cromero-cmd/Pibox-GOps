@@ -1239,7 +1239,7 @@ body.agent-preview-mode header{margin-top:34px;}
  </div>
 </div>
 <script>
-const APP_VERSION='15.40';
+const APP_VERSION='15.41';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -3526,17 +3526,39 @@ function setPanel2StatusFilter(cls){
 function setPanel2MobileFilter(){
  panel2StatusFilter=null;panel2SelectedUsers.clear();loadPanel2();
 }
-function renderPanel2Extras(allTurnos,fromDate,toDate,mallaData){
+async function renderPanel2Extras(allTurnos,fromDate,toDate,mallaData){
  const el=document.getElementById('panel2-extras');
  if(!el)return;
+ // DEBUG temporal — investigar por qué los pendientes no aparecen aunque el badge sí los cuenta
+ const withOvertimeStatus=allTurnos.filter(t=>!!t.overtimeStatus);
+ console.log('[renderPanel2Extras] allTurnos:',allTurnos.length,'con overtimeStatus:',withOvertimeStatus.length,'valores:',withOvertimeStatus.map(t=>t.overtimeStatus));
  // Incluir todos los turnos con cualquier estado de overtime (incluyendo pending_review)
  // Los pendientes (pending_review/pending_super_admin) siempre se muestran, sin importar el período
- const extTurnos=allTurnos.filter(t=>{
+ const extTurnosBase=allTurnos.filter(t=>{
  if(!t.overtimeStatus)return false;
  if(t.overtimeStatus==='pending_review'||t.overtimeStatus==='pending_super_admin')return true;
  const d=t.startTime?.toDate?.();
  return d&&(!fromDate||d>=fromDate)&&(!toDate||d<=toDate);
  });
+ // allTurnos viene de getRecentTurnos(), que tiene caché de 1 min y límite de 300 docs —
+ // puede no incluir turnos pendientes viejos. Traer los eventos de overtime pendientes
+ // directo de Firestore (sin caché) y combinar los que falten.
+ let pendingEvents=[];
+ if(window.loadOvertimeEvents){
+ try{ pendingEvents=await window.loadOvertimeEvents(); }
+ catch(e){ console.error('[renderPanel2Extras] loadOvertimeEvents error:',e); }
+ }
+ const knownTurnoIds=new Set(extTurnosBase.map(t=>t.id));
+ const extraPending=pendingEvents.filter(e=>e.turnoId&&!knownTurnoIds.has(e.turnoId)).map(e=>({
+ id:e.turnoId,
+ overtimeStatus:e.status,
+ overtimeMinutes:e.extraMins||0,
+ userName:e.agentName,
+ userEmail:e.agentEmail,
+ startTime:e.timestamp||null
+ }));
+ console.log('[renderPanel2Extras] eventos pendientes en Firestore:',pendingEvents.length,'faltantes en allTurnos agregados:',extraPending.length);
+ const extTurnos=[...extTurnosBase,...extraPending];
  if(!extTurnos.length){el.innerHTML='<div style="padding:16px;font-size:12px;color:var(--text-dim);text-align:center;">Sin extras en este período</div>';return;}
  const approved=extTurnos.filter(t=>t.overtimeStatus==='approved');
  const rejected=extTurnos.filter(t=>t.overtimeStatus==='rejected');
