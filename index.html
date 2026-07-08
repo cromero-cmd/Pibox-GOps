@@ -1239,7 +1239,7 @@ body.agent-preview-mode header{margin-top:34px;}
  </div>
 </div>
 <script>
-const APP_VERSION='15.49';
+const APP_VERSION='15.50';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -3117,6 +3117,8 @@ function renderMallaPersonal(){
  const pct=total?Math.round(((cumplió+novedad+enCursoM)/total)*100):0;
  // Aplicar filtro de status DESPUÉS de calcular conteos
  if(window._mallaStatusFilter)rows=rows.filter(r=>r.status.cls===window._mallaStatusFilter);
+ // Exponer las filas ya filtradas (período, línea, líder/agente ya aplicados en mallaAllRows, estado, novedad y tarjeta de estado) para exportMallaXLSX
+ window.mallaFilteredRows=rows;
  let msf=window._mallaStatusFilter||null;
  function cumplCard(cls,color,count,label){
  const isActive=msf===cls;
@@ -4571,7 +4573,10 @@ function exportToXLSX(headers, rows, filename){
  toast('Exportado ✓ — '+filename+'.xls');
 }
 function exportMallaXLSX(){
- if(!mallaAllRows||!mallaAllRows.length){toast('Sin datos para exportar');return;}
+ // Usar las filas ya filtradas (período, línea, líder/agente, estado, novedad) que se ven en pantalla,
+ // no mallaAllRows (todos los registros sin filtrar)
+ const filteredRows=window.mallaFilteredRows||mallaAllRows;
+ if(!filteredRows||!filteredRows.length){toast('Sin datos para exportar');return;}
  const userEmail=document.getElementById('user-email').textContent;
  const isAdmin=(window.ADMINS||ADMINS).includes(userEmail)||userEmail===SUPER_ADMIN;
  const fmt=t=>t?t.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
@@ -4580,7 +4585,7 @@ function exportMallaXLSX(){
  const headers=isAdmin&&!window._agentPreviewMode
  ?['Día','Fecha','Usuario','Nombre','Rol','Prog. Inicio','Prog. Fin','Real Inicio','Real Fin','Almuerzo','Línea','Novedad','Estado']
  :['Día','Fecha','Rol','Prog. Inicio','Prog. Fin','Real Inicio','Real Fin','Almuerzo','Línea','Novedad','Estado'];
- const rows=mallaAllRows.map(r=>{
+ const rows=filteredRows.map(r=>{
  const d=parseDate(r.fecha);
  const dia=d?DIAS[d.getDay()]:'—';
  const base=[dia,fmtD(r.fecha),r.rol||'—',fmt(r.scheduledStart),fmt(r.scheduledEnd),fmt(r.realStart),fmt(r.realEnd),r.almuerzo||'—',r.linea||'—',r.novedad||'—',r.status.label];
