@@ -1239,7 +1239,7 @@ body.agent-preview-mode header{margin-top:34px;}
  </div>
 </div>
 <script>
-const APP_VERSION='15.46';
+const APP_VERSION='15.47';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -4041,8 +4041,14 @@ async function openPayrollPreview(){
  const extra=Math.max(0,total-horasLegalesSecs);
  return extra>0?formatDuration(extra):'00:00:00';
  }
- const cols=['Nombre','Fecha','Entrada','Salida','Almuerzo','Horas trabajadas','Extras','Novedad'];
- const fields=['name','date','checkIn','checkOut','almuerzo','hours','extras','novedad'];
+ function totalWeekForAgent(name,rowIdx){
+ // Solo mostrar en la última fila de este agente — suma de "Horas trabajadas" de toda la semana
+ const isLastRowForAgent=!window._payrollPreviewRecords.slice(rowIdx+1).some(r=>r.name===name);
+ if(!isLastRowForAgent)return'';
+ return formatDuration(totalSecsByAgent[name]||0);
+ }
+ const cols=['Nombre','Fecha','Entrada','Salida','Almuerzo','Horas trabajadas','Total semana','Extras','Novedad'];
+ const fields=['name','date','checkIn','checkOut','almuerzo','hours','totalWeek','extras','novedad'];
  const editableCols=new Set(['checkIn','checkOut','almuerzo','novedad']);
  body.innerHTML=`<div style="font-size:11px;color:var(--text-dim);margin-bottom:10px;font-family:var(--mono);">💡 Haz clic en cualquier celda para editarla antes de enviar. Extras = excedente sobre ${horasLegales}h semanales.</div>
  <div style="overflow-x:auto;">
@@ -4055,7 +4061,7 @@ async function openPayrollPreview(){
  <tbody>
  ${window._payrollPreviewRecords.map((r,ri)=>`<tr style="${ri%2===0?'':'background:var(--surface2);'}">
  ${fields.map((f,fi)=>{
- const val=f==='extras'?extrasForAgent(r.name,ri):(r[f]||'—');
+ const val=f==='extras'?extrasForAgent(r.name,ri):f==='totalWeek'?totalWeekForAgent(r.name,ri):(r[f]||'—');
  const editable=editableCols.has(f);
  const isExtra=f==='extras'&&val!=='00:00:00';
  return`<td style="padding:6px 8px;border:1px solid var(--border);${editable?'cursor:pointer;':''}${f==='novedad'&&val!=='—'?'color:#a78bfa;':''}${isExtra?'color:#fb923c;font-weight:700;':''}" ${editable?`onclick="editPayrollCell(this,${ri},'${f}')" title="Clic para editar"`:''}>${val}</td>`;
@@ -4084,11 +4090,13 @@ function refreshPayrollExtrasColumn(){
  const total=totalSecsByAgent[r.name]||0;
  const extraSecs=Math.max(0,total-horasLegalesSecs);
  const extraStr=isLastRowForAgent?(extraSecs>0?formatDuration(extraSecs):'00:00:00'):'';
+ const totalWeekStr=isLastRowForAgent?formatDuration(total):'';
  const cells=tr.querySelectorAll('td');
- if(cells[6]){
- cells[6].textContent=extraStr;
- cells[6].style.color=extraSecs>0&&isLastRowForAgent?'#fb923c':'';
- cells[6].style.fontWeight=extraSecs>0&&isLastRowForAgent?'700':'';
+ if(cells[6])cells[6].textContent=totalWeekStr;
+ if(cells[7]){
+ cells[7].textContent=extraStr;
+ cells[7].style.color=extraSecs>0&&isLastRowForAgent?'#fb923c':'';
+ cells[7].style.fontWeight=extraSecs>0&&isLastRowForAgent?'700':'';
  }
  });
 }
@@ -4127,16 +4135,45 @@ function downloadPayrollXLS(){
  URL.revokeObjectURL(url);
  toast('⬇ Descarga iniciada');
 }
+function payrollTimeTo24h(t){
+ // Convierte el texto mostrado ("hh:mm a. m."/"p. m." o "HH:MM") a "HH:MM" 24h para precargar el <input type=time>
+ if(!t||t==='00:00'||t==='—')return'';
+ const str=t.toLowerCase().replace(/\.\s*/g,'').replace(/\s+/g,' ').trim();
+ const isPM=str.includes('pm')||str.includes('p m');
+ const isAM=str.includes('am')||str.includes('a m');
+ const cleaned=str.replace(/[ap]\s*m/g,'').trim();
+ const parts=cleaned.split(':');
+ if(parts.length<2)return'';
+ let h=parseInt(parts[0]),m=parseInt(parts[1]);
+ if(isNaN(h)||isNaN(m))return'';
+ if(isPM&&h!==12)h+=12;
+ if(isAM&&h===12)h=0;
+ return`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+}
+function payrollTimeFrom24h(hhmm){
+ // Convierte "HH:MM" 24h (valor del <input type=time>) al formato "hh:mm a. m./p. m." que usa el sistema
+ const parts=hhmm.split(':');
+ const d=new Date();
+ d.setHours(parseInt(parts[0])||0,parseInt(parts[1])||0,0,0);
+ return d.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'});
+}
 function editPayrollCell(td, rowIdx, field){
  if(td.querySelector('input'))return;
  const current=td.textContent;
+ const isTimeField=field==='checkIn'||field==='checkOut';
  const input=document.createElement('input');
+ if(isTimeField){
+ input.type='time';
+ const h24=payrollTimeTo24h(current);
+ if(h24)input.value=h24;
+ } else {
  input.value=current==='—'?'':current;
+ }
  input.style.cssText='width:100%;background:var(--surface);border:1px solid var(--p2);border-radius:4px;padding:3px 6px;color:var(--text);font-size:12px;font-family:var(--mono);outline:none;';
  td.textContent='';
  td.appendChild(input);
  input.focus();
- input.select();
+ if(!isTimeField)input.select();
  const recalcHours=(row,tr)=>{
  const toMins=t=>{
  if(!t||t==='00:00'||t==='—')return null;
@@ -4167,7 +4204,7 @@ function editPayrollCell(td, rowIdx, field){
  if(tr){const cells=tr.querySelectorAll('td');if(cells[5])cells[5].textContent=row.hours;}
  };
  const save=async ()=>{
- const val=input.value.trim()||'—';
+ const val=isTimeField?(input.value?payrollTimeFrom24h(input.value):'—'):(input.value.trim()||'—');
  window._payrollPreviewRecords[rowIdx][field]=val;
  td.textContent=val;
  if(field==='novedad'&&val!=='—')td.style.color='#a78bfa';
