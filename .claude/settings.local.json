@@ -40,7 +40,9 @@
       "mcp__Claude_in_Chrome__javascript_tool",
       "Bash(git add *)",
       "Bash(git commit -m ' *)",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "Bash(gh run *)",
+      "Bash(curl -s https://cromero-cmd.github.io/Pibox-GOps/)"
     ]
   }
 }

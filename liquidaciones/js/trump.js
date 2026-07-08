@@ -255,7 +255,8 @@ export function buildTrumpRows(distResultIn, t, av, mallaRawIn, modoGarantizado=
       `[Additional] Tar:${r.tareas_dist}x${cop(pTar)}=${cop(vTarPiloto)} | `+
       `Min:${cop(minimoNeto)} Ingreso:${cop(ingresoNeto)} Compl:${cop(complementoPiloto)} | `+
       `Bonos:${cop(bonos)} Aj:${cop(ajustes)} | Conf:${r.nivel_confianza}`+
-      (modoGarantizadoFila==='tada' ? ` | GarTaDa:${cop(complementoPiloto)} gross:${cop(cobroGarantizado)}` : '');
+      (modoGarantizadoFila==='tada' ? ` | GarTaDa:${cop(complementoPiloto)} gross:${cop(cobroGarantizado)}` : '')+
+      (r._doble_turno ? ` | DOBLE-TURNO: ${r._seller_combinado}` : '');
 
     // ── COMMENTS_PILOTO para Trump (sin caracteres especiales) ──
     // Sin tildes, comas, puntos, simbolos, enes — solo letras numeros y espacios
@@ -316,6 +317,8 @@ export function buildTrumpRows(distResultIn, t, av, mallaRawIn, modoGarantizado=
       _cobro_bono:  cobroBono,
       _pago_bono:   pagoBono,
       _modo_garantizado:  modoGarantizadoFila,
+      _doble_turno: r._doble_turno||false,
+      _seller_combinado: r._seller_combinado||'',
       _confianza:   r.nivel_confianza,
       _run_id:      runId,
       _ver:         av.version,

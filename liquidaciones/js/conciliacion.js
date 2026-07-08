@@ -90,6 +90,15 @@ export function fuzzyNameMatch1(nameA, nameB){
 }
 
 // ══════════════════════════════════════════════════════
+// Un booking ID válido es una cadena hexadecimal de exactamente 24
+// caracteres (Mongo ObjectId de TaDa) — cualquier otra cosa (vacío, texto
+// libre como "DOBLE TURNO", guiones) no es un booking real.
+// ══════════════════════════════════════════════════════
+export function esBookingValido(id){
+  return /^[a-f0-9]{24}$/i.test(String(id||'').trim());
+}
+
+// ══════════════════════════════════════════════════════
 // NIVEL 0 — resolución por diccionario de equivalencias, extraído como
 // función pura reutilizable: la usa tanto runConciliacion() (primera
 // pasada completa) como reaplicarDiccionario() (re-intento puntual sobre
@@ -195,9 +204,99 @@ export async function runConciliacion(){
                 mKeys.find(k=>/inicio/i.test(k))||'INICIO DE TURNO';
     addLog('log-conc',`[INFO] Malla — fecha:"${mFKey}" seller:"${mSKey}" piloto:"${mPKey}" booking:"${mBKey}" hora:"${mHKey}"`,'info');
 
+    // ══════════════════════════════════════════════════════
+    // DOBLE TURNO — piloto con 2+ filas en la malla la misma fecha, donde
+    // solo una tiene booking ID válido (24 hex) y el resto es texto libre
+    // ("DOBLE TURNO", guión, vacío, etc.) — no son bookings reales, son la
+    // fila extra que deja el segundo turno. Se combinan en UN solo registro
+    // con los valores de TADA sumados de todos los turnos de ese piloto esa
+    // fecha (sin filtrar por seller — puede estar en sedes distintas). Debe
+    // resolverse ANTES de construir los índices de match: si no se excluyen
+    // estas filas del resto del flujo, el turno principal también matchearía
+    // por la vía normal y generaría un booking duplicado con valores parciales.
+    // ══════════════════════════════════════════════════════
+    const mCKeyDT = mKeys.find(k=>/^ciudad$|^city$/i.test(k))||mKeys.find(k=>/ciudad|city/i.test(k))||null;
+    const dobleTurnoMallaConsumida = new Set(); // filas de malla ya resueltas (ambos turnos)
+    const dobleTurnoTadaConsumida  = new Set(); // filas de tadaNorm ya sumadas
+
+    {
+      const grupos = {};
+      mallaRaw.forEach(m=>{
+        const nombre = normStr(String(m[mPKey]||''));
+        const fecha  = String(m[mFKey]||'').trim();
+        if(!nombre || !fecha) return;
+        const key = `${nombre}||${fecha}`;
+        (grupos[key]||(grupos[key]=[])).push(m);
+      });
+
+      Object.values(grupos).forEach(grupo=>{
+        if(grupo.length < 2) return;
+        const validos   = grupo.filter(m=>esBookingValido(m[mBKey]));
+        const invalidos = grupo.filter(m=>!esBookingValido(m[mBKey]));
+        // Solo resoluble como doble turno cuando hay exactamente UNA fila con
+        // booking válido y al menos una sin él — si hay 0 o 2+ válidos, no es
+        // este caso (o son bookings genuinamente distintos, o falta info).
+        if(validos.length !== 1 || invalidos.length === 0) return;
+
+        const principal   = validos[0];
+        const nombreMalla = String(principal[mPKey]||'');
+        const fechaMalla  = String(principal[mFKey]||'').trim();
+        const ciudadMalla = mCKeyDT ? String(principal[mCKeyDT]||'') : '';
+        const bookingId   = String(principal[mBKey]||'').trim();
+
+        // TADA: TODAS las filas del mismo piloto en esa fecha, sin filtrar
+        // por seller — el piloto pudo trabajar en sedes distintas ese día.
+        const tadaCandidatos = tadaNorm.filter(r =>
+          r.fecha === fechaMalla &&
+          (normStr(r.piloto)===normStr(nombreMalla) || fuzzyNameMatch(nombreMalla, r.piloto)));
+        if(tadaCandidatos.length === 0) return; // sin actividad TADA — deja que el flujo normal lo resuelva
+
+        const paqTotal   = tadaCandidatos.reduce((a,r)=>a+(r.paquetes||0),0);
+        const incTotal   = tadaCandidatos.reduce((a,r)=>a+(r.incentivos||0),0);
+        const canTotal   = tadaCandidatos.reduce((a,r)=>a+(r.cancelados||0),0);
+        const tarTotal   = tadaCandidatos.reduce((a,r)=>a+(r.tareas||0),0);
+        const bonosTotal = tadaCandidatos.reduce((a,r)=>a+(r.bonos||0),0);
+        const ajustesTotal = tadaCandidatos.reduce((a,r)=>a+(r.ajustes||0),0);
+        // garantizado_tada: solo una de las filas del piloto en toda la
+        // semana lo carga (la primera con actividad) — null solo si NINGUNA
+        // fila de este grupo lo trae (columna ausente en el archivo).
+        const algunGarTada = tadaCandidatos.some(r=>r.garantizado_tada!=null);
+        const garTadaTotal = algunGarTada
+          ? tadaCandidatos.reduce((a,r)=>a+(Number(r.garantizado_tada)||0),0)
+          : null;
+
+        const sellersUnicos   = [...new Set(tadaCandidatos.map(r=>r.seller).filter(Boolean))];
+        const sellerCombinado = sellersUnicos.length ? sellersUnicos.join(' + ') : String(principal[mSKey]||'');
+
+        concResult.push({
+          piloto: nombreMalla, ciudad: ciudadMalla, seller: sellerCombinado, fecha: fechaMalla,
+          driver_id: String(principal[mDKey]||'PENDIENTE'),
+          paquetes:paqTotal, incentivos:incTotal, cancelados:canTotal, tareas:tarTotal,
+          garantizado:0, bonos:bonosTotal, ajustes:ajustesTotal, garantizado_tada:garTadaTotal,
+          nivel_confianza: 'HIGH',
+          matches: [principal],
+          nota: `[DOBLE-TURNO] sellers: ${sellerCombinado}`,
+          _doble_turno: true,
+          _seller_combinado: sellerCombinado,
+        });
+
+        addLog('log-conc',
+          `[DOBLE-TURNO] ${nombreMalla} · ${fechaMalla} · ${bookingId} · sellers: ${sellerCombinado} · paq_total: ${paqTotal} · inc_total: ${incTotal}`,
+          'ok');
+
+        grupo.forEach(m=>dobleTurnoMallaConsumida.add(m));
+        tadaCandidatos.forEach(r=>dobleTurnoTadaConsumida.add(r));
+      });
+    }
+
+    // A partir de aquí, todo el resto del flujo (índices, matching cascada,
+    // huérfanos) opera sobre mallaConciliar — sin las filas ya resueltas
+    // como doble turno — para no generar bookings duplicados.
+    const mallaConciliar = mallaRaw.filter(m=>!dobleTurnoMallaConsumida.has(m));
+
     // ── Índices de match exacto ─────────────────────────────
     const idx3={}, idx2={};
-    mallaRaw.forEach(m=>{
+    mallaConciliar.forEach(m=>{
       const mp=normStr(String(m[mPKey]||'')), mf=String(m[mFKey]||'').trim(), ms=normStr(String(m[mSKey]||''));
       const a=`${mp}||${mf}||${ms}`, b=`${mp}||${mf}`;
       (idx3[a]||(idx3[a]=[])).push(m);
@@ -211,7 +310,7 @@ export async function runConciliacion(){
     // Detectar columna ciudad en malla
     const mCKey=mKeys.find(k=>/^ciudad$|^city$/i.test(k))||mKeys.find(k=>/ciudad|city/i.test(k))||null;
     if(mCKey) addLog('log-conc',`[INFO] Columna ciudad malla: "${mCKey}" — usada para desempate fuzzy`,'info');
-    mallaRaw.forEach(m=>{
+    mallaConciliar.forEach(m=>{
       const mf=String(m[mFKey]||'').trim(), ms=normStr(String(m[mSKey]||''));
       const fs=`${mf}||${ms}`, f=mf;
       (idxFS[fs]||(idxFS[fs]=[])).push(m);
@@ -219,7 +318,7 @@ export async function runConciliacion(){
     });
 
     // ── Filtrar filas con actividad ─────────────────────────
-    const filasConActividad=tadaNorm.filter(r=>r.paquetes>0||r.incentivos>0||r.cancelados>0);
+    const filasConActividad=tadaNorm.filter(r=>(r.paquetes>0||r.incentivos>0||r.cancelados>0) && !dobleTurnoTadaConsumida.has(r));
     const filasVacias=tadaNorm.filter(r=>r.paquetes===0&&r.incentivos===0&&r.cancelados===0);
     addLog('log-conc',`[INFO] Filas con actividad (a conciliar): ${filasConActividad.length}`,'info');
     addLog('log-conc',`[INFO] Filas sin actividad (omitidas): ${filasVacias.length}`,'dim');
@@ -420,7 +519,7 @@ export async function runConciliacion(){
 
     // Huérfanos en malla — bookings en malla que no matchearon con ningún registro TADA
     // Los agregamos a concResult como SIN_TADA para que sean visibles y gestionables
-    const huerfanosMalla = mallaRaw.filter(m=>m[mBKey]&&!matchados.has(m[mBKey]));
+    const huerfanosMalla = mallaConciliar.filter(m=>m[mBKey]&&!matchados.has(m[mBKey]));
     huerfanosMalla.forEach(m=>{
       const nombreMalla = String(m[mPKey]||'');
       const fechaMalla  = String(m[mFKey]||'');
@@ -592,6 +691,7 @@ export function renderConcStats(){
   const amb=concResult.filter(r=>r.nivel_confianza==='AMBIGUOUS').length;
   const sn =concResult.filter(r=>r.nivel_confianza==='SIN_MALLA').length;
   const st =concResult.filter(r=>r.nivel_confianza==='SIN_TADA').length;
+  const dt =concResult.filter(r=>r._doble_turno).length;
   const omitidas=tadaNorm.filter(r=>r.paquetes===0&&r.incentivos===0&&r.cancelados===0).length;
 
   const totalDirecta  = h+ap+md+fh;
@@ -654,6 +754,7 @@ export function renderConcStats(){
         <div class="conc-group-head">
           <span class="conc-group-title">✓ Liquidación directa</span>
           <span class="conc-group-total g">${totalDirecta}</span>
+          ${dt>0?`<span style="font-size:10px;font-family:var(--mono);color:var(--text3);margin-left:8px;">🔀 ${dt} doble turno</span>`:''}
         </div>
         <div class="conc-group-items">${itemsDirecta}</div>
       </div>

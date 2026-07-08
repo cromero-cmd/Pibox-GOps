@@ -48,6 +48,8 @@ export function runDistribucion(){
             ajustes:        first?row.ajustes:0,
             garantizado_tada: first?row.garantizado_tada:(row.garantizado_tada===null?null:0),
             nivel_confianza:row.nivel_confianza, n_bookings:n,
+            _doble_turno:      row._doble_turno||false,
+            _seller_combinado: row._seller_combinado||'',
           });
         });
       });
@@ -101,6 +103,8 @@ export function runDistribucionSilent(){
         garantizado_tada: first?row.garantizado_tada:(row.garantizado_tada===null?null:0),
         nivel_confianza:row.nivel_confianza, n_bookings:n,
         _manual:row._resolucion_manual||false,
+        _doble_turno:      row._doble_turno||false,
+        _seller_combinado: row._seller_combinado||'',
       });
     });
   });
