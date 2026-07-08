@@ -92,7 +92,10 @@
       "Bash(echo \"EXIT: $?\")",
       "Bash(node test/bono_historial_test.mjs)",
       "Bash(node test/cero_actividad_test.mjs)",
-      "Bash(node test/doble_turno_test.mjs)"
+      "Bash(node test/doble_turno_test.mjs)",
+      "Bash(chmod +x /Users/pibox/Documents/Pibox-GOps/liquidaciones/bump_version.sh)",
+      "Bash(./bump_version.sh)",
+      "Bash(chmod +x bump_version.sh)"
     ]
   }
 }
