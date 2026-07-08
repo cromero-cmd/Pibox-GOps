@@ -1239,7 +1239,7 @@ body.agent-preview-mode header{margin-top:34px;}
  </div>
 </div>
 <script>
-const APP_VERSION='15.39';
+const APP_VERSION='15.40';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -3530,8 +3530,10 @@ function renderPanel2Extras(allTurnos,fromDate,toDate,mallaData){
  const el=document.getElementById('panel2-extras');
  if(!el)return;
  // Incluir todos los turnos con cualquier estado de overtime (incluyendo pending_review)
+ // Los pendientes (pending_review/pending_super_admin) siempre se muestran, sin importar el período
  const extTurnos=allTurnos.filter(t=>{
  if(!t.overtimeStatus)return false;
+ if(t.overtimeStatus==='pending_review'||t.overtimeStatus==='pending_super_admin')return true;
  const d=t.startTime?.toDate?.();
  return d&&(!fromDate||d>=fromDate)&&(!toDate||d<=toDate);
  });
