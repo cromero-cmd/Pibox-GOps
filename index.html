@@ -1239,7 +1239,7 @@ body.agent-preview-mode header{margin-top:34px;}
  </div>
 </div>
 <script>
-const APP_VERSION='15.42';
+const APP_VERSION='15.43';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -2746,7 +2746,7 @@ async function loadTurnoHistory(){
  function secsToHm(s){const h=Math.floor(s/3600),m=Math.floor((s%3600)/60);if(h&&m)return`${h}h ${m}m`;if(h)return`${h}h`;return`${m}m`;}
  function calcReal(from,to){return myTurnos.filter(t=>{const d=t.startTime?.toDate?.();return d&&(!from||d>=from)&&(!to||d<=to);}).reduce((s,t)=>s+(t.accumulatedSeconds||0),0);}
  function calcProg(from,to){return myMalla.filter(r=>{const d=parseDate(r.fecha);return d&&(!from||d>=from)&&(!to||d<=to);}).reduce((s,r)=>s+(r.scheduledStart&&r.scheduledEnd?Math.max(0,(r.scheduledEnd-r.scheduledStart)/1000):0),0);}
- function calcExtras(from,to){return myTurnos.filter(t=>{const d=t.startTime?.toDate?.();return d&&(!from||d>=from)&&(!to||d<=to)&&t.overtimeStatus==='approved'&&t.overtimeMinutes;}).reduce((s,t)=>s+t.overtimeMinutes*60,0);}
+ function calcExtras(from,to){return myTurnos.filter(t=>{const d=t.startTime?.toDate?.();return d&&(!from||d>=from)&&(!to||d<=to)&&t.overtimeStatus==='approved'&&(t.overtimeMinutes||t.overtimeExtraMins);}).reduce((s,t)=>s+(t.overtimeMinutes||t.overtimeExtraMins)*60,0);}
  function card(label,realSecs,progSecs,extrasSecs,highlight){
  const hasData=progSecs>0||realSecs>0;
  const workColor=!hasData?'var(--text-dim)':realSecs>=progSecs&&progSecs>0?'#4ade80':'#fbbf24';
@@ -3592,7 +3592,7 @@ async function renderPanel2Extras(allTurnos,fromDate,toDate,mallaData){
  return`<div style="display:grid;grid-template-columns:120px 70px 80px 120px;gap:0;border-bottom:1px solid var(--border);font-size:11px;align-items:center;">
  <div style="padding:7px 10px;border-right:1px solid var(--border);font-weight:600;color:var(--text);">${name}</div>
  <div style="padding:7px 10px;border-right:1px solid var(--border);font-family:var(--mono);color:var(--text-muted);">${ds}</div>
- <div style="padding:7px 10px;border-right:1px solid var(--border);font-family:var(--mono);color:var(--p2);font-weight:700;">${t.overtimeMinutes||0}m</div>
+ <div style="padding:7px 10px;border-right:1px solid var(--border);font-family:var(--mono);color:var(--p2);font-weight:700;">${t.overtimeMinutes||t.overtimeExtraMins||0}m</div>
  <div style="padding:7px 10px;display:flex;flex-direction:column;gap:2px;"><span style="font-size:10px;color:${statusColor};">${statusLabel}</span><span style="font-size:9px;color:var(--text-dim);font-family:var(--mono);">por ${approvedBy}</span></div>
  </div>`;
  }).join('');
@@ -4205,7 +4205,7 @@ async function confirmAndSendPayroll(){
  const lastMonday=new Date(now);lastMonday.setDate(now.getDate()-now.getDay()-6);lastMonday.setHours(0,0,0,0);
  const lastSunday=new Date(lastMonday);lastSunday.setDate(lastMonday.getDate()+6);lastSunday.setHours(23,59,59);
  allTurnos.filter(t=>t.overtimeStatus==='approved'&&t.startTime?.toDate?.()>=lastMonday&&t.startTime?.toDate?.()<=lastSunday).forEach(t=>{
- const u=t.userEmail||'';extrasByAgent[u]=(extrasByAgent[u]||0)+(t.overtimeMinutes||0);
+ const u=t.userEmail||'';extrasByAgent[u]=(extrasByAgent[u]||0)+(t.overtimeMinutes||t.overtimeExtraMins||0);
  });
  const payload=JSON.stringify({weekStart,weekEnd,records,recipients,extrasByAgent});
  await fetch(NOTIF_SCRIPT+'?type=payroll_report',{method:'POST',mode:'no-cors',signal:AbortSignal.timeout(30000),headers:{'Content-Type':'text/plain'},body:payload});
@@ -4299,7 +4299,7 @@ async function sendPayrollReport(){
  const extrasByAgent={};
  allTurnos.filter(t=>t.overtimeStatus==='approved'&&t.startTime?.toDate?.()>=lastMonday&&t.startTime?.toDate?.()<=lastSunday).forEach(t=>{
  const u=t.userEmail||'';
- extrasByAgent[u]=(extrasByAgent[u]||0)+(t.overtimeMinutes||0);
+ extrasByAgent[u]=(extrasByAgent[u]||0)+(t.overtimeMinutes||t.overtimeExtraMins||0);
  });
  if(!records.length){toast('Sin registros para la semana anterior');return;}
  try{

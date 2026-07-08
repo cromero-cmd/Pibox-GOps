@@ -32,7 +32,12 @@
       "Read(//tmp/esmtest/**)",
       "Bash(mkdir -p /tmp/esmtest/test)",
       "Bash(cp \"/c/Users/ADMIN/Desktop/pipeline-tada/test/novedades_resolution_test.mjs\" /tmp/esmtest/test/)",
-      "mcp__Claude_in_Chrome__tabs_context_mcp"
+      "mcp__Claude_in_Chrome__tabs_context_mcp",
+      "mcp__Claude_in_Chrome__navigate",
+      "mcp__Claude_in_Chrome__get_page_text",
+      "mcp__Claude_in_Chrome__find",
+      "mcp__Claude_in_Chrome__read_console_messages",
+      "mcp__Claude_in_Chrome__javascript_tool"
     ]
   }
 }
