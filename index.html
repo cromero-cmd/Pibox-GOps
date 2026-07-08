@@ -1239,7 +1239,7 @@ body.agent-preview-mode header{margin-top:34px;}
  </div>
 </div>
 <script>
-const APP_VERSION='15.43';
+const APP_VERSION='15.44';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -3778,7 +3778,7 @@ async function loadOvertimeList(el){
  }
 }
 function renderOvertimeList(el,events){
- const pending=events.filter(e=>e.type==='overtime'&&e.status==='pending_review');
+ const pending=events.filter(e=>e.type==='overtime'&&(e.status==='pending_review'||e.status==='pending_super_admin'));
  if(!pending.length){el.innerHTML='<div style="font-size:12px;color:var(--text-dim);text-align:center;padding:20px;font-family:var(--mono);">Sin solicitudes pendientes ✓</div>';return;}
  el.innerHTML=pending.map(e=>`
  <div class="overtime-row" style="background:var(--surface2);border:1px solid rgba(251,146,60,0.2);border-radius:12px;padding:14px 16px;margin-bottom:10px;">
