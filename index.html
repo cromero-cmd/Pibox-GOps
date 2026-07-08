@@ -1239,7 +1239,7 @@ body.agent-preview-mode header{margin-top:34px;}
  </div>
 </div>
 <script>
-const APP_VERSION='15.45';
+const APP_VERSION='15.46';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -2949,7 +2949,9 @@ function clearMallaFilters(){mallaFilter='today';document.querySelectorAll('#sub
 async function loadMallaPersonal(){
  document.getElementById('malla-table-body').innerHTML='<div style="padding:30px;text-align:center;color:var(--text-dim);font-size:12px;">Cargando malla...</div>';
  try{
- const resp=await fetch(MALLA_SCRIPT+'?sheet=Malla',{signal:AbortSignal.timeout(10000)});
+ // Timeout ampliado a 20s — el Apps Script puede tardar más en "cold start" con el CSV actual (~300KB+)
+ const resp=await fetch(MALLA_SCRIPT+'?sheet=Malla',{signal:AbortSignal.timeout(20000)});
+ if(!resp.ok)throw new Error(`MALLA_SCRIPT respondió ${resp.status}`);
  const csv=await resp.text();
  const lines=csv.trim().split('\n').slice(1);
  const userEmail=document.getElementById('user-email').textContent;
@@ -3025,7 +3027,7 @@ async function loadMallaPersonal(){
  });
  window.mallaAllRows=mallaAllRows;
  renderMallaPersonal();
- }catch(e){document.getElementById('malla-table-body').innerHTML='<div style="padding:30px;text-align:center;color:var(--text-dim);font-size:12px;">Error al cargar la malla.</div>';}
+ }catch(e){console.error('[loadMallaPersonal]',e);document.getElementById('malla-table-body').innerHTML='<div style="padding:30px;text-align:center;color:var(--text-dim);font-size:12px;">Error al cargar la malla.</div>';}
 }
 function renderMallaPersonal(){
  const body=document.getElementById('malla-table-body');
