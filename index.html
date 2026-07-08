@@ -1239,7 +1239,7 @@ body.agent-preview-mode header{margin-top:34px;}
  </div>
 </div>
 <script>
-const APP_VERSION='15.44';
+const APP_VERSION='15.45';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -3250,7 +3250,8 @@ async function loadPanel2(){
  const som=new Date(now.getFullYear(),now.getMonth(),1);
  const eom=new Date(now.getFullYear(),now.getMonth()+1,0,23,59,59);
  // Active now — deduplicar por userEmail, quedarse con el más reciente
- const activeRaw=allTurnos.filter(t=>t.status==='active');
+ // Excluir huérfanos: turnos "active" cuyo startTime es de un día anterior a hoy
+ const activeRaw=allTurnos.filter(t=>t.status==='active'&&t.startTime?.toDate?.()>=sod);
  const activeMap={};
  activeRaw.forEach(t=>{
  const u=t.userEmail||'';
