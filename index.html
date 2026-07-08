@@ -1239,7 +1239,7 @@ body.agent-preview-mode header{margin-top:34px;}
  </div>
 </div>
 <script>
-const APP_VERSION='15.48';
+const APP_VERSION='15.49';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -1423,8 +1423,16 @@ async function requestNotifPermission(){
  if(perm==='granted'){
  toast('🔔 Notificaciones activadas');
  document.getElementById('notif-banner').style.display='none';
- // Si hay turno activo con hora programada, programar notificación
- if(window._scheduledTurnoSecs&&turnoStartTime){
+ // Notificación de prueba inmediata para confirmar que el permiso realmente funciona
+ try{
+ const testN=new Notification('🔔 Notificaciones activadas — Pi GOps',{
+ body:'Así se verá tu recordatorio de fin de turno. Todo listo.',
+ icon:'https://cromero-cmd.github.io/Pibox-GOps/favicon.ico'
+ });
+ setTimeout(()=>testN.close(),6000);
+ }catch(e){console.error('[Pi GOps] No se pudo mostrar la notificación de prueba:',e);}
+ // Si hay turno activo, programar notificación (scheduleEndNotification maneja el caso de scheduledTurnoSecs en 0)
+ if(turnoStartTime){
  scheduleEndNotification();
  }
  } else {
@@ -1433,14 +1441,20 @@ async function requestNotifPermission(){
 }
 function scheduleEndNotification(){
  if(window._notifTimeout)clearTimeout(window._notifTimeout);
- if(Notification.permission!=='granted')return;
- if(!turnoStartTime)return;
+ if(Notification.permission!=='granted'){console.log('[Pi GOps] scheduleEndNotification: permiso no concedido, no se programa nada.');return;}
+ if(!turnoStartTime){console.log('[Pi GOps] scheduleEndNotification: no hay turnoStartTime, no se programa nada.');return;}
+ console.log('[Pi GOps] scheduleEndNotification → _scheduledTurnoSecs:',window._scheduledTurnoSecs,'turnoStartTime:',turnoStartTime);
  // Si no tenemos horas programadas, intentar cargarlas de la malla
  if(!window._scheduledTurnoSecs||window._scheduledTurnoSecs===0){
  const userEmail=document.getElementById('user-email')?.textContent;
+ console.log('[Pi GOps] _scheduledTurnoSecs es 0/null — cargando malla como fallback para',userEmail);
  if(userEmail&&MALLA_SCRIPT){
- fetch(MALLA_SCRIPT+'?sheet=Malla',{signal:AbortSignal.timeout(8000)})
- .then(r=>r.text()).then(csv=>{
+ fetch(MALLA_SCRIPT+'?sheet=Malla',{signal:AbortSignal.timeout(20000)})
+ .then(r=>{
+ console.log('[Pi GOps] fallback malla — MALLA_SCRIPT status:',r.status,r.ok);
+ if(!r.ok)throw new Error(`MALLA_SCRIPT respondió ${r.status}`);
+ return r.text();
+ }).then(csv=>{
  const today=new Date();
  const lines=csv.trim().split('\n').slice(1);
  const entry=lines.map(l=>{const c=parseCSVLine(l);return{fecha:c[1]?.trim(),usuario:c[2]?.trim(),inicio:c[5]?.trim(),fin:c[6]?.trim()};})
@@ -1449,34 +1463,42 @@ function scheduleEndNotification(){
  const ss=parseTime(entry.fecha,entry.inicio);
  const se=parseTime(entry.fecha,entry.fin);
  if(ss&&se)window._scheduledTurnoSecs=Math.max(0,Math.round((se-ss)/1000));
+ console.log('[Pi GOps] fallback malla — entry encontrado, _scheduledTurnoSecs:',window._scheduledTurnoSecs);
+ } else {
+ console.warn('[Pi GOps] fallback malla — no se encontró fila de malla para hoy, no se podrá programar el recordatorio.');
  }
  _doScheduleNotification();
- }).catch(()=>{});
+ }).catch(e=>{console.error('[Pi GOps] fallback malla falló, no se pudo programar el recordatorio:',e);});
+ } else {
+ console.warn('[Pi GOps] scheduleEndNotification: falta userEmail o MALLA_SCRIPT, no se puede hacer fallback.');
  }
  return;
  }
  _doScheduleNotification();
 }
 function _doScheduleNotification(){
- if(!window._scheduledTurnoSecs||!turnoStartTime)return;
+ if(!window._scheduledTurnoSecs||!turnoStartTime){console.warn('[Pi GOps] _doScheduleNotification: sin _scheduledTurnoSecs o turnoStartTime, no se programa el recordatorio.',{scheduledTurnoSecs:window._scheduledTurnoSecs,turnoStartTime});return;}
  if(Notification.permission!=='granted')return;
  const now=new Date();
  const endTime=new Date(turnoStartTime.getTime()+(window._scheduledTurnoSecs*1000));
  const warningTime=new Date(endTime.getTime()-5*60*1000);
  const msUntilWarning=warningTime.getTime()-now.getTime();
+ console.log('[Pi GOps] _doScheduleNotification → endTime:',endTime,'warningTime:',warningTime,'msUntilWarning:',msUntilWarning);
  if(msUntilWarning<=0){
  // Ya pasó la hora de aviso — notificar de inmediato si el turno aún no terminó
  const msUntilEnd=endTime.getTime()-now.getTime();
  if(msUntilEnd>0){
  if(window._notifTimeout)clearTimeout(window._notifTimeout);
  window._notifTimeout=setTimeout(()=>_sendEndNotification(endTime),msUntilEnd);
- Logger.log&&Logger.log('[Pi GOps] Notificación en '+Math.round(msUntilEnd/60000)+' min (fin de turno)');
+ console.log('[Pi GOps] Notificación en '+Math.round(msUntilEnd/60000)+' min (fin de turno)');
+ } else {
+ console.log('[Pi GOps] _doScheduleNotification: el turno ya debería haber terminado, no se programa nada.');
  }
  return;
  }
  if(window._notifTimeout)clearTimeout(window._notifTimeout);
  window._notifTimeout=setTimeout(()=>_sendEndNotification(endTime),msUntilWarning);
- console.log('[Pi GOps] Notificación programada para '+warningTime.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}));
+ console.log('[Pi GOps] Notificación programada para '+warningTime.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'})+' (en '+Math.round(msUntilWarning/60000)+' min)');
 }
 function _sendEndNotification(endTime){
  if(Notification.permission!=='granted')return;
@@ -2211,6 +2233,11 @@ async function initTurnoView(){
  }catch(e){window._scheduledTurnoSecs=0;}
  }
  setTurnoActive(existing);startTimer();
+ // Re-programar el recordatorio de fin de turno al restaurar un turno ya activo (recarga de página,
+ // pestaña reabierta, etc.) — antes solo se programaba al iniciar/reanudar el turno, así que si la
+ // pestaña se cerraba o el setTimeout se perdía, el recordatorio nunca volvía a armarse.
+ console.log('[Pi GOps] initTurnoView: turno activo restaurado, _scheduledTurnoSecs:',window._scheduledTurnoSecs,'turnoStartTime:',turnoStartTime);
+ scheduleEndNotification();
  }else if(existing&&existing.status==='interrupted'){
  // Turno interrumpido — detener todo y mostrar solo banner
  if(turnoInterval){clearInterval(turnoInterval);turnoInterval=null;}
