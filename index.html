@@ -1239,7 +1239,7 @@ body.agent-preview-mode header{margin-top:34px;}
  </div>
 </div>
 <script>
-const APP_VERSION='15.41';
+const APP_VERSION='15.42';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -3549,8 +3549,12 @@ async function renderPanel2Extras(allTurnos,fromDate,toDate,mallaData){
  catch(e){ console.error('[renderPanel2Extras] loadOvertimeEvents error:',e); }
  }
  const knownTurnoIds=new Set(extTurnosBase.map(t=>t.id));
- const extraPending=pendingEvents.filter(e=>e.turnoId&&!knownTurnoIds.has(e.turnoId)).map(e=>({
- id:e.turnoId,
+ // Un evento pendiente se agrega si no tiene turnoId (no se puede enlazar a un turno) o si su
+ // turnoId no está ya representado en extTurnosBase — antes se exigía turnoId truthy, lo que
+ // descartaba silenciosamente los eventos sin turnoId aunque loadOvertimeEvents() ya garantiza
+ // que son pendientes (badge=5 vs tabla vacía)
+ const extraPending=pendingEvents.filter(e=>!e.turnoId||!knownTurnoIds.has(e.turnoId)).map(e=>({
+ id:e.turnoId||e.id,
  overtimeStatus:e.status,
  overtimeMinutes:e.extraMins||0,
  userName:e.agentName,
