@@ -1275,7 +1275,7 @@ body.agent-preview-mode header{margin-top:34px;}
  </div>
 </div>
 <script>
-const APP_VERSION='15.55';
+const APP_VERSION='15.56';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -3476,12 +3476,17 @@ async function loadPanel2(){
  const cumplStatus=getStatus(ss,rs,m.novedad,now,absenceStatus,absenceMotivo,hasEnded);
  return{...m,scheduledStart:ss,scheduledEnd:se,realStart:rs,realEnd:re,turnoId:mt?.id||null,turno:mt||null,cumplStatus,absenceStatus,absenceMotivo};
  });
- // Tarjeta de balance hoy
+ // Tarjeta de balance hoy — debe reflejar solo los agentes del filtro activo (agente/línea/líder)
  const balanceEl=document.getElementById('panel2-balance-card');
  if(balanceEl){
- const todayMalla=mallaData.filter(m=>{const d=parseDate(m.fecha);return d&&d>=sod&&d<=eod&&!m.novedad?.trim();});
+ const panel2LineaBalance=document.getElementById('panel2-linea-filter')?.value||'';
+ let balanceUsers=new Set(mallaData.map(m=>m.usuario).filter(Boolean));
+ if(panel2SelectedUsers.size>0)balanceUsers=new Set([...balanceUsers].filter(u=>panel2SelectedUsers.has(u)));
+ if(panel2LineaBalance){const lineaUsers=new Set(mallaData.filter(m=>m.linea===panel2LineaBalance).map(m=>m.usuario));balanceUsers=new Set([...balanceUsers].filter(u=>lineaUsers.has(u)));}
+ if(window._panel2LiderFilter){const liderUsers=new Set(mallaData.filter(m=>m.lider===window._panel2LiderFilter).map(m=>m.usuario));balanceUsers=new Set([...balanceUsers].filter(u=>liderUsers.has(u)));}
+ const todayMalla=mallaData.filter(m=>{const d=parseDate(m.fecha);return d&&d>=sod&&d<=eod&&!m.novedad?.trim()&&balanceUsers.has(m.usuario);});
  const prog=todayMalla.length;
- const registraron=allTurnos.filter(t=>{const d=t.startTime?.toDate?.();return d&&d>=sod&&d<=eod&&(t.status==='active'||t.status==='ended');}).length;
+ const registraron=allTurnos.filter(t=>{const d=t.startTime?.toDate?.();return d&&d>=sod&&d<=eod&&(t.status==='active'||t.status==='ended')&&balanceUsers.has(t.userEmail);}).length;
  const pendientes=Math.max(0,prog-registraron);
  balanceEl.innerHTML=`<div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;font-family:var(--mono);margin-bottom:10px;font-weight:700;">📅 Balance hoy</div>
  <div style="display:flex;flex-direction:column;gap:8px;">
@@ -3523,18 +3528,22 @@ async function loadPanel2(){
  }
  // Apply filters
  const panel2Linea=document.getElementById('panel2-linea-filter')?.value||'';
- let filtered=[...panel2AllRows];
- if(panel2SelectedUsers.size>0)filtered=filtered.filter(r=>panel2SelectedUsers.has(r.usuario));
+ // Base para las tarjetas de estado: aplica agente/línea/líder (los filtros activos), pero NO
+ // panel2StatusFilter — si lo incluyera, al activar una tarjeta (p.ej. "Tardanza") las demás
+ // tarjetas perderían su propio conteo real (todas quedarían filtradas por "Tardanza" también).
+ let cardBase=[...panel2AllRows];
+ if(panel2SelectedUsers.size>0)cardBase=cardBase.filter(r=>panel2SelectedUsers.has(r.usuario));
+ if(panel2Linea)cardBase=cardBase.filter(r=>r.linea===panel2Linea);
+ if(window._panel2LiderFilter)cardBase=cardBase.filter(r=>r.lider===window._panel2LiderFilter);
+ let filtered=[...cardBase];
  if(panel2StatusFilter)filtered=filtered.filter(r=>r.cumplStatus.cls===panel2StatusFilter);
- if(panel2Linea)filtered=filtered.filter(r=>r.linea===panel2Linea);
- if(window._panel2LiderFilter)filtered=filtered.filter(r=>r.lider===window._panel2LiderFilter);
- // Conteos
- const cumplió=panel2AllRows.filter(r=>r.cumplStatus.cls==='cumplió').length;
- const enCurso=panel2AllRows.filter(r=>r.cumplStatus.cls==='en_curso').length;
- const tardanza=panel2AllRows.filter(r=>r.cumplStatus.cls==='tardanza').length;
- const ausente=panel2AllRows.filter(r=>r.cumplStatus.cls==='ausente').length;
- const pendiente=panel2AllRows.filter(r=>r.cumplStatus.cls==='pendiente').length;
- const novedad=panel2AllRows.filter(r=>r.cumplStatus.cls==='novedad').length;
+ // Conteos — a partir de cardBase (agente/línea/líder ya filtrados), no de panel2AllRows completo
+ const cumplió=cardBase.filter(r=>r.cumplStatus.cls==='cumplió').length;
+ const enCurso=cardBase.filter(r=>r.cumplStatus.cls==='en_curso').length;
+ const tardanza=cardBase.filter(r=>r.cumplStatus.cls==='tardanza').length;
+ const ausente=cardBase.filter(r=>r.cumplStatus.cls==='ausente').length;
+ const pendiente=cardBase.filter(r=>r.cumplStatus.cls==='pendiente').length;
+ const novedad=cardBase.filter(r=>r.cumplStatus.cls==='novedad').length;
  function secsToHm(s){const h=Math.floor(s/3600),m=Math.floor((s%3600)/60);if(h&&m)return`${h}h ${m}m`;if(h)return`${h}h`;return`${m}m`;}
  const totalSecs=panel2AllRows.filter(r=>r.realStart&&r.realEnd).reduce((s,r)=>s+Math.max(0,(r.realEnd-r.realStart)/1000),0);
  const uniqueUsers=[...new Set(panel2AllRows.map(r=>r.usuario).filter(Boolean))];
@@ -3542,7 +3551,7 @@ async function loadPanel2(){
  // panel2-summary eliminado — resumen ahora en tarjeta de balance
  // Status cards con toggle
  const statusCards=document.getElementById('panel2-status-cards');
- if(statusCards){const cards=[{cls:'cumplió',icon:'🟢',label:'Cumplió',count:cumplió,color:'#4ade80'},{cls:'en_curso',icon:'🔵',label:'En curso',count:enCurso,color:'#60a5fa'},{cls:'tardanza',icon:'🟡',label:'Tardanza',count:tardanza,color:'#fbbf24'},{cls:'ausente',icon:'🔴',label:'Ausente',count:ausente,color:'#f87171'},{cls:'pendiente',icon:'⏳',label:'Pendiente',count:pendiente,color:'#9ca3af'},{cls:'novedad',icon:'📋',label:'Novedad',count:novedad,color:'#a78bfa'},{cls:null,icon:'📋',label:'Todos',count:panel2AllRows.length,color:'var(--text-muted)'}];statusCards.innerHTML=cards.map(c=>{const isActive=panel2StatusFilter===c.cls;const opacity=panel2StatusFilter&&!isActive?'opacity:0.45;':'';return`<div onclick="setPanel2StatusFilter('${c.cls}')" style="background:var(--surface2);border:1px solid ${isActive?c.color:'var(--border)'};border-radius:10px;padding:8px 10px;cursor:pointer;text-align:center;transition:all 0.2s;${opacity}"><div style="font-size:16px;font-weight:800;color:${c.color};${c.color.startsWith('var')?'':'-webkit-text-fill-color:'+c.color+';'}">${c.count}</div><div style="font-size:9px;color:${c.color};font-family:var(--mono);margin-top:2px;">${c.icon} ${c.label}</div></div>`;}).join('');}
+ if(statusCards){const cards=[{cls:'cumplió',icon:'🟢',label:'Cumplió',count:cumplió,color:'#4ade80'},{cls:'en_curso',icon:'🔵',label:'En curso',count:enCurso,color:'#60a5fa'},{cls:'tardanza',icon:'🟡',label:'Tardanza',count:tardanza,color:'#fbbf24'},{cls:'ausente',icon:'🔴',label:'Ausente',count:ausente,color:'#f87171'},{cls:'pendiente',icon:'⏳',label:'Pendiente',count:pendiente,color:'#9ca3af'},{cls:'novedad',icon:'📋',label:'Novedad',count:novedad,color:'#a78bfa'},{cls:null,icon:'📋',label:'Todos',count:cardBase.length,color:'var(--text-muted)'}];statusCards.innerHTML=cards.map(c=>{const isActive=panel2StatusFilter===c.cls;const opacity=panel2StatusFilter&&!isActive?'opacity:0.45;':'';return`<div onclick="setPanel2StatusFilter('${c.cls}')" style="background:var(--surface2);border:1px solid ${isActive?c.color:'var(--border)'};border-radius:10px;padding:8px 10px;cursor:pointer;text-align:center;transition:all 0.2s;${opacity}"><div style="font-size:16px;font-weight:800;color:${c.color};${c.color.startsWith('var')?'':'-webkit-text-fill-color:'+c.color+';'}">${c.count}</div><div style="font-size:9px;color:${c.color};font-family:var(--mono);margin-top:2px;">${c.icon} ${c.label}</div></div>`;}).join('');}
  // Filtros por columna — leer desde selectores inline del HTML
  if(!window._panel2ColFilters)window._panel2ColFilters={estado:'',novedad:''};
  window._panel2ColFilters.novedad=document.getElementById('panel2-novedad-filter')?.value||'';
