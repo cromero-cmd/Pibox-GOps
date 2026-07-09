@@ -1063,7 +1063,7 @@ body.agent-preview-mode header{margin-top:34px;}
  </div>
  </div>
  <div id="panel2-status-cards" style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px;padding:10px 14px;border-bottom:1px solid var(--border);"></div>
- <div style="display:grid;grid-template-columns:36px 160px 65px 85px 85px 70px 70px 180px 110px;gap:0;background:var(--surface2);border-bottom:1px solid var(--border);font-size:10px;font-weight:700;color:var(--text-dim);text-transform:uppercase;font-family:var(--mono);">
+ <div style="display:grid;grid-template-columns:36px 160px 65px 85px 85px 70px 70px 180px 100px 110px;gap:0;background:var(--surface2);border-bottom:1px solid var(--border);font-size:10px;font-weight:700;color:var(--text-dim);text-transform:uppercase;font-family:var(--mono);">
  <div style="padding:8px 6px;border-right:1px solid var(--border);text-align:center;">Día</div>
  <div style="padding:8px 8px;border-right:1px solid var(--border);">Agente</div>
  <div style="padding:8px 8px;border-right:1px solid var(--border);">Fecha</div>
@@ -1072,6 +1072,12 @@ body.agent-preview-mode header{margin-top:34px;}
  <div style="padding:8px 8px;border-right:1px solid var(--border);">Dur. real</div>
  <div style="padding:8px 8px;border-right:1px solid var(--border);">Dur. prog.</div>
  <div style="padding:8px 8px;border-right:1px solid var(--border);">Acciones</div>
+ <div style="padding:8px 8px;border-right:1px solid var(--border);">
+ <div style="margin-bottom:3px;">Novedad</div>
+ <select id="panel2-novedad-filter" onchange="window._panel2ColFilters.novedad=this.value;loadPanel2()" style="background:var(--surface);border:1px solid var(--border);border-radius:4px;color:var(--text-muted);font-size:9px;padding:1px 3px;font-family:var(--mono);cursor:pointer;width:100%;">
+ <option value="">Todas</option>
+ </select>
+ </div>
  <div style="padding:8px 8px;">
  <div style="margin-bottom:3px;">Cumplimiento</div>
  <select id="panel2-estado-filter" onchange="window._panel2ColFilters.estado=this.value;panel2StatusFilter=this.value||null;loadPanel2()" style="background:var(--surface);border:1px solid var(--border);border-radius:4px;color:var(--text-muted);font-size:9px;padding:1px 3px;font-family:var(--mono);cursor:pointer;width:100%;">
@@ -1239,7 +1245,7 @@ body.agent-preview-mode header{margin-top:34px;}
  </div>
 </div>
 <script>
-const APP_VERSION='15.50';
+const APP_VERSION='15.51';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -3511,7 +3517,7 @@ async function loadPanel2(){
  const re=r.realEnd?r.realEnd.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
  const dur=r.realStart&&r.realEnd?secsToHm(Math.max(0,(r.realEnd-r.realStart)/1000)):'—';
  const t=r.turno;
- const gridCols='36px 160px 65px 85px 85px 70px 70px 180px 110px';
+ const gridCols='36px 160px 65px 85px 85px 70px 70px 180px 100px 110px';
  const durProg=r.scheduledStart&&r.scheduledEnd?secsToHm(Math.max(0,Math.round((r.scheduledEnd-r.scheduledStart)/1000))):'—';
  return`<div style="display:grid;grid-template-columns:${gridCols};gap:0;border-bottom:1px solid var(--border);font-size:11px;align-items:stretch;">
  <div style="padding:8px 6px;border-right:1px solid var(--border);font-weight:700;color:var(--p2);font-family:var(--mono);display:flex;align-items:center;justify-content:center;">${dia}</div>
@@ -3534,6 +3540,7 @@ async function loadPanel2(){
  ${r.turnoId&&!t?.earlyLeave&&!t?.resumeAuthorized&&t?.status==='ended'&&userEmailPanel!==SUPER_ADMIN?'<span style="font-size:9px;color:var(--text-dim);">—</span>':''}
  ${!r.turnoId&&r.cumplStatus.cls!=='ausente'&&r.cumplStatus.cls!=='ausente_justificada'&&r.cumplStatus.cls!=='ausente_injustificada'?'<span style="font-size:9px;color:var(--text-dim);">—</span>':''}
  </div>
+ <div style="padding:8px 10px;border-right:1px solid var(--border);font-size:10px;display:flex;align-items:center;" title="${esc(r.novedad||'')}">${r.novedad?`<span class="cumpl-novedad-tag">${esc(r.novedad)}</span>`:'<span style="color:var(--text-dim)">—</span>'}</div>
  <div style="padding:8px 10px;display:flex;align-items:center;"><span class="cumpl-status ${r.cumplStatus.cls}">${r.cumplStatus.icon} ${r.cumplStatus.label}</span></div>
  </div>`;
  }).join('');
