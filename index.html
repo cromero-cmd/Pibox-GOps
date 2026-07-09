@@ -1074,7 +1074,7 @@ body.agent-preview-mode header{margin-top:34px;}
  <div style="padding:8px 8px;border-right:1px solid var(--border);">Acciones</div>
  <div style="padding:8px 8px;">
  <div style="margin-bottom:3px;">Cumplimiento</div>
- <select id="panel2-estado-filter" onchange="window._panel2ColFilters.estado=this.value;loadPanel2()" style="background:var(--surface);border:1px solid var(--border);border-radius:4px;color:var(--text-muted);font-size:9px;padding:1px 3px;font-family:var(--mono);cursor:pointer;width:100%;">
+ <select id="panel2-estado-filter" onchange="window._panel2ColFilters.estado=this.value;panel2StatusFilter=this.value||null;loadPanel2()" style="background:var(--surface);border:1px solid var(--border);border-radius:4px;color:var(--text-muted);font-size:9px;padding:1px 3px;font-family:var(--mono);cursor:pointer;width:100%;">
  <option value="">Todos</option>
  <option value="cumplió">Cumplió</option>
  <option value="en_curso">En curso</option>
@@ -2944,7 +2944,10 @@ document.addEventListener('click',function(e){
 function clearMallaUserFilter(){
  if(window._mallaSelectedUsers)window._mallaSelectedUsers.clear();
  updateMallaUserDropdownLabel();
- renderMallaPersonal();
+ // El filtro de agentes se aplica al construir mallaAllRows en
+ // loadMallaPersonal() (no en renderMallaPersonal()) — con solo re-renderizar,
+ // "✕ Limpiar" no traía de vuelta los agentes ya excluidos hasta la próxima carga.
+ loadMallaPersonal();
 }
 function updateMallaUserDropdownLabel(){
  const label=document.getElementById('malla-user-dropdown-label');
@@ -2970,9 +2973,30 @@ function setMallaUsers(user){
 }
 function setMallaStatusFilter(cls){
  window._mallaStatusFilter=cls===window._mallaStatusFilter?null:cls;
+ // Sincronizar con el filtro de columna Estado (window._mallaColFilters.estado)
+ // — mismo bug que en Panel: dos variables filtrando r.status.cls sin
+ // sincronizar producían un AND imposible y la tabla quedaba vacía.
+ if(!window._mallaColFilters)window._mallaColFilters={estado:'',novedad:''};
+ window._mallaColFilters.estado=window._mallaStatusFilter||'';
  renderMallaPersonal();
 }
-function clearMallaFilters(){mallaFilter='today';document.querySelectorAll('#subview-mimalla .turno-filter-btn').forEach((b,i)=>b.classList.toggle('active',i===0));document.getElementById('malla-date-row').style.display='none';const ls=document.getElementById('malla-linea-filter');if(ls)ls.value='';renderMallaPersonal();}
+function clearMallaFilters(){
+ mallaFilter='today';
+ document.querySelectorAll('#subview-mimalla .turno-filter-btn').forEach((b,i)=>b.classList.toggle('active',i===0));
+ document.getElementById('malla-date-row').style.display='none';
+ const ls=document.getElementById('malla-linea-filter');if(ls)ls.value='';
+ // "Borrar filtros" debe limpiar TODOS los filtros, no solo período/línea —
+ // antes dejaba líder, agentes seleccionados, estado y novedad intactos.
+ window._mallaLiderFilter=null;
+ if(window._mallaSelectedUsers)window._mallaSelectedUsers.clear();
+ updateMallaUserDropdownLabel();
+ window._mallaStatusFilter=null;
+ window._mallaColFilters={estado:'',novedad:''};
+ const liderLabel=document.getElementById('malla-lider-dropdown-label');if(liderLabel)liderLabel.textContent='Todos los líderes';
+ // El líder y los agentes se aplican en loadMallaPersonal(), no en el render —
+ // hace falta recargar para que el reset realmente traiga esas filas de vuelta.
+ loadMallaPersonal();
+}
 async function loadMallaPersonal(){
  document.getElementById('malla-table-body').innerHTML='<div style="padding:30px;text-align:center;color:var(--text-dim);font-size:12px;">Cargando malla...</div>';
  try{
@@ -3108,7 +3132,7 @@ function renderMallaPersonal(){
  const estadoIdx=isAdminView?11:10;
  let cells=Array(numCols).fill('<div style="padding:4px 6px;border-right:1px solid var(--border);"></div>');
  cells[novedadIdx]=`<div style="padding:4px 6px;border-right:1px solid var(--border);"><select onchange="window._mallaColFilters.novedad=this.value;renderMallaPersonal()" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:5px;color:var(--text-muted);font-size:10px;padding:2px 4px;font-family:var(--mono);cursor:pointer;"><option value="">Todas</option>${novedadOpts}</select></div>`;
- cells[estadoIdx]=`<div style="padding:4px 6px;"><select onchange="window._mallaColFilters.estado=this.value;renderMallaPersonal()" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:5px;color:var(--text-muted);font-size:10px;padding:2px 4px;font-family:var(--mono);cursor:pointer;"><option value="">Todos</option>${estadoOpts}</select></div>`;
+ cells[estadoIdx]=`<div style="padding:4px 6px;"><select onchange="window._mallaColFilters.estado=this.value;window._mallaStatusFilter=this.value||null;renderMallaPersonal()" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:5px;color:var(--text-muted);font-size:10px;padding:2px 4px;font-family:var(--mono);cursor:pointer;"><option value="">Todos</option>${estadoOpts}</select></div>`;
  colFilterEl.innerHTML=cells.join('');
  }
  if(window._mallaColFilters.estado)rows=rows.filter(r=>r.status.cls===window._mallaColFilters.estado);
@@ -3268,6 +3292,17 @@ function clearPanel2(){
  const dr=document.getElementById('panel2-date-row');if(dr)dr.style.display='none';
  const sel=document.getElementById('panel2-user');if(sel)sel.value='all';
  const ls=document.getElementById('panel2-linea-filter');if(ls)ls.value='';
+ const lsTop=document.getElementById('panel2-linea-filter-top');if(lsTop)lsTop.value='';
+ // "Borrar" debe limpiar TODOS los filtros activos, no solo período/línea —
+ // antes dejaba la tarjeta de estado, el líder y los agentes seleccionados
+ // intactos, dando la falsa impresión de que el botón no funcionaba.
+ panel2StatusFilter=null;
+ panel2SelectedUsers.clear();
+ window._panel2LiderFilter=null;
+ window._panel2LiderFilterTop=null;
+ window._panel2ColFilters={estado:'',novedad:''};
+ const liderLabel=document.getElementById('panel2-lider-dropdown-label');if(liderLabel)liderLabel.textContent='Todos los líderes';
+ const liderTopLabel=document.getElementById('panel2-lider-top-label');if(liderTopLabel)liderTopLabel.textContent='Todos los líderes';
  loadPanel2();
 }
 async function loadPanel2(){
@@ -3458,6 +3493,9 @@ async function loadPanel2(){
  window._panel2ColFilters.estado=document.getElementById('panel2-estado-filter')?.value||'';
  if(window._panel2ColFilters.estado)filtered=filtered.filter(r=>r.cumplStatus.cls===window._panel2ColFilters.estado);
  if(window._panel2ColFilters.novedad)filtered=filtered.filter(r=>r.novedad===window._panel2ColFilters.novedad);
+ // Exponer las filas ya filtradas (período, línea, líder, agentes, tarjeta de
+ // estado y novedad) para exportPanel2XLSX() — igual que window.mallaFilteredRows.
+ window.panel2FilteredRows=filtered;
  // Tabla principal
  const tbody=document.getElementById('panel2-table');
  const userEmailPanel=document.getElementById('user-email').textContent;
@@ -3553,10 +3591,19 @@ function setPanel2Users(user){
 }
 function setPanel2StatusFilter(cls){
  panel2StatusFilter=cls==='null'||cls===panel2StatusFilter?null:cls;
+ // Sincronizar con el filtro de columna "Cumplimiento" (panel2-estado-filter) —
+ // ambos filtran r.cumplStatus.cls; si quedan desincronizados (uno con
+ // 'tardanza' y el otro con un valor viejo como 'cumplió'), el AND de los dos
+ // filtros nunca matchea y la tabla muestra "Sin registros" aunque la
+ // tarjeta cuente registros > 0.
+ if(!window._panel2ColFilters)window._panel2ColFilters={estado:'',novedad:''};
+ window._panel2ColFilters.estado=panel2StatusFilter||'';
  loadPanel2();
 }
 function setPanel2MobileFilter(){
- panel2StatusFilter=null;panel2SelectedUsers.clear();loadPanel2();
+ panel2StatusFilter=null;panel2SelectedUsers.clear();
+ if(window._panel2ColFilters)window._panel2ColFilters.estado='';
+ loadPanel2();
 }
 async function renderPanel2Extras(allTurnos,fromDate,toDate,mallaData){
  const el=document.getElementById('panel2-extras');
@@ -4594,10 +4641,23 @@ function exportMallaXLSX(){
  exportToXLSX(headers,rows,'malla_turnos_'+new Date().toISOString().split('T')[0]);
 }
 function exportPanel2XLSX(){
- if(!panel2AllRows||!panel2AllRows.length){toast('Sin datos para exportar');return;}
- const headers=['Usuario','Email','Fecha','Inicio','Fin','Duración','Dispositivo','Fichaje','Cumplimiento'];
+ // Usar las filas ya filtradas (período, línea, líder, agentes, tarjeta de
+ // estado y novedad) que se ven en pantalla — antes esta función referenciaba
+ // una variable "records" inexistente y nunca funcionó (lanzaba un error).
+ const filteredRows=window.panel2FilteredRows||panel2AllRows;
+ if(!filteredRows||!filteredRows.length){toast('Sin datos para exportar');return;}
+ const headers=['Día','Fecha','Usuario','Nombre','Línea','Prog. Inicio','Prog. Fin','Real Inicio','Real Fin','Dur. real','Dur. prog.','Novedad','Estado'];
+ const DIAS=['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
  const fmt=t=>t?t.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
- const rows=records.map(r=>[r.name,r.date,r.checkIn,r.checkOut,r.hours,r.novedad,r.extras]);
+ const fmtD=d=>parseDate(d)?.toLocaleDateString('es-CO',{day:'2-digit',month:'short',year:'numeric'})||d||'—';
+ const secsToHm=s=>{const h=Math.floor(s/3600),m=Math.floor((s%3600)/60);if(h&&m)return`${h}h ${m}m`;if(h)return`${h}h`;return`${m}m`;};
+ const rows=filteredRows.map(r=>{
+ const d=parseDate(r.fecha);
+ const dia=d?DIAS[d.getDay()]:'—';
+ const durReal=r.realStart&&r.realEnd?secsToHm(Math.max(0,(r.realEnd-r.realStart)/1000)):'—';
+ const durProg=r.scheduledStart&&r.scheduledEnd?secsToHm(Math.max(0,Math.round((r.scheduledEnd-r.scheduledStart)/1000))):'—';
+ return[dia,fmtD(r.fecha),r.usuario||'—',r.nombre||'—',r.linea||'—',fmt(r.scheduledStart),fmt(r.scheduledEnd),fmt(r.realStart),fmt(r.realEnd),durReal,durProg,r.novedad||'—',r.cumplStatus.label];
+ });
  exportToXLSX(headers,rows,'panel_control_'+new Date().toISOString().split('T')[0]);
 }
 // ── ADMIN MANAGEMENT ──
