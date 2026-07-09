@@ -1245,7 +1245,7 @@ body.agent-preview-mode header{margin-top:34px;}
  </div>
 </div>
 <script>
-const APP_VERSION='15.51';
+const APP_VERSION='15.52';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -1532,13 +1532,17 @@ async function loadStrikes(){
  const eom=new Date(now.getFullYear(),now.getMonth()+1,0,23,59,59);
  let mallaData=[];
  try{
- const resp=await fetch(MALLA_SCRIPT+'?sheet=Malla',{signal:AbortSignal.timeout(8000)});
+ const resp=await fetch(MALLA_SCRIPT+'?sheet=Malla',{signal:AbortSignal.timeout(20000)});
+ if(!resp.ok)throw new Error(`MALLA_SCRIPT respondió ${resp.status}`);
  const csv=await resp.text();
  mallaData=csv.trim().split('\n').slice(1).map(l=>{const c=parseCSVLine(l);return{fecha:c[1]?.trim(),usuario:c[2]?.trim(),inicio:c[5]?.trim(),fin:c[6]?.trim(),novedad:c[10]?.trim()};})
  .filter(m=>m.fecha&&m.usuario===userEmail&&!m.novedad);
- }catch(e){}
+ }catch(e){console.error('[loadStrikes] fetch MALLA_SCRIPT falló:',e);}
  const allTurnos=await window.getRecentTurnos();
  const myTurnos=allTurnos.filter(t=>t.userEmail===userEmail&&t.startTime?.toDate?.()>=som&&t.startTime?.toDate?.()<=eom);
+ // DEBUG temporal — diagnosticar por qué algunas tardanzas no generan strike
+ console.log('[loadStrikes] userEmail:',userEmail,'allTurnos.length:',allTurnos.length,'(límite de getRecentTurnos: 300, ordenado por startTime desc — si el turno de un día necesitado no está en estos 300, myTurnos.find no lo encontrará)');
+ console.log('[loadStrikes] mallaData filas (mes actual, sin novedad):',mallaData.length,'myTurnos del mes:',myTurnos.length);
  // Clasificar strikes por tipo
  const strikesLeve=[]; // tardanza 5-19 min
  const strikesModerade=[]; // tardanza 20-59 min
@@ -1549,11 +1553,17 @@ async function loadStrikes(){
  if(!d||d>now)return;
  const ss=parseTime(m.fecha,m.inicio);
  const se=parseTime(m.fecha,m.fin);
- const turno=myTurnos.find(t=>{const td=t.startTime?.toDate?.();return td&&td.toDateString()===d.toDateString();});
+ // Igual que loadMallaPersonal/panel: si hay varios turnos el mismo día (cierre forzado,
+ // reanudación, etc.) priorizar 'ended' > 'interrupted' > el primero — antes se tomaba
+ // el primer match sin prioridad, lo que podía cruzar con el turno equivocado del día.
+ const dayTurnos=myTurnos.filter(t=>{const td=t.startTime?.toDate?.();return td&&td.toDateString()===d.toDateString();});
+ const turno=dayTurnos.find(t=>t.status==='ended')||dayTurnos.find(t=>t.status==='interrupted')||dayTurnos[0]||null;
  const rs=turno?turno.startTime.toDate():null;
  const re=turno?.endTime?.toDate?.();
  const NOVEDADES_VOTACIONES=['1/2 DIA DE VOTACIONES','1/2 DIA DE VOTACION','MEDIO DIA VOTACIONES','MEDIO DIA VOTACION','1/2 VOTACIONES','1/2 VOTACION'];
  const esVotaciones=m.novedad&&NOVEDADES_VOTACIONES.some(n=>m.novedad.toUpperCase().includes(n.toUpperCase()));
+ const diffMinsDebug=rs&&ss?Math.round((rs-ss)/60000):null;
+ console.log('[loadStrikes]',m.fecha,'ss:',ss,'rs:',rs,'diffMins:',diffMinsDebug,'dayTurnos:',dayTurnos.length,'turnoStatus:',turno?.status,'esVotaciones:',!!esVotaciones);
  if(rs&&ss&&!esVotaciones){
  const diffMins=Math.round((rs-ss)/60000);
  if(diffMins>=60){
@@ -1571,6 +1581,7 @@ async function loadStrikes(){
  }
  }
  });
+ console.log('[loadStrikes] resultado — leve:',strikesLeve.length,'moderada:',strikesModerade.length,'grave:',strikesGrave.length,'noDesconex:',strikesNoDesconex.length);
  // Calcular llamados por tipo (cada N strikes = 1 llamado)
  const llamadosLeve=Math.floor(strikesLeve.length/3);
  const llamadosModerado=Math.floor(strikesModerade.length/2);
