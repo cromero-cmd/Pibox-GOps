@@ -10,7 +10,7 @@
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
-import { getFirestore, collection, addDoc, getDocs, query, orderBy, limit, serverTimestamp, doc, setDoc, getDoc, deleteDoc, enableNetwork, disableNetwork } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import { getFirestore, collection, addDoc, getDocs, query, where, orderBy, limit, serverTimestamp, doc, setDoc, getDoc, deleteDoc, enableNetwork, disableNetwork } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 const firebaseConfig = {
  apiKey: "AIzaSyBvF_cChu_PQ_RvaVGh0AaXvphzGCRmV5A",
  authDomain: "copper-eye-468704-f8.firebaseapp.com",
@@ -208,6 +208,17 @@ window.getTodayTurno = async () => {
 window.invalidateTurnosCache = () => {
  window._turnosCache = null;
  window._turnosCacheTime = 0;
+};
+window.getUserTurnos = async (userEmail) => {
+ // getRecentTurnos() está limitado a los últimos 300 turnos de TODO el sistema (orderBy startTime
+ // desc) — con muchos agentes activos, el turno de un agente específico puede quedar fuera de esa
+ // ventana según el momento. Esta consulta filtra directo por userEmail en Firestore (solo where,
+ // sin orderBy sobre otro campo, para no requerir un índice compuesto) y por eso siempre trae todos
+ // los turnos de ese agente sin importar cuántos turnos de otros agentes existan.
+ try {
+ const snap = await getDocs(query(collection(db, 'turnos'), where('userEmail', '==', userEmail)));
+ return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+ } catch(e) { console.error('[getUserTurnos]', e); return []; }
 };
 window.getRecentTurnos = async (fromDate, forceRefresh) => {
  // Usar caché si está fresco y no se fuerza recarga
@@ -1245,7 +1256,7 @@ body.agent-preview-mode header{margin-top:34px;}
  </div>
 </div>
 <script>
-const APP_VERSION='15.52';
+const APP_VERSION='15.53';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -1538,10 +1549,14 @@ async function loadStrikes(){
  mallaData=csv.trim().split('\n').slice(1).map(l=>{const c=parseCSVLine(l);return{fecha:c[1]?.trim(),usuario:c[2]?.trim(),inicio:c[5]?.trim(),fin:c[6]?.trim(),novedad:c[10]?.trim()};})
  .filter(m=>m.fecha&&m.usuario===userEmail&&!m.novedad);
  }catch(e){console.error('[loadStrikes] fetch MALLA_SCRIPT falló:',e);}
- const allTurnos=await window.getRecentTurnos();
- const myTurnos=allTurnos.filter(t=>t.userEmail===userEmail&&t.startTime?.toDate?.()>=som&&t.startTime?.toDate?.()<=eom);
+ // Consulta dedicada por agente (window.getUserTurnos) en vez de getRecentTurnos(), que limita a
+ // los últimos 300 turnos de TODO el sistema — con suficientes agentes activos, el turno de este
+ // agente para el día en cuestión puede quedar fuera de esa ventana según el momento en que se
+ // consulte, dejando el strike sin calcular de forma intermitente.
+ const allMyTurnos=window.getUserTurnos?await window.getUserTurnos(userEmail):await window.getRecentTurnos();
+ const myTurnos=allMyTurnos.filter(t=>t.userEmail===userEmail&&t.startTime?.toDate?.()>=som&&t.startTime?.toDate?.()<=eom);
  // DEBUG temporal — diagnosticar por qué algunas tardanzas no generan strike
- console.log('[loadStrikes] userEmail:',userEmail,'allTurnos.length:',allTurnos.length,'(límite de getRecentTurnos: 300, ordenado por startTime desc — si el turno de un día necesitado no está en estos 300, myTurnos.find no lo encontrará)');
+ console.log('[loadStrikes] userEmail:',userEmail,'allMyTurnos.length (consulta dedicada, sin límite de 300):',allMyTurnos.length);
  console.log('[loadStrikes] mallaData filas (mes actual, sin novedad):',mallaData.length,'myTurnos del mes:',myTurnos.length);
  // Clasificar strikes por tipo
  const strikesLeve=[]; // tardanza 5-19 min
