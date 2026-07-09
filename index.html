@@ -1256,7 +1256,7 @@ body.agent-preview-mode header{margin-top:34px;}
  </div>
 </div>
 <script>
-const APP_VERSION='15.53';
+const APP_VERSION='15.54';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -3789,7 +3789,9 @@ function renderPanel2Insights(rows,allTurnos,fromDate,toDate){
  const topTardanza=top3(userStats,'tardanza');
  const topAusente=top3(userStats,'ausente');
  const topNovedad=top3(userStats,'novedad');
- const topStrikes=Object.entries(userStats).filter(([,v])=>v.totalStrikes>0).sort((a,b)=>b[1].totalStrikes-a[1].totalStrikes).slice(0,5);
+ // Mostrar TODOS los agentes con al menos 1 strike, no solo el top 5 — un agente con pocos
+ // strikes (p.ej. 1 moderada) quedaba invisible para Super Admin/Admin si otros acumulaban más.
+ const topStrikes=Object.entries(userStats).filter(([,v])=>v.totalStrikes>0).sort((a,b)=>b[1].totalStrikes-a[1].totalStrikes);
  const topLlamados=Object.entries(userStats).filter(([,v])=>v.llamados>0).sort((a,b)=>b[1].llamados-a[1].llamados).slice(0,5);
  // Extras
  const extrasReq={},extrasAppr={};
