@@ -205,9 +205,11 @@ window.getTodayTurno = async () => {
  return mine.sort((a,b) => b.startTime?.toDate() - a.startTime?.toDate())[0] || null;
  } catch(e) { return null; }
 };
+window._turnosRangeCache = {};
 window.invalidateTurnosCache = () => {
  window._turnosCache = null;
  window._turnosCacheTime = 0;
+ window._turnosRangeCache = {};
 };
 window.getUserTurnos = async (userEmail) => {
  // getRecentTurnos() está limitado a los últimos 300 turnos de TODO el sistema (orderBy startTime
@@ -220,15 +222,32 @@ window.getUserTurnos = async (userEmail) => {
  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
  } catch(e) { console.error('[getUserTurnos]', e); return []; }
 };
-window.getRecentTurnos = async (fromDate, forceRefresh) => {
- // Usar caché si está fresco y no se fuerza recarga
+window.getRecentTurnos = async (fromDate, forceRefresh, toDate) => {
  const now = Date.now();
+ // Cuando se pasan fromDate y toDate (p.ej. un período seleccionado en Panel de Control),
+ // consultar Firestore directo con where('startTime',...) en vez de traer solo los últimos 300
+ // turnos de TODO el sistema — con ~20 agentes, un mes completo (~440 turnos) no cabe en ese
+ // límite, dejando turnos reales sin cruzar y agentes marcados como "Ausente" incorrectamente.
+ // Caché separado por rango (clave = fromDate+toDate) para no mezclarse con el caché por
+ // defecto ni con el de otros períodos — cambiar de período usa automáticamente otra entrada.
+ if (fromDate && toDate) {
+ const rangeKey = fromDate.getTime() + '_' + toDate.getTime();
+ const cached = window._turnosRangeCache[rangeKey];
+ if (!forceRefresh && cached && (now - cached.time) < TURNOS_CACHE_TTL) {
+ return cached.data;
+ }
+ try {
+ const snap = await getDocs(query(collection(db, 'turnos'), where('startTime', '>=', fromDate), where('startTime', '<=', toDate), orderBy('startTime', 'desc')));
+ const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+ window._turnosRangeCache[rangeKey] = { data: all, time: now };
+ return all;
+ } catch(e) { console.error('[getRecentTurnos] consulta por rango falló:', e); return []; }
+ }
+ // Sin rango: comportamiento por defecto sin cambios — últimos 300 turnos del sistema, con caché.
  if (!forceRefresh && window._turnosCache && (now - window._turnosCacheTime) < TURNOS_CACHE_TTL) {
  return window._turnosCache;
  }
  try {
- // Por defecto traer solo los últimos 30 días para ahorrar lecturas
- const cutoff = fromDate || new Date(now - 30 * 24 * 60 * 60 * 1000);
  const snap = await getDocs(query(collection(db, 'turnos'), orderBy('startTime', 'desc'), limit(300)));
  const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
  window._turnosCache = all;
@@ -1256,7 +1275,7 @@ body.agent-preview-mode header{margin-top:34px;}
  </div>
 </div>
 <script>
-const APP_VERSION='15.54';
+const APP_VERSION='15.55';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -3430,12 +3449,17 @@ async function loadPanel2(){
  else if(panel2Filter==='week'){fromDate=sow;toDate=eow;}
  else if(panel2Filter==='month'){fromDate=som;toDate=eom;}
  else if(panel2Filter==='custom'){const f=document.getElementById('panel2-date-from')?.value;const to=document.getElementById('panel2-date-to')?.value;fromDate=f?new Date(f+'T00:00:00'):null;toDate=to?new Date(to+'T23:59:59'):null;}
+ // Turnos para cruzar con la malla del período seleccionado — consulta a Firestore filtrada por
+ // fecha (no el allTurnos de arriba, que se usa solo para "En turno ahora" y debe reflejar lo más
+ // reciente sin importar el período). Con fromDate/toDate evita el límite de 300 turnos globales
+ // que dejaba fuera meses completos (p.ej. junio con ~440 turnos de ~20 agentes).
+ const turnosDelPeriodo=(fromDate&&toDate)?await window.getRecentTurnos(fromDate,false,toDate):allTurnos;
  // Filtrar malla por rango y cruzar con turnos reales
  const mallaFiltrada=mallaData.filter(m=>{const d=parseDate(m.fecha);if(!d)return false;if(fromDate&&d<fromDate)return false;if(toDate&&d>toDate)return false;return true;});
  panel2AllRows=mallaFiltrada.map(m=>{
  const ss=parseTime(m.fecha,m.inicio),se=parseTime(m.fecha,m.fin);
  // Buscar todos los turnos del usuario en ese día, priorizar ended > interrupted > active
- const dayTurnos=allTurnos.filter(t=>{if(t.userEmail!==m.usuario)return false;const td=t.startTime?.toDate?.();const md=parseDate(m.fecha);return td&&md&&td.toDateString()===md.toDateString();});
+ const dayTurnos=turnosDelPeriodo.filter(t=>{if(t.userEmail!==m.usuario)return false;const td=t.startTime?.toDate?.();const md=parseDate(m.fecha);return td&&md&&td.toDateString()===md.toDateString();});
  const mt=dayTurnos.find(t=>t.status==='ended')||dayTurnos.find(t=>t.status==='interrupted')||dayTurnos[0]||null;
  const rs=mt?mt.startTime.toDate():null;
  const todayP2=new Date();todayP2.setHours(0,0,0,0);
@@ -3514,7 +3538,7 @@ async function loadPanel2(){
  function secsToHm(s){const h=Math.floor(s/3600),m=Math.floor((s%3600)/60);if(h&&m)return`${h}h ${m}m`;if(h)return`${h}h`;return`${m}m`;}
  const totalSecs=panel2AllRows.filter(r=>r.realStart&&r.realEnd).reduce((s,r)=>s+Math.max(0,(r.realEnd-r.realStart)/1000),0);
  const uniqueUsers=[...new Set(panel2AllRows.map(r=>r.usuario).filter(Boolean))];
- const mobileCount=allTurnos.filter(t=>t.isMobile&&t.startTime?.toDate?.()>=(fromDate||new Date(0))&&t.startTime?.toDate?.()<=(toDate||new Date())).length;
+ const mobileCount=turnosDelPeriodo.filter(t=>t.isMobile&&t.startTime?.toDate?.()>=(fromDate||new Date(0))&&t.startTime?.toDate?.()<=(toDate||new Date())).length;
  // panel2-summary eliminado — resumen ahora en tarjeta de balance
  // Status cards con toggle
  const statusCards=document.getElementById('panel2-status-cards');
@@ -3571,9 +3595,10 @@ async function loadPanel2(){
  </div>`;
  }).join('');
  } // end else filtered
- // Extras e Insights (siempre se renderizan)
- try{renderPanel2Extras(allTurnos,fromDate,toDate,mallaData);}catch(e){console.error('Extras error:',e);}
- try{renderPanel2Insights(panel2AllRows,allTurnos,fromDate,toDate);}catch(e){console.error('Insights error:',e);}
+ // Extras e Insights (siempre se renderizan) — usar turnosDelPeriodo, no allTurnos, para que
+ // reflejen el período seleccionado sin el límite de 300 turnos globales.
+ try{renderPanel2Extras(turnosDelPeriodo,fromDate,toDate,mallaData);}catch(e){console.error('Extras error:',e);}
+ try{renderPanel2Insights(panel2AllRows,turnosDelPeriodo,fromDate,toDate);}catch(e){console.error('Insights error:',e);}
 }
 function togglePanel2LiderDropdownTop(){
  const menu=document.getElementById('panel2-lider-top-menu');
