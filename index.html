@@ -269,8 +269,14 @@ window.loadOvertimeEvents = async () => {
  return snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(e=>{
  if(e.type!=='overtime') return false;
  if(isSuperAdmin) return e.status==='pending_review'||e.status==='pending_super_admin';
- return e.status==='pending_review';
- });
+ // Coordinador: bandeja compartida de pendientes de revisión, más el seguimiento de SUS
+ // propias solicitudes ya aprobadas por él (pending_super_admin, esperando al Super Admin) o
+ // rechazadas por el Super Admin (rejected) — para que no desaparezcan de su vista.
+ if(e.status==='pending_review') return true;
+ if(e.status==='pending_super_admin') return e.decidedBy===userEmail;
+ if(e.status==='rejected') return e.firstDecidedBy===userEmail;
+ return false;
+ }).map(e=>({...e,_actionable:e.status==='pending_review'||(isSuperAdmin&&e.status==='pending_super_admin')}));
  } catch(e) { return []; }
 };
 window.loadAnalytics = async () => {
@@ -1275,9 +1281,10 @@ body.agent-preview-mode header{margin-top:34px;}
  </div>
 </div>
 <script>
-const APP_VERSION='15.58';
+const APP_VERSION='15.59';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
+const SUPER_ADMIN_NAME='Camilo Romero';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
 const SCRIPT_URL='https://script.google.com/macros/s/AKfycbyam6j2MG1NH11120KjvAfxU1f_z9BYh4uamQw8QgNeGsjpwoo394IeqzbDSPXSO9e5/exec';
 const MALLA_SCRIPT='https://script.google.com/macros/s/AKfycbyxBZWba6M1eXcwQUdBBUTqTrgGd8zwHiM6wwecXI3mUYOUP-RT9LnxSwqeXRy9prCm/exec';
@@ -3382,7 +3389,7 @@ async function loadPanel2(){
  const activeNow=Object.values(activeMap);
  const activeEl=document.getElementById('panel2-active');
  if(!activeEl){setTimeout(()=>loadPanel2(),200);return;}
- if(window.loadOvertimeEvents){window.loadOvertimeEvents().then(events=>{const badge=document.getElementById('overtime-badge');if(badge&&events.length>0){badge.style.display='inline';badge.textContent=events.length;}});}
+ if(window.loadOvertimeEvents){window.loadOvertimeEvents().then(events=>{const badge=document.getElementById('overtime-badge');const n=events.filter(e=>e._actionable).length;if(badge&&n>0){badge.style.display='inline';badge.textContent=n;}else if(badge){badge.style.display='none';}});}
  loadEarlyLeaveBadge();
  Object.values(panel2ActiveTimers).forEach(clearInterval);panel2ActiveTimers={};
  // Filtros superiores (línea y líder) sobre activos — usar malla ya cargada
@@ -3934,11 +3941,21 @@ async function loadOvertimeList(el){
  el.innerHTML=`<div style="font-size:12px;color:var(--text-dim);text-align:center;padding:20px;font-family:var(--mono);">Sin solicitudes pendientes ✓</div>`;
  }
 }
-function overtimeStatusLabel(status){
+function overtimeStatusLabel(e,isSuperAdmin){
+ const status=e.status;
  if(status==='pending_review')return{text:'⏳ Pendiente de revisión del coordinador',color:'#fbbf24'};
- if(status==='pending_super_admin')return{text:'✅ Aprobada por coordinador — pendiente aprobación final',color:'#60a5fa'};
+ if(status==='pending_super_admin'){
+ // El coordinador que la aprobó ve un texto de seguimiento distinto al que ve el Super Admin.
+ if(!isSuperAdmin)return{text:`✅ Enviado a aprobación final de ${SUPER_ADMIN_NAME}`,color:'#60a5fa'};
+ return{text:'✅ Aprobada por coordinador — pendiente aprobación final',color:'#60a5fa'};
+ }
  if(status==='approved')return{text:'✅ Aprobada definitivamente',color:'#4ade80'};
- if(status==='rejected')return{text:'❌ Rechazada',color:'#f87171'};
+ if(status==='rejected'){
+ // loadOvertimeEvents solo entrega 'rejected' al coordinador cuyo firstDecidedBy coincide —
+ // es decir, siempre es "el Super Admin rechazó lo que este coordinador ya había aprobado".
+ if(!isSuperAdmin&&e.firstDecidedBy)return{text:'❌ Rechazada por Super Admin'+(e.rejectReason?`: "${esc(e.rejectReason)}"`:''),color:'#f87171'};
+ return{text:'❌ Rechazada',color:'#f87171'};
+ }
  return{text:status||'—',color:'var(--text-dim)'};
 }
 function fmtOvertimeDateTime(iso){
@@ -3946,22 +3963,26 @@ function fmtOvertimeDateTime(iso){
  const d=new Date(iso);
  return isNaN(d)?'—':d.toLocaleString('es-CO',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'});
 }
-function overtimeRowHTML(e){
- const st=overtimeStatusLabel(e.status);
+function overtimeRowHTML(e,isSuperAdmin){
+ const st=overtimeStatusLabel(e,isSuperAdmin);
  const isFinalPending=e.status==='pending_super_admin';
- // Auditoría: quién aprobó el primer nivel y cuándo. Si un super admin ya dio la aprobación
- // final (approved), decidedBy/decidedAt quedan sobrescritos con SU decisión — por eso
- // approveOvertime guarda firstDecidedBy/firstDecidedAt antes de sobrescribir, para no perder
- // el rastro de quién hizo la primera aprobación.
- const firstApprover=e.status==='approved'?e.firstDecidedBy:(isFinalPending?e.decidedBy:null);
- const firstApprovedAt=e.status==='approved'?e.firstDecidedAt:(isFinalPending?e.decidedAt:null);
- const auditHTML=(e.status==='pending_super_admin'||e.status==='approved')?`
+ // Solo se puede actuar (Aprobar/Rechazar) si es una revisión pendiente de cualquiera, o si
+ // el Super Admin está viendo una que ya pasó por el coordinador y espera su aprobación final.
+ const actionable=e.status==='pending_review'||(isSuperAdmin&&isFinalPending);
+ // Auditoría: quién aprobó el primer nivel y cuándo. Si el Super Admin ya decidió (approved o
+ // rejected), decidedBy/decidedAt quedan sobrescritos con SU decisión — por eso approveOvertime
+ // guarda firstDecidedBy/firstDecidedAt antes de sobrescribir, para no perder el rastro de
+ // quién hizo la primera aprobación.
+ const firstApprover=(e.status==='approved'||e.status==='rejected')?e.firstDecidedBy:(isFinalPending?e.decidedBy:null);
+ const firstApprovedAt=(e.status==='approved'||e.status==='rejected')?e.firstDecidedAt:(isFinalPending?e.decidedAt:null);
+ const auditHTML=(e.status==='pending_super_admin'||e.status==='approved'||e.status==='rejected')?`
  <div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);margin-top:6px;line-height:1.6;">
  ${firstApprover?`👤 1ra aprobación: ${esc(firstApprover.split('@')[0])} · ${fmtOvertimeDateTime(firstApprovedAt)}`:''}
  ${e.status==='approved'?`<br>✅ Aprobación final: ${esc((e.decidedBy||'').split('@')[0]||'—')} · ${fmtOvertimeDateTime(e.decidedAt)}`:''}
+ ${e.status==='rejected'&&e.firstDecidedBy?`<br>❌ Rechazo final: ${esc((e.decidedBy||'').split('@')[0]||'—')} · ${fmtOvertimeDateTime(e.decidedAt)}`:''}
  </div>`:'';
  return`
- <div class="overtime-row" style="background:var(--surface2);border:1px solid ${isFinalPending?'rgba(96,165,250,0.4)':'rgba(251,146,60,0.2)'};border-radius:12px;padding:14px 16px;margin-bottom:10px;${isFinalPending?'box-shadow:0 0 0 1px rgba(96,165,250,0.15);':''}">
+ <div class="overtime-row" style="background:var(--surface2);border:1px solid ${isFinalPending?'rgba(96,165,250,0.4)':'rgba(251,146,60,0.2)'};border-radius:12px;padding:14px 16px;margin-bottom:10px;${isFinalPending&&isSuperAdmin?'box-shadow:0 0 0 1px rgba(96,165,250,0.15);':''}${!actionable?'opacity:0.75;':''}">
  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
  <div>
  <div style="font-size:13px;font-weight:700;color:var(--text);">${esc(e.agentName||e.userName||'—')}</div>
@@ -3970,29 +3991,39 @@ function overtimeRowHTML(e){
  <div style="font-size:11px;font-weight:700;color:${st.color};margin-top:4px;">${st.text}</div>
  ${auditHTML}
  </div>
- <div style="display:flex;gap:8px;">
- <button onclick="approveOvertime('${e.id}',false,this,'${e.turnoId||''}','${e.decidedBy||''}','${e.decidedAt||''}')" style="padding:7px 14px;border-radius:8px;border:1px solid rgba(248,113,113,0.4);background:rgba(248,113,113,0.08);color:#f87171;font-family:var(--font);font-weight:600;font-size:12px;cursor:pointer;">Rechazar</button>
- <button onclick="approveOvertime('${e.id}',true,this,'${e.turnoId||''}','${e.decidedBy||''}','${e.decidedAt||''}')" style="padding:7px 14px;border-radius:8px;border:1px solid rgba(74,222,128,0.4);background:rgba(74,222,128,0.08);color:#4ade80;font-family:var(--font);font-weight:600;font-size:12px;cursor:pointer;">Aprobar</button>
- </div>
+ ${actionable?`<div style="display:flex;gap:8px;">
+ <button onclick="approveOvertime('${e.id}',false,this)" style="padding:7px 14px;border-radius:8px;border:1px solid rgba(248,113,113,0.4);background:rgba(248,113,113,0.08);color:#f87171;font-family:var(--font);font-weight:600;font-size:12px;cursor:pointer;">Rechazar</button>
+ <button onclick="approveOvertime('${e.id}',true,this)" style="padding:7px 14px;border-radius:8px;border:1px solid rgba(74,222,128,0.4);background:rgba(74,222,128,0.08);color:#4ade80;font-family:var(--font);font-weight:600;font-size:12px;cursor:pointer;">Aprobar</button>
+ </div>`:''}
  </div>
  </div>`;
 }
 function renderOvertimeList(el,events){
- const pending=events.filter(e=>e.type==='overtime'&&(e.status==='pending_review'||e.status==='pending_super_admin'));
- if(!pending.length){el.innerHTML='<div style="font-size:12px;color:var(--text-dim);text-align:center;padding:20px;font-family:var(--mono);">Sin solicitudes pendientes ✓</div>';return;}
+ const rows=events.filter(e=>e.type==='overtime'&&(e.status==='pending_review'||e.status==='pending_super_admin'||e.status==='rejected'));
+ // Cachear por id para que approveOvertime pueda leer turnoId/decidedBy/agentName/etc. sin tener
+ // que interpolarlos (con posibles comillas/apóstrofes) dentro del atributo onclick.
+ window._overtimeEventsCache=window._overtimeEventsCache||{};
+ rows.forEach(e=>{window._overtimeEventsCache[e.id]=e;});
+ if(!rows.length){el.innerHTML='<div style="font-size:12px;color:var(--text-dim);text-align:center;padding:20px;font-family:var(--mono);">Sin solicitudes pendientes ✓</div>';return;}
  const userEmail=document.getElementById('user-email').textContent;
  const isSuperAdmin=userEmail===SUPER_ADMIN;
  if(!isSuperAdmin){
- // Coordinadores solo ven pending_review (loadOvertimeEvents ya los filtra así) — sin agrupar.
- el.innerHTML=pending.map(overtimeRowHTML).join('');
+ // Coordinador: primero lo accionable (pending_review), luego el seguimiento de sus propias
+ // solicitudes (pending_super_admin/rejected) — ya diferenciadas por color/texto/opacidad.
+ const accionable=rows.filter(e=>e.status==='pending_review');
+ const seguimiento=rows.filter(e=>e.status!=='pending_review');
+ el.innerHTML=`
+ ${accionable.length?accionable.map(e=>overtimeRowHTML(e,false)).join(''):''}
+ ${seguimiento.length?`<div style="font-size:12px;font-weight:800;color:var(--text-dim);margin-bottom:8px;${accionable.length?'margin-top:18px;':''}">📋 Seguimiento de tus solicitudes (${seguimiento.length})</div>${seguimiento.map(e=>overtimeRowHTML(e,false)).join('')}`:''}
+ `;
  return;
  }
  // Super Admin: separar en dos grupos — las que necesitan su aprobación final se resaltan más.
- const pendingReview=pending.filter(e=>e.status==='pending_review');
- const pendingFinal=pending.filter(e=>e.status==='pending_super_admin');
+ const pendingReview=rows.filter(e=>e.status==='pending_review');
+ const pendingFinal=rows.filter(e=>e.status==='pending_super_admin');
  el.innerHTML=`
- ${pendingFinal.length?`<div style="font-size:12px;font-weight:800;color:#60a5fa;margin-bottom:8px;">🔵 Pendientes de tu aprobación final (${pendingFinal.length})</div>${pendingFinal.map(overtimeRowHTML).join('')}`:''}
- ${pendingReview.length?`<div style="font-size:12px;font-weight:800;color:#fbbf24;margin-bottom:8px;${pendingFinal.length?'margin-top:18px;':''}">🟡 Pendientes de coordinador (${pendingReview.length})</div>${pendingReview.map(overtimeRowHTML).join('')}`:''}
+ ${pendingFinal.length?`<div style="font-size:12px;font-weight:800;color:#60a5fa;margin-bottom:8px;">🔵 Pendientes de tu aprobación final (${pendingFinal.length})</div>${pendingFinal.map(e=>overtimeRowHTML(e,true)).join('')}`:''}
+ ${pendingReview.length?`<div style="font-size:12px;font-weight:800;color:#fbbf24;margin-bottom:8px;${pendingFinal.length?'margin-top:18px;':''}">🟡 Pendientes de coordinador (${pendingReview.length})</div>${pendingReview.map(e=>overtimeRowHTML(e,true)).join('')}`:''}
  `;
 }
 async function forceCloseTurno(turnoId,btn){
@@ -4114,26 +4145,54 @@ async function saveTurnoTimeEdit(turnoId, fecha, btn){
  toast('❌ Error al guardar. Intenta de nuevo.');
  }
 }
-async function approveOvertime(eventId,approved,btn,turnoId,priorDecidedBy,priorDecidedAt){
+async function approveOvertime(eventId,approved,btn){
+ const cached=window._overtimeEventsCache?.[eventId]||{};
+ const turnoId=cached.turnoId||'';
+ const priorDecidedBy=cached.decidedBy||'';
+ const priorDecidedAt=cached.decidedAt||'';
  const userEmail=document.getElementById('user-email').textContent;
  const isSuperAdmin=userEmail===SUPER_ADMIN;
  const newStatus=approved?(isSuperAdmin?'approved':'pending_super_admin'):'rejected';
+ // Si el Super Admin rechaza una solicitud que ya había aprobado un coordinador (pending_super_admin),
+ // pedir un motivo opcional para que quede en la bandeja del coordinador y en el correo de aviso.
+ const isFinalRejection=isSuperAdmin&&!approved&&!!priorDecidedBy;
+ let rejectReason='';
+ if(isFinalRejection){
+ rejectReason=(prompt('Motivo del rechazo (opcional):')||'').trim();
+ }
  btn.textContent='Guardando...';btn.disabled=true;
  try{
  const updates={status:newStatus,decidedBy:userEmail,decidedAt:new Date().toISOString()};
- // Si el super admin da la aprobación final de una solicitud que ya pasó por un coordinador,
- // decidedBy/decidedAt se van a sobrescribir con los del super admin — conservar la primera
- // aprobación en firstDecidedBy/firstDecidedAt para no perder ese rastro de auditoría.
- if(isSuperAdmin&&newStatus==='approved'&&priorDecidedBy){
+ // Si el super admin da la decisión final (aprobar o rechazar) de una solicitud que ya pasó
+ // por un coordinador, decidedBy/decidedAt se van a sobrescribir con los del super admin —
+ // conservar la primera aprobación en firstDecidedBy/firstDecidedAt para no perder ese rastro
+ // de auditoría, y para que el coordinador siga viendo la solicitud en su bandeja.
+ if(isSuperAdmin&&(newStatus==='approved'||newStatus==='rejected')&&priorDecidedBy){
  updates.firstDecidedBy=priorDecidedBy;
  updates.firstDecidedAt=priorDecidedAt||null;
  }
+ if(isFinalRejection&&rejectReason)updates.rejectReason=rejectReason;
  await window.updateOvertimeEvent(eventId,updates);
  // Update turno record with final overtime status
  if(turnoId){
  await window.updateTurnoInFirebase(turnoId,{overtimeStatus:newStatus,overtimeApprovedBy:userEmail,overtimeDecidedAt:new Date().toISOString()});
  }
- toast(approved?(isSuperAdmin?'✅ Aprobado definitivamente':'✅ Aprobado — pendiente super admin'):'❌ Rechazado');
+ // Notificar por correo al coordinador cuando el Super Admin rechaza en la etapa final
+ if(isFinalRejection){
+ try{
+ const rejectData={
+ agentName:cached.agentName||cached.userName||'',
+ agentEmail:cached.agentEmail||cached.user||'',
+ date:cached.date||'',
+ extraMins:cached.extraMins||0,
+ coordinatorEmail:priorDecidedBy,
+ reason:rejectReason,
+ recipients:[priorDecidedBy]
+ };
+ await fetch(NOTIF_SCRIPT+'?type=overtime_rejected&data='+encodeURIComponent(JSON.stringify(rejectData)),{mode:'no-cors'});
+ }catch(notifErr){console.warn('Notif rechazo falló:',notifErr);}
+ }
+ toast(approved?(isSuperAdmin?'✅ Aprobado definitivamente':'✅ Aprobado — pendiente super admin'):(isFinalRejection?'❌ Rechazado — se notificó al coordinador':'❌ Rechazado'));
  // Mark row as processed
  const row=btn.closest('.overtime-row');
  if(row){
@@ -4148,7 +4207,8 @@ async function approveOvertime(eventId,approved,btn,turnoId,priorDecidedBy,prior
  if(window.loadOvertimeEvents){
  window.loadOvertimeEvents().then(events=>{
  const badge=document.getElementById('overtime-badge');
- if(badge){badge.style.display=events.length>0?'inline':'none';badge.textContent=events.length;}
+ const n=events.filter(e=>e._actionable).length;
+ if(badge){badge.style.display=n>0?'inline':'none';badge.textContent=n;}
  });
  }
  }catch(e){
