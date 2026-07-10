@@ -1275,7 +1275,7 @@ body.agent-preview-mode header{margin-top:34px;}
  </div>
 </div>
 <script>
-const APP_VERSION='15.56';
+const APP_VERSION='15.57';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
@@ -1609,7 +1609,12 @@ async function loadStrikes(){
  }
  }
  if(se&&re&&!esVotaciones){
- const extraHrs=(re-se)/3600000;
+ // Turno nocturno (cruza medianoche): parseTime calcula `se` con la fecha del día de inicio del
+ // turno, así que un fin de "1:00 a.m." queda ANTES que el inicio (ej. 5:00 p.m.) en vez de al
+ // día siguiente. Si se<ss, sumar 24h a se para que la resta con la salida real dé minutos reales
+ // en vez de ~24h.
+ const seAdj=(ss&&se<ss)?new Date(se.getTime()+24*3600000):se;
+ const extraHrs=(re-seAdj)/3600000;
  if(extraHrs>strikeNoDesconexionHrs){
  strikesNoDesconex.push({fecha:m.fecha,detalle:`No se desconectó a tiempo — salida ${m.fin}, salida real ${re.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'})}`});
  }
@@ -3804,7 +3809,11 @@ function renderPanel2Insights(rows,allTurnos,fromDate,toDate){
  else if(r.cumplStatus.cls==='cumplió')userStats[u].cumplió++;
  // No desconexión
  if(r.realEnd&&r.scheduledEnd){
- const extraHrs=(r.realEnd-r.scheduledEnd)/3600000;
+ // Turno nocturno (cruza medianoche): scheduledEnd se calcula con la fecha del día de inicio,
+ // así que un fin de "1:00 a.m." queda ANTES que scheduledStart en vez de al día siguiente.
+ // Sumar 24h en ese caso para que la resta con la salida real dé minutos reales, no ~24h.
+ const scheduledEndAdj=(r.scheduledStart&&r.scheduledEnd<r.scheduledStart)?new Date(r.scheduledEnd.getTime()+24*3600000):r.scheduledEnd;
+ const extraHrs=(r.realEnd-scheduledEndAdj)/3600000;
  if(extraHrs>strikeNoDesconexionHrs){
  userStats[u].strikeNoDesconex++;
  const finProg=r.scheduledEnd.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'});
