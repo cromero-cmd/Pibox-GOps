@@ -3,6 +3,7 @@
 // ═══════════════════════════════════════════
 import { LS_SESSION } from './config.js';
 import { setOnNavStep6, navStep, exportTable, chPage, showProcessing, hideProcessing, setMaxStep } from './ui.js';
+import { startVersionPolling } from './version-check.js';
 
 import { tadaRaw, mallaRaw, buildColMap, setColMap, doDrag, doDrop, loadFile, replaceFile, removeFile, runDiagnostico } from './parser.js';
 import { tadaNorm, setTadaNorm, runNorm } from './normalizer.js';
@@ -167,6 +168,7 @@ document.addEventListener('keydown', e=>{
 // ═══════════════════════════════════════════
 initTariffs();
 actualizarDictSummary();
+startVersionPolling();
 
 // Verificar sesión guardada
 (async()=>{
