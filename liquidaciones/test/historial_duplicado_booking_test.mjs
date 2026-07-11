@@ -1,7 +1,9 @@
 // Test ad-hoc — feature: detección de duplicados por booking_id al guardar
-// historial. El run_id se genera por fecha de ejecución, no por período —
-// dos corridas de la misma semana producen run_id distintos aunque tengan
-// los mismos bookings. El verdadero identificador de duplicado son los
+// historial. Aunque el run_id ahora se genera a partir del período de la
+// malla (fecha mínima y máxima), no de la fecha de ejecución (ver BUGFIX en
+// buildTrumpRows()), sigue habiendo casos donde dos corridas del mismo
+// período producen run_id distintos — ej. si cambia la versión de tarifas
+// entre una corrida y otra. El verdadero identificador de duplicado son los
 // booking_id; cuando el backend los detecta, retorna
 // {ok:false, tipo:'duplicado_booking', runIdExistente, ...} y el frontend
 // debe ofrecer reemplazar el run VIEJO (runIdExistente), no el nuevo.

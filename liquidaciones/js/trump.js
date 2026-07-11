@@ -17,7 +17,25 @@ export let trumpRows = [];
 // % Cali, fechas pico/super-pico).
 // ═══════════════════════════════════════════
 export function buildTrumpRows(distResultIn, t, av, mallaRawIn, modoGarantizado='automatico'){
-  const runId=`LIQ-${new Date().toISOString().slice(0,10).replace(/-/g,'')}-${av.version}`;
+  // ── Rango de fechas de la malla — fuente del run_id ──────
+  // BUGFIX: el run_id se basaba en la fecha de EJECUCIÓN, no en el período
+  // liquidado — procesar varias semanas distintas el mismo día generaba el
+  // mismo run_id para todas (ej. LIQ-20260711-v1), disparando falsos
+  // duplicados. Ahora se basa en la fecha mínima y máxima de la malla, que
+  // identifica el período real sin importar cuándo se corra el pipeline.
+  const mFKeyT = Object.keys(mallaRawIn[0]||{}).find(k=>/^fecha$/i.test(k.trim()))||'FECHA';
+  const fechasMalla = mallaRawIn
+    .map(r=>String(r[mFKeyT]||'').trim())
+    .filter(f=>/^\d{4}-\d{2}-\d{2}$/.test(f))
+    .sort();
+  const mallaMin = fechasMalla[0]||'';
+  const mallaMax = fechasMalla[fechasMalla.length-1]||'';
+  // Fallback a la fecha de hoy solo si la malla no trae fechas válidas —
+  // evita un run_id malformado (ej. "LIQ--v1") en ese caso excepcional.
+  const hoyCompacta = new Date().toISOString().slice(0,10).replace(/-/g,'');
+  const fechaMinCompacta = mallaMin ? mallaMin.replace(/-/g,'') : hoyCompacta;
+  const fechaMaxCompacta = mallaMax ? mallaMax.replace(/-/g,'') : fechaMinCompacta;
+  const runId = `LIQ-${fechaMinCompacta}-${fechaMaxCompacta}-${av.version}`;
 
   // ── Porcentajes nacionales ────────────────────────────────
   const pctPlatNac = (t.pct_plataforma    ?? 15) / 100;  // 0.15
@@ -40,15 +58,6 @@ export function buildTrumpRows(distResultIn, t, av, mallaRawIn, modoGarantizado=
       .map(f=>f.trim()).filter(f=>/^\d{4}-\d{2}-\d{2}$/.test(f));
     fechasEspeciales = viejas.map(f=>({fecha:f, tipo:'pico', tarifa_custom:0}));
   }
-
-  // Filtrar por rango de malla
-  const mFKeyT = Object.keys(mallaRawIn[0]||{}).find(k=>/^fecha$/i.test(k.trim()))||'FECHA';
-  const fechasMalla = mallaRawIn
-    .map(r=>String(r[mFKeyT]||'').trim())
-    .filter(f=>/^\d{4}-\d{2}-\d{2}$/.test(f))
-    .sort();
-  const mallaMin = fechasMalla[0]||'';
-  const mallaMax = fechasMalla[fechasMalla.length-1]||'';
 
   const fechasEspMap = {}; // fecha → {tipo, tarifa_custom}
   const fechasIgnoradas = [];
