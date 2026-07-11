@@ -55,6 +55,9 @@ export function abrirModalHistorial(){
 }
 
 export async function ejecutarGuardarHistorial(){
+  // DIAGNÓSTICO TEMPORAL — quitar una vez resuelto el bug de valores en cero.
+  console.log('[DIAG] trumpRows.length =', trumpRows.length);
+  console.log('[DIAG] trumpRows[0..1] =', JSON.parse(JSON.stringify(trumpRows.slice(0,2))));
   const url    = document.getElementById('hist-url')?.value?.trim();
   const status = document.getElementById('hist-status');
   const btn    = document.getElementById('btn-guardar-hist');
@@ -156,6 +159,9 @@ export async function ejecutarGuardarHistorial(){
       fechaGuardado,       // fecha_guardado
     ];
   });
+
+  // DIAGNÓSTICO TEMPORAL — quitar una vez resuelto el bug de valores en cero.
+  console.log('[DIAG] registros[0] (29 valores) =', registros[0]);
 
   btn.disabled = true;
   status.innerHTML = '<span style="color:var(--blue);">⏳ Guardando...</span>';
