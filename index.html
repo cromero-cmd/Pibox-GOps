@@ -1294,7 +1294,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
-const APP_VERSION='15.66';
+const APP_VERSION='15.67';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 const SUPER_ADMIN_NAME='Camilo Romero';
@@ -3808,6 +3808,7 @@ async function renderPanel2Insights(rows,allTurnos,fromDate,toDate){
  const fmtHM=mins=>{mins=Math.round(mins||0);const h=Math.floor(mins/60),m=mins%60;if(h&&m)return`${h}h ${m}m`;if(h)return`${h}h`;return`${m}m`;};
  const fmtHrsSecs=secs=>fmtHM((secs||0)/60);
  const fmtDMY=d=>d?`${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`:'—';
+ const hoySOD=new Date();hoySOD.setHours(0,0,0,0);
  // Recargo nocturno: 7:00 p.m. — 6:00 a.m. del día siguiente. Suma el solapamiento entre el
  // turno real y cada ventana nocturna que toque, sin importar si el turno cruza medianoche.
  function nightOverlapSecs(rs,re){
@@ -3885,10 +3886,21 @@ async function renderPanel2Insights(rows,allTurnos,fromDate,toDate){
  v.strikeDetalle.push({tipo:'🔵 No desconexión',fecha:r.fecha||'',detalle:`Salida prog. ${finProg}, salida real ${finReal} (+${Math.round(extraHrs*10)/10}h)`});
  }
  }
- // Recargo nocturno — cruza el turno real (ya viene de Firestore vía panel2AllRows) con 7pm-6am
+ // Recargo nocturno — cruza el turno real (ya viene de Firestore vía panel2AllRows) con 7pm-6am.
+ // Excluir turnos huérfanos, igual criterio que activeRaw en loadPanel2: un turno "active" cuyo
+ // startTime es de un día anterior a hoy nunca se cerró de verdad, y su endTime (si lo tiene) no
+ // refleja una salida real. También se excluye cualquier turno cuya duración calculada supere
+ // las 16h — nadie trabaja tanto, así que es señal de un turno huérfano/con datos corruptos
+ // (ej. 35h30m en vez de la salida real).
  if(r.realStart&&r.realEnd){
+ const t=r.turno;
+ const isOrphanActive=t&&t.status==='active'&&r.realStart<hoySOD;
+ const durationHrs=(r.realEnd-r.realStart)/3600000;
+ const isOrphanDuration=durationHrs>16;
+ if(!isOrphanActive&&!isOrphanDuration){
  const nSecs=nightOverlapSecs(r.realStart,r.realEnd);
  if(nSecs>0){v.nocturnoSecs+=nSecs;v.nocturnoDetalle.push({fecha:r.fecha||'',horas:fmtHrsSecs(nSecs)});}
+ }
  }
  });
  Object.values(userStats).forEach(v=>{
