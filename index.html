@@ -1293,7 +1293,7 @@ body.agent-preview-mode header{margin-top:34px;}
  </div>
 </div>
 <script>
-const APP_VERSION='15.62';
+const APP_VERSION='15.63';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 const SUPER_ADMIN_NAME='Camilo Romero';
@@ -4306,14 +4306,18 @@ async function openPayrollPreview(){
  novedad:m.novedad||'—'
  };
  }).sort((a,b)=>a.name.localeCompare(b.name)||a.date.localeCompare(b.date));
- window._payrollPreviewMeta={weekStart,weekEnd,payrollEmails};
+ // Guardar lastSunday (no solo el string formateado) para que refreshPayrollExtrasColumn y
+ // downloadPayrollXLS puedan recalcular horasLegales con la fecha de la semana reportada.
+ window._payrollPreviewMeta={weekStart,weekEnd,payrollEmails,lastSunday};
  // Renderizar tabla editable
  const body=document.getElementById('payroll-preview-body');
  const sendBtn=document.getElementById('payroll-send-btn');
  if(!window._payrollPreviewRecords.length){body.innerHTML='<div style="padding:40px;text-align:center;color:var(--text-dim);">Sin registros para la semana anterior</div>';return;}
  sendBtn.style.display='block';
- // Calcular total de horas por agente para determinar extras (excedente sobre 44h/42h semanales)
- const horasLegales=(new Date()>=new Date('2026-07-15'))?42:44;
+ // Calcular total de horas por agente para determinar extras (excedente sobre 44h/42h semanales).
+ // El umbral depende de la semana REPORTADA (lastSunday), no de la fecha de hoy — si hoy es
+ // 16 de julio pero el reporte es de la semana del 6-12, esa semana sigue en 44h.
+ const horasLegales=(lastSunday>=new Date('2026-07-15'))?42:44;
  const horasLegalesSecs=horasLegales*3600;
  const totalSecsByAgent={};
  window._payrollPreviewRecords.forEach(r=>{
@@ -4361,7 +4365,9 @@ async function openPayrollPreview(){
  </div>`;
 }
 function refreshPayrollExtrasColumn(){
- const horasLegales=(new Date()>=new Date('2026-07-15'))?42:44;
+ // Umbral según la semana reportada (lastSunday guardado en openPayrollPreview), no la fecha de hoy.
+ const lastSunday=window._payrollPreviewMeta?.lastSunday||new Date();
+ const horasLegales=(lastSunday>=new Date('2026-07-15'))?42:44;
  const horasLegalesSecs=horasLegales*3600;
  const totalSecsByAgent={};
  window._payrollPreviewRecords.forEach(r=>{
@@ -4391,7 +4397,9 @@ function refreshPayrollExtrasColumn(){
 }
 function downloadPayrollXLS(){
  if(!window._payrollPreviewRecords?.length){toast('No hay datos para descargar');return;}
- const horasLegales=(new Date()>=new Date('2026-07-15'))?42:44;
+ // Umbral según la semana reportada (lastSunday guardado en openPayrollPreview), no la fecha de hoy.
+ const lastSunday=window._payrollPreviewMeta?.lastSunday||new Date();
+ const horasLegales=(lastSunday>=new Date('2026-07-15'))?42:44;
  const horasLegalesSecs=horasLegales*3600;
  const totalSecsByAgent={};
  window._payrollPreviewRecords.forEach(r=>{
