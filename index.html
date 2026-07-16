@@ -1151,7 +1151,7 @@ body.agent-preview-mode header{margin-top:34px;}
  <div id="panel2-extras" style="padding:14px;"><div style="padding:16px;font-size:12px;color:var(--text-dim);text-align:center;">Cargando...</div></div>
  </div>
  <div class="turno-history-wrap" style="margin-bottom:16px;">
- <div class="turno-history-header"><div class="turno-history-title">🏆 Insights del equipo</div></div>
+ <div class="turno-history-header"><div class="turno-history-title">🏆 Insights del equipo</div><button onclick="exportInsightsExcel()" style="background:rgba(74,222,128,0.08);border:1px solid rgba(74,222,128,0.3);color:#4ade80;padding:5px 12px;border-radius:8px;font-size:11px;cursor:pointer;">⬇ Exportar Informe</button></div>
  <div id="panel2-insights" style="padding:14px;"><div style="padding:16px;font-size:12px;color:var(--text-dim);text-align:center;">Cargando...</div></div>
  </div>
  </div>
@@ -1292,8 +1292,9 @@ body.agent-preview-mode header{margin-top:34px;}
  <button class="ft-end" onclick="endTurno()" title="Finalizar turno">⏹</button>
  </div>
 </div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
-const APP_VERSION='15.65';
+const APP_VERSION='15.66';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 const SUPER_ADMIN_NAME='Camilo Romero';
@@ -3798,35 +3799,79 @@ async function renderPanel2Extras(allTurnos,fromDate,toDate,mallaData){
  renderPanel2Extras(allTurnos,fromDate,toDate,mallaData);
  };
 }
-function renderPanel2Insights(rows,allTurnos,fromDate,toDate){
+async function renderPanel2Insights(rows,allTurnos,fromDate,toDate){
  const el=document.getElementById('panel2-insights');
  if(!el||!rows.length)return;
  const strikeTardanzaMins=parseInt(localStorage.getItem('pg_strike_tardanza')||'5');
  const strikeNoDesconexionHrs=parseFloat(localStorage.getItem('pg_strike_nodesconexion')||'4');
- // Contar por usuario
+ const NOVEDADES_VOTACIONES=['1/2 DIA DE VOTACIONES','1/2 DIA DE VOTACION','MEDIO DIA VOTACIONES','MEDIO DIA VOTACION','1/2 VOTACIONES','1/2 VOTACION'];
+ const fmtHM=mins=>{mins=Math.round(mins||0);const h=Math.floor(mins/60),m=mins%60;if(h&&m)return`${h}h ${m}m`;if(h)return`${h}h`;return`${m}m`;};
+ const fmtHrsSecs=secs=>fmtHM((secs||0)/60);
+ const fmtDMY=d=>d?`${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`:'—';
+ // Recargo nocturno: 7:00 p.m. — 6:00 a.m. del día siguiente. Suma el solapamiento entre el
+ // turno real y cada ventana nocturna que toque, sin importar si el turno cruza medianoche.
+ function nightOverlapSecs(rs,re){
+ if(!rs||!re||re<=rs)return 0;
+ let total=0,guard=0;
+ let cursor=new Date(rs);cursor.setHours(0,0,0,0);cursor.setDate(cursor.getDate()-1);
+ while(cursor<=re&&guard<10){
+ const nightStart=new Date(cursor);nightStart.setHours(19,0,0,0);
+ const nightEnd=new Date(nightStart);nightEnd.setDate(nightEnd.getDate()+1);nightEnd.setHours(6,0,0,0);
+ const overlapStart=rs>nightStart?rs:nightStart;
+ const overlapEnd=re<nightEnd?re:nightEnd;
+ if(overlapEnd>overlapStart)total+=(overlapEnd-overlapStart)/1000;
+ cursor.setDate(cursor.getDate()+1);guard++;
+ }
+ return total;
+ }
  const userStats={};
+ function initUser(u,nombre){
+ if(!userStats[u])userStats[u]={
+ nombre:nombre||u.split('@')[0],
+ tardanzaCount:0,tardanzaMins:0,tardanzaDetalle:[],
+ ausenteTotal:0,ausenteJustificada:0,ausenteInjustificada:0,ausenteSinRevisar:0,ausenteDetalle:[],
+ novedadTotal:0,novedadPorTipo:{},novedadDetalle:[],
+ extrasAprobadasMins:0,extrasAprobadasCount:0,extrasRechazadasCount:0,extrasPendientesCount:0,extrasDetalle:[],
+ nocturnoSecs:0,nocturnoDetalle:[],
+ strikeLeve:0,strikeModerado:0,strikeGrave:0,strikeNoDesconex:0,strikeDetalle:[]
+ };
+ return userStats[u];
+ }
+ // Contar por usuario — totales acumulados del período, no solo conteo de eventos
+ let teamCumplio=0,teamEnCurso=0,teamNovedad=0,teamTotalRows=0;
  rows.forEach(r=>{
  const u=r.usuario||'—';
- if(!userStats[u])userStats[u]={nombre:r.nombre||u.split('@')[0],tardanza:0,ausente:0,novedad:0,cumplió:0,strikeLeve:0,strikeModerado:0,strikeGrave:0,strikeNoDesconex:0,strikeDetalle:[]};
- if(r.cumplStatus.cls==='tardanza'){
- userStats[u].tardanza++;
- if(r.realStart&&r.scheduledStart){
+ const v=initUser(u,r.nombre);
+ teamTotalRows++;
+ const cls=r.cumplStatus.cls;
+ if(cls==='cumplió')teamCumplio++;
+ else if(cls==='en_curso')teamEnCurso++;
+ else if(cls==='novedad')teamNovedad++;
+ if(cls==='tardanza'&&r.realStart&&r.scheduledStart){
  const mins=Math.round((r.realStart-r.scheduledStart)/60000);
- const esVot=r.novedad&&['1/2 DIA DE VOTACIONES','1/2 DIA DE VOTACION','MEDIO DIA VOTACIONES','MEDIO DIA VOTACION','1/2 VOTACIONES','1/2 VOTACION'].some(n=>r.novedad.toUpperCase().includes(n.toUpperCase()));
- const fechaStr=r.fecha||'';
+ const esVot=r.novedad&&NOVEDADES_VOTACIONES.some(n=>r.novedad.toUpperCase().includes(n.toUpperCase()));
  const realStr=r.realStart.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'});
  const progStr=r.scheduledStart.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'});
  if(!esVot){
- if(mins>=60){userStats[u].strikeGrave++;userStats[u].strikeDetalle.push({tipo:'🔴 Grave',fecha:fechaStr,detalle:`+${mins} min tarde (${realStr}, prog. ${progStr})`});}
- else if(mins>=20){userStats[u].strikeModerado++;userStats[u].strikeDetalle.push({tipo:'🟠 Moderada',fecha:fechaStr,detalle:`+${mins} min tarde (${realStr}, prog. ${progStr})`});}
- else if(mins>strikeTardanzaMins){userStats[u].strikeLeve++;userStats[u].strikeDetalle.push({tipo:'🟡 Leve',fecha:fechaStr,detalle:`+${mins} min tarde (${realStr}, prog. ${progStr})`});}
+ v.tardanzaCount++;v.tardanzaMins+=mins;
+ v.tardanzaDetalle.push({fecha:r.fecha||'',mins,real:realStr,prog:progStr});
+ if(mins>=60){v.strikeGrave++;v.strikeDetalle.push({tipo:'🔴 Grave',fecha:r.fecha||'',detalle:`+${mins} min tarde (${realStr}, prog. ${progStr})`});}
+ else if(mins>=20){v.strikeModerado++;v.strikeDetalle.push({tipo:'🟠 Moderada',fecha:r.fecha||'',detalle:`+${mins} min tarde (${realStr}, prog. ${progStr})`});}
+ else if(mins>strikeTardanzaMins){v.strikeLeve++;v.strikeDetalle.push({tipo:'🟡 Leve',fecha:r.fecha||'',detalle:`+${mins} min tarde (${realStr}, prog. ${progStr})`});}
  }
+ } else if(cls==='ausente'||cls==='ausente_justificada'||cls==='ausente_injustificada'){
+ v.ausenteTotal++;
+ if(cls==='ausente_justificada')v.ausenteJustificada++;
+ else if(cls==='ausente_injustificada')v.ausenteInjustificada++;
+ else v.ausenteSinRevisar++;
+ v.ausenteDetalle.push({fecha:r.fecha||'',tipo:r.cumplStatus.label,motivo:r.absenceMotivo||''});
+ } else if(cls==='novedad'){
+ const tipo=r.novedad||r.cumplStatus.label||'—';
+ v.novedadTotal++;
+ v.novedadPorTipo[tipo]=(v.novedadPorTipo[tipo]||0)+1;
+ v.novedadDetalle.push({fecha:r.fecha||'',tipo});
  }
- }
- else if(r.cumplStatus.cls==='ausente')userStats[u].ausente++;
- else if(r.cumplStatus.cls==='novedad')userStats[u].novedad++;
- else if(r.cumplStatus.cls==='cumplió')userStats[u].cumplió++;
- // No desconexión
+ // No desconexión (strike)
  if(r.realEnd&&r.scheduledEnd){
  // Turno nocturno (cruza medianoche): scheduledEnd se calcula con la fecha del día de inicio,
  // así que un fin de "1:00 a.m." queda ANTES que scheduledStart en vez de al día siguiente.
@@ -3834,93 +3879,156 @@ function renderPanel2Insights(rows,allTurnos,fromDate,toDate){
  const scheduledEndAdj=(r.scheduledStart&&r.scheduledEnd<r.scheduledStart)?new Date(r.scheduledEnd.getTime()+24*3600000):r.scheduledEnd;
  const extraHrs=(r.realEnd-scheduledEndAdj)/3600000;
  if(extraHrs>strikeNoDesconexionHrs){
- userStats[u].strikeNoDesconex++;
+ v.strikeNoDesconex++;
  const finProg=r.scheduledEnd.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'});
  const finReal=r.realEnd.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'});
- userStats[u].strikeDetalle.push({tipo:'🔵 No desconexión',fecha:r.fecha||'',detalle:`Salida prog. ${finProg}, salida real ${finReal} (+${Math.round(extraHrs*10)/10}h)`});
+ v.strikeDetalle.push({tipo:'🔵 No desconexión',fecha:r.fecha||'',detalle:`Salida prog. ${finProg}, salida real ${finReal} (+${Math.round(extraHrs*10)/10}h)`});
  }
  }
+ // Recargo nocturno — cruza el turno real (ya viene de Firestore vía panel2AllRows) con 7pm-6am
+ if(r.realStart&&r.realEnd){
+ const nSecs=nightOverlapSecs(r.realStart,r.realEnd);
+ if(nSecs>0){v.nocturnoSecs+=nSecs;v.nocturnoDetalle.push({fecha:r.fecha||'',horas:fmtHrsSecs(nSecs)});}
+ }
  });
- // Calcular llamados por usuario
- Object.values(userStats).forEach(u=>{
- u.llamados=Math.floor(u.strikeLeve/3)+Math.floor(u.strikeModerado/2)+u.strikeGrave+Math.floor(u.strikeNoDesconex/3);
- u.totalStrikes=u.strikeLeve+u.strikeModerado+u.strikeGrave+u.strikeNoDesconex;
+ Object.values(userStats).forEach(v=>{
+ v.llamados=Math.floor(v.strikeLeve/3)+Math.floor(v.strikeModerado/2)+v.strikeGrave+Math.floor(v.strikeNoDesconex/3);
+ v.totalStrikes=v.strikeLeve+v.strikeModerado+v.strikeGrave+v.strikeNoDesconex;
  });
- function top3(obj,key){return Object.entries(obj).filter(([,v])=>v[key]>0).sort((a,b)=>b[1][key]-a[1][key]).slice(0,3);}
- function topExtras(obj){return Object.entries(obj).sort((a,b)=>b[1]-a[1]).slice(0,3);}
- const topTardanza=top3(userStats,'tardanza');
- const topAusente=top3(userStats,'ausente');
- const topNovedad=top3(userStats,'novedad');
- // Mostrar TODOS los agentes con al menos 1 strike, no solo el top 5 — un agente con pocos
- // strikes (p.ej. 1 moderada) quedaba invisible para Super Admin/Admin si otros acumulaban más.
- const topStrikes=Object.entries(userStats).filter(([,v])=>v.totalStrikes>0).sort((a,b)=>b[1].totalStrikes-a[1].totalStrikes);
- const topLlamados=Object.entries(userStats).filter(([,v])=>v.llamados>0).sort((a,b)=>b[1].llamados-a[1].llamados).slice(0,5);
- // Extras
- const extrasReq={},extrasAppr={};
+ // Extras — desde los turnos ya cruzados (overtimeStatus en el documento)
  allTurnos.filter(t=>{const d=t.startTime?.toDate?.();return t.overtimeStatus&&d&&(!fromDate||d>=fromDate)&&(!toDate||d<=toDate);}).forEach(t=>{
  const u=t.userEmail||'—';
- extrasReq[u]=(extrasReq[u]||0)+1;
- if(t.overtimeStatus==='approved')extrasAppr[u]=(extrasAppr[u]||0)+1;
+ const v=initUser(u,t.userName);
+ const fechaStr=fmtDMY(t.startTime?.toDate?.());
+ const mins=t.overtimeMinutes||t.overtimeExtraMins||0;
+ let estado='—';
+ if(t.overtimeStatus==='approved'){v.extrasAprobadasCount++;v.extrasAprobadasMins+=mins;estado='✅ Aprobada';}
+ else if(t.overtimeStatus==='rejected'){v.extrasRechazadasCount++;estado='❌ Rechazada';}
+ else if(t.overtimeStatus==='pending_review'){v.extrasPendientesCount++;estado='⏳ Pendiente coordinador';}
+ else if(t.overtimeStatus==='pending_super_admin'){v.extrasPendientesCount++;estado='⏳ Pendiente Super Admin';}
+ v.extrasDetalle.push({fecha:fechaStr,mins,estado});
  });
- const topExtrasReq=topExtras(extrasReq);
- const topExtrasAppr=topExtras(extrasAppr);
- function rankBlock(title,color,items,key,suffix=''){
- if(!items.length)return`<div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:14px;"><div style="font-size:11px;font-weight:700;color:${color};margin-bottom:8px;">${title}</div><div style="font-size:11px;color:var(--text-dim);">Sin registros</div></div>`;
- return`<div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:14px;"><div style="font-size:11px;font-weight:700;color:${color};margin-bottom:8px;">${title}</div>${items.map(([u,v],i)=>`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;"><div style="display:flex;align-items:center;gap:6px;"><span style="font-size:11px;color:var(--text-dim);font-family:var(--mono);width:14px;">${i+1}.</span><span style="font-size:12px;color:var(--text);">${key?v.nombre:u.split('@')[0]}</span></div><span style="font-size:12px;font-weight:700;color:${color};">${key?v[key]:v}${suffix}</span></div>`).join('')}</div>`;
+ // Respaldo: turno.overtimeStatus solo queda escrito si el evento de extras tenía turnoId al
+ // crearse (ver window.getApprovedOvertimeEvents) — cruzar también por agente+fecha contra la
+ // colección 'events' para que las horas extra aprobadas por ese camino no falten aquí.
+ if(window.getApprovedOvertimeEvents){
+ try{
+ const approvedEvents=await window.getApprovedOvertimeEvents(fromDate||new Date(0),toDate||new Date());
+ const coveredTurnoIds=new Set(allTurnos.filter(t=>t.overtimeStatus).map(t=>t.id));
+ approvedEvents.forEach(e=>{
+ if(e.turnoId&&coveredTurnoIds.has(e.turnoId))return;
+ const u=e.agentEmail||e.user||'—';
+ const v=initUser(u,e.agentName||e.userName);
+ const d=parseDate(e.mallaEntry?.fecha||'');
+ if(fromDate&&d&&d<fromDate)return;
+ if(toDate&&d&&d>toDate)return;
+ v.extrasAprobadasCount++;v.extrasAprobadasMins+=(e.extraMins||0);
+ v.extrasDetalle.push({fecha:d?fmtDMY(d):(e.mallaEntry?.fecha||''),mins:e.extraMins||0,estado:'✅ Aprobada'});
+ });
+ }catch(err){console.error('[renderPanel2Insights] getApprovedOvertimeEvents falló:',err);}
  }
- function strikesBlock(){
- if(!topStrikes.length)return`<div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:14px;grid-column:1/-1;"><div style="font-size:11px;font-weight:700;color:#fbbf24;margin-bottom:8px;">⚡ Ranking de strikes</div><div style="font-size:11px;color:var(--text-dim);">Sin strikes en este período</div></div>`;
- return`<div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:14px;grid-column:1/-1;">
- <div style="font-size:11px;font-weight:700;color:#fbbf24;margin-bottom:12px;">⚡ Ranking de strikes del período</div>
+ // Ordenar cada categoría de mayor a menor por el total real, sin tope de agentes
+ const tardanzaEntries=Object.entries(userStats).filter(([,v])=>v.tardanzaCount>0).sort((a,b)=>b[1].tardanzaMins-a[1].tardanzaMins);
+ const ausenteEntries=Object.entries(userStats).filter(([,v])=>v.ausenteTotal>0).sort((a,b)=>b[1].ausenteTotal-a[1].ausenteTotal);
+ const novedadEntries=Object.entries(userStats).filter(([,v])=>v.novedadTotal>0).sort((a,b)=>b[1].novedadTotal-a[1].novedadTotal);
+ const extrasEntries=Object.entries(userStats).filter(([,v])=>v.extrasAprobadasCount>0||v.extrasRechazadasCount>0||v.extrasPendientesCount>0).sort((a,b)=>b[1].extrasAprobadasMins-a[1].extrasAprobadasMins);
+ const nocturnoEntries=Object.entries(userStats).filter(([,v])=>v.nocturnoSecs>0).sort((a,b)=>b[1].nocturnoSecs-a[1].nocturnoSecs);
+ const strikeEntries=Object.entries(userStats).filter(([,v])=>v.totalStrikes>0).sort((a,b)=>b[1].totalStrikes-a[1].totalStrikes);
+ // Tarjeta genérica expandible — igual patrón para las 6 categorías
+ function detailRow(fecha,content){return`<div style="display:grid;grid-template-columns:100px 1fr;gap:6px;padding:4px 0;border-bottom:1px solid var(--border);"><span style="font-size:10px;color:var(--text-dim);font-family:var(--mono);">${esc(fecha)}</span><span style="font-size:10px;color:var(--text-muted);">${content}</span></div>`;}
+ function insightCard(key,title,color,entries,emptyText,badgesFn,detailFn){
+ if(!entries.length)return`<div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:14px;"><div style="font-size:11px;font-weight:700;color:${color};margin-bottom:8px;">${title}</div><div style="font-size:11px;color:var(--text-dim);">${emptyText}</div></div>`;
+ return`<div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:14px;">
+ <div style="font-size:11px;font-weight:700;color:${color};margin-bottom:12px;">${title} (${entries.length})</div>
  <div style="display:flex;flex-direction:column;gap:8px;">
- ${topStrikes.map(([u,v],i)=>{
- const color=v.llamados>=3?'#f87171':v.llamados===2?'#fb923c':v.llamados===1?'#fbbf24':'#9ca3af';
- const id='strike-detail-'+i;
- const detalleHTML=v.strikeDetalle.map(d=>`
- <div style="display:grid;grid-template-columns:100px 1fr;gap:6px;padding:4px 0;border-bottom:1px solid var(--border);">
- <span style="font-size:10px;color:var(--text-dim);font-family:var(--mono);">${d.fecha}</span>
- <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
- <span style="font-size:10px;background:${d.tipo.includes('Grave')?'rgba(248,113,113,0.1)':d.tipo.includes('Modera')?'rgba(251,146,60,0.1)':d.tipo.includes('Leve')?'rgba(251,191,36,0.1)':'rgba(96,165,250,0.1)'};color:${d.tipo.includes('Grave')?'#f87171':d.tipo.includes('Modera')?'#fb923c':d.tipo.includes('Leve')?'#fbbf24':'#60a5fa'};padding:1px 6px;border-radius:10px;white-space:nowrap;">${d.tipo}</span>
- <span style="font-size:10px;color:var(--text-muted);">${d.detalle}</span>
- </div>
- </div>`).join('');
+ ${entries.map(([u,v],i)=>{
+ const id='insight-'+key+'-'+i;
+ const detail=detailFn(v);
  return`<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;">
- <div onclick="document.getElementById('${id}').style.display=document.getElementById('${id}').style.display==='none'?'block':'none'"
- style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;cursor:pointer;user-select:none;">
- <div style="display:flex;align-items:center;gap:8px;">
- <span style="font-size:12px;color:var(--text-dim);font-family:var(--mono);width:18px;">${i+1}.</span>
- <span style="font-size:13px;font-weight:600;color:var(--text);">${v.nombre}</span>
- </div>
- <div style="display:flex;align-items:center;gap:6px;">
- ${v.strikeLeve>0?`<span style="font-size:10px;background:rgba(251,191,36,0.1);color:#fbbf24;border:1px solid rgba(251,191,36,0.3);padding:1px 7px;border-radius:10px;font-family:var(--mono);">🟡 ${v.strikeLeve}</span>`:''}
- ${v.strikeModerado>0?`<span style="font-size:10px;background:rgba(251,146,60,0.1);color:#fb923c;border:1px solid rgba(251,146,60,0.3);padding:1px 7px;border-radius:10px;font-family:var(--mono);">🟠 ${v.strikeModerado}</span>`:''}
- ${v.strikeGrave>0?`<span style="font-size:10px;background:rgba(248,113,113,0.1);color:#f87171;border:1px solid rgba(248,113,113,0.3);padding:1px 7px;border-radius:10px;font-family:var(--mono);">🔴 ${v.strikeGrave}</span>`:''}
- ${v.strikeNoDesconex>0?`<span style="font-size:10px;background:rgba(96,165,250,0.1);color:#60a5fa;border:1px solid rgba(96,165,250,0.3);padding:1px 7px;border-radius:10px;font-family:var(--mono);">🔵 ${v.strikeNoDesconex}</span>`:''}
- <span style="font-size:11px;font-weight:800;color:${color};background:${color}22;border:1px solid ${color}44;padding:2px 8px;border-radius:10px;font-family:var(--mono);">${v.totalStrikes} strike${v.totalStrikes!==1?'s':''}</span>
- ${v.llamados>0?`<span style="font-size:10px;color:${color};font-family:var(--mono);">· ${v.llamados} llamado${v.llamados!==1?'s':''}</span>`:''}
- ${v.llamados>=3?`<span style="font-size:11px;">⚖️</span>`:''}
- <span style="font-size:10px;color:var(--text-dim);">▾</span>
- </div>
+ <div onclick="document.getElementById('${id}').style.display=document.getElementById('${id}').style.display==='none'?'block':'none'" style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;cursor:pointer;user-select:none;flex-wrap:wrap;gap:6px;">
+ <div style="display:flex;align-items:center;gap:8px;"><span style="font-size:12px;color:var(--text-dim);font-family:var(--mono);width:18px;">${i+1}.</span><span style="font-size:13px;font-weight:600;color:var(--text);">${esc(v.nombre)}</span></div>
+ <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">${badgesFn(v)}<span style="font-size:10px;color:var(--text-dim);">▾</span></div>
  </div>
  <div id="${id}" style="display:none;padding:10px 14px;border-top:1px solid var(--border);background:var(--surface2);">
- <div style="font-size:10px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;font-family:var(--mono);">Detalle de strikes</div>
- ${detalleHTML||'<div style="font-size:11px;color:var(--text-dim);">Sin detalle disponible</div>'}
+ ${detail||'<div style="font-size:11px;color:var(--text-dim);">Sin detalle disponible</div>'}
  </div>
  </div>`;
  }).join('')}
  </div>
  </div>`;
  }
+ const tardanzaHTML=insightCard('tardanza','🟡 Tardanzas','#fbbf24',tardanzaEntries,'Sin tardanzas en este período',
+ v=>`<span style="font-size:11px;font-weight:800;color:#fbbf24;">${fmtHM(v.tardanzaMins)}</span><span style="font-size:10px;color:var(--text-dim);font-family:var(--mono);">· ${v.tardanzaCount} vez${v.tardanzaCount!==1?'es':''}</span>`,
+ v=>v.tardanzaDetalle.map(d=>detailRow(d.fecha,`+${d.mins} min (real ${d.real}, prog. ${d.prog})`)).join(''));
+ const ausenteHTML=insightCard('ausente','🔴 Ausencias','#f87171',ausenteEntries,'Sin ausencias en este período',
+ v=>`<span style="font-size:11px;font-weight:800;color:#f87171;">${v.ausenteTotal} total</span>${v.ausenteJustificada?`<span style="font-size:10px;color:#4ade80;">✅ ${v.ausenteJustificada}</span>`:''}${v.ausenteInjustificada?`<span style="font-size:10px;color:#f87171;">❌ ${v.ausenteInjustificada}</span>`:''}${v.ausenteSinRevisar?`<span style="font-size:10px;color:var(--text-dim);">⏳ ${v.ausenteSinRevisar}</span>`:''}`,
+ v=>v.ausenteDetalle.map(d=>detailRow(d.fecha,esc(d.tipo)+(d.motivo?' — '+esc(d.motivo):''))).join(''));
+ const novedadHTML=insightCard('novedad','📋 Novedades','#a78bfa',novedadEntries,'Sin novedades en este período',
+ v=>`<span style="font-size:11px;font-weight:800;color:#a78bfa;">${v.novedadTotal} total</span>`,
+ v=>`<div style="margin-bottom:8px;">${Object.entries(v.novedadPorTipo).map(([t,c])=>`<span style="font-size:10px;background:rgba(167,139,250,0.1);color:#a78bfa;border:1px solid rgba(167,139,250,0.3);padding:1px 7px;border-radius:10px;margin:0 4px 4px 0;display:inline-block;">${esc(t)}: ${c}</span>`).join('')}</div>${v.novedadDetalle.map(d=>detailRow(d.fecha,esc(d.tipo))).join('')}`);
+ const extrasHTML=insightCard('extras','⚡ Extras','#4ade80',extrasEntries,'Sin solicitudes de extras en este período',
+ v=>`<span style="font-size:11px;font-weight:800;color:#4ade80;">${fmtHM(v.extrasAprobadasMins)} aprobadas</span>${v.extrasRechazadasCount?`<span style="font-size:10px;color:#f87171;">❌ ${v.extrasRechazadasCount}</span>`:''}${v.extrasPendientesCount?`<span style="font-size:10px;color:#fbbf24;">⏳ ${v.extrasPendientesCount}</span>`:''}`,
+ v=>v.extrasDetalle.map(d=>detailRow(d.fecha,fmtHM(d.mins)+' — '+d.estado)).join(''));
+ const nocturnoHTML=insightCard('nocturno','🌙 Recargo nocturno (7pm–6am)','#60a5fa',nocturnoEntries,'Sin horas de recargo nocturno en este período',
+ v=>`<span style="font-size:11px;font-weight:800;color:#60a5fa;">${fmtHrsSecs(v.nocturnoSecs)}</span>`,
+ v=>v.nocturnoDetalle.map(d=>detailRow(d.fecha,d.horas)).join(''));
+ const strikesHTML=insightCard('strikes','⚖️ Strikes del período','#fbbf24',strikeEntries,'Sin strikes en este período',
+ v=>{const color=v.llamados>=3?'#f87171':v.llamados===2?'#fb923c':v.llamados===1?'#fbbf24':'#9ca3af';
+ return`${v.strikeLeve>0?`<span style="font-size:10px;background:rgba(251,191,36,0.1);color:#fbbf24;border:1px solid rgba(251,191,36,0.3);padding:1px 7px;border-radius:10px;font-family:var(--mono);">🟡 ${v.strikeLeve}</span>`:''}${v.strikeModerado>0?`<span style="font-size:10px;background:rgba(251,146,60,0.1);color:#fb923c;border:1px solid rgba(251,146,60,0.3);padding:1px 7px;border-radius:10px;font-family:var(--mono);">🟠 ${v.strikeModerado}</span>`:''}${v.strikeGrave>0?`<span style="font-size:10px;background:rgba(248,113,113,0.1);color:#f87171;border:1px solid rgba(248,113,113,0.3);padding:1px 7px;border-radius:10px;font-family:var(--mono);">🔴 ${v.strikeGrave}</span>`:''}${v.strikeNoDesconex>0?`<span style="font-size:10px;background:rgba(96,165,250,0.1);color:#60a5fa;border:1px solid rgba(96,165,250,0.3);padding:1px 7px;border-radius:10px;font-family:var(--mono);">🔵 ${v.strikeNoDesconex}</span>`:''}<span style="font-size:11px;font-weight:800;color:${color};background:${color}22;border:1px solid ${color}44;padding:2px 8px;border-radius:10px;font-family:var(--mono);">${v.totalStrikes} strike${v.totalStrikes!==1?'s':''}</span>${v.llamados>0?`<span style="font-size:10px;color:${color};font-family:var(--mono);">· ${v.llamados} llamado${v.llamados!==1?'s':''}</span>`:''}${v.llamados>=3?`<span style="font-size:11px;">⚖️</span>`:''}`;},
+ v=>v.strikeDetalle.map(d=>detailRow(d.fecha,`<span style="background:${d.tipo.includes('Grave')?'rgba(248,113,113,0.1)':d.tipo.includes('Modera')?'rgba(251,146,60,0.1)':d.tipo.includes('Leve')?'rgba(251,191,36,0.1)':'rgba(96,165,250,0.1)'};color:${d.tipo.includes('Grave')?'#f87171':d.tipo.includes('Modera')?'#fb923c':d.tipo.includes('Leve')?'#fbbf24':'#60a5fa'};padding:1px 6px;border-radius:10px;margin-right:6px;">${d.tipo}</span>${d.detalle}`)).join(''));
+ // Resumen del equipo
+ const pctCumplimiento=teamTotalRows?Math.round(((teamCumplio+teamEnCurso+teamNovedad)/teamTotalRows)*100):0;
+ let totalExtrasAprobadasMins=0,totalNocturnoSecs=0,totalAusencias=0;
+ Object.values(userStats).forEach(v=>{totalExtrasAprobadasMins+=v.extrasAprobadasMins;totalNocturnoSecs+=v.nocturnoSecs;totalAusencias+=v.ausenteTotal;});
+ function kpiTile(label,value,color){return`<div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:14px;text-align:center;"><div style="font-size:20px;font-weight:800;color:${color};">${value}</div><div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);margin-top:4px;">${label}</div></div>`;}
+ const resumenHTML=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px;">
+ ${kpiTile('% Cumplimiento general',pctCumplimiento+'%',pctCumplimiento>=90?'#4ade80':pctCumplimiento>=75?'#fbbf24':'#f87171')}
+ ${kpiTile('⚡ Extras aprobadas del equipo',fmtHM(totalExtrasAprobadasMins),'#4ade80')}
+ ${kpiTile('🌙 Recargo nocturno del equipo',fmtHrsSecs(totalNocturnoSecs),'#60a5fa')}
+ ${kpiTile('🔴 Ausencias del período',totalAusencias,'#f87171')}
+ </div>`;
  el.innerHTML=`
- <div style="font-size:12px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:12px;font-family:var(--mono);">📊 Rankings del período</div>
- <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;">
- ${rankBlock('🟡 Más tardanzas','#fbbf24',topTardanza,'tardanza')}
- ${rankBlock('🔴 Más ausencias','#f87171',topAusente,'ausente')}
- ${rankBlock('📋 Más novedades','#a78bfa',topNovedad,'novedad')}
- ${rankBlock('⚡ Más extras solicitadas','#fb923c',topExtrasReq,null)}
- ${rankBlock('✅ Más extras aprobadas','#4ade80',topExtrasAppr,null)}
- </div>
- <div style="margin-top:10px;">${strikesBlock()}</div>`;
+ ${resumenHTML}
+ <div style="display:flex;flex-direction:column;gap:10px;">
+ ${tardanzaHTML}
+ ${ausenteHTML}
+ ${novedadHTML}
+ ${extrasHTML}
+ ${nocturnoHTML}
+ ${strikesHTML}
+ </div>`;
+ // Datos para exportInsightsExcel()
+ window._insightsData={fromDate,toDate,pctCumplimiento,totalExtrasAprobadasMins,totalNocturnoSecs,totalAusencias,userStats};
+}
+function exportInsightsExcel(){
+ const data=window._insightsData;
+ if(!data||!Object.keys(data.userStats).length){toast('No hay datos de insights para exportar');return;}
+ if(typeof XLSX==='undefined'){toast('❌ No se pudo cargar el generador de Excel');return;}
+ const fmtHM=mins=>{mins=Math.round(mins||0);const h=Math.floor(mins/60),m=mins%60;if(h&&m)return`${h}h ${m}m`;if(h)return`${h}h`;return`${m}m`;};
+ const wb=XLSX.utils.book_new();
+ const resumenRows=[
+ ['Métrica','Valor'],
+ ['% Cumplimiento general',data.pctCumplimiento+'%'],
+ ['Total horas extras aprobadas del equipo',fmtHM(data.totalExtrasAprobadasMins)],
+ ['Total horas de recargo nocturno del equipo',fmtHM(data.totalNocturnoSecs/60)],
+ ['Total de ausencias del período',data.totalAusencias]
+ ];
+ XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(resumenRows),'Resumen ejecutivo');
+ const extrasRows=[['Agente','Fecha','Horas','Estado']];
+ Object.values(data.userStats).forEach(v=>v.extrasDetalle.forEach(d=>extrasRows.push([v.nombre,d.fecha,fmtHM(d.mins),d.estado])));
+ XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(extrasRows),'Extras por agente');
+ const tardanzaRows=[['Agente','Fecha','Minutos de tardanza','Hora real','Hora programada']];
+ Object.values(data.userStats).forEach(v=>v.tardanzaDetalle.forEach(d=>tardanzaRows.push([v.nombre,d.fecha,d.mins,d.real,d.prog])));
+ XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(tardanzaRows),'Tardanzas por agente');
+ const nocturnoRows=[['Agente','Fecha','Horas nocturnas']];
+ Object.values(data.userStats).forEach(v=>v.nocturnoDetalle.forEach(d=>nocturnoRows.push([v.nombre,d.fecha,d.horas])));
+ XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(nocturnoRows),'Recargos nocturnos');
+ const ausenteRows=[['Agente','Fecha','Tipo','Motivo']];
+ Object.values(data.userStats).forEach(v=>v.ausenteDetalle.forEach(d=>ausenteRows.push([v.nombre,d.fecha,d.tipo,d.motivo||'—'])));
+ XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(ausenteRows),'Ausencias por agente');
+ const fname='insights_equipo_'+new Date().toISOString().split('T')[0]+'.xlsx';
+ XLSX.writeFile(wb,fname);
+ toast('⬇ Informe exportado ✓ — '+fname);
 }
 // ── OVERTIME & PAYROLL ──
 async function showOvertimeRequests(){
