@@ -279,6 +279,18 @@ window.loadOvertimeEvents = async () => {
  }).map(e=>({...e,_actionable:e.status==='pending_review'||(isSuperAdmin&&e.status==='pending_super_admin')}));
  } catch(e) { return []; }
 };
+window.getApprovedOvertimeEvents = async (fromDate, toDate) => {
+ // Respaldo para el reporte de nómina: turno.overtimeStatus solo se marca si el evento de
+ // horas extras tenía turnoId al momento de crearse (submitOvertimeResponse guarda
+ // window._lastTurnoId, que puede ser null). Si turnoId era null, approveOvertime nunca
+ // escribe overtimeStatus en ningún turno aunque el evento sí quede 'approved' en Firestore —
+ // por eso el reporte necesita poder cruzar por agente+fecha contra la colección 'events'
+ // directamente, no solo por turno.overtimeStatus.
+ try {
+ const snap = await getDocs(query(collection(db, 'events'), where('timestamp', '>=', fromDate), where('timestamp', '<=', toDate)));
+ return snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(e => e.type==='overtime' && e.status==='approved');
+ } catch(e) { console.error('[getApprovedOvertimeEvents]', e); return []; }
+};
 window.loadAnalytics = async () => {
  try {
  const snap = await getDocs(query(collection(db, 'events'), orderBy('timestamp', 'desc'), limit(200)));
@@ -1281,7 +1293,7 @@ body.agent-preview-mode header{margin-top:34px;}
  </div>
 </div>
 <script>
-const APP_VERSION='15.61';
+const APP_VERSION='15.62';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 const SUPER_ADMIN_NAME='Camilo Romero';
@@ -4262,6 +4274,12 @@ async function openPayrollPreview(){
  }catch(e){console.error('[openPayrollPreview] fetch MALLA_SCRIPT falló:',e);}
  const allTurnos=await window.getRecentTurnos();
  const adminEmails=new Set([...(window.ADMINS||ADMINS),SUPER_ADMIN]);
+ // Respaldo: turno.overtimeStatus solo queda escrito si el evento de extras tenía turnoId al
+ // crearse — si era null, nunca se marca ningún turno aunque el evento sí esté 'approved' en
+ // Firestore. Cruzar también por agente+fecha contra la colección 'events'.
+ const approvedOvertimeEvents=window.getApprovedOvertimeEvents?await window.getApprovedOvertimeEvents(lastMonday,lastSunday):[];
+ console.log('[openPayrollPreview] eventos de horas extras approved en el rango:',approvedOvertimeEvents.length);
+ const approvedOvertimeKeys=new Set(approvedOvertimeEvents.map(e=>(e.agentEmail||e.user||'')+'|'+(e.mallaEntry?.fecha||'')));
  // Construir registros igual que sendPayrollReport
  window._payrollPreviewRecords=mallaData.filter(m=>!adminEmails.has(m.usuario)).map(m=>{
  const d=parseDate(m.fecha);
@@ -4271,7 +4289,8 @@ async function openPayrollPreview(){
  let reportStart=ss;
  if(rs&&ss){const diffMins=Math.round((rs-ss)/60000);if(diffMins>TOLERANCE_MINS)reportStart=rs;}
  let reportEnd=se;
- if(re&&se){if(turno?.overtimeStatus==='approved')reportEnd=re;if(turno?.earlyLeave&&turno?.earlyLeaveStatus==='not_justified')reportEnd=re;}
+ const extrasApproved=turno?.overtimeStatus==='approved'||approvedOvertimeKeys.has(m.usuario+'|'+m.fecha);
+ if(re&&se){if(extrasApproved)reportEnd=re;if(turno?.earlyLeave&&turno?.earlyLeaveStatus==='not_justified')reportEnd=re;}
  const almuerzHrs=parseFloat(m.almuerzo||'0')||0;
  let diffSecs=reportStart&&reportEnd?Math.round((reportEnd-reportStart)/1000):null;
  if(diffSecs!==null&&diffSecs<0)diffSecs+=86400;
@@ -4558,6 +4577,11 @@ async function sendPayrollReport(){
  }catch(e){}
  const allTurnos=await window.getRecentTurnos();
  const adminEmails=new Set([...(window.ADMINS||ADMINS),SUPER_ADMIN]);
+ // Respaldo: turno.overtimeStatus solo queda escrito si el evento de extras tenía turnoId al
+ // crearse — si era null, nunca se marca ningún turno aunque el evento sí esté 'approved' en
+ // Firestore. Cruzar también por agente+fecha contra la colección 'events'.
+ const approvedOvertimeEvents=window.getApprovedOvertimeEvents?await window.getApprovedOvertimeEvents(lastMonday,lastSunday):[];
+ const approvedOvertimeKeys=new Set(approvedOvertimeEvents.map(e=>(e.agentEmail||e.user||'')+'|'+(e.mallaEntry?.fecha||'')));
  // Cruzar cada fila de malla con turno real
  const records=mallaData.filter(m=>!adminEmails.has(m.usuario)).map(m=>{
  const d=parseDate(m.fecha);
@@ -4580,7 +4604,7 @@ async function sendPayrollReport(){
  // Lógica de salida para reporte
  let reportEnd=se; // por defecto: programado
  if(re&&se){
- const extrasApproved=turno?.overtimeStatus==='approved';
+ const extrasApproved=turno?.overtimeStatus==='approved'||approvedOvertimeKeys.has(m.usuario+'|'+m.fecha);
  const earlyLeaveNotJustified=turno?.earlyLeave&&turno?.earlyLeaveStatus==='not_justified';
  if(extrasApproved) reportEnd=re; // extras aprobadas → usar real
  if(earlyLeaveNotJustified) reportEnd=re; // salida anticipada injustificada → usar real
