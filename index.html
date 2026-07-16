@@ -1293,7 +1293,7 @@ body.agent-preview-mode header{margin-top:34px;}
  </div>
 </div>
 <script>
-const APP_VERSION='15.64';
+const APP_VERSION='15.65';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 const SUPER_ADMIN_NAME='Camilo Romero';
@@ -4547,6 +4547,7 @@ async function confirmAndSendPayroll(){
  const payload=JSON.stringify({weekStart,weekEnd,records,recipients,extrasByAgent});
  await fetch(NOTIF_SCRIPT+'?type=payroll_report',{method:'POST',mode:'no-cors',signal:AbortSignal.timeout(30000),headers:{'Content-Type':'text/plain'},body:payload});
  document.querySelector('.abs-overlay')?.remove();
+ toast('📋 Nómina enviada a '+recipients.join(', '));
  }catch(e){
  btn.textContent='📤 Confirmar y enviar';btn.disabled=false;
  toast('❌ Error al enviar: '+e.message);
