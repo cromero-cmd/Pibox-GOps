@@ -1294,7 +1294,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
-const APP_VERSION='15.68';
+const APP_VERSION='15.69';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 const SUPER_ADMIN_NAME='Camilo Romero';
@@ -3666,7 +3666,10 @@ async function loadPanel2(){
  // Extras e Insights (siempre se renderizan) — usar turnosDelPeriodo, no allTurnos, para que
  // reflejen el período seleccionado sin el límite de 300 turnos globales.
  try{renderPanel2Extras(turnosDelPeriodo,fromDate,toDate,mallaData);}catch(e){console.error('Extras error:',e);}
- try{renderPanel2Insights(panel2AllRows,turnosDelPeriodo,fromDate,toDate);}catch(e){console.error('Insights error:',e);}
+ // cardBase (no panel2AllRows) — ya viene filtrado por agente/línea/líder, los mismos filtros
+ // activos que usan las tarjetas de estado del Panel. panel2AllRows traía a todos los agentes
+ // sin importar el filtro activo.
+ try{renderPanel2Insights(cardBase,turnosDelPeriodo,fromDate,toDate);}catch(e){console.error('Insights error:',e);}
 }
 function togglePanel2LiderDropdownTop(){
  const menu=document.getElementById('panel2-lider-top-menu');
@@ -3941,8 +3944,12 @@ async function renderPanel2Insights(rows,allTurnos,fromDate,toDate){
  v.llamados=Math.floor(v.strikeLeve/3)+Math.floor(v.strikeModerado/2)+v.strikeGrave+Math.floor(v.strikeNoDesconex/3);
  v.totalStrikes=v.strikeLeve+v.strikeModerado+v.strikeGrave+v.strikeNoDesconex;
  });
- // Extras — desde los turnos ya cruzados (overtimeStatus en el documento)
- allTurnos.filter(t=>{const d=t.startTime?.toDate?.();return t.overtimeStatus&&d&&(!fromDate||d>=fromDate)&&(!toDate||d<=toDate);}).forEach(t=>{
+ // Extras — desde los turnos ya cruzados (overtimeStatus en el documento). allTurnos
+ // (turnosDelPeriodo) trae TODOS los agentes del período sin importar el filtro activo — se
+ // restringe a allowedUsers (derivado de rows, ya filtrado por agente/línea/líder) para que
+ // Extras y el resumen del equipo respeten el mismo filtro que el resto de Insights.
+ const allowedUsers=new Set(rows.map(r=>r.usuario));
+ allTurnos.filter(t=>{const d=t.startTime?.toDate?.();return t.overtimeStatus&&d&&(!fromDate||d>=fromDate)&&(!toDate||d<=toDate)&&allowedUsers.has(t.userEmail);}).forEach(t=>{
  const u=t.userEmail||'—';
  const v=initUser(u,t.userName);
  const fechaStr=fmtDMY(t.startTime?.toDate?.());
@@ -3964,6 +3971,7 @@ async function renderPanel2Insights(rows,allTurnos,fromDate,toDate){
  approvedEvents.forEach(e=>{
  if(e.turnoId&&coveredTurnoIds.has(e.turnoId))return;
  const u=e.agentEmail||e.user||'—';
+ if(!allowedUsers.has(u))return;
  const v=initUser(u,e.agentName||e.userName);
  const d=parseDate(e.mallaEntry?.fecha||'');
  if(fromDate&&d&&d<fromDate)return;
@@ -3982,10 +3990,18 @@ async function renderPanel2Insights(rows,allTurnos,fromDate,toDate){
  const strikeEntries=Object.entries(userStats).filter(([,v])=>v.totalStrikes>0).sort((a,b)=>b[1].totalStrikes-a[1].totalStrikes);
  // Tarjeta genérica expandible — igual patrón para las 6 categorías
  function detailRow(fecha,content){return`<div style="display:grid;grid-template-columns:100px 1fr;gap:6px;padding:4px 0;border-bottom:1px solid var(--border);"><span style="font-size:10px;color:var(--text-dim);font-family:var(--mono);">${esc(fecha)}</span><span style="font-size:10px;color:var(--text-muted);">${content}</span></div>`;}
+ // Cada tarjeta es colapsable — mismo patrón de clic que el detalle por agente (toggle de
+ // display leyendo su propio estado), empieza contraída y solo el encabezado con el resumen
+ // numérico es visible hasta que el usuario la expande.
  function insightCard(key,title,color,entries,emptyText,badgesFn,detailFn){
  if(!entries.length)return`<div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:14px;"><div style="font-size:11px;font-weight:700;color:${color};margin-bottom:8px;">${title}</div><div style="font-size:11px;color:var(--text-dim);">${emptyText}</div></div>`;
- return`<div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:14px;">
- <div style="font-size:11px;font-weight:700;color:${color};margin-bottom:12px;">${title} (${entries.length})</div>
+ const bodyId='insight-card-body-'+key;
+ return`<div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;overflow:hidden;">
+ <div onclick="document.getElementById('${bodyId}').style.display=document.getElementById('${bodyId}').style.display==='none'?'block':'none'" style="padding:14px;cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between;gap:8px;">
+ <span style="font-size:11px;font-weight:700;color:${color};">${title} (${entries.length})</span>
+ <span style="font-size:10px;color:var(--text-dim);">▸</span>
+ </div>
+ <div id="${bodyId}" style="display:none;padding:0 14px 14px 14px;">
  <div style="display:flex;flex-direction:column;gap:8px;">
  ${entries.map(([u,v],i)=>{
  const id='insight-'+key+'-'+i;
@@ -4000,6 +4016,7 @@ async function renderPanel2Insights(rows,allTurnos,fromDate,toDate){
  </div>
  </div>`;
  }).join('')}
+ </div>
  </div>
  </div>`;
  }
@@ -4055,8 +4072,12 @@ async function renderPanel2Insights(rows,allTurnos,fromDate,toDate){
  anomalias.sort((a,b)=>(parseDate(b.fecha)||0)-(parseDate(a.fecha)||0));
  const anomaliasHTML=!anomalias.length
  ?`<div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:14px;"><div style="font-size:11px;font-weight:700;color:#f87171;margin-bottom:8px;">🚨 Anomalías detectadas</div><div style="font-size:11px;color:var(--text-dim);">Sin anomalías detectadas en este período ✓</div></div>`
- :`<div style="background:var(--surface2);border:1px solid rgba(248,113,113,0.3);border-radius:12px;padding:14px;">
- <div style="font-size:11px;font-weight:700;color:#f87171;margin-bottom:12px;">🚨 Anomalías detectadas (${anomalias.length})</div>
+ :`<div style="background:var(--surface2);border:1px solid rgba(248,113,113,0.3);border-radius:12px;overflow:hidden;">
+ <div onclick="document.getElementById('insight-card-body-anomalias').style.display=document.getElementById('insight-card-body-anomalias').style.display==='none'?'block':'none'" style="padding:14px;cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between;gap:8px;">
+ <span style="font-size:11px;font-weight:700;color:#f87171;">🚨 Anomalías detectadas (${anomalias.length})</span>
+ <span style="font-size:10px;color:var(--text-dim);">▸</span>
+ </div>
+ <div id="insight-card-body-anomalias" style="display:none;padding:0 14px 14px 14px;">
  <div style="display:flex;flex-direction:column;gap:6px;">
  ${anomalias.map(a=>`<div style="background:var(--surface);border-left:3px solid #f87171;border-radius:6px;padding:8px 12px;">
  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;">
@@ -4066,6 +4087,7 @@ async function renderPanel2Insights(rows,allTurnos,fromDate,toDate){
  <div style="font-size:10px;color:var(--text-muted);font-family:var(--mono);margin-top:2px;">Real: ${a.durReal} · Programado: ${a.durProg}</div>
  <div style="margin-top:4px;">${a.motivos.map(m=>`<span style="font-size:10px;background:rgba(248,113,113,0.1);color:#f87171;border:1px solid rgba(248,113,113,0.3);padding:1px 7px;border-radius:10px;margin:0 4px 4px 0;display:inline-block;">⚠️ ${esc(m)}</span>`).join('')}</div>
  </div>`).join('')}
+ </div>
  </div>
  </div>`;
  el.innerHTML=`
