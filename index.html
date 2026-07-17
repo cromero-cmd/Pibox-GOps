@@ -1294,7 +1294,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
-const APP_VERSION='15.69';
+const APP_VERSION='15.70';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 const SUPER_ADMIN_NAME='Camilo Romero';
@@ -2626,8 +2626,10 @@ function showOvertimePrompt(extraMins,scheduledSecs,workedSecs,mallaEntry){
  overlay.style.cssText='position:fixed;inset:0;background:rgba(13,11,20,0.88);backdrop-filter:blur(8px);z-index:700;display:flex;align-items:center;justify-content:center;';
  const h=Math.floor(extraMins/60),m=extraMins%60;
  const extraStr=h>0?`${h}h ${m}m`:`${m}m`;
+ const admins=(window.ADMINS||[SUPER_ADMIN]).filter((v,i,a)=>a.indexOf(v)===i);
+ const adminOptionsHTML=admins.map(a=>`<option value="${esc(a)}">${esc(a)}</option>`).join('');
  overlay.innerHTML=`
- <div style="background:var(--surface);border:1px solid rgba(251,146,60,0.4);border-radius:20px;padding:28px;width:min(420px,92vw);position:relative;box-shadow:0 8px 32px rgba(0,0,0,0.4);">
+ <div style="background:var(--surface);border:1px solid rgba(251,146,60,0.4);border-radius:20px;padding:28px;width:min(420px,92vw);position:relative;box-shadow:0 8px 32px rgba(0,0,0,0.4);max-height:88vh;overflow-y:auto;">
  <div style="position:absolute;top:0;left:20px;right:20px;height:2px;background:linear-gradient(90deg,#fb923c,#fbbf24);border-radius:100px;"></div>
  <div style="font-size:28px;text-align:center;margin-bottom:12px;">⏰</div>
  <div style="font-size:17px;font-weight:800;text-align:center;margin-bottom:8px;">Horas extras detectadas</div>
@@ -2636,13 +2638,74 @@ function showOvertimePrompt(extraMins,scheduledSecs,workedSecs,mallaEntry){
  Programado: <strong>${formatDuration(scheduledSecs)}</strong> · Trabajado: <strong>${formatDuration(workedSecs)}</strong>
  </div>
  <div style="font-size:14px;font-weight:700;text-align:center;margin-bottom:16px;">¿Estas horas extras fueron aprobadas por tu líder inmediato?</div>
+ <div id="ot-initial-buttons" style="display:flex;gap:10px;">
+ <button onclick="submitOvertimeResponse(false,${extraMins},window._overtimeOverlayEl)" style="flex:1;padding:12px;border-radius:11px;border:1.5px solid rgba(248,113,113,0.4);background:rgba(248,113,113,0.08);color:#f87171;font-family:var(--font);font-weight:700;font-size:14px;cursor:pointer;">❌ No fueron aprobadas</button>
+ <button onclick="showOvertimeApprovalFields()" style="flex:1;padding:12px;border-radius:11px;border:1.5px solid rgba(74,222,128,0.4);background:rgba(74,222,128,0.08);color:#4ade80;font-family:var(--font);font-weight:700;font-size:14px;cursor:pointer;">✅ Sí fueron aprobadas</button>
+ </div>
+ <div id="ot-approval-fields" style="display:none;">
+ <div style="margin-bottom:14px;">
+ <label style="font-size:12px;font-weight:700;color:var(--text-muted);display:block;margin-bottom:6px;">¿Para qué fueron las extras? <span style="color:#f87171;">*</span></label>
+ <select id="ot-activity" onchange="toggleOtOtherField('ot-activity','ot-activity-other')" style="width:100%;padding:10px;border-radius:9px;border:1.5px solid var(--border);background:var(--surface2);color:var(--text);font-family:var(--font);font-size:13px;box-sizing:border-box;">
+ <option value="">Selecciona una opción...</option>
+ <option value="Apoyo a otro equipo">Apoyo a otro equipo</option>
+ <option value="Cierre de operaciones">Cierre de operaciones</option>
+ <option value="Contingencia">Contingencia</option>
+ <option value="Capacitación">Capacitación</option>
+ <option value="Otro">Otro (especificar)</option>
+ </select>
+ <input type="text" id="ot-activity-other" placeholder="Especifica el motivo..." style="display:none;width:100%;padding:10px;border-radius:9px;border:1.5px solid var(--border);background:var(--surface2);color:var(--text);font-family:var(--font);font-size:13px;margin-top:8px;box-sizing:border-box;"/>
+ </div>
+ <div style="margin-bottom:18px;">
+ <label style="font-size:12px;font-weight:700;color:var(--text-muted);display:block;margin-bottom:6px;">¿Quién las autorizó? <span style="color:#f87171;">*</span></label>
+ <select id="ot-authorized-by" onchange="toggleOtOtherField('ot-authorized-by','ot-authorized-other')" style="width:100%;padding:10px;border-radius:9px;border:1.5px solid var(--border);background:var(--surface2);color:var(--text);font-family:var(--font);font-size:13px;box-sizing:border-box;">
+ <option value="">Selecciona una opción...</option>
+ ${adminOptionsHTML}
+ <option value="Otro">Otro (especificar)</option>
+ </select>
+ <input type="text" id="ot-authorized-other" placeholder="Especifica quién autorizó..." style="display:none;width:100%;padding:10px;border-radius:9px;border:1.5px solid var(--border);background:var(--surface2);color:var(--text);font-family:var(--font);font-size:13px;margin-top:8px;box-sizing:border-box;"/>
+ </div>
+ <div id="ot-validation-msg" style="display:none;font-size:12px;color:#f87171;text-align:center;margin-bottom:12px;">Completa ambos campos para continuar.</div>
  <div style="display:flex;gap:10px;">
- <button onclick="submitOvertimeResponse(false,${extraMins},this.closest('div[style*=fixed]'))" style="flex:1;padding:12px;border-radius:11px;border:1.5px solid rgba(248,113,113,0.4);background:rgba(248,113,113,0.08);color:#f87171;font-family:var(--font);font-weight:700;font-size:14px;cursor:pointer;">❌ No fueron aprobadas</button>
- <button onclick="submitOvertimeResponse(true,${extraMins},this.closest('div[style*=fixed]'))" style="flex:1;padding:12px;border-radius:11px;border:1.5px solid rgba(74,222,128,0.4);background:rgba(74,222,128,0.08);color:#4ade80;font-family:var(--font);font-weight:700;font-size:14px;cursor:pointer;">✅ Sí fueron aprobadas</button>
+ <button onclick="hideOvertimeApprovalFields()" style="flex:1;padding:12px;border-radius:11px;border:1.5px solid var(--border);background:var(--surface2);color:var(--text-muted);font-family:var(--font);font-weight:700;font-size:14px;cursor:pointer;">← Volver</button>
+ <button onclick="confirmOvertimeApproval(${extraMins})" style="flex:1;padding:12px;border-radius:11px;border:1.5px solid rgba(74,222,128,0.4);background:rgba(74,222,128,0.08);color:#4ade80;font-family:var(--font);font-weight:700;font-size:14px;cursor:pointer;">Confirmar</button>
+ </div>
  </div>
  </div>`;
  document.body.appendChild(overlay);
  window._overtimeMallaEntry=mallaEntry;
+ window._overtimeOverlayEl=overlay;
+}
+function toggleOtOtherField(selectId,inputId){
+ const sel=document.getElementById(selectId);
+ const inp=document.getElementById(inputId);
+ if(!sel||!inp)return;
+ inp.style.display=sel.value==='Otro'?'block':'none';
+ if(sel.value!=='Otro')inp.value='';
+}
+function showOvertimeApprovalFields(){
+ document.getElementById('ot-initial-buttons').style.display='none';
+ document.getElementById('ot-approval-fields').style.display='block';
+}
+function hideOvertimeApprovalFields(){
+ document.getElementById('ot-approval-fields').style.display='none';
+ document.getElementById('ot-initial-buttons').style.display='flex';
+}
+function confirmOvertimeApproval(extraMins){
+ const activitySel=document.getElementById('ot-activity').value;
+ const activityOther=document.getElementById('ot-activity-other').value.trim();
+ const authSel=document.getElementById('ot-authorized-by').value;
+ const authOther=document.getElementById('ot-authorized-other').value.trim();
+ const activity=activitySel==='Otro'?activityOther:activitySel;
+ const authorizedBy=authSel==='Otro'?authOther:authSel;
+ const msg=document.getElementById('ot-validation-msg');
+ if(!activity||!authorizedBy){
+ msg.style.display='block';
+ return;
+ }
+ msg.style.display='none';
+ window._overtimeActivity=activity;
+ window._overtimeAuthorizedBy=authorizedBy;
+ submitOvertimeResponse(true,extraMins,window._overtimeOverlayEl);
 }
 function showEarlyLeavePrompt(earlyMins,scheduledSecs,workedSecs,mallaEntry){
  const overlay=document.createElement('div');
@@ -2745,6 +2808,11 @@ async function submitOvertimeResponse(approved,extraMins,overlayEl){
  mallaEntry:window._overtimeMallaEntry,
  turnoId:turnoId
  };
+ if(approved){
+ overtimeEventData.overtimeActivity=window._overtimeActivity||null;
+ overtimeEventData.overtimeAuthorizedBy=window._overtimeAuthorizedBy||null;
+ }
+ window._overtimeActivity=null;window._overtimeAuthorizedBy=null;
  await window.trackEvent('overtime', overtimeEventData);
  // Also tag the turno record with overtime status
  if(turnoId){
@@ -4199,6 +4267,11 @@ function overtimeRowHTML(e,isSuperAdmin){
  // quién hizo la primera aprobación.
  const firstApprover=(e.status==='approved'||e.status==='rejected')?e.firstDecidedBy:(isFinalPending?e.decidedBy:null);
  const firstApprovedAt=(e.status==='approved'||e.status==='rejected')?e.firstDecidedAt:(isFinalPending?e.decidedAt:null);
+ const activityAuthHTML=(e.overtimeActivity||e.overtimeAuthorizedBy)?`
+ <div style="font-size:11px;color:var(--text-muted);margin-top:6px;line-height:1.6;">
+ ${e.overtimeActivity?`📋 Motivo: ${esc(e.overtimeActivity)}`:''}
+ ${e.overtimeAuthorizedBy?`<br>👤 Autorizado por: ${esc(e.overtimeAuthorizedBy)}`:''}
+ </div>`:'';
  const auditHTML=(e.status==='pending_super_admin'||e.status==='approved'||e.status==='rejected')?`
  <div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);margin-top:6px;line-height:1.6;">
  ${firstApprover?`👤 1ra aprobación: ${esc(firstApprover.split('@')[0])} · ${fmtOvertimeDateTime(firstApprovedAt)}`:''}
@@ -4213,6 +4286,7 @@ function overtimeRowHTML(e,isSuperAdmin){
  <div style="font-size:11px;color:var(--text-dim);font-family:var(--mono);">${esc(e.agentEmail||e.user||'—')} · ${esc(e.date||'—')}</div>
  <div style="font-size:12px;color:#fb923c;margin-top:4px;">⏰ ${e.extraMins||0} min extras</div>
  <div style="font-size:11px;font-weight:700;color:${st.color};margin-top:4px;">${st.text}</div>
+ ${activityAuthHTML}
  ${auditHTML}
  </div>
  ${actionable?`<div style="display:flex;gap:8px;">
