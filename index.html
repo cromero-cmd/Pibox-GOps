@@ -3395,7 +3395,11 @@ function clearPanel2(){
 function turnoAnomalyFacts(r){
  if(!r.realStart||!r.realEnd)return null;
  const durHrs=(r.realEnd-r.realStart)/3600000;
- const progHrs=(r.scheduledStart&&r.scheduledEnd)?(r.scheduledEnd-r.scheduledStart)/3600000:null;
+ // Turno nocturno: scheduledEnd se calcula con la fecha del día de inicio del turno, así que un
+ // fin de madrugada (ej. 1:00 a.m.) queda ANTES que scheduledStart (ej. 5:00 p.m.) en vez de al
+ // día siguiente — sin este ajuste, progHrs daba negativo para cualquier turno nocturno.
+ const scheduledEndAdj=(r.scheduledStart&&r.scheduledEnd&&r.scheduledEnd<r.scheduledStart)?new Date(r.scheduledEnd.getTime()+24*3600000):r.scheduledEnd;
+ const progHrs=(r.scheduledStart&&scheduledEndAdj)?(scheduledEndAdj-r.scheduledStart)/3600000:null;
  const diffHrs=progHrs!==null?durHrs-progHrs:null;
  const extrasAprobadas=r.turno?.overtimeStatus==='approved';
  const crossesDay=r.realStart.toDateString()!==r.realEnd.toDateString();
