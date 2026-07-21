@@ -1294,7 +1294,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
-const APP_VERSION='15.74';
+const APP_VERSION='15.75';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 const SUPER_ADMIN_NAME='Camilo Romero';
@@ -2627,6 +2627,7 @@ async function checkOvertimeAndDiscrepancy(endTime,elapsedSecs){
 }
 function showOvertimePrompt(extraMins,scheduledSecs,workedSecs,mallaEntry){
  const overlay=document.createElement('div');
+ overlay.className='abs-overlay';
  overlay.style.cssText='position:fixed;inset:0;background:rgba(13,11,20,0.88);backdrop-filter:blur(8px);z-index:700;display:flex;align-items:center;justify-content:center;';
  const h=Math.floor(extraMins/60),m=extraMins%60;
  const extraStr=h>0?`${h}h ${m}m`:`${m}m`;
@@ -2713,6 +2714,7 @@ function confirmOvertimeApproval(extraMins){
 }
 function showEarlyLeavePrompt(earlyMins,scheduledSecs,workedSecs,mallaEntry){
  const overlay=document.createElement('div');
+ overlay.className='abs-overlay';
  overlay.style.cssText='position:fixed;inset:0;background:rgba(13,11,20,0.88);backdrop-filter:blur(8px);z-index:700;display:flex;align-items:center;justify-content:center;';
  const h=Math.floor(earlyMins/60),m=earlyMins%60;
  const earlyStr=h>0?`${h}h ${m}m`:`${m}m`;
@@ -4225,6 +4227,7 @@ async function showOvertimeRequests(){
  });
  // Show overtime requests modal
  const modal=document.createElement('div');
+ modal.className='abs-overlay';
  modal.style.cssText='position:fixed;inset:0;background:rgba(13,11,20,0.88);backdrop-filter:blur(8px);z-index:700;display:flex;align-items:center;justify-content:center;';
  modal.innerHTML=`
  <div style="background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:28px;width:min(600px,94vw);max-height:80vh;overflow-y:auto;position:relative;">
@@ -5014,6 +5017,7 @@ async function loadEarlyLeaveBadge(){
 }
 async function showEarlyLeaveRequests(){
  const modal=document.createElement('div');
+ modal.className='abs-overlay';
  modal.style.cssText='position:fixed;inset:0;background:rgba(13,11,20,0.88);backdrop-filter:blur(8px);z-index:700;display:flex;align-items:center;justify-content:center;';
  modal.innerHTML=`
  <div style="background:var(--surface);border:1px solid rgba(96,165,250,0.3);border-radius:20px;padding:28px;width:min(600px,94vw);max-height:80vh;overflow-y:auto;position:relative;">
@@ -5260,6 +5264,22 @@ function scrollDown(){const c=document.getElementById('chat-container');if(c)c.s
 function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
 function setStatus(state,text){const d=document.getElementById('sdot');const t=document.getElementById('stext');if(d)d.className='sdot '+state;if(t)t.textContent=text;}
 function toast(msg){const t=document.createElement('div');t.className='toast';t.textContent=msg;document.body.appendChild(t);setTimeout(()=>t.remove(),2500);}
+// Cierre global de modales al hacer clic fuera del contenido — cubre todos los overlays marcados
+// con la clase 'abs-overlay' (edición de tiempos, horas extras, salidas anticipadas, pre-revisión
+// de nómina, justificar ausencia, etc.), tanto los existentes como cualquier modal futuro que
+// adopte esta clase. e.target===el confirma que el clic fue en el fondo y no en el contenido
+// interior (un clic dentro del modal tiene como target el elemento interno, no el overlay mismo).
+document.addEventListener('click',function(e){
+ const el=e.target;
+ if(el instanceof Element&&el.classList.contains('abs-overlay')){
+ el.remove();
+ }
+});
+// Caso especial: el modal de Configuración (#overlay) no se crea/destruye dinámicamente, se
+// muestra/oculta con la clase 'open' — se cierra igual que el botón "Cancelar" (closeConfig()).
+document.getElementById('overlay')?.addEventListener('click',function(e){
+ if(e.target===this)closeConfig();
+});
 const inp=document.getElementById('user-input');
 function autoResize(){if(!inp)return;inp.style.height='auto';inp.style.height=Math.min(inp.scrollHeight,120)+'px';}
 inp&&inp.addEventListener('input',()=>{autoResize();if(surveyTimer){clearTimeout(surveyTimer);surveyTimer=null;}});
