@@ -1294,7 +1294,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
-const APP_VERSION='15.73';
+const APP_VERSION='15.74';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 const SUPER_ADMIN_NAME='Camilo Romero';
@@ -3710,8 +3710,10 @@ async function loadPanel2(){
  const facts=turnoAnomalyFacts(r);
  let anomalyReason=null;
  if(facts){
- if(facts.crossesDay)anomalyReason='Salida registrada en fecha distinta al inicio';
- else if(facts.durHrs>14)anomalyReason=`Duración real >14h`;
+ // crossesDay por sí solo NO es anomalía: un turno nocturno normal (ej. 3:57pm→1:00am) cruza
+ // medianoche todos los días. Solo marcar si además la duración o el desvío frente a lo
+ // programado son realmente inconsistentes (ya cubierto por las dos condiciones siguientes).
+ if(facts.durHrs>14)anomalyReason=`Duración real >14h`;
  else if(facts.diffHrs!==null&&facts.diffHrs>2&&!facts.extrasAprobadas)anomalyReason=`Supera lo programado por más de 2h sin extras aprobadas`;
  }
  const rowBorder=anomalyReason?'border-left:3px solid #f87171;background:rgba(248,113,113,0.04);':'';
@@ -4135,7 +4137,9 @@ async function renderPanel2Insights(rows,allTurnos,fromDate,toDate){
  const facts=turnoAnomalyFacts(r);
  if(!facts)return;
  const motivos=[];
- if(facts.crossesDay)motivos.push('Salida registrada en fecha distinta al inicio');
+ // crossesDay por sí solo NO es anomalía: un turno nocturno normal (ej. 3:57pm→1:00am) cruza
+ // medianoche todos los días. Solo marcar si además la duración o el desvío frente a lo
+ // programado son realmente inconsistentes (ya cubierto por las dos condiciones siguientes).
  if(facts.durHrs>14)motivos.push('Duración real mayor a 14 horas');
  if(facts.diffHrs!==null&&facts.diffHrs>4&&!facts.extrasAprobadas)motivos.push('Supera la duración programada por más de 4h sin extras aprobadas');
  if(!motivos.length)return;
