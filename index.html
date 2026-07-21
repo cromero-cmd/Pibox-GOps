@@ -1294,7 +1294,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
-const APP_VERSION='15.70';
+const APP_VERSION='15.71';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 const SUPER_ADMIN_NAME='Camilo Romero';
@@ -2571,16 +2571,20 @@ async function endTurno(status='ended'){
 }
 async function checkOvertimeAndDiscrepancy(endTime,elapsedSecs){
  const userEmail=document.getElementById('user-email').textContent;
- const today=new Date();
  try{
  const resp=await fetch(MALLA_SCRIPT+'?sheet=Malla',{signal:AbortSignal.timeout(8000)});
  const csv=await resp.text();
  const lines=csv.trim().split('\n').slice(1);
+ // Emparejar por la fecha en que el turno INICIÓ (turnoStartTime), no por "hoy" (new Date() al
+ // momento de finalizar). En un turno nocturno que cruza medianoche (ej. 4:00pm→1:00am), al cerrar
+ // el turno ya es el día siguiente — usar "hoy" hacía match con la fila de malla de ESE día
+ // siguiente (que puede tener su propio turno nocturno programado), calculando scheduledStart/End
+ // sobre el turno equivocado y generando falsas salidas anticipadas de ~24h.
  const todayEntry=lines.map(l=>{const c=parseCSVLine(l);return{fecha:c[1]?.trim(),usuario:c[2]?.trim(),nombre:c[3]?.trim(),inicio:c[5]?.trim(),fin:c[6]?.trim(),lider:c[9]?.trim(),novedad:c[10]?.trim()};})
  .find(m=>{
  if(!m.fecha||m.usuario!==userEmail)return false;
  const d=parseDate(m.fecha);
- return d&&d.toDateString()===today.toDateString();
+ return d&&d.toDateString()===turnoStartTime.toDateString();
  });
  if(!todayEntry)return;
  // Bug 1: novedades que permiten trabajar media jornada (remunerada completa)
@@ -2923,7 +2927,7 @@ async function loadTurnoHistory(){
  const eom=new Date(now.getFullYear(),now.getMonth()+1,0,23,59,59);
  function secsToHm(s){const h=Math.floor(s/3600),m=Math.floor((s%3600)/60);if(h&&m)return`${h}h ${m}m`;if(h)return`${h}h`;return`${m}m`;}
  function calcReal(from,to){return myTurnos.filter(t=>{const d=t.startTime?.toDate?.();return d&&(!from||d>=from)&&(!to||d<=to);}).reduce((s,t)=>s+(t.accumulatedSeconds||0),0);}
- function calcProg(from,to){return myMalla.filter(r=>{const d=parseDate(r.fecha);return d&&(!from||d>=from)&&(!to||d<=to);}).reduce((s,r)=>s+(r.scheduledStart&&r.scheduledEnd?Math.max(0,(r.scheduledEnd-r.scheduledStart)/1000):0),0);}
+ function calcProg(from,to){return myMalla.filter(r=>{const d=parseDate(r.fecha);return d&&(!from||d>=from)&&(!to||d<=to);}).reduce((s,r)=>{if(!r.scheduledStart||!r.scheduledEnd)return s;const seAdj=r.scheduledEnd<r.scheduledStart?new Date(r.scheduledEnd.getTime()+24*3600000):r.scheduledEnd;return s+Math.max(0,(seAdj-r.scheduledStart)/1000);},0);}
  function calcExtras(from,to){return myTurnos.filter(t=>{const d=t.startTime?.toDate?.();return d&&(!from||d>=from)&&(!to||d<=to)&&t.overtimeStatus==='approved'&&(t.overtimeMinutes||t.overtimeExtraMins);}).reduce((s,t)=>s+(t.overtimeMinutes||t.overtimeExtraMins)*60,0);}
  function card(label,realSecs,progSecs,extrasSecs,highlight){
  const hasData=progSecs>0||realSecs>0;
@@ -3694,7 +3698,8 @@ async function loadPanel2(){
  const dur=r.realStart&&r.realEnd?secsToHm(Math.max(0,(r.realEnd-r.realStart)/1000)):'—';
  const t=r.turno;
  const gridCols='36px 160px 65px 85px 85px 70px 70px 180px 100px 110px';
- const durProg=r.scheduledStart&&r.scheduledEnd?secsToHm(Math.max(0,Math.round((r.scheduledEnd-r.scheduledStart)/1000))):'—';
+ const seAdjRow=(r.scheduledStart&&r.scheduledEnd&&r.scheduledEnd<r.scheduledStart)?new Date(r.scheduledEnd.getTime()+24*3600000):r.scheduledEnd;
+ const durProg=r.scheduledStart&&seAdjRow?secsToHm(Math.max(0,Math.round((seAdjRow-r.scheduledStart)/1000))):'—';
  // Anomalías: umbral de 2h de diferencia para el resaltado de tabla (más sensible que el
  // umbral de 4h usado en la tarjeta de Insights, que solo lista lo más marcado).
  const facts=turnoAnomalyFacts(r);
@@ -4334,7 +4339,10 @@ async function forceCloseTurno(turnoId,btn){
  let endTime=now;
  const turnoRow=panel2AllRows?.find(r=>r.turnoId===turnoId);
  if(turnoRow?.scheduledEnd){
- endTime=turnoRow.scheduledEnd;
+ // Turno nocturno (cruza medianoche): scheduledEnd se calcula con la fecha del día de inicio,
+ // así que un fin de madrugada (ej. 1:00 a.m.) queda ANTES que scheduledStart en vez de al día
+ // siguiente — sin este ajuste se guardaría un endTime anterior al startTime (duración negativa).
+ endTime=(turnoRow.scheduledStart&&turnoRow.scheduledEnd<turnoRow.scheduledStart)?new Date(turnoRow.scheduledEnd.getTime()+24*3600000):turnoRow.scheduledEnd;
  } else {
  // Buscar en mallaData por usuario y fecha
  const mallaData=window._panel2MallaData||[];
@@ -4345,7 +4353,9 @@ async function forceCloseTurno(turnoId,btn){
  const tDate=t.startTime?.toDate?.();
  const mEntry=mallaData.find(m=>m.usuario===t.userEmail&&parseDate(m.fecha)?.toDateString()===tDate?.toDateString());
  if(mEntry?.fin){
- const scheduled=parseTime(mEntry.fecha,mEntry.fin);
+ const schedStart=parseTime(mEntry.fecha,mEntry.inicio);
+ let scheduled=parseTime(mEntry.fecha,mEntry.fin);
+ if(scheduled&&schedStart&&scheduled<schedStart)scheduled=new Date(scheduled.getTime()+24*3600000);
  if(scheduled)endTime=scheduled;
  }
  }
@@ -5163,7 +5173,8 @@ function exportPanel2XLSX(){
  const d=parseDate(r.fecha);
  const dia=d?DIAS[d.getDay()]:'—';
  const durReal=r.realStart&&r.realEnd?secsToHm(Math.max(0,(r.realEnd-r.realStart)/1000)):'—';
- const durProg=r.scheduledStart&&r.scheduledEnd?secsToHm(Math.max(0,Math.round((r.scheduledEnd-r.scheduledStart)/1000))):'—';
+ const seAdjExp=(r.scheduledStart&&r.scheduledEnd&&r.scheduledEnd<r.scheduledStart)?new Date(r.scheduledEnd.getTime()+24*3600000):r.scheduledEnd;
+ const durProg=r.scheduledStart&&seAdjExp?secsToHm(Math.max(0,Math.round((seAdjExp-r.scheduledStart)/1000))):'—';
  return[dia,fmtD(r.fecha),r.usuario||'—',r.nombre||'—',r.linea||'—',fmt(r.scheduledStart),fmt(r.scheduledEnd),fmt(r.realStart),fmt(r.realEnd),durReal,durProg,r.novedad||'—',r.cumplStatus.label];
  });
  exportToXLSX(headers,rows,'panel_control_'+new Date().toISOString().split('T')[0]);
