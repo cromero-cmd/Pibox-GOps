@@ -1294,7 +1294,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
-const APP_VERSION='15.71';
+const APP_VERSION='15.72';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 const SUPER_ADMIN_NAME='Camilo Romero';
@@ -4433,7 +4433,18 @@ async function saveTurnoTimeEdit(turnoId, fecha, btn){
  const adminEmail=document.getElementById('user-email').textContent;
  const updates={editedBy:adminEmail,editedAt:new Date().toISOString(),editReason:reason};
  if(startVal){const newStart=parseTime(fechaMalla,startVal);if(newStart)updates.startTime=newStart;}
- if(endVal){const newEnd=parseTime(fechaMalla,endVal);if(newEnd){updates.endTime=newEnd;updates.status='ended';}}
+ if(endVal){
+ let newEnd=parseTime(fechaMalla,endVal);
+ if(newEnd){
+ // Turno nocturno (cruza medianoche): parseTime construye newEnd con la misma fecha que el
+ // inicio del turno, así que un fin de madrugada (ej. 1:00 a.m.) para un turno de 4:00pm→1:00am
+ // queda ANTES que el inicio en vez de al día siguiente — sin este ajuste se guardaría un
+ // endTime anterior al startTime (duración negativa o 0).
+ const refStart=updates.startTime||panelRow?.realStart||null;
+ if(refStart&&newEnd<=refStart)newEnd=new Date(newEnd.getTime()+24*3600000);
+ updates.endTime=newEnd;updates.status='ended';
+ }
+ }
  if(updates.startTime&&updates.endTime){
  updates.accumulatedSeconds=Math.max(0,Math.round((updates.endTime-updates.startTime)/1000));
  }
