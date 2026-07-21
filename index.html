@@ -1294,7 +1294,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
-const APP_VERSION='15.72';
+const APP_VERSION='15.73';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 const SUPER_ADMIN_NAME='Camilo Romero';
@@ -3695,6 +3695,11 @@ async function loadPanel2(){
  const se=r.scheduledEnd?r.scheduledEnd.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
  const rs=r.realStart?r.realStart.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
  const re=r.realEnd?r.realEnd.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
+ // Formato 24h (HH:MM) para pre-llenar el <input type="time"> del modal de edición — rs/re usan
+ // formato 12h (a. m./p. m.) para mostrar en la tabla, pero ese formato es inválido como value
+ // de un input type="time" y el campo quedaba vacío al abrir el modal.
+ const rs24=r.realStart?r.realStart.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit',hour12:false}):'';
+ const re24=r.realEnd?r.realEnd.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit',hour12:false}):'';
  const dur=r.realStart&&r.realEnd?secsToHm(Math.max(0,(r.realEnd-r.realStart)/1000)):'—';
  const t=r.turno;
  const gridCols='36px 160px 65px 85px 85px 70px 70px 180px 100px 110px';
@@ -3719,7 +3724,7 @@ async function loadPanel2(){
  <div style="padding:8px 8px;border-right:1px solid var(--border);font-family:var(--mono);font-weight:700;color:var(--p2);display:flex;align-items:center;gap:4px;">${dur}${anomalyReason?`<span title="${esc(anomalyReason)}" style="cursor:help;font-size:11px;">⚠️</span>`:''}</div>
  <div style="padding:8px 8px;border-right:1px solid var(--border);font-family:var(--mono);color:var(--text-dim);display:flex;align-items:center;">${durProg}</div>
  <div style="padding:6px 8px;border-right:1px solid var(--border);display:flex;flex-direction:column;gap:4px;align-items:flex-start;">
- ${userEmailPanel===SUPER_ADMIN&&r.turnoId?`<button onclick="editTurnoTimes('${r.turnoId}','${r.realStart?rs:''}','${r.realEnd?re:''}','${r.nombre||r.usuario?.split('@')[0]||''}','${r.fecha||''}')" style="background:rgba(251,146,60,0.08);border:1px solid rgba(251,146,60,0.3);color:#fb923c;padding:3px 8px;border-radius:5px;font-size:9px;font-family:var(--mono);cursor:pointer;white-space:nowrap;">✏️ Editar tiempos</button>`:''}
+ ${userEmailPanel===SUPER_ADMIN&&r.turnoId?`<button onclick="editTurnoTimes('${r.turnoId}','${rs24}','${re24}','${r.nombre||r.usuario?.split('@')[0]||''}','${r.fecha||''}')" style="background:rgba(251,146,60,0.08);border:1px solid rgba(251,146,60,0.3);color:#fb923c;padding:3px 8px;border-radius:5px;font-size:9px;font-family:var(--mono);cursor:pointer;white-space:nowrap;">✏️ Editar tiempos</button>`:''}
  ${r.turnoId&&t?.status==='ended'&&!t?.resumeAuthorized?`<button onclick="authorizeResume('${r.turnoId}',this)" style="background:rgba(123,47,255,0.1);border:1px solid rgba(123,47,255,0.3);color:var(--p2);padding:3px 8px;border-radius:5px;font-size:9px;font-family:var(--mono);cursor:pointer;white-space:nowrap;">▶ Autorizar reanudación</button>`:''}
  ${r.turnoId&&t?.resumeAuthorized?'<span style="font-size:9px;color:var(--p2);font-family:var(--mono);">✔ Reanudación autorizada</span>':''}
  ${r.turnoId&&t?.earlyLeave&&t?.earlyLeaveStatus==='pending_review'?`<button onclick="reviewEarlyLeave('${r.turnoId}',true,this)" style="background:rgba(74,222,128,0.08);border:1px solid rgba(74,222,128,0.3);color:#4ade80;padding:3px 8px;border-radius:5px;font-size:9px;font-family:var(--mono);cursor:pointer;white-space:nowrap;">✅ Justificar salida</button><button onclick="reviewEarlyLeave('${r.turnoId}',false,this)" style="background:rgba(248,113,113,0.08);border:1px solid rgba(248,113,113,0.3);color:#f87171;padding:3px 8px;border-radius:5px;font-size:9px;font-family:var(--mono);cursor:pointer;margin-top:2px;white-space:nowrap;">❌ No justificar</button>`:''}
@@ -4386,10 +4391,12 @@ async function editTurnoTimes(turnoId, currentStart, currentEnd, nombre, fecha){
  <div>
  <label style="font-size:11px;color:var(--text-dim);font-family:var(--mono);display:block;margin-bottom:4px;">Hora de inicio real</label>
  <input type="time" id="edit-start-time" value="${currentStart||''}" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-size:14px;font-family:var(--mono);"/>
+ <div style="font-size:10px;color:var(--text-dim);margin-top:4px;">Formato 24h — ejemplo: 13:00 para 1:00 p.m., 01:00 para 1:00 a.m.</div>
  </div>
  <div>
  <label style="font-size:11px;color:var(--text-dim);font-family:var(--mono);display:block;margin-bottom:4px;">Hora de fin real</label>
  <input type="time" id="edit-end-time" value="${currentEnd||''}" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;color:var(--text);font-size:14px;font-family:var(--mono);"/>
+ <div style="font-size:10px;color:var(--text-dim);margin-top:4px;">Formato 24h — ejemplo: 13:00 para 1:00 p.m., 01:00 para 1:00 a.m.</div>
  </div>
  <div>
  <label style="font-size:11px;color:var(--text-dim);font-family:var(--mono);display:block;margin-bottom:4px;">Motivo de la corrección</label>
