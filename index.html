@@ -1294,7 +1294,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
-const APP_VERSION='15.75';
+const APP_VERSION='15.77';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 const SUPER_ADMIN_NAME='Camilo Romero';
@@ -4574,13 +4574,71 @@ async function openPayrollPreview(){
  </div>
  </div>`;
  document.body.appendChild(overlay);
- // Cargar datos
  const now=new Date();
  const lastMonday=new Date(now);lastMonday.setDate(now.getDate()-now.getDay()-6);lastMonday.setHours(0,0,0,0);
  const lastSunday=new Date(lastMonday);lastSunday.setDate(lastMonday.getDate()+6);lastSunday.setHours(23,59,59);
  const fmtDate=d=>{const dd=String(d.getDate()).padStart(2,'0');const meses=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];return`${dd}-${meses[d.getMonth()]}-${d.getFullYear()}`;};
  const weekStart=fmtDate(lastMonday),weekEnd=fmtDate(lastSunday);
  document.getElementById('payroll-preview-period').textContent=`Semana: ${weekStart} — ${weekEnd}`;
+ // Guardar meta desde ya — savePayrollDraft/loadPayrollDraft necesitan weekStart/weekEnd para
+ // construir la clave de localStorage incluso antes de tener los datos frescos de Firestore/malla.
+ window._payrollPreviewMeta={weekStart,weekEnd,payrollEmails,lastSunday,lastMonday};
+ const draft=loadPayrollDraft(weekStart,weekEnd);
+ if(draft&&draft.records&&draft.records.length){
+ showPayrollDraftBanner(draft);
+ } else {
+ await loadFreshPayrollData();
+ }
+}
+function payrollDraftKey(weekStart,weekEnd){return`pigops_payroll_draft_${weekStart}_${weekEnd}`;}
+function loadPayrollDraft(weekStart,weekEnd){
+ try{
+ const raw=localStorage.getItem(payrollDraftKey(weekStart,weekEnd));
+ return raw?JSON.parse(raw):null;
+ }catch(e){return null;}
+}
+function savePayrollDraft(){
+ // Se llama en cada edición de celda (editPayrollCell) para no perder el progreso al cerrar el
+ // modal — incluye el registro completo (checkIn/checkOut/almuerzo/novedad y hours ya recalculado).
+ const meta=window._payrollPreviewMeta;
+ if(!meta||!window._payrollPreviewRecords)return;
+ try{
+ localStorage.setItem(payrollDraftKey(meta.weekStart,meta.weekEnd),JSON.stringify({savedAt:new Date().toISOString(),records:window._payrollPreviewRecords}));
+ }catch(e){console.warn('No se pudo guardar el borrador de nómina:',e);}
+}
+function clearPayrollDraft(weekStart,weekEnd){
+ try{localStorage.removeItem(payrollDraftKey(weekStart,weekEnd));}catch(e){}
+}
+function showPayrollDraftBanner(draft){
+ const body=document.getElementById('payroll-preview-body');
+ const savedAtStr=new Date(draft.savedAt).toLocaleString('es-CO',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
+ body.innerHTML=`<div style="background:rgba(96,165,250,0.08);border:1px solid rgba(96,165,250,0.3);border-radius:10px;padding:14px 16px;">
+ <div style="font-size:13px;color:var(--text);margin-bottom:12px;">📝 Tienes cambios guardados del ${savedAtStr}. ¿Continuar donde lo dejaste o empezar de nuevo?</div>
+ <div style="display:flex;gap:8px;">
+ <button onclick="resumePayrollDraft()" style="flex:1;background:rgba(74,222,128,0.1);border:1px solid rgba(74,222,128,0.3);color:#4ade80;padding:8px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;">Continuar</button>
+ <button onclick="discardPayrollDraftAndReload()" style="flex:1;background:var(--surface2);border:1px solid var(--border);color:var(--text-muted);padding:8px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;">Empezar de nuevo</button>
+ </div>
+ </div>`;
+}
+function resumePayrollDraft(){
+ const meta=window._payrollPreviewMeta;
+ const draft=loadPayrollDraft(meta.weekStart,meta.weekEnd);
+ if(!draft){toast('❌ No se encontró el borrador');return;}
+ window._payrollPreviewRecords=draft.records;
+ renderPayrollPreviewTable();
+ toast('📝 Borrador restaurado');
+}
+async function discardPayrollDraftAndReload(){
+ const meta=window._payrollPreviewMeta;
+ clearPayrollDraft(meta.weekStart,meta.weekEnd);
+ const body=document.getElementById('payroll-preview-body');
+ body.innerHTML='<div style="text-align:center;padding:40px;color:var(--text-dim);">⏳ Generando prenómina...</div>';
+ await loadFreshPayrollData();
+}
+async function loadFreshPayrollData(){
+ const meta=window._payrollPreviewMeta;
+ const{lastMonday,lastSunday}=meta;
+ const fmtDate=d=>{const dd=String(d.getDate()).padStart(2,'0');const meses=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];return`${dd}-${meses[d.getMonth()]}-${d.getFullYear()}`;};
  console.log('[openPayrollPreview] lastMonday:',lastMonday,'lastSunday:',lastSunday);
  let mallaData=[];
  try{
@@ -4627,9 +4685,9 @@ async function openPayrollPreview(){
  novedad:m.novedad||'—'
  };
  }).sort((a,b)=>a.name.localeCompare(b.name)||a.date.localeCompare(b.date));
- // Guardar lastSunday (no solo el string formateado) para que refreshPayrollExtrasColumn y
- // downloadPayrollXLS puedan recalcular horasLegales con la fecha de la semana reportada.
- window._payrollPreviewMeta={weekStart,weekEnd,payrollEmails,lastSunday};
+ renderPayrollPreviewTable();
+}
+function renderPayrollPreviewTable(){
  // Renderizar tabla editable
  const body=document.getElementById('payroll-preview-body');
  const sendBtn=document.getElementById('payroll-send-btn');
@@ -4638,6 +4696,7 @@ async function openPayrollPreview(){
  // Calcular total de horas por agente para determinar extras (excedente sobre 44h/42h semanales).
  // El umbral depende de la semana REPORTADA (lastSunday), no de la fecha de hoy — si hoy es
  // 16 de julio pero el reporte es de la semana del 6-12, esa semana sigue en 44h.
+ const lastSunday=window._payrollPreviewMeta?.lastSunday||new Date();
  const horasLegales=(lastSunday>=new Date('2026-07-15'))?42:44;
  const horasLegalesSecs=horasLegales*3600;
  const totalSecsByAgent={};
@@ -4832,6 +4891,9 @@ function editPayrollCell(td, rowIdx, field){
  recalcHours(window._payrollPreviewRecords[rowIdx],td.closest('tr'));
  refreshPayrollExtrasColumn();
  }
+ // Persistir el borrador en localStorage en cada edición — ya incluye el valor recalculado de
+ // "hours" si el campo editado lo afectaba, para no perder el progreso al cerrar el modal.
+ savePayrollDraft();
  // Actualizar Firestore si hay turnoId
  const row=window._payrollPreviewRecords[rowIdx];
  if(row.turnoId&&['checkIn','checkOut'].includes(field)){
@@ -4867,6 +4929,9 @@ async function confirmAndSendPayroll(){
  });
  const payload=JSON.stringify({weekStart,weekEnd,records,recipients,extrasByAgent});
  await fetch(NOTIF_SCRIPT+'?type=payroll_report',{method:'POST',mode:'no-cors',signal:AbortSignal.timeout(30000),headers:{'Content-Type':'text/plain'},body:payload});
+ // Envío exitoso — el borrador ya no aplica, evita reofrecer datos obsoletos la próxima vez
+ // que se abra la pre-revisión de esta misma semana.
+ clearPayrollDraft(weekStart,weekEnd);
  document.querySelector('.abs-overlay')?.remove();
  toast('📋 Nómina enviada a '+recipients.join(', '));
  }catch(e){
