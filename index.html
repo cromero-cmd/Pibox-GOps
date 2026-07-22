@@ -291,6 +291,15 @@ window.getApprovedOvertimeEvents = async (fromDate, toDate) => {
  return snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(e => e.type==='overtime' && e.status==='approved');
  } catch(e) { console.error('[getApprovedOvertimeEvents]', e); return []; }
 };
+window.getScheduledOvertimeEvents = async (fromDate, toDate) => {
+ // Eventos de extras generados automáticamente por exceso de horas PROGRAMADAS (no por trabajo
+ // real) — overtimeSource:'scheduled'. Se usan tanto para el chequeo de duplicados (¿ya existe
+ // un evento de este tipo para este agente esta semana?) como para mostrarlos en Insights.
+ try {
+ const snap = await getDocs(query(collection(db, 'events'), where('timestamp', '>=', fromDate), where('timestamp', '<=', toDate)));
+ return snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(e => e.type==='overtime' && e.overtimeSource==='scheduled');
+ } catch(e) { console.error('[getScheduledOvertimeEvents]', e); return []; }
+};
 window.loadAnalytics = async () => {
  try {
  const snap = await getDocs(query(collection(db, 'events'), orderBy('timestamp', 'desc'), limit(200)));
@@ -1294,7 +1303,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
-const APP_VERSION='15.77';
+const APP_VERSION='15.78';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 const SUPER_ADMIN_NAME='Camilo Romero';
@@ -3752,6 +3761,56 @@ async function loadPanel2(){
  // activos que usan las tarjetas de estado del Panel. panel2AllRows traía a todos los agentes
  // sin importar el filtro activo.
  try{renderPanel2Insights(cardBase,turnosDelPeriodo,fromDate,toDate);}catch(e){console.error('Insights error:',e);}
+ // Detección automática de horas PROGRAMADAS que exceden el límite legal semanal — no bloquea
+ // el resto del Panel si falla (ej. sin conexión), por eso va en su propio try/catch al final.
+ try{await checkScheduledOvertimeThreshold();}catch(e){console.error('[checkScheduledOvertimeThreshold] error:',e);}
+}
+async function checkScheduledOvertimeThreshold(){
+ // Si la suma de horas PROGRAMADAS (mallaData.inicio→fin, no lo realmente trabajado) de un
+ // agente para la semana actual supera el umbral legal (44h antes del 15 jul 2026, 42h desde
+ // entonces), crear automáticamente una solicitud de extras pendiente de revisión — para que el
+ // exceso quede documentado y pase por aprobación antes de que ocurra, no solo detectado después.
+ const mallaData=window._panel2MallaData||[];
+ if(!mallaData.length)return;
+ const now=new Date();
+ const sow=new Date(now);sow.setDate(now.getDate()-now.getDay()+1);sow.setHours(0,0,0,0);
+ const eow=new Date(sow);eow.setDate(sow.getDate()+6);eow.setHours(23,59,59);
+ const horasLegales=(eow>=new Date('2026-07-15'))?42:44;
+ const horasLegalesSecs=horasLegales*3600;
+ // Solo filas de esta semana sin novedad (vacaciones/incapacidad/etc. no cuentan como horas
+ // programadas de trabajo real).
+ const weekRows=mallaData.filter(m=>{const d=parseDate(m.fecha);return d&&d>=sow&&d<=eow&&!m.novedad?.trim();});
+ if(!weekRows.length)return;
+ const totalsByAgent={};
+ weekRows.forEach(m=>{
+ const ss=parseTime(m.fecha,m.inicio),se=parseTime(m.fecha,m.fin);
+ if(!ss||!se)return;
+ // Turno nocturno (cruza medianoche): mismo ajuste +24h usado en el resto del archivo.
+ const seAdj=se<ss?new Date(se.getTime()+24*3600000):se;
+ const secs=(seAdj-ss)/1000;
+ if(!totalsByAgent[m.usuario])totalsByAgent[m.usuario]={secs:0,nombre:m.nombre||m.usuario.split('@')[0]};
+ totalsByAgent[m.usuario].secs+=secs;
+ });
+ const exceeded=Object.entries(totalsByAgent).filter(([,v])=>v.secs>horasLegalesSecs);
+ if(!exceeded.length)return;
+ // Evitar duplicados: ya existe un evento overtimeSource:'scheduled' para este agente esta semana.
+ const existing=window.getScheduledOvertimeEvents?await window.getScheduledOvertimeEvents(sow,eow):[];
+ const existingAgents=new Set(existing.map(e=>e.agentEmail));
+ const fmtDateLarga=d=>d.toLocaleDateString('es-CO',{day:'2-digit',month:'long',year:'numeric'});
+ for(const[agentEmail,v]of exceeded){
+ if(existingAgents.has(agentEmail))continue;
+ const extraMins=Math.round((v.secs-horasLegalesSecs)/60);
+ if(extraMins<=0)continue;
+ try{
+ await window.trackEvent('overtime',{
+ agentEmail,agentName:v.nombre,
+ date:`Semana del ${fmtDateLarga(sow)} al ${fmtDateLarga(eow)}`,
+ status:'pending_review',
+ overtimeSource:'scheduled',
+ overtimeExtraMins:extraMins
+ });
+ }catch(e){console.error('[checkScheduledOvertimeThreshold] error creando evento para',agentEmail,e);}
+ }
 }
 function togglePanel2LiderDropdownTop(){
  const menu=document.getElementById('panel2-lider-top-menu');
@@ -4063,6 +4122,26 @@ async function renderPanel2Insights(rows,allTurnos,fromDate,toDate){
  });
  }catch(err){console.error('[renderPanel2Insights] getApprovedOvertimeEvents falló:',err);}
  }
+ // Extras generadas automáticamente por exceso de horas PROGRAMADAS (overtimeSource:'scheduled')
+ // — no tienen turno ni mallaEntry (son semanales, no de un día puntual), se listan aparte con
+ // su propia etiqueta distintiva para no confundirlas con extras por trabajo real.
+ if(window.getScheduledOvertimeEvents){
+ try{
+ const scheduledEvents=await window.getScheduledOvertimeEvents(fromDate||new Date(0),toDate||new Date());
+ scheduledEvents.forEach(e=>{
+ const u=e.agentEmail||e.user||'—';
+ if(!allowedUsers.has(u))return;
+ const v=initUser(u,e.agentName||e.userName);
+ const mins=e.overtimeExtraMins||0;
+ const label='⚠️ Horas programadas exceden límite legal';
+ let estado=label;
+ if(e.status==='approved'){v.extrasAprobadasCount++;v.extrasAprobadasMins+=mins;estado='✅ Aprobada — '+label;}
+ else if(e.status==='rejected'){v.extrasRechazadasCount++;estado='❌ Rechazada — '+label;}
+ else{v.extrasPendientesCount++;estado='⏳ Pendiente — '+label;}
+ v.extrasDetalle.push({fecha:e.date||'',mins,estado});
+ });
+ }catch(err){console.error('[renderPanel2Insights] getScheduledOvertimeEvents falló:',err);}
+ }
  // Ordenar cada categoría de mayor a menor por el total real, sin tope de agentes
  const tardanzaEntries=Object.entries(userStats).filter(([,v])=>v.tardanzaCount>0).sort((a,b)=>b[1].tardanzaMins-a[1].tardanzaMins);
  const ausenteEntries=Object.entries(userStats).filter(([,v])=>v.ausenteTotal>0).sort((a,b)=>b[1].ausenteTotal-a[1].ausenteTotal);
@@ -4289,6 +4368,10 @@ function overtimeRowHTML(e,isSuperAdmin){
  ${e.overtimeActivity?`📋 Motivo: ${esc(e.overtimeActivity)}`:''}
  ${e.overtimeAuthorizedBy?`<br>👤 Autorizado por: ${esc(e.overtimeAuthorizedBy)}`:''}
  </div>`:'';
+ // Generadas automáticamente por exceso de horas PROGRAMADAS (overtimeSource:'scheduled'), no
+ // por trabajo real adicional — se etiquetan distinto para que no se confundan con extras
+ // reales al revisarlas.
+ const scheduledSourceHTML=e.overtimeSource==='scheduled'?`<div style="font-size:10px;font-weight:700;color:#fbbf24;margin-top:4px;">⚠️ Horas programadas exceden límite legal</div>`:'';
  const auditHTML=(e.status==='pending_super_admin'||e.status==='approved'||e.status==='rejected')?`
  <div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);margin-top:6px;line-height:1.6;">
  ${firstApprover?`👤 1ra aprobación: ${esc(firstApprover.split('@')[0])} · ${fmtOvertimeDateTime(firstApprovedAt)}`:''}
@@ -4301,8 +4384,9 @@ function overtimeRowHTML(e,isSuperAdmin){
  <div>
  <div style="font-size:13px;font-weight:700;color:var(--text);">${esc(e.agentName||e.userName||'—')}</div>
  <div style="font-size:11px;color:var(--text-dim);font-family:var(--mono);">${esc(e.agentEmail||e.user||'—')} · ${esc(e.date||'—')}</div>
- <div style="font-size:12px;color:#fb923c;margin-top:4px;">⏰ ${e.extraMins||0} min extras</div>
+ <div style="font-size:12px;color:#fb923c;margin-top:4px;">⏰ ${e.extraMins||e.overtimeExtraMins||0} min extras</div>
  <div style="font-size:11px;font-weight:700;color:${st.color};margin-top:4px;">${st.text}</div>
+ ${scheduledSourceHTML}
  ${activityAuthHTML}
  ${auditHTML}
  </div>
@@ -4517,7 +4601,7 @@ async function approveOvertime(eventId,approved,btn){
  agentName:cached.agentName||cached.userName||'',
  agentEmail:cached.agentEmail||cached.user||'',
  date:cached.date||'',
- extraMins:cached.extraMins||0,
+ extraMins:cached.extraMins||cached.overtimeExtraMins||0,
  coordinatorEmail:priorDecidedBy,
  reason:rejectReason,
  recipients:[priorDecidedBy]
