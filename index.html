@@ -1295,7 +1295,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
-const APP_VERSION='15.81';
+const APP_VERSION='15.82';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 const SUPER_ADMIN_NAME='Camilo Romero';
@@ -5198,21 +5198,88 @@ function updateExceededWeeksBadge(){
  const badge=document.getElementById('exceeded-weeks-badge');
  if(badge){badge.style.display=uniqueAgents>0?'inline':'none';badge.textContent=uniqueAgents;}
 }
+function exceededWeeksFmtHrsMin(secs){const totalMins=Math.round(secs/60);const h=Math.floor(totalMins/60),m=totalMins%60;return`${h}h ${m}m`;}
+function exceededWeeksFmtRange(sow,eow){return`${sow.toLocaleDateString('es-CO',{day:'2-digit',month:'short'})} — ${eow.toLocaleDateString('es-CO',{day:'2-digit',month:'short',year:'numeric'})}`;}
+function exceededWeeksMonthKey(sow){return`${sow.getFullYear()}-${String(sow.getMonth()+1).padStart(2,'0')}`;}
+function exceededWeeksMonthLabel(sow){const l=sow.toLocaleDateString('es-CO',{month:'long',year:'numeric'});return l.charAt(0).toUpperCase()+l.slice(1);}
+function exceededWeeksWeekKey(sow){return sow.toISOString().split('T')[0];}
+function renderExceededWeeksTable(list){
+ const wrap=document.getElementById('exceeded-weeks-table-wrap');
+ if(!wrap)return;
+ if(!list.length){wrap.innerHTML='<div style="font-size:12px;color:var(--text-dim);text-align:center;padding:20px;font-family:var(--mono);">Sin resultados para el filtro seleccionado</div>';return;}
+ const rowsHTML=list.map(r=>`<tr>
+ <td style="padding:8px 10px;border:1px solid var(--border);">${esc(r.nombre)}<div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);">${esc(r.usuario)}</div></td>
+ <td style="padding:8px 10px;border:1px solid var(--border);font-family:var(--mono);white-space:nowrap;">${exceededWeeksFmtRange(r.sow,r.eow)}</td>
+ <td style="padding:8px 10px;border:1px solid var(--border);font-family:var(--mono);">${exceededWeeksFmtHrsMin(r.scheduledSecs)}</td>
+ <td style="padding:8px 10px;border:1px solid var(--border);font-family:var(--mono);">${exceededWeeksFmtHrsMin(r.maxSecs)}</td>
+ <td style="padding:8px 10px;border:1px solid var(--border);font-family:var(--mono);color:#f87171;font-weight:700;">${exceededWeeksFmtHrsMin(r.excessSecs)}</td>
+ <td style="padding:8px 10px;border:1px solid var(--border);text-align:center;">${r.festivoFechas.length?`<span title="${esc(r.festivoFechas.join(', '))}" style="font-size:11px;color:#fbbf24;">🎉 Sí</span>`:'<span style="color:var(--text-dim);">—</span>'}</td>
+ </tr>`).join('');
+ wrap.innerHTML=`<div style="overflow-x:auto;">
+ <table style="width:100%;border-collapse:collapse;font-size:12px;">
+ <thead>
+ <tr style="background:var(--surface2);">
+ ${['Agente','Semana','Horas programadas','Máximo permitido','Excedente','Festivo'].map(c=>`<th style="padding:8px 10px;border:1px solid var(--border);text-align:left;font-size:10px;color:var(--text-dim);font-family:var(--mono);text-transform:uppercase;white-space:nowrap;">${c}</th>`).join('')}
+ </tr>
+ </thead>
+ <tbody>${rowsHTML}</tbody>
+ </table>
+ </div>`;
+}
+function populateExceededWeeksWeekSelect(monthKey){
+ const all=window._exceededWeeksAllResults||[];
+ const filtered=monthKey?all.filter(r=>exceededWeeksMonthKey(r.sow)===monthKey):all;
+ // Semanas únicas (una fila por agente por semana) ordenadas cronológicamente, no por excedente.
+ const weekMap=new Map();
+ filtered.forEach(r=>{const k=exceededWeeksWeekKey(r.sow);if(!weekMap.has(k))weekMap.set(k,r.sow);});
+ const weeks=[...weekMap.entries()].sort((a,b)=>a[1]-b[1]);
+ const sel=document.getElementById('exceeded-weeks-week-filter');
+ if(!sel)return;
+ const cur=sel.value;
+ sel.innerHTML='<option value="">Todas las semanas</option>'+weeks.map(([k,sow])=>{
+ const eow=new Date(sow);eow.setDate(sow.getDate()+6);
+ return`<option value="${k}">${exceededWeeksFmtRange(sow,eow)}</option>`;
+ }).join('');
+ // Conservar la semana seleccionada si sigue disponible tras cambiar de mes.
+ sel.value=weeks.some(([k])=>k===cur)?cur:'';
+}
+function populateExceededWeeksMonthSelect(){
+ const all=window._exceededWeeksAllResults||[];
+ const monthMap=new Map();
+ all.forEach(r=>{const k=exceededWeeksMonthKey(r.sow);if(!monthMap.has(k))monthMap.set(k,r.sow);});
+ const months=[...monthMap.entries()].sort((a,b)=>a[1]-b[1]);
+ const sel=document.getElementById('exceeded-weeks-month-filter');
+ if(!sel)return;
+ sel.innerHTML='<option value="">Todos los meses</option>'+months.map(([k,sow])=>`<option value="${k}">${exceededWeeksMonthLabel(sow)}</option>`).join('');
+}
+function applyExceededWeeksFilters(){
+ const monthKey=document.getElementById('exceeded-weeks-month-filter')?.value||'';
+ const weekKey=document.getElementById('exceeded-weeks-week-filter')?.value||'';
+ let filtered=window._exceededWeeksAllResults||[];
+ if(monthKey)filtered=filtered.filter(r=>exceededWeeksMonthKey(r.sow)===monthKey);
+ if(weekKey)filtered=filtered.filter(r=>exceededWeeksWeekKey(r.sow)===weekKey);
+ renderExceededWeeksTable(filtered);
+}
+function onExceededWeeksMonthFilterChange(){
+ const monthKey=document.getElementById('exceeded-weeks-month-filter')?.value||'';
+ populateExceededWeeksWeekSelect(monthKey);
+ applyExceededWeeksFilters();
+}
+function clearExceededWeeksFilters(){
+ const monthSel=document.getElementById('exceeded-weeks-month-filter');
+ const weekSel=document.getElementById('exceeded-weeks-week-filter');
+ if(monthSel)monthSel.value='';
+ populateExceededWeeksWeekSelect('');
+ if(weekSel)weekSel.value='';
+ renderExceededWeeksTable(window._exceededWeeksAllResults||[]);
+}
 function showExceededWeeksModal(){
  const results=computeExceededWeeks();
+ window._exceededWeeksAllResults=results;
  const modal=document.createElement('div');
  modal.className='abs-overlay';
  modal.style.cssText='position:fixed;inset:0;background:rgba(13,11,20,0.88);backdrop-filter:blur(8px);z-index:700;display:flex;align-items:center;justify-content:center;';
- const fmtHrsMin=secs=>{const totalMins=Math.round(secs/60);const h=Math.floor(totalMins/60),m=totalMins%60;return`${h}h ${m}m`;};
- const fmtRange=(sow,eow)=>`${sow.toLocaleDateString('es-CO',{day:'2-digit',month:'short'})} — ${eow.toLocaleDateString('es-CO',{day:'2-digit',month:'short',year:'numeric'})}`;
- const rowsHTML=results.map(r=>`<tr>
- <td style="padding:8px 10px;border:1px solid var(--border);">${esc(r.nombre)}<div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);">${esc(r.usuario)}</div></td>
- <td style="padding:8px 10px;border:1px solid var(--border);font-family:var(--mono);white-space:nowrap;">${fmtRange(r.sow,r.eow)}</td>
- <td style="padding:8px 10px;border:1px solid var(--border);font-family:var(--mono);">${fmtHrsMin(r.scheduledSecs)}</td>
- <td style="padding:8px 10px;border:1px solid var(--border);font-family:var(--mono);">${fmtHrsMin(r.maxSecs)}</td>
- <td style="padding:8px 10px;border:1px solid var(--border);font-family:var(--mono);color:#f87171;font-weight:700;">${fmtHrsMin(r.excessSecs)}</td>
- <td style="padding:8px 10px;border:1px solid var(--border);text-align:center;">${r.festivoFechas.length?`<span title="${esc(r.festivoFechas.join(', '))}" style="font-size:11px;color:#fbbf24;">🎉 Sí</span>`:'<span style="color:var(--text-dim);">—</span>'}</td>
- </tr>`).join('');
+ const selStyle='background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:6px 10px;color:var(--text);font-size:12px;font-family:var(--mono);';
  modal.innerHTML=`
  <div style="background:var(--surface);border:1px solid rgba(167,139,250,0.3);border-radius:20px;padding:28px;width:min(800px,94vw);max-height:80vh;overflow-y:auto;position:relative;">
  <div style="position:absolute;top:0;left:20px;right:20px;height:2px;background:linear-gradient(90deg,#a78bfa,#c084fc);border-radius:100px;"></div>
@@ -5223,19 +5290,19 @@ function showExceededWeeksModal(){
  </div>
  <button onclick="this.closest('.abs-overlay').remove()" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:20px;">×</button>
  </div>
- ${!results.length?'<div style="font-size:12px;color:var(--text-dim);text-align:center;padding:20px;font-family:var(--mono);">Sin semanas excedidas ✓</div>':`
- <div style="overflow-x:auto;">
- <table style="width:100%;border-collapse:collapse;font-size:12px;">
- <thead>
- <tr style="background:var(--surface2);">
- ${['Agente','Semana','Horas programadas','Máximo permitido','Excedente','Festivo'].map(c=>`<th style="padding:8px 10px;border:1px solid var(--border);text-align:left;font-size:10px;color:var(--text-dim);font-family:var(--mono);text-transform:uppercase;white-space:nowrap;">${c}</th>`).join('')}
- </tr>
- </thead>
- <tbody>${rowsHTML}</tbody>
- </table>
- </div>`}
+ ${results.length?`<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:16px;">
+ <select id="exceeded-weeks-month-filter" onchange="onExceededWeeksMonthFilterChange()" style="${selStyle}"></select>
+ <select id="exceeded-weeks-week-filter" onchange="applyExceededWeeksFilters()" style="${selStyle}"></select>
+ <button onclick="clearExceededWeeksFilters()" style="background:none;border:1px solid var(--border);color:var(--text-muted);padding:6px 12px;border-radius:8px;font-size:12px;cursor:pointer;">Limpiar filtros</button>
+ </div>`:''}
+ <div id="exceeded-weeks-table-wrap">${!results.length?'<div style="font-size:12px;color:var(--text-dim);text-align:center;padding:20px;font-family:var(--mono);">Sin semanas excedidas ✓</div>':''}</div>
  </div>`;
  document.body.appendChild(modal);
+ if(results.length){
+ populateExceededWeeksMonthSelect();
+ populateExceededWeeksWeekSelect('');
+ renderExceededWeeksTable(results);
+ }
 }
 async function reviewAbsence(userEmail,fecha,btn){
  // Mostrar modal de justificación
