@@ -1295,7 +1295,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
-const APP_VERSION='15.79';
+const APP_VERSION='15.80';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 const SUPER_ADMIN_NAME='Camilo Romero';
@@ -5150,7 +5150,13 @@ function computeExceededWeeks(){
  mallaData.forEach(m=>{
  const d=parseDate(m.fecha);
  if(!d||!m.usuario)return;
- const sow=new Date(d);sow.setDate(d.getDate()-d.getDay()+1);sow.setHours(0,0,0,0);
+ // Lunes de la semana de d. d.getDay()===0 es domingo — el patrón "getDate()-getDay()+1" usado
+ // en el resto del archivo asume domingo=7 y falla para domingo (retrocede al lunes SIGUIENTE en
+ // vez del anterior). Aquí se agrupa día por día de TODA la malla (no solo "hoy"), así que
+ // cualquier fila de domingo dispara el bug — de ahí el manejo explícito de ese caso.
+ const dow=d.getDay();
+ const diffToMonday=dow===0?-6:1-dow;
+ const sow=new Date(d);sow.setDate(d.getDate()+diffToMonday);sow.setHours(0,0,0,0);
  const eow=new Date(sow);eow.setDate(sow.getDate()+6);eow.setHours(23,59,59);
  const key=m.usuario+'|'+sow.toISOString().split('T')[0];
  if(!groups[key])groups[key]={usuario:m.usuario,nombre:m.nombre||m.usuario.split('@')[0],sow,eow,secs:0,festivoDescansoFechas:[]};
