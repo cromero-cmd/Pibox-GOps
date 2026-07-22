@@ -291,15 +291,6 @@ window.getApprovedOvertimeEvents = async (fromDate, toDate) => {
  return snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(e => e.type==='overtime' && e.status==='approved');
  } catch(e) { console.error('[getApprovedOvertimeEvents]', e); return []; }
 };
-window.getScheduledOvertimeEvents = async (fromDate, toDate) => {
- // Eventos de extras generados automáticamente por exceso de horas PROGRAMADAS (no por trabajo
- // real) — overtimeSource:'scheduled'. Se usan tanto para el chequeo de duplicados (¿ya existe
- // un evento de este tipo para este agente esta semana?) como para mostrarlos en Insights.
- try {
- const snap = await getDocs(query(collection(db, 'events'), where('timestamp', '>=', fromDate), where('timestamp', '<=', toDate)));
- return snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(e => e.type==='overtime' && e.overtimeSource==='scheduled');
- } catch(e) { console.error('[getScheduledOvertimeEvents]', e); return []; }
-};
 window.loadAnalytics = async () => {
  try {
  const snap = await getDocs(query(collection(db, 'events'), orderBy('timestamp', 'desc'), limit(200)));
@@ -1036,6 +1027,7 @@ body.agent-preview-mode header{margin-top:34px;}
  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
  <button class="turno-filter-btn" onclick="showOvertimeRequests()" style="border-color:rgba(251,146,60,0.4);color:#fb923c;" id="btn-overtime-requests">⏰ Horas extras <span id="overtime-badge" style="display:none;background:#fb923c;color:white;border-radius:100px;padding:1px 6px;font-size:10px;margin-left:4px;"></span></button>
  <button class="turno-filter-btn" onclick="showEarlyLeaveRequests()" style="border-color:rgba(96,165,250,0.4);color:#60a5fa;" id="btn-earlyleave-requests">🏁 Salidas anticipadas <span id="earlyleave-badge" style="display:none;background:#60a5fa;color:white;border-radius:100px;padding:1px 6px;font-size:10px;margin-left:4px;"></span></button>
+ <button class="turno-filter-btn" onclick="showExceededWeeksModal()" style="border-color:rgba(167,139,250,0.4);color:#a78bfa;" id="btn-exceeded-weeks">📅 Semanas excedidas <span id="exceeded-weeks-badge" style="display:none;background:#a78bfa;color:white;border-radius:100px;padding:1px 6px;font-size:10px;margin-left:4px;"></span></button>
  <button class="turno-filter-btn" onclick="openPayrollPreview()" style="border-color:rgba(74,222,128,0.3);color:#4ade80;">📋 Nómina</button>
  <button class="turno-filter-btn" onclick="exportPanel2XLSX()" style="border-color:rgba(74,222,128,0.3);color:#4ade80;">⬇ Excel</button>
  <button class="turno-filter-btn" onclick="loadPanel2()" style="padding:5px 12px;">↻</button>
@@ -1303,7 +1295,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
-const APP_VERSION='15.78';
+const APP_VERSION='15.79';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 const SUPER_ADMIN_NAME='Camilo Romero';
@@ -1312,6 +1304,16 @@ const SCRIPT_URL='https://script.google.com/macros/s/AKfycbyam6j2MG1NH11120KjvAf
 const MALLA_SCRIPT='https://script.google.com/macros/s/AKfycbyxBZWba6M1eXcwQUdBBUTqTrgGd8zwHiM6wwecXI3mUYOUP-RT9LnxSwqeXRy9prCm/exec';
 const NOTIF_SCRIPT='https://script.google.com/macros/s/AKfycbxAbTLIFiavJUN6LMsglw9vhlacUq4DN25jfH4_w2NW-stZ9Xuwb67l1LFpQ5gaKY8bfA/exec';
 const TOLERANCE_MINS=5;
+// Festivos colombianos 2026 — usados por el validador "Semanas excedidas" para ajustar el máximo
+// legal semanal cuando un agente tiene un festivo marcado como DESCANSO en la malla (ver
+// computeExceededWeeks).
+const FESTIVOS_2026=[
+ '2026-01-01','2026-01-06','2026-03-23','2026-04-02',
+ '2026-04-03','2026-05-01','2026-05-25','2026-06-15',
+ '2026-06-22','2026-06-29','2026-07-13','2026-07-20',
+ '2026-08-07','2026-08-18','2026-10-12','2026-11-02',
+ '2026-11-16','2026-12-08','2026-12-25'
+];
 let apiKey='',sheetUrl='',vidUrl='',faqUrl='',sysBase='Eres Pi GOps, el asistente inteligente de operaciones de Pibox. Tu rol es ayudar al equipo operativo a tomar decisiones rápidas y correctas en campo.\n\nTienes acceso a un manual de operaciones. Úsalo como tu fuente principal, pero también puedes razonar e interpretar cuando la pregunta no esté respondida textualmente.\n\nCómo debes responder:\n- Sé claro, directo y práctico. El equipo está en campo y necesita respuestas rápidas.\n- Si la respuesta está en el manual, úsala y explícala con tus propias palabras.\n- Si definitivamente no está en el manual, dilo con honestidad y sugiere a quién escalar.\n- Nunca te quedes en blanco. Siempre da una respuesta útil.\n- Habla en español colombiano, de forma cercana y profesional.',history=[],streaming=false,sheetData='',allVideos=[],activeCat='Todos',allFAQs=[],activeFAQCat='Todos';
 let attachedFile=null,attachedFileData=null,attachedFileType=null;
 let surveyTimer=null,surveyAnswer=null,hasConversation=false;
@@ -3550,6 +3552,7 @@ async function loadPanel2(){
  mallaData=csv.trim().split('\n').slice(1).map(l=>{const c=parseCSVLine(l);return{fecha:c[1]?.trim(),usuario:c[2]?.trim(),nombre:c[3]?.trim(),rol:c[4]?.trim(),inicio:c[5]?.trim(),fin:c[6]?.trim(),linea:c[8]?.trim(),lider:c[9]?.trim(),novedad:c[10]?.trim()};}).filter(m=>m.fecha&&m.usuario);
  }catch(e){}
  window._panel2MallaData=mallaData;
+ updateExceededWeeksBadge();
  // Iniciar timers con déficit ahora que tenemos mallaData
  (window._pendingActiveTimers||[]).forEach(t=>{
  const id='p2a_'+t.id;const start=t.startTime?.toDate?.();
@@ -3761,56 +3764,6 @@ async function loadPanel2(){
  // activos que usan las tarjetas de estado del Panel. panel2AllRows traía a todos los agentes
  // sin importar el filtro activo.
  try{renderPanel2Insights(cardBase,turnosDelPeriodo,fromDate,toDate);}catch(e){console.error('Insights error:',e);}
- // Detección automática de horas PROGRAMADAS que exceden el límite legal semanal — no bloquea
- // el resto del Panel si falla (ej. sin conexión), por eso va en su propio try/catch al final.
- try{await checkScheduledOvertimeThreshold();}catch(e){console.error('[checkScheduledOvertimeThreshold] error:',e);}
-}
-async function checkScheduledOvertimeThreshold(){
- // Si la suma de horas PROGRAMADAS (mallaData.inicio→fin, no lo realmente trabajado) de un
- // agente para la semana actual supera el umbral legal (44h antes del 15 jul 2026, 42h desde
- // entonces), crear automáticamente una solicitud de extras pendiente de revisión — para que el
- // exceso quede documentado y pase por aprobación antes de que ocurra, no solo detectado después.
- const mallaData=window._panel2MallaData||[];
- if(!mallaData.length)return;
- const now=new Date();
- const sow=new Date(now);sow.setDate(now.getDate()-now.getDay()+1);sow.setHours(0,0,0,0);
- const eow=new Date(sow);eow.setDate(sow.getDate()+6);eow.setHours(23,59,59);
- const horasLegales=(eow>=new Date('2026-07-15'))?42:44;
- const horasLegalesSecs=horasLegales*3600;
- // Solo filas de esta semana sin novedad (vacaciones/incapacidad/etc. no cuentan como horas
- // programadas de trabajo real).
- const weekRows=mallaData.filter(m=>{const d=parseDate(m.fecha);return d&&d>=sow&&d<=eow&&!m.novedad?.trim();});
- if(!weekRows.length)return;
- const totalsByAgent={};
- weekRows.forEach(m=>{
- const ss=parseTime(m.fecha,m.inicio),se=parseTime(m.fecha,m.fin);
- if(!ss||!se)return;
- // Turno nocturno (cruza medianoche): mismo ajuste +24h usado en el resto del archivo.
- const seAdj=se<ss?new Date(se.getTime()+24*3600000):se;
- const secs=(seAdj-ss)/1000;
- if(!totalsByAgent[m.usuario])totalsByAgent[m.usuario]={secs:0,nombre:m.nombre||m.usuario.split('@')[0]};
- totalsByAgent[m.usuario].secs+=secs;
- });
- const exceeded=Object.entries(totalsByAgent).filter(([,v])=>v.secs>horasLegalesSecs);
- if(!exceeded.length)return;
- // Evitar duplicados: ya existe un evento overtimeSource:'scheduled' para este agente esta semana.
- const existing=window.getScheduledOvertimeEvents?await window.getScheduledOvertimeEvents(sow,eow):[];
- const existingAgents=new Set(existing.map(e=>e.agentEmail));
- const fmtDateLarga=d=>d.toLocaleDateString('es-CO',{day:'2-digit',month:'long',year:'numeric'});
- for(const[agentEmail,v]of exceeded){
- if(existingAgents.has(agentEmail))continue;
- const extraMins=Math.round((v.secs-horasLegalesSecs)/60);
- if(extraMins<=0)continue;
- try{
- await window.trackEvent('overtime',{
- agentEmail,agentName:v.nombre,
- date:`Semana del ${fmtDateLarga(sow)} al ${fmtDateLarga(eow)}`,
- status:'pending_review',
- overtimeSource:'scheduled',
- overtimeExtraMins:extraMins
- });
- }catch(e){console.error('[checkScheduledOvertimeThreshold] error creando evento para',agentEmail,e);}
- }
 }
 function togglePanel2LiderDropdownTop(){
  const menu=document.getElementById('panel2-lider-top-menu');
@@ -4122,26 +4075,6 @@ async function renderPanel2Insights(rows,allTurnos,fromDate,toDate){
  });
  }catch(err){console.error('[renderPanel2Insights] getApprovedOvertimeEvents falló:',err);}
  }
- // Extras generadas automáticamente por exceso de horas PROGRAMADAS (overtimeSource:'scheduled')
- // — no tienen turno ni mallaEntry (son semanales, no de un día puntual), se listan aparte con
- // su propia etiqueta distintiva para no confundirlas con extras por trabajo real.
- if(window.getScheduledOvertimeEvents){
- try{
- const scheduledEvents=await window.getScheduledOvertimeEvents(fromDate||new Date(0),toDate||new Date());
- scheduledEvents.forEach(e=>{
- const u=e.agentEmail||e.user||'—';
- if(!allowedUsers.has(u))return;
- const v=initUser(u,e.agentName||e.userName);
- const mins=e.overtimeExtraMins||0;
- const label='⚠️ Horas programadas exceden límite legal';
- let estado=label;
- if(e.status==='approved'){v.extrasAprobadasCount++;v.extrasAprobadasMins+=mins;estado='✅ Aprobada — '+label;}
- else if(e.status==='rejected'){v.extrasRechazadasCount++;estado='❌ Rechazada — '+label;}
- else{v.extrasPendientesCount++;estado='⏳ Pendiente — '+label;}
- v.extrasDetalle.push({fecha:e.date||'',mins,estado});
- });
- }catch(err){console.error('[renderPanel2Insights] getScheduledOvertimeEvents falló:',err);}
- }
  // Ordenar cada categoría de mayor a menor por el total real, sin tope de agentes
  const tardanzaEntries=Object.entries(userStats).filter(([,v])=>v.tardanzaCount>0).sort((a,b)=>b[1].tardanzaMins-a[1].tardanzaMins);
  const ausenteEntries=Object.entries(userStats).filter(([,v])=>v.ausenteTotal>0).sort((a,b)=>b[1].ausenteTotal-a[1].ausenteTotal);
@@ -4368,10 +4301,6 @@ function overtimeRowHTML(e,isSuperAdmin){
  ${e.overtimeActivity?`📋 Motivo: ${esc(e.overtimeActivity)}`:''}
  ${e.overtimeAuthorizedBy?`<br>👤 Autorizado por: ${esc(e.overtimeAuthorizedBy)}`:''}
  </div>`:'';
- // Generadas automáticamente por exceso de horas PROGRAMADAS (overtimeSource:'scheduled'), no
- // por trabajo real adicional — se etiquetan distinto para que no se confundan con extras
- // reales al revisarlas.
- const scheduledSourceHTML=e.overtimeSource==='scheduled'?`<div style="font-size:10px;font-weight:700;color:#fbbf24;margin-top:4px;">⚠️ Horas programadas exceden límite legal</div>`:'';
  const auditHTML=(e.status==='pending_super_admin'||e.status==='approved'||e.status==='rejected')?`
  <div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);margin-top:6px;line-height:1.6;">
  ${firstApprover?`👤 1ra aprobación: ${esc(firstApprover.split('@')[0])} · ${fmtOvertimeDateTime(firstApprovedAt)}`:''}
@@ -4384,9 +4313,8 @@ function overtimeRowHTML(e,isSuperAdmin){
  <div>
  <div style="font-size:13px;font-weight:700;color:var(--text);">${esc(e.agentName||e.userName||'—')}</div>
  <div style="font-size:11px;color:var(--text-dim);font-family:var(--mono);">${esc(e.agentEmail||e.user||'—')} · ${esc(e.date||'—')}</div>
- <div style="font-size:12px;color:#fb923c;margin-top:4px;">⏰ ${e.extraMins||e.overtimeExtraMins||0} min extras</div>
+ <div style="font-size:12px;color:#fb923c;margin-top:4px;">⏰ ${e.extraMins||0} min extras</div>
  <div style="font-size:11px;font-weight:700;color:${st.color};margin-top:4px;">${st.text}</div>
- ${scheduledSourceHTML}
  ${activityAuthHTML}
  ${auditHTML}
  </div>
@@ -4601,7 +4529,7 @@ async function approveOvertime(eventId,approved,btn){
  agentName:cached.agentName||cached.userName||'',
  agentEmail:cached.agentEmail||cached.user||'',
  date:cached.date||'',
- extraMins:cached.extraMins||cached.overtimeExtraMins||0,
+ extraMins:cached.extraMins||0,
  coordinatorEmail:priorDecidedBy,
  reason:rejectReason,
  recipients:[priorDecidedBy]
@@ -5203,6 +5131,102 @@ async function showEarlyLeaveRequests(){
  </div>
  </div>`;
  }).join('');
+}
+function isFestivo2026(fecha){
+ const d=parseDate(fecha);
+ if(!d)return false;
+ const iso=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+ return FESTIVOS_2026.includes(iso);
+}
+function computeExceededWeeks(){
+ // Validador de "Semanas excedidas": recorre TODA la malla cargada (no solo el período
+ // seleccionado en el Panel), agrupando por agente y semana (lunes→domingo), y compara las
+ // horas programadas contra el máximo legal (44h antes del 15 jul 2026, 42h desde entonces).
+ // Si un festivo colombiano cae esa semana y el agente lo tiene marcado como DESCANSO en la
+ // malla, ese día compensatorio resta 7h al máximo de esa semana.
+ const mallaData=window._panel2MallaData||[];
+ if(!mallaData.length)return[];
+ const groups={};
+ mallaData.forEach(m=>{
+ const d=parseDate(m.fecha);
+ if(!d||!m.usuario)return;
+ const sow=new Date(d);sow.setDate(d.getDate()-d.getDay()+1);sow.setHours(0,0,0,0);
+ const eow=new Date(sow);eow.setDate(sow.getDate()+6);eow.setHours(23,59,59);
+ const key=m.usuario+'|'+sow.toISOString().split('T')[0];
+ if(!groups[key])groups[key]={usuario:m.usuario,nombre:m.nombre||m.usuario.split('@')[0],sow,eow,secs:0,festivoDescansoFechas:[]};
+ const g=groups[key];
+ const novedadUpper=(m.novedad||'').trim().toUpperCase();
+ const esDescanso=novedadUpper==='DESCANSO';
+ // Sumar horas programadas: incluir días sin novedad o marcados DESCANSO; excluir cualquier
+ // otra novedad (vacaciones, incapacidad, etc. — no son horas de trabajo programado real).
+ if(!novedadUpper||esDescanso){
+ const ss=parseTime(m.fecha,m.inicio),se=parseTime(m.fecha,m.fin);
+ if(ss&&se){
+ const seAdj=se<ss?new Date(se.getTime()+24*3600000):se;
+ g.secs+=(seAdj-ss)/1000;
+ }
+ }
+ if(esDescanso&&isFestivo2026(m.fecha))g.festivoDescansoFechas.push(m.fecha);
+ });
+ const results=[];
+ Object.values(groups).forEach(g=>{
+ const horasLegales=(g.eow>=new Date('2026-07-15'))?42:44;
+ const maxSecs=(horasLegales*3600)-(g.festivoDescansoFechas.length*7*3600);
+ if(g.secs>maxSecs){
+ results.push({
+ usuario:g.usuario,nombre:g.nombre,sow:g.sow,eow:g.eow,
+ scheduledSecs:g.secs,maxSecs,excessSecs:g.secs-maxSecs,
+ festivoFechas:g.festivoDescansoFechas
+ });
+ }
+ });
+ results.sort((a,b)=>b.excessSecs-a.excessSecs);
+ return results;
+}
+function updateExceededWeeksBadge(){
+ const results=computeExceededWeeks();
+ const uniqueAgents=new Set(results.map(r=>r.usuario)).size;
+ const badge=document.getElementById('exceeded-weeks-badge');
+ if(badge){badge.style.display=uniqueAgents>0?'inline':'none';badge.textContent=uniqueAgents;}
+}
+function showExceededWeeksModal(){
+ const results=computeExceededWeeks();
+ const modal=document.createElement('div');
+ modal.className='abs-overlay';
+ modal.style.cssText='position:fixed;inset:0;background:rgba(13,11,20,0.88);backdrop-filter:blur(8px);z-index:700;display:flex;align-items:center;justify-content:center;';
+ const fmtHrsMin=secs=>{const totalMins=Math.round(secs/60);const h=Math.floor(totalMins/60),m=totalMins%60;return`${h}h ${m}m`;};
+ const fmtRange=(sow,eow)=>`${sow.toLocaleDateString('es-CO',{day:'2-digit',month:'short'})} — ${eow.toLocaleDateString('es-CO',{day:'2-digit',month:'short',year:'numeric'})}`;
+ const rowsHTML=results.map(r=>`<tr>
+ <td style="padding:8px 10px;border:1px solid var(--border);">${esc(r.nombre)}<div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);">${esc(r.usuario)}</div></td>
+ <td style="padding:8px 10px;border:1px solid var(--border);font-family:var(--mono);white-space:nowrap;">${fmtRange(r.sow,r.eow)}</td>
+ <td style="padding:8px 10px;border:1px solid var(--border);font-family:var(--mono);">${fmtHrsMin(r.scheduledSecs)}</td>
+ <td style="padding:8px 10px;border:1px solid var(--border);font-family:var(--mono);">${fmtHrsMin(r.maxSecs)}</td>
+ <td style="padding:8px 10px;border:1px solid var(--border);font-family:var(--mono);color:#f87171;font-weight:700;">${fmtHrsMin(r.excessSecs)}</td>
+ <td style="padding:8px 10px;border:1px solid var(--border);text-align:center;">${r.festivoFechas.length?`<span title="${esc(r.festivoFechas.join(', '))}" style="font-size:11px;color:#fbbf24;">🎉 Sí</span>`:'<span style="color:var(--text-dim);">—</span>'}</td>
+ </tr>`).join('');
+ modal.innerHTML=`
+ <div style="background:var(--surface);border:1px solid rgba(167,139,250,0.3);border-radius:20px;padding:28px;width:min(800px,94vw);max-height:80vh;overflow-y:auto;position:relative;">
+ <div style="position:absolute;top:0;left:20px;right:20px;height:2px;background:linear-gradient(90deg,#a78bfa,#c084fc);border-radius:100px;"></div>
+ <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
+ <div>
+ <div style="font-size:17px;font-weight:800;">📅 Semanas excedidas</div>
+ <div style="font-size:11px;color:var(--text-dim);font-family:var(--mono);margin-top:2px;">Horas programadas por encima del máximo legal semanal</div>
+ </div>
+ <button onclick="this.closest('.abs-overlay').remove()" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:20px;">×</button>
+ </div>
+ ${!results.length?'<div style="font-size:12px;color:var(--text-dim);text-align:center;padding:20px;font-family:var(--mono);">Sin semanas excedidas ✓</div>':`
+ <div style="overflow-x:auto;">
+ <table style="width:100%;border-collapse:collapse;font-size:12px;">
+ <thead>
+ <tr style="background:var(--surface2);">
+ ${['Agente','Semana','Horas programadas','Máximo permitido','Excedente','Festivo'].map(c=>`<th style="padding:8px 10px;border:1px solid var(--border);text-align:left;font-size:10px;color:var(--text-dim);font-family:var(--mono);text-transform:uppercase;white-space:nowrap;">${c}</th>`).join('')}
+ </tr>
+ </thead>
+ <tbody>${rowsHTML}</tbody>
+ </table>
+ </div>`}
+ </div>`;
+ document.body.appendChild(modal);
 }
 async function reviewAbsence(userEmail,fecha,btn){
  // Mostrar modal de justificación
