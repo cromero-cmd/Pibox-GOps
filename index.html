@@ -1295,7 +1295,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
-const APP_VERSION='15.82';
+const APP_VERSION='15.83';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 const SUPER_ADMIN_NAME='Camilo Romero';
@@ -3930,6 +3930,72 @@ async function renderPanel2Extras(allTurnos,fromDate,toDate,mallaData){
  renderPanel2Extras(allTurnos,fromDate,toDate,mallaData);
  };
 }
+// ── Filtros de las tarjetas de Insights (Extras/Novedades) ──
+// Funciones globales (no anidadas en renderPanel2Insights) porque los <select> de filtro llaman
+// a estas por onchange desde fuera de ese closure — necesitan poder re-renderizar solo la lista
+// de agentes de su tarjeta sin recalcular todo Insights. Los datos completos (sin filtrar) se
+// guardan en window._insightsExtrasEntries/_insightsNovedadEntries al momento del render inicial.
+function insightsFmtHM(mins){mins=Math.round(mins||0);const h=Math.floor(mins/60),m=mins%60;if(h&&m)return`${h}h ${m}m`;if(h)return`${h}h`;return`${m}m`;}
+function insightsDetailRow(fecha,content){return`<div style="display:grid;grid-template-columns:100px 1fr;gap:6px;padding:4px 0;border-bottom:1px solid var(--border);"><span style="font-size:10px;color:var(--text-dim);font-family:var(--mono);">${esc(fecha)}</span><span style="font-size:10px;color:var(--text-muted);">${content}</span></div>`;}
+function insightsAgentRowsHTML(keyPrefix,entries,badgesFn,detailFn){
+ return entries.map(([u,v],i)=>{
+ const id='insight-'+keyPrefix+'-'+i;
+ const detail=detailFn(v);
+ return`<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;">
+ <div onclick="document.getElementById('${id}').style.display=document.getElementById('${id}').style.display==='none'?'block':'none'" style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;cursor:pointer;user-select:none;flex-wrap:wrap;gap:6px;">
+ <div style="display:flex;align-items:center;gap:8px;"><span style="font-size:12px;color:var(--text-dim);font-family:var(--mono);width:18px;">${i+1}.</span><span style="font-size:13px;font-weight:600;color:var(--text);">${esc(v.nombre)}</span></div>
+ <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">${badgesFn(v)}<span style="font-size:10px;color:var(--text-dim);">▾</span></div>
+ </div>
+ <div id="${id}" style="display:none;padding:10px 14px;border-top:1px solid var(--border);background:var(--surface2);">
+ ${detail||'<div style="font-size:11px;color:var(--text-dim);">Sin detalle disponible</div>'}
+ </div>
+ </div>`;
+ }).join('');
+}
+function insightCardWithFilter(key,title,color,entries,emptyText,badgesFn,detailFn,filterBarHTML,agentListId){
+ if(!entries.length)return`<div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:14px;"><div style="font-size:11px;font-weight:700;color:${color};margin-bottom:8px;">${title}</div><div style="font-size:11px;color:var(--text-dim);">${emptyText}</div></div>`;
+ const bodyId='insight-card-body-'+key;
+ return`<div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;overflow:hidden;">
+ <div onclick="document.getElementById('${bodyId}').style.display=document.getElementById('${bodyId}').style.display==='none'?'block':'none'" style="padding:14px;cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between;gap:8px;">
+ <span style="font-size:11px;font-weight:700;color:${color};">${title} (${entries.length})</span>
+ <span style="font-size:10px;color:var(--text-dim);">▸</span>
+ </div>
+ <div id="${bodyId}" style="display:none;padding:0 14px 14px 14px;">
+ ${filterBarHTML}
+ <div id="${agentListId}" style="display:flex;flex-direction:column;gap:8px;">${insightsAgentRowsHTML(key,entries,badgesFn,detailFn)}</div>
+ </div>
+ </div>`;
+}
+function insightsExtrasBadges(v){return`<span style="font-size:11px;font-weight:800;color:#4ade80;">${insightsFmtHM(v.extrasAprobadasMins)} aprobadas</span>${v.extrasRechazadasCount?`<span style="font-size:10px;color:#f87171;">❌ ${v.extrasRechazadasCount}</span>`:''}${v.extrasPendientesCount?`<span style="font-size:10px;color:#fbbf24;">⏳ ${v.extrasPendientesCount}</span>`:''}`;}
+function insightsExtrasDetail(v){return v.extrasDetalle.map(d=>insightsDetailRow(d.fecha,insightsFmtHM(d.mins)+' — '+d.estado)).join('');}
+const INSIGHTS_EXTRAS_ESTADOS={aprobada:'✅ Aprobada',pendiente_coordinador:'⏳ Pendiente coordinador',pendiente_super_admin:'⏳ Pendiente Super Admin',rechazada:'❌ Rechazada'};
+function filterInsightsExtrasEntries(filterVal){
+ const all=window._insightsExtrasEntries||[];
+ if(!filterVal)return all;
+ const estado=INSIGHTS_EXTRAS_ESTADOS[filterVal];
+ return all.map(([u,v])=>[u,{...v,extrasDetalle:v.extrasDetalle.filter(d=>d.estado===estado)}]).filter(([,v])=>v.extrasDetalle.length>0);
+}
+function applyInsightsExtrasFilter(){
+ const val=document.getElementById('insight-extras-status-filter')?.value||'';
+ const filtered=filterInsightsExtrasEntries(val);
+ const listEl=document.getElementById('insight-agentlist-extras');
+ if(!listEl)return;
+ listEl.innerHTML=filtered.length?insightsAgentRowsHTML('extras',filtered,insightsExtrasBadges,insightsExtrasDetail):'<div style="font-size:11px;color:var(--text-dim);padding:6px 0;">Sin resultados para este filtro</div>';
+}
+function insightsNovedadBadges(v){return`<span style="font-size:11px;font-weight:800;color:#a78bfa;">${v.novedadTotal} total</span>`;}
+function insightsNovedadDetail(v){return`<div style="margin-bottom:8px;">${Object.entries(v.novedadPorTipo).map(([t,c])=>`<span style="font-size:10px;background:rgba(167,139,250,0.1);color:#a78bfa;border:1px solid rgba(167,139,250,0.3);padding:1px 7px;border-radius:10px;margin:0 4px 4px 0;display:inline-block;">${esc(t)}: ${c}</span>`).join('')}</div>${v.novedadDetalle.map(d=>insightsDetailRow(d.fecha,esc(d.tipo))).join('')}`;}
+function filterInsightsNovedadEntries(tipoFilter){
+ const all=window._insightsNovedadEntries||[];
+ if(!tipoFilter)return all;
+ return all.map(([u,v])=>[u,{...v,novedadDetalle:v.novedadDetalle.filter(d=>d.tipo===tipoFilter)}]).filter(([,v])=>v.novedadDetalle.length>0);
+}
+function applyInsightsNovedadFilter(){
+ const val=document.getElementById('insight-novedad-tipo-filter')?.value||'';
+ const filtered=filterInsightsNovedadEntries(val);
+ const listEl=document.getElementById('insight-agentlist-novedad');
+ if(!listEl)return;
+ listEl.innerHTML=filtered.length?insightsAgentRowsHTML('novedad',filtered,insightsNovedadBadges,insightsNovedadDetail):'<div style="font-size:11px;color:var(--text-dim);padding:6px 0;">Sin resultados para este filtro</div>';
+}
 async function renderPanel2Insights(rows,allTurnos,fromDate,toDate){
  const el=document.getElementById('panel2-insights');
  if(!el||!rows.length)return;
@@ -4120,12 +4186,19 @@ async function renderPanel2Insights(rows,allTurnos,fromDate,toDate){
  const ausenteHTML=insightCard('ausente','🔴 Ausencias','#f87171',ausenteEntries,'Sin ausencias en este período',
  v=>`<span style="font-size:11px;font-weight:800;color:#f87171;">${v.ausenteTotal} total</span>${v.ausenteJustificada?`<span style="font-size:10px;color:#4ade80;">✅ ${v.ausenteJustificada}</span>`:''}${v.ausenteInjustificada?`<span style="font-size:10px;color:#f87171;">❌ ${v.ausenteInjustificada}</span>`:''}${v.ausenteSinRevisar?`<span style="font-size:10px;color:var(--text-dim);">⏳ ${v.ausenteSinRevisar}</span>`:''}`,
  v=>v.ausenteDetalle.map(d=>detailRow(d.fecha,esc(d.tipo)+(d.motivo?' — '+esc(d.motivo):''))).join(''));
- const novedadHTML=insightCard('novedad','📋 Novedades','#a78bfa',novedadEntries,'Sin novedades en este período',
- v=>`<span style="font-size:11px;font-weight:800;color:#a78bfa;">${v.novedadTotal} total</span>`,
- v=>`<div style="margin-bottom:8px;">${Object.entries(v.novedadPorTipo).map(([t,c])=>`<span style="font-size:10px;background:rgba(167,139,250,0.1);color:#a78bfa;border:1px solid rgba(167,139,250,0.3);padding:1px 7px;border-radius:10px;margin:0 4px 4px 0;display:inline-block;">${esc(t)}: ${c}</span>`).join('')}</div>${v.novedadDetalle.map(d=>detailRow(d.fecha,esc(d.tipo))).join('')}`);
- const extrasHTML=insightCard('extras','⚡ Extras','#4ade80',extrasEntries,'Sin solicitudes de extras en este período',
- v=>`<span style="font-size:11px;font-weight:800;color:#4ade80;">${fmtHM(v.extrasAprobadasMins)} aprobadas</span>${v.extrasRechazadasCount?`<span style="font-size:10px;color:#f87171;">❌ ${v.extrasRechazadasCount}</span>`:''}${v.extrasPendientesCount?`<span style="font-size:10px;color:#fbbf24;">⏳ ${v.extrasPendientesCount}</span>`:''}`,
- v=>v.extrasDetalle.map(d=>detailRow(d.fecha,fmtHM(d.mins)+' — '+d.estado)).join(''));
+ // Novedades y Extras usan insightCardWithFilter (no el insightCard genérico) para poder alojar
+ // un <select> de filtro dentro del módulo colapsable, justo debajo del encabezado y antes del
+ // listado de agentes — el filtro re-renderiza solo #insight-agentlist-{novedad,extras} sin
+ // recalcular todo Insights (ver applyInsightsNovedadFilter/applyInsightsExtrasFilter).
+ window._insightsNovedadEntries=novedadEntries;
+ window._insightsExtrasEntries=extrasEntries;
+ const novedadTipos=[...new Set(novedadEntries.flatMap(([,v])=>Object.keys(v.novedadPorTipo)))].sort();
+ const novedadFilterBarHTML=`<div style="margin-bottom:10px;"><select id="insight-novedad-tipo-filter" onchange="applyInsightsNovedadFilter()" style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:5px 8px;color:var(--text);font-size:11px;font-family:var(--mono);"><option value="">Todas</option>${novedadTipos.map(t=>`<option value="${esc(t)}">${esc(t)}</option>`).join('')}</select></div>`;
+ const novedadHTML=insightCardWithFilter('novedad','📋 Novedades','#a78bfa',novedadEntries,'Sin novedades en este período',
+ insightsNovedadBadges,insightsNovedadDetail,novedadFilterBarHTML,'insight-agentlist-novedad');
+ const extrasFilterBarHTML=`<div style="margin-bottom:10px;"><select id="insight-extras-status-filter" onchange="applyInsightsExtrasFilter()" style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:5px 8px;color:var(--text);font-size:11px;font-family:var(--mono);"><option value="">Todas</option><option value="aprobada">Aprobadas</option><option value="pendiente_coordinador">Pendiente coordinador</option><option value="pendiente_super_admin">Pendiente Super Admin</option><option value="rechazada">Rechazadas</option></select></div>`;
+ const extrasHTML=insightCardWithFilter('extras','⚡ Extras','#4ade80',extrasEntries,'Sin solicitudes de extras en este período',
+ insightsExtrasBadges,insightsExtrasDetail,extrasFilterBarHTML,'insight-agentlist-extras');
  const nocturnoHTML=insightCard('nocturno','🌙 Recargo nocturno (7pm–6am)','#60a5fa',nocturnoEntries,'Sin horas de recargo nocturno en este período',
  v=>`<span style="font-size:11px;font-weight:800;color:#60a5fa;">${fmtHrsSecs(v.nocturnoSecs)}</span>`,
  v=>v.nocturnoDetalle.map(d=>detailRow(d.fecha,d.horas)).join(''));
