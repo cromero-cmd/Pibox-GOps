@@ -1295,7 +1295,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
-const APP_VERSION='15.80';
+const APP_VERSION='15.81';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 const SUPER_ADMIN_NAME='Camilo Romero';
@@ -3549,7 +3549,7 @@ async function loadPanel2(){
  try{
  const resp=await fetch(MALLA_SCRIPT+'?sheet=Malla',{signal:AbortSignal.timeout(10000)});
  const csv=await resp.text();
- mallaData=csv.trim().split('\n').slice(1).map(l=>{const c=parseCSVLine(l);return{fecha:c[1]?.trim(),usuario:c[2]?.trim(),nombre:c[3]?.trim(),rol:c[4]?.trim(),inicio:c[5]?.trim(),fin:c[6]?.trim(),linea:c[8]?.trim(),lider:c[9]?.trim(),novedad:c[10]?.trim()};}).filter(m=>m.fecha&&m.usuario);
+ mallaData=csv.trim().split('\n').slice(1).map(l=>{const c=parseCSVLine(l);return{fecha:c[1]?.trim(),usuario:c[2]?.trim(),nombre:c[3]?.trim(),rol:c[4]?.trim(),inicio:c[5]?.trim(),fin:c[6]?.trim(),linea:c[8]?.trim(),lider:c[9]?.trim(),novedad:c[10]?.trim(),almuerzo:c[12]?.trim()};}).filter(m=>m.fecha&&m.usuario);
  }catch(e){}
  window._panel2MallaData=mallaData;
  updateExceededWeeksBadge();
@@ -5169,7 +5169,10 @@ function computeExceededWeeks(){
  const ss=parseTime(m.fecha,m.inicio),se=parseTime(m.fecha,m.fin);
  if(ss&&se){
  const seAdj=se<ss?new Date(se.getTime()+24*3600000):se;
- g.secs+=(seAdj-ss)/1000;
+ // El máximo legal (44h/42h) es sobre horas TRABAJADAS, no horas totales — descontar el
+ // almuerzo de la malla (columna almuerzo, en horas) de cada día antes de sumar.
+ const almuerzHrs=parseFloat(m.almuerzo||'0')||0;
+ g.secs+=Math.max(0,(seAdj-ss)/1000-(almuerzHrs*3600));
  }
  }
  if(esDescanso&&isFestivo2026(m.fecha))g.festivoDescansoFechas.push(m.fecha);
