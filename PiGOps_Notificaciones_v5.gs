@@ -39,6 +39,8 @@ function doGet(e) {
 
     if (type === 'overtime_request') {
       sendOvertimeNotification(data);
+    } else if (type === 'strike_warning') {
+      sendStrikeWarning(data);
     } else if (type === 'overtime_rejected') {
       const data = JSON.parse(decodeURIComponent(payload));
       sendOvertimeRejectedNotification(data);
@@ -116,6 +118,57 @@ function sendOvertimeNotification(data) {
   recipients.forEach(function(email) {
     GmailApp.sendEmail(email, subject, body);
   });
+}
+
+// ── STRIKE WARNING (llamado de atención) ──
+function sendStrikeWarning(data) {
+  const agentName = data.agentName || '—';
+  const agentEmail = data.agentEmail || '—';
+  const liderEmail = data.liderEmail || '';
+  const mes = data.mes || '—';
+  const llamadoNumero = data.llamadoNumero || 1;
+  const totalStrikes = data.totalStrikes || 0;
+  const esTercerLlamado = !!data.esTercerLlamado;
+  const detalle = data.detalle || [];
+
+  const subject = '⚡ Llamado de atención #' + llamadoNumero + ' — ' + agentName;
+
+  const rows = detalle.map(function(d) {
+    return '<tr><td style="padding:8px 12px;border:1px solid #ddd;">' + (d.fecha || '—') + '</td>' +
+      '<td style="padding:8px 12px;border:1px solid #ddd;">' + (d.tipo || '—') + '</td>' +
+      '<td style="padding:8px 12px;border:1px solid #ddd;">' + (d.descripcion || '—') + '</td></tr>';
+  }).join('');
+
+  const disciplinaryWarning = esTercerLlamado
+    ? '<div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;padding:12px 16px;margin:16px 0;">' +
+      '<p style="margin:0;color:#dc2626;font-weight:bold;">⚠️ Este es el tercer llamado — corresponde iniciar proceso disciplinario</p>' +
+      '</div>'
+    : '';
+
+  const htmlBody = '<div style="font-family:Arial,sans-serif;color:#333;max-width:600px;">' +
+    '<div style="background:#fb923c;padding:16px;border-radius:8px 8px 0 0;">' +
+    '<h2 style="color:white;margin:0;">⚡ Llamado de atención #' + llamadoNumero + '</h2></div>' +
+    '<div style="padding:20px;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px;">' +
+    '<p>El colaborador <strong>' + agentName + '</strong> (' + agentEmail + ') acumuló suficientes strikes durante <strong>' + mes + '</strong> ' +
+    'para generar el <strong>llamado de atención #' + llamadoNumero + '</strong> (' + totalStrikes + ' strikes en total este mes).</p>' +
+    disciplinaryWarning +
+    '<table style="width:100%;border-collapse:collapse;margin:16px 0;">' +
+    '<tr style="background:#f3f0ff;"><th style="padding:8px 12px;text-align:left;border:1px solid #ddd;">Fecha</th>' +
+    '<th style="padding:8px 12px;text-align:left;border:1px solid #ddd;">Tipo</th>' +
+    '<th style="padding:8px 12px;text-align:left;border:1px solid #ddd;">Descripción</th></tr>' +
+    rows +
+    '</table>' +
+    '<p>Por favor realiza el llamado de atención verbal o escrito correspondiente con el colaborador y deja constancia del mismo según el procedimiento interno.</p>' +
+    '<br/><p>Saludos,<br/><strong>Pi GOps · Pibox Operaciones</strong></p>' +
+    '</div></div>';
+
+  if (liderEmail) {
+    GmailApp.sendEmail(liderEmail, subject, '', { htmlBody: htmlBody, cc: 'cromero@pibox.app' });
+    Logger.log('Strike warning sent to leader: ' + liderEmail + ' (cc cromero@pibox.app) for agent ' + agentEmail);
+  } else {
+    GmailApp.sendEmail('cromero@pibox.app', subject, '', { htmlBody: htmlBody });
+    Logger.log('Strike warning sent to Super Admin only (no liderEmail) for agent ' + agentEmail);
+  }
 }
 
 // ── PAYROLL REPORT ──

@@ -279,6 +279,21 @@ window.loadOvertimeEvents = async () => {
  }).map(e=>({...e,_actionable:e.status==='pending_review'||(isSuperAdmin&&e.status==='pending_super_admin')}));
  } catch(e) { return []; }
 };
+window.getStrikeNotification = async (docId) => {
+ // Último llamado de atención ya notificado para un agente+mes (colección strike_notifications,
+ // doc id "{userEmail}_{yearMonth}") — usado por loadStrikes para no reenviar el mismo correo
+ // en cada recarga del panel cuando el conteo de llamados no cambió.
+ try {
+ const snap = await getDoc(doc(db, 'strike_notifications', docId));
+ return snap.exists() ? snap.data() : null;
+ } catch(e) { console.error('[getStrikeNotification]', e); return null; }
+};
+window.saveStrikeNotification = async (docId, data) => {
+ try {
+ await setDoc(doc(db, 'strike_notifications', docId), data, { merge: true });
+ return true;
+ } catch(e) { console.error('[saveStrikeNotification]', e); return false; }
+};
 window.getApprovedOvertimeEvents = async (fromDate, toDate) => {
  // Respaldo para el reporte de nómina: turno.overtimeStatus solo se marca si el evento de
  // horas extras tenía turnoId al momento de crearse (submitOvertimeResponse guarda
@@ -1295,7 +1310,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
-const APP_VERSION='15.84';
+const APP_VERSION='15.85';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 const SUPER_ADMIN_NAME='Camilo Romero';
@@ -1606,7 +1621,7 @@ async function loadStrikes(){
  const resp=await fetch(MALLA_SCRIPT+'?sheet=Malla',{signal:AbortSignal.timeout(20000)});
  if(!resp.ok)throw new Error(`MALLA_SCRIPT respondió ${resp.status}`);
  const csv=await resp.text();
- mallaData=csv.trim().split('\n').slice(1).map(l=>{const c=parseCSVLine(l);return{fecha:c[1]?.trim(),usuario:c[2]?.trim(),inicio:c[5]?.trim(),fin:c[6]?.trim(),novedad:c[10]?.trim()};})
+ mallaData=csv.trim().split('\n').slice(1).map(l=>{const c=parseCSVLine(l);return{fecha:c[1]?.trim(),usuario:c[2]?.trim(),inicio:c[5]?.trim(),fin:c[6]?.trim(),lider:c[9]?.trim(),novedad:c[10]?.trim()};})
  .filter(m=>m.fecha&&m.usuario===userEmail&&!m.novedad);
  }catch(e){console.error('[loadStrikes] fetch MALLA_SCRIPT falló:',e);}
  // Consulta dedicada por agente (window.getUserTurnos) en vez de getRecentTurnos(), que limita a
@@ -1668,6 +1683,39 @@ async function loadStrikes(){
  const llamadosNoDesconex=Math.floor(strikesNoDesconex.length/3);
  const totalLlamados=llamadosLeve+llamadosModerado+llamadosGrave+llamadosNoDesconex;
  const enDescargos=totalLlamados>=3;
+ // Notificación de llamado de atención por correo — se dispara solo cuando totalLlamados supera
+ // el último registrado en Firestore (strike_notifications/{userEmail}_{yearMonth}), para no
+ // reenviar el mismo correo cada vez que el agente recarga su propio panel de strikes.
+ try{
+ const yearMonth=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+ const strikeNotifDocId=`${userEmail}_${yearMonth}`;
+ const lastNotified=window.getStrikeNotification?await window.getStrikeNotification(strikeNotifDocId):null;
+ const lastLlamadoNumero=lastNotified?.llamadoNumero||0;
+ if(totalLlamados>lastLlamadoNumero){
+ const agentName=document.getElementById('user-name').textContent;
+ const liderEmail=mallaData.find(m=>m.lider)?.lider||'';
+ const strikeDetalle=[
+ ...strikesLeve.map(s=>({tipo:'🟡 Leve',fecha:s.fecha,descripcion:s.detalle})),
+ ...strikesModerade.map(s=>({tipo:'🟠 Moderada',fecha:s.fecha,descripcion:s.detalle})),
+ ...strikesGrave.map(s=>({tipo:'🔴 Grave',fecha:s.fecha,descripcion:s.detalle})),
+ ...strikesNoDesconex.map(s=>({tipo:'🔵 No desconexión',fecha:s.fecha,descripcion:s.detalle}))
+ ].sort((a,b)=>(parseDate(a.fecha)||0)-(parseDate(b.fecha)||0));
+ const mesLabel=now.toLocaleDateString('es-CO',{month:'long',year:'numeric'});
+ const strikePayload={
+ agentName,agentEmail:userEmail,liderEmail,
+ mes:mesLabel,
+ llamadoNumero:totalLlamados,
+ totalStrikes:strikesLeve.length+strikesModerade.length+strikesGrave.length+strikesNoDesconex.length,
+ esTercerLlamado:totalLlamados>=3,
+ detalle:strikeDetalle
+ };
+ try{
+ await fetch(NOTIF_SCRIPT+'?type=strike_warning&data='+encodeURIComponent(JSON.stringify(strikePayload)),{mode:'no-cors'});
+ if(window.saveStrikeNotification)await window.saveStrikeNotification(strikeNotifDocId,{llamadoNumero:totalLlamados,notifiedAt:new Date().toISOString()});
+ console.log('[loadStrikes] Notificación de llamado #'+totalLlamados+' enviada para '+userEmail);
+ }catch(notifErr){console.warn('[loadStrikes] Error enviando notificación de llamado:',notifErr);}
+ }
+ }catch(notifCheckErr){console.warn('[loadStrikes] Error verificando llamado nuevo:',notifCheckErr);}
  // Strikes faltantes para próximo llamado por tipo
  const faltanLeve=strikesLeve.length%3===0?3:3-(strikesLeve.length%3);
  const faltanModerado=strikesModerade.length%2===0?2:2-(strikesModerade.length%2);
