@@ -131,7 +131,7 @@ function sendStrikeWarning(data) {
   const esTercerLlamado = !!data.esTercerLlamado;
   const detalle = data.detalle || [];
 
-  const subject = '⚡ Llamado de atención #' + llamadoNumero + ' — ' + agentName;
+  const subject = '⚡ Acción requerida — Llamado de atención #' + llamadoNumero + ' para ' + agentName;
 
   const rows = detalle.map(function(d) {
     return '<tr><td style="padding:8px 12px;border:1px solid #ddd;">' + (d.fecha || '—') + '</td>' +
@@ -140,26 +140,28 @@ function sendStrikeWarning(data) {
   }).join('');
 
   const disciplinaryWarning = esTercerLlamado
-    ? '<div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;padding:12px 16px;margin:16px 0;">' +
-      '<p style="margin:0;color:#dc2626;font-weight:bold;">⚠️ Este es el tercer llamado — corresponde iniciar proceso disciplinario</p>' +
+    ? '<div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;padding:14px 16px;margin:16px 0;">' +
+      '<p style="margin:0;color:#dc2626;font-weight:bold;">⚠️ Este es el tercer llamado de atención acumulado. Según el reglamento interno, corresponde iniciar un proceso disciplinario formal. Por favor coordina con Talento Humano de inmediato.</p>' +
       '</div>'
     : '';
 
   const htmlBody = '<div style="font-family:Arial,sans-serif;color:#333;max-width:600px;">' +
     '<div style="background:#fb923c;padding:16px;border-radius:8px 8px 0 0;">' +
-    '<h2 style="color:white;margin:0;">⚡ Llamado de atención #' + llamadoNumero + '</h2></div>' +
+    '<h2 style="color:white;margin:0;">⚡ Acción requerida — Llamado de atención #' + llamadoNumero + '</h2></div>' +
     '<div style="padding:20px;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px;">' +
-    '<p>El colaborador <strong>' + agentName + '</strong> (' + agentEmail + ') acumuló suficientes strikes durante <strong>' + mes + '</strong> ' +
-    'para generar el <strong>llamado de atención #' + llamadoNumero + '</strong> (' + totalStrikes + ' strikes en total este mes).</p>' +
-    disciplinaryWarning +
+    '<p>Estimado(a) coordinador(a),</p>' +
+    '<p>El sistema Pi GOps ha detectado que el colaborador <strong>' + agentName + '</strong> (' + agentEmail + ') ha acumulado ' +
+    'suficientes strikes durante <strong>' + mes + '</strong> (' + totalStrikes + ' strikes en total este mes) para generar el ' +
+    '<strong>llamado de atención #' + llamadoNumero + '</strong>.</p>' +
     '<table style="width:100%;border-collapse:collapse;margin:16px 0;">' +
     '<tr style="background:#f3f0ff;"><th style="padding:8px 12px;text-align:left;border:1px solid #ddd;">Fecha</th>' +
     '<th style="padding:8px 12px;text-align:left;border:1px solid #ddd;">Tipo</th>' +
     '<th style="padding:8px 12px;text-align:left;border:1px solid #ddd;">Descripción</th></tr>' +
     rows +
     '</table>' +
-    '<p>Por favor realiza el llamado de atención verbal o escrito correspondiente con el colaborador y deja constancia del mismo según el procedimiento interno.</p>' +
-    '<br/><p>Saludos,<br/><strong>Pi GOps · Pibox Operaciones</strong></p>' +
+    '<p><strong>Por favor procede a realizar el llamado de atención verbal/escrito correspondiente según el reglamento interno de Pibox y notifica a Talento Humano.</strong></p>' +
+    disciplinaryWarning +
+    '<p style="color:#6b7280;font-size:12px;margin-top:24px;">Este mensaje fue generado automáticamente por Pi GOps · Pibox Operaciones</p>' +
     '</div></div>';
 
   if (liderEmail) {
@@ -169,6 +171,213 @@ function sendStrikeWarning(data) {
     GmailApp.sendEmail('cromero@pibox.app', subject, '', { htmlBody: htmlBody });
     Logger.log('Strike warning sent to Super Admin only (no liderEmail) for agent ' + agentEmail);
   }
+}
+
+// ── PENDING STRIKE ALERTS (backfill manual — julio 2026) ──
+// Reimplementa en Apps Script la misma lógica de detección de strikes que loadStrikes() ya
+// aplica en el cliente (index.html), para poder procesar de una vez a todos los agentes del mes
+// y enviar los correos de llamado de atención que aún no se hayan disparado desde el navegador
+// de cada agente. Se ejecuta manualmente desde el editor de Apps Script vía runStrikeAlerts().
+function sendPendingStrikeAlerts() {
+  var YEAR = 2026, MONTH = 7; // backfill puntual de julio 2026
+  var yearMonth = YEAR + '-' + String(MONTH).padStart(2, '0');
+
+  var agents = getAgentsFromBase3();
+  Logger.log('sendPendingStrikeAlerts: ' + agents.length + ' agentes a evaluar para ' + yearMonth);
+
+  var mallaRows = getMallaRowsForMonth(YEAR, MONTH);
+  var liderEmailMap = getLiderEmailMap();
+  var allTurnos = getTurnosForMonthFromFirebase(YEAR, MONTH);
+
+  var sentCount = 0;
+  agents.forEach(function(agent) {
+    var agentMallaRows = mallaRows.filter(function(m) { return m.usuario === agent.email; });
+    if (!agentMallaRows.length) return;
+    var agentTurnos = allTurnos.filter(function(t) { return t.userEmail === agent.email; });
+
+    var strikesLeve = [], strikesModerado = [], strikesGrave = [], strikesNoDesconex = [];
+
+    agentMallaRows.forEach(function(m) {
+      // Excluir novedad de votaciones (medio día permitido, no cuenta como tardanza/desconexión)
+      var novedadUpper = (m.novedad || '').toUpperCase();
+      if (novedadUpper.indexOf('VOT') !== -1) return;
+      if (m.novedad) return; // cualquier otra novedad tampoco genera strike ese día
+
+      var mallaDate = parseMallaDateDDMMYYYY(m.fecha);
+      if (!mallaDate) return;
+      var scheduledStart = parseTimeToDate(m.inicio, mallaDate);
+      var scheduledEnd = parseTimeToDate(m.fin, mallaDate);
+
+      // Turno real de ese día — priorizar 'ended' > 'interrupted' > el primero, igual que el cliente
+      var dayTurnos = agentTurnos.filter(function(t) {
+        return t.startTime && sameCalendarDay(t.startTime, mallaDate);
+      });
+      var turno = null;
+      for (var i = 0; i < dayTurnos.length; i++) { if (dayTurnos[i].status === 'ended') { turno = dayTurnos[i]; break; } }
+      if (!turno) { for (var j = 0; j < dayTurnos.length; j++) { if (dayTurnos[j].status === 'interrupted') { turno = dayTurnos[j]; break; } } }
+      if (!turno && dayTurnos.length) turno = dayTurnos[0];
+
+      var realStart = turno ? turno.startTime : null;
+      var realEnd = turno ? turno.endTime : null;
+
+      if (realStart && scheduledStart) {
+        var diffMins = Math.round((realStart - scheduledStart) / 60000);
+        if (diffMins >= 60) {
+          strikesGrave.push({ fecha: m.fecha, descripcion: 'Llegó ' + diffMins + ' min tarde (programado ' + m.inicio + ')' });
+        } else if (diffMins >= 20) {
+          strikesModerado.push({ fecha: m.fecha, descripcion: 'Llegó ' + diffMins + ' min tarde (programado ' + m.inicio + ')' });
+        } else if (diffMins > 5) {
+          strikesLeve.push({ fecha: m.fecha, descripcion: 'Llegó ' + diffMins + ' min tarde (programado ' + m.inicio + ')' });
+        }
+      }
+      if (realEnd && scheduledEnd) {
+        // Turno nocturno: si fin programado < inicio programado, sumar 24h para comparar correctamente
+        var scheduledEndAdj = (scheduledEnd < scheduledStart) ? new Date(scheduledEnd.getTime() + 24 * 3600000) : scheduledEnd;
+        var extraHrs = (realEnd - scheduledEndAdj) / 3600000;
+        if (extraHrs > 4) {
+          strikesNoDesconex.push({ fecha: m.fecha, descripcion: 'No se desconectó a tiempo — salida programada ' + m.fin });
+        }
+      }
+    });
+
+    var llamadosLeve = Math.floor(strikesLeve.length / 3);
+    var llamadosModerado = Math.floor(strikesModerado.length / 2);
+    var llamadosGrave = strikesGrave.length; // cada strike grave = 1 llamado
+    var llamadosNoDesconex = Math.floor(strikesNoDesconex.length / 3);
+    var totalLlamados = llamadosLeve + llamadosModerado + llamadosGrave + llamadosNoDesconex;
+
+    if (totalLlamados <= 0) return;
+
+    var docId = agent.email + '_' + yearMonth;
+    var existing = firestoreGetDocRaw('strike_notifications/' + docId);
+    if (existing) {
+      Logger.log('Ya notificado: ' + docId + ' — se omite');
+      return;
+    }
+
+    // Resolver email del líder — columna J de la malla del agente puede traer nombre o email
+    var liderRaw = '';
+    for (var k = 0; k < agentMallaRows.length; k++) { if (agentMallaRows[k].lider) { liderRaw = agentMallaRows[k].lider; break; } }
+    var liderEmail = '';
+    if (liderRaw) {
+      liderEmail = liderRaw.indexOf('@') !== -1 ? liderRaw : (liderEmailMap[liderRaw] || '');
+    }
+
+    var detalle = []
+      .concat(strikesLeve.map(function(s) { return { tipo: '🟡 Leve', fecha: s.fecha, descripcion: s.descripcion }; }))
+      .concat(strikesModerado.map(function(s) { return { tipo: '🟠 Moderada', fecha: s.fecha, descripcion: s.descripcion }; }))
+      .concat(strikesGrave.map(function(s) { return { tipo: '🔴 Grave', fecha: s.fecha, descripcion: s.descripcion }; }))
+      .concat(strikesNoDesconex.map(function(s) { return { tipo: '🔵 No desconexión', fecha: s.fecha, descripcion: s.descripcion }; }));
+    detalle.sort(function(a, b) { return parseMallaDateDDMMYYYY(a.fecha) - parseMallaDateDDMMYYYY(b.fecha); });
+
+    var mesLabel = Utilities.formatDate(new Date(YEAR, MONTH - 1, 1), 'America/Bogota', "MMMM 'de' yyyy");
+    var totalStrikes = strikesLeve.length + strikesModerado.length + strikesGrave.length + strikesNoDesconex.length;
+
+    sendStrikeWarning({
+      agentName: agent.nombre,
+      agentEmail: agent.email,
+      liderEmail: liderEmail,
+      mes: mesLabel,
+      llamadoNumero: totalLlamados,
+      totalStrikes: totalStrikes,
+      esTercerLlamado: totalLlamados >= 3,
+      detalle: detalle
+    });
+
+    firestoreSetDocRaw('strike_notifications/' + docId, {
+      llamadoNumero: { integerValue: totalLlamados },
+      notifiedAt: { timestampValue: new Date().toISOString() },
+      source: { stringValue: 'sendPendingStrikeAlerts' }
+    });
+
+    sentCount++;
+    Logger.log('Llamado #' + totalLlamados + ' notificado para ' + agent.email + (liderEmail ? ' (líder: ' + liderEmail + ')' : ' (sin líder resuelto)'));
+  });
+
+  Logger.log('sendPendingStrikeAlerts terminado — correos enviados: ' + sentCount + ' de ' + agents.length + ' agentes evaluados');
+}
+
+// Ejecutable directamente desde el editor de Apps Script (menú Ejecutar → runStrikeAlerts).
+function runStrikeAlerts() {
+  sendPendingStrikeAlerts();
+}
+
+function getAgentsFromBase3() {
+  // Agentes activos desde BASE 3.0 — excluye coordinadores/admins, que no deben recibir su
+  // propio llamado de atención vía este flujo.
+  try {
+    var ss = SpreadsheetApp.openById(getMallaSheetId());
+    var sheet = ss.getSheetByName('BASE 3.0');
+    if (!sheet) { Logger.log('No BASE 3.0 sheet found'); return []; }
+    var data = sheet.getDataRange().getValues();
+    var props = PropertiesService.getScriptProperties();
+    var adminEmailsStr = props.getProperty('admin_emails') || 'cromero@pibox.app';
+    var adminEmails = adminEmailsStr.split(',').map(function(e) { return e.trim().toLowerCase(); }).filter(Boolean);
+    var agents = [];
+    for (var i = 1; i < data.length; i++) {
+      var nombre = data[i][4] ? data[i][4].toString().trim() : ''; // col E
+      var cargo = data[i][5] ? data[i][5].toString().trim() : ''; // col F
+      var email = data[i][6] ? data[i][6].toString().trim() : ''; // col G
+      if (!email || !nombre) continue;
+      var cargoUpper = cargo.toUpperCase();
+      if (cargoUpper.indexOf('COORDINADOR') !== -1 || cargoUpper.indexOf('ADMIN') !== -1) continue;
+      if (adminEmails.indexOf(email.toLowerCase()) !== -1) continue;
+      if (email.toLowerCase() === 'cromero@pibox.app') continue;
+      agents.push({ nombre: nombre, cargo: cargo, email: email });
+    }
+    Logger.log('getAgentsFromBase3: ' + agents.length + ' agentes (excluyendo coordinadores/admins)');
+    return agents;
+  } catch (e) {
+    Logger.log('Error en getAgentsFromBase3: ' + e.message);
+    return [];
+  }
+}
+
+function getMallaRowsForMonth(year, month) {
+  // Filas de la malla del mes indicado, con las mismas columnas que usa el resto del script
+  // (fecha=col B, usuario=col C, inicio=col F, fin=col G, líder=col J, novedad=col K).
+  try {
+    var ss = SpreadsheetApp.openById(getMallaSheetId());
+    var sheet = ss.getSheetByName(MALLA_SHEET_NAME);
+    if (!sheet) { Logger.log('No Malla sheet tab found'); return []; }
+    var data = sheet.getDataRange().getDisplayValues();
+    var rows = [];
+    for (var i = 1; i < data.length; i++) {
+      var row = data[i];
+      var fecha = row[1] ? row[1].trim() : '';
+      if (!fecha) continue;
+      var parts = fecha.split('/');
+      if (parts.length < 3) continue;
+      var m = parseInt(parts[1]), y = parseInt(parts[2]);
+      if (m !== month || y !== year) continue;
+      rows.push({
+        fecha: fecha,
+        usuario: row[2] ? row[2].trim() : '',
+        inicio: row[5] ? row[5].trim() : '',
+        fin: row[6] ? row[6].trim() : '',
+        lider: row[9] ? row[9].trim() : '',
+        novedad: row[10] ? row[10].trim() : ''
+      });
+    }
+    Logger.log('getMallaRowsForMonth ' + month + '/' + year + ': ' + rows.length + ' filas');
+    return rows;
+  } catch (e) {
+    Logger.log('Error en getMallaRowsForMonth: ' + e.message);
+    return [];
+  }
+}
+
+function parseMallaDateDDMMYYYY(fechaStr) {
+  if (!fechaStr) return null;
+  var parts = fechaStr.split('/');
+  if (parts.length < 3) return null;
+  var d = parseInt(parts[0]), m = parseInt(parts[1]), y = parseInt(parts[2]);
+  if (isNaN(d) || isNaN(m) || isNaN(y)) return null;
+  return new Date(y, m - 1, d, 0, 0, 0);
+}
+
+function sameCalendarDay(a, b) {
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
 
 // ── PAYROLL REPORT ──
@@ -670,6 +879,99 @@ function getTodayTurnosFromFirebase() {
   } catch(e) {
     Logger.log('Firebase REST error: ' + e.message);
     return [];
+  }
+}
+
+function getTurnosForMonthFromFirebase(year, month) {
+  // Todos los turnos del mes indicado (rango con dos filtros sobre el MISMO campo startTime —
+  // no requiere índice compuesto, igual que getRecentTurnos/getApprovedOvertimeEvents del
+  // cliente). Se trae una sola vez y se filtra por agente en memoria en sendPendingStrikeAlerts,
+  // en vez de una consulta por agente.
+  try {
+    var token = ScriptApp.getOAuthToken();
+    var monthStart = new Date(year, month - 1, 1, 0, 0, 0);
+    var monthEnd = new Date(year, month, 0, 23, 59, 59);
+    var queryUrl = 'https://firestore.googleapis.com/v1/projects/' + FIREBASE_PROJECT + '/databases/(default)/documents:runQuery';
+    var queryBody = {
+      structuredQuery: {
+        from: [{ collectionId: 'turnos' }],
+        where: {
+          compositeFilter: {
+            op: 'AND',
+            filters: [
+              { fieldFilter: { field: { fieldPath: 'startTime' }, op: 'GREATER_THAN_OR_EQUAL', value: { timestampValue: monthStart.toISOString() } } },
+              { fieldFilter: { field: { fieldPath: 'startTime' }, op: 'LESS_THAN_OR_EQUAL', value: { timestampValue: monthEnd.toISOString() } } }
+            ]
+          }
+        },
+        limit: 1000
+      }
+    };
+
+    var response = UrlFetchApp.fetch(queryUrl, {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+      payload: JSON.stringify(queryBody),
+      muteHttpExceptions: true
+    });
+
+    var results = JSON.parse(response.getContentText());
+    var turnos = [];
+    results.forEach(function(result) {
+      if (!result.document) return;
+      var fields = result.document.fields || {};
+      var userEmail = fields.userEmail && fields.userEmail.stringValue;
+      var status = fields.status && fields.status.stringValue;
+      var startTimeVal = fields.startTime && fields.startTime.timestampValue;
+      var endTimeVal = fields.endTime && fields.endTime.timestampValue;
+      if (!userEmail || !startTimeVal) return;
+      turnos.push({
+        userEmail: userEmail,
+        status: status || '',
+        startTime: new Date(startTimeVal),
+        endTime: endTimeVal ? new Date(endTimeVal) : null
+      });
+    });
+    Logger.log('getTurnosForMonthFromFirebase ' + month + '/' + year + ': ' + turnos.length + ' turnos');
+    return turnos;
+  } catch (e) {
+    Logger.log('getTurnosForMonthFromFirebase error: ' + e.message);
+    return [];
+  }
+}
+
+function firestoreGetDocRaw(path) {
+  // Lee un documento puntual de Firestore por su path (ej. "strike_notifications/{docId}").
+  // Devuelve null tanto si no existe (404) como si hay error — para sendPendingStrikeAlerts eso
+  // significa "no hay registro previo, se puede notificar".
+  try {
+    var token = ScriptApp.getOAuthToken();
+    var url = FIREBASE_REST + '/' + path;
+    var resp = UrlFetchApp.fetch(url, { headers: { 'Authorization': 'Bearer ' + token }, muteHttpExceptions: true });
+    if (resp.getResponseCode() !== 200) return null;
+    return JSON.parse(resp.getContentText());
+  } catch (e) {
+    Logger.log('firestoreGetDocRaw error (' + path + '): ' + e.message);
+    return null;
+  }
+}
+
+function firestoreSetDocRaw(path, fields) {
+  // Crea/sobrescribe un documento puntual de Firestore con los campos ya en formato REST
+  // tipado (ej. {llamadoNumero:{integerValue:1}}).
+  try {
+    var token = ScriptApp.getOAuthToken();
+    var url = FIREBASE_REST + '/' + path;
+    UrlFetchApp.fetch(url, {
+      method: 'patch',
+      headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+      payload: JSON.stringify({ fields: fields }),
+      muteHttpExceptions: true
+    });
+    return true;
+  } catch (e) {
+    Logger.log('firestoreSetDocRaw error (' + path + '): ' + e.message);
+    return false;
   }
 }
 
