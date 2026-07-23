@@ -1295,7 +1295,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
-const APP_VERSION='15.83';
+const APP_VERSION='15.84';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 const SUPER_ADMIN_NAME='Camilo Romero';
@@ -1314,6 +1314,16 @@ const FESTIVOS_2026=[
  '2026-08-07','2026-08-18','2026-10-12','2026-11-02',
  '2026-11-16','2026-12-08','2026-12-25'
 ];
+// Detecta la novedad de "medio día de votaciones" en cualquiera de sus variantes en la malla
+// (ej. "1/2 DIA DE VOTACIONES", "1/2 DE VOTACION", "1/2  DIA DE VOTACION" con doble espacio,
+// "1/2 VOTACIONES", "MEDIO DIA VOTACION"). En vez de comparar contra una lista fija de strings
+// exactos, se detecta cualquier novedad que contenga "1/2" y "VOT" — cubre variantes futuras sin
+// tener que actualizar el código cada vez que cambia la redacción exacta en la malla.
+function esNovedadVotaciones(novedad){
+ if(!novedad)return false;
+ const upper=String(novedad).toUpperCase();
+ return upper.includes('1/2')&&upper.includes('VOT');
+}
 let apiKey='',sheetUrl='',vidUrl='',faqUrl='',sysBase='Eres Pi GOps, el asistente inteligente de operaciones de Pibox. Tu rol es ayudar al equipo operativo a tomar decisiones rápidas y correctas en campo.\n\nTienes acceso a un manual de operaciones. Úsalo como tu fuente principal, pero también puedes razonar e interpretar cuando la pregunta no esté respondida textualmente.\n\nCómo debes responder:\n- Sé claro, directo y práctico. El equipo está en campo y necesita respuestas rápidas.\n- Si la respuesta está en el manual, úsala y explícala con tus propias palabras.\n- Si definitivamente no está en el manual, dilo con honestidad y sugiere a quién escalar.\n- Nunca te quedes en blanco. Siempre da una respuesta útil.\n- Habla en español colombiano, de forma cercana y profesional.',history=[],streaming=false,sheetData='',allVideos=[],activeCat='Todos',allFAQs=[],activeFAQCat='Todos';
 let attachedFile=null,attachedFileData=null,attachedFileType=null;
 let surveyTimer=null,surveyAnswer=null,hasConversation=false;
@@ -1625,8 +1635,7 @@ async function loadStrikes(){
  const turno=dayTurnos.find(t=>t.status==='ended')||dayTurnos.find(t=>t.status==='interrupted')||dayTurnos[0]||null;
  const rs=turno?turno.startTime.toDate():null;
  const re=turno?.endTime?.toDate?.();
- const NOVEDADES_VOTACIONES=['1/2 DIA DE VOTACIONES','1/2 DIA DE VOTACION','MEDIO DIA VOTACIONES','MEDIO DIA VOTACION','1/2 VOTACIONES','1/2 VOTACION'];
- const esVotaciones=m.novedad&&NOVEDADES_VOTACIONES.some(n=>m.novedad.toUpperCase().includes(n.toUpperCase()));
+ const esVotaciones=esNovedadVotaciones(m.novedad);
  const diffMinsDebug=rs&&ss?Math.round((rs-ss)/60000):null;
  console.log('[loadStrikes]',m.fecha,'ss:',ss,'rs:',rs,'diffMins:',diffMinsDebug,'dayTurnos:',dayTurnos.length,'turnoStatus:',turno?.status,'esVotaciones:',!!esVotaciones);
  if(rs&&ss&&!esVotaciones){
@@ -2412,8 +2421,7 @@ async function checkTodayNovedad(){
  if(!todayEntry){
  showTurnoBlocked('No tienes un turno programado para hoy en la malla.');
  } else if(todayEntry.novedad){
- const NOVEDADES_PERM=['1/2 DIA DE VOTACIONES','1/2 DIA DE VOTACION','MEDIO DIA VOTACIONES','MEDIO DIA VOTACION','1/2 VOTACIONES','1/2 VOTACION'];
- if(!NOVEDADES_PERM.some(n=>todayEntry.novedad.toUpperCase().includes(n.toUpperCase()))){
+ if(!esNovedadVotaciones(todayEntry.novedad)){
  showTurnoBlocked(todayEntry.novedad);
  }
  }
@@ -2474,8 +2482,7 @@ async function _doStartTurno(){
  mallaEntry=todayEntries[0];
  if(mallaEntry.novedad){
  // Novedades que permiten iniciar turno (media jornada remunerada)
- const NOVEDADES_PERMITIDAS=['1/2 DIA DE VOTACIONES','1/2 DIA DE VOTACION','MEDIO DIA VOTACIONES','MEDIO DIA VOTACION','1/2 VOTACIONES','1/2 VOTACION'];
- const esPermitida=NOVEDADES_PERMITIDAS.some(n=>mallaEntry.novedad.toUpperCase().includes(n.toUpperCase()));
+ const esPermitida=esNovedadVotaciones(mallaEntry.novedad);
  if(!esPermitida){showTurnoBlocked(mallaEntry.novedad);return;}
  }
  // Punto 3: bloquear inicio anticipado (máximo TOLERANCE_MINS antes)
@@ -2599,8 +2606,7 @@ async function checkOvertimeAndDiscrepancy(endTime,elapsedSecs){
  });
  if(!todayEntry)return;
  // Bug 1: novedades que permiten trabajar media jornada (remunerada completa)
- const NOVEDADES_MEDIA_JORNADA=['1/2 DIA DE VOTACIONES','1/2 DIA DE VOTACION','MEDIO DIA VOTACIONES','MEDIO DIA VOTACION','1/2 VOTACIONES','1/2 VOTACION'];
- const eaMediaJornada=todayEntry.novedad&&NOVEDADES_MEDIA_JORNADA.some(n=>todayEntry.novedad.toUpperCase().includes(n.toUpperCase()));
+ const eaMediaJornada=esNovedadVotaciones(todayEntry.novedad);
  const scheduledStart=parseTime(todayEntry.fecha,todayEntry.inicio);
  let scheduledEnd=parseTime(todayEntry.fecha,todayEntry.fin);
  if(!scheduledStart||!scheduledEnd)return;
@@ -2915,8 +2921,7 @@ async function checkTodayNovedad(){
  if(!todayEntry){
  showTurnoBlocked('No tienes un turno programado para hoy en la malla.');
  } else if(todayEntry.novedad){
- const NVPERM=['1/2 DIA DE VOTACIONES','1/2 DIA DE VOTACION','MEDIO DIA VOTACIONES','MEDIO DIA VOTACION','1/2 VOTACIONES','1/2 VOTACION'];
- if(!NVPERM.some(n=>todayEntry.novedad.toUpperCase().includes(n.toUpperCase()))){
+ if(!esNovedadVotaciones(todayEntry.novedad)){
  showTurnoBlocked(todayEntry.novedad);
  }
  }
@@ -4001,7 +4006,6 @@ async function renderPanel2Insights(rows,allTurnos,fromDate,toDate){
  if(!el||!rows.length)return;
  const strikeTardanzaMins=parseInt(localStorage.getItem('pg_strike_tardanza')||'5');
  const strikeNoDesconexionHrs=parseFloat(localStorage.getItem('pg_strike_nodesconexion')||'4');
- const NOVEDADES_VOTACIONES=['1/2 DIA DE VOTACIONES','1/2 DIA DE VOTACION','MEDIO DIA VOTACIONES','MEDIO DIA VOTACION','1/2 VOTACIONES','1/2 VOTACION'];
  const fmtHM=mins=>{mins=Math.round(mins||0);const h=Math.floor(mins/60),m=mins%60;if(h&&m)return`${h}h ${m}m`;if(h)return`${h}h`;return`${m}m`;};
  const fmtHrsSecs=secs=>fmtHM((secs||0)/60);
  const fmtDMY=d=>d?`${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`:'—';
@@ -4047,7 +4051,7 @@ async function renderPanel2Insights(rows,allTurnos,fromDate,toDate){
  else if(cls==='novedad')teamNovedad++;
  if(cls==='tardanza'&&r.realStart&&r.scheduledStart){
  const mins=Math.round((r.realStart-r.scheduledStart)/60000);
- const esVot=r.novedad&&NOVEDADES_VOTACIONES.some(n=>r.novedad.toUpperCase().includes(n.toUpperCase()));
+ const esVot=esNovedadVotaciones(r.novedad);
  const realStr=r.realStart.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'});
  const progStr=r.scheduledStart.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'});
  if(!esVot){
@@ -4763,10 +4767,13 @@ async function loadFreshPayrollData(){
  name:m.nombre||m.usuario?.split('@')[0]||'—',
  email:m.usuario||'',
  date:d?fmtDate(d):'—',
- checkIn:m.novedad?'00:00':(reportStart?reportStart.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'00:00'),
- checkOut:m.novedad?'00:00':(reportEnd?reportEnd.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'00:00'),
- almuerzo:m.novedad?'0h':(almuerzHrs>0?almuerzHrs+'h':'0h'),
- hours:m.novedad?'00:00:00':(secs?formatDuration(secs):'00:00:00'),
+ // Novedad de votaciones permite trabajar media jornada — mostrar los registros reales de
+ // entrada/salida en vez de ceros, igual que un día sin novedad. Solo las demás novedades
+ // (vacaciones, incapacidad, etc.) bloquean el registro y se reportan en cero.
+ checkIn:(m.novedad&&!esNovedadVotaciones(m.novedad))?'00:00':(reportStart?reportStart.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'00:00'),
+ checkOut:(m.novedad&&!esNovedadVotaciones(m.novedad))?'00:00':(reportEnd?reportEnd.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'00:00'),
+ almuerzo:(m.novedad&&!esNovedadVotaciones(m.novedad))?'0h':(almuerzHrs>0?almuerzHrs+'h':'0h'),
+ hours:(m.novedad&&!esNovedadVotaciones(m.novedad))?'00:00:00':(secs?formatDuration(secs):'00:00:00'),
  novedad:m.novedad||'—'
  };
  }).sort((a,b)=>a.name.localeCompare(b.name)||a.date.localeCompare(b.date));
@@ -5102,10 +5109,13 @@ async function sendPayrollReport(){
  email:m.usuario||'',
  turnoId:turno?.id||null,
  date:d?fmtDate(d):'—',
- checkIn:m.novedad?'—':(reportStart?reportStart.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'Sin registro'),
- checkOut:m.novedad?'—':(reportEnd?reportEnd.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'Sin registro'),
- almuerzo:m.novedad?'—':(almuerzHrs>0?almuerzHrs+'h':'—'),
- hours:m.novedad?'—':(secs?formatDuration(secs):'Sin registro'),
+ // Novedad de votaciones permite trabajar media jornada — mostrar los registros reales de
+ // entrada/salida en vez de guiones, igual que un día sin novedad. Solo las demás novedades
+ // (vacaciones, incapacidad, etc.) bloquean el registro y se reportan en blanco.
+ checkIn:(m.novedad&&!esNovedadVotaciones(m.novedad))?'—':(reportStart?reportStart.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'Sin registro'),
+ checkOut:(m.novedad&&!esNovedadVotaciones(m.novedad))?'—':(reportEnd?reportEnd.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'Sin registro'),
+ almuerzo:(m.novedad&&!esNovedadVotaciones(m.novedad))?'—':(almuerzHrs>0?almuerzHrs+'h':'—'),
+ hours:(m.novedad&&!esNovedadVotaciones(m.novedad))?'—':(secs?formatDuration(secs):'Sin registro'),
  novedad:m.novedad||'—'
  };
  }).sort((a,b)=>a.name.localeCompare(b.name)||a.date.localeCompare(b.date));
