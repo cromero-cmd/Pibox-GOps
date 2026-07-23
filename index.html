@@ -280,9 +280,10 @@ window.loadOvertimeEvents = async () => {
  } catch(e) { return []; }
 };
 window.getStrikeNotification = async (docId) => {
- // Último llamado de atención ya notificado para un agente+mes (colección strike_notifications,
- // doc id "{userEmail}_{yearMonth}") — usado por loadStrikes para no reenviar el mismo correo
- // en cada recarga del panel cuando el conteo de llamados no cambió.
+ // Último llamado de atención ya notificado (colección strike_notifications). docId es
+ // "{userEmail}_{yearMonth}" para el llamado regular del mes, o "{userEmail}_disciplinary" para
+ // el aviso de proceso disciplinario (evento único, no atado a un mes) — usado por loadStrikes
+ // para no reenviar el mismo correo en cada recarga del panel cuando nada cambió.
  try {
  const snap = await getDoc(doc(db, 'strike_notifications', docId));
  return snap.exists() ? snap.data() : null;
@@ -1310,7 +1311,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
-const APP_VERSION='15.86';
+const APP_VERSION='15.87';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 const SUPER_ADMIN_NAME='Camilo Romero';
@@ -1607,6 +1608,33 @@ function _sendEndNotification(endTime){
  };
 }
 // ── STRIKES ──
+// Reconstruye cronológicamente qué strikes generaron cada llamado numerado — cruza las 4
+// categorías por fecha y, cada vez que UNA categoría acumula suficientes strikes propios para
+// cruzar su propio umbral (3 leve, 2 moderada, 1 grave, 3 no desconexión), cierra ese lote como
+// "el siguiente llamado" (numeración global, no por categoría) y reinicia el contador de esa
+// categoría. Misma lógica que buildLlamadoHistorial en PiGOps_Notificaciones_v5.gs, usada aquí
+// para armar el historial completo del correo de proceso disciplinario.
+function buildLlamadoHistorial(strikesLeve,strikesModerada,strikesGrave,strikesNoDesconex){
+ const events=[
+ ...strikesLeve.map(s=>({tipo:'Leve',fecha:s.fecha,descripcion:s.detalle,cat:'leve'})),
+ ...strikesModerada.map(s=>({tipo:'Moderada',fecha:s.fecha,descripcion:s.detalle,cat:'moderado'})),
+ ...strikesGrave.map(s=>({tipo:'Grave',fecha:s.fecha,descripcion:s.detalle,cat:'grave'})),
+ ...strikesNoDesconex.map(s=>({tipo:'No desconexión',fecha:s.fecha,descripcion:s.detalle,cat:'noDesconex'}))
+ ].sort((a,b)=>(parseDate(a.fecha)||0)-(parseDate(b.fecha)||0));
+ const thresholds={leve:3,moderado:2,grave:1,noDesconex:3};
+ const buffers={leve:[],moderado:[],grave:[],noDesconex:[]};
+ const historial=[];
+ let llamadoNum=0;
+ events.forEach(ev=>{
+ buffers[ev.cat].push(ev);
+ if(buffers[ev.cat].length>=thresholds[ev.cat]){
+ llamadoNum++;
+ historial.push({llamadoNumero:llamadoNum,strikes:buffers[ev.cat].map(s=>({tipo:s.tipo,fecha:s.fecha,descripcion:s.descripcion}))});
+ buffers[ev.cat]=[];
+ }
+ });
+ return historial;
+}
 async function loadStrikes(){
  const userEmail=document.getElementById('user-email').textContent;
  const isAdmin=(window.ADMINS||ADMINS).includes(userEmail)||userEmail===SUPER_ADMIN;
@@ -1716,6 +1744,27 @@ async function loadStrikes(){
  }catch(notifErr){console.warn('[loadStrikes] Error enviando notificación de llamado:',notifErr);}
  }
  }catch(notifCheckErr){console.warn('[loadStrikes] Error verificando llamado nuevo:',notifCheckErr);}
+ // Notificación de proceso disciplinario — evento único por agente (no por mes), se dispara al
+ // alcanzar 3 llamados acumulados independientemente de si el llamado regular de este mes ya se
+ // había notificado antes (docId sin sufijo de mes: "{userEmail}_disciplinary").
+ if(totalLlamados>=3){
+ try{
+ const discDocId=`${userEmail}_disciplinary`;
+ const discExisting=window.getStrikeNotification?await window.getStrikeNotification(discDocId):null;
+ if(!discExisting){
+ const agentName=document.getElementById('user-name').textContent;
+ const liderEmail=mallaData.find(m=>m.lider)?.lider||'';
+ const mesLabel=now.toLocaleDateString('es-CO',{month:'long',year:'numeric'});
+ const historial=buildLlamadoHistorial(strikesLeve,strikesModerade,strikesGrave,strikesNoDesconex).slice(0,3);
+ const discPayload={agentName,agentEmail:userEmail,liderEmail,mes:mesLabel,historial};
+ try{
+ await fetch(NOTIF_SCRIPT+'?type=disciplinary_warning&data='+encodeURIComponent(JSON.stringify(discPayload)),{mode:'no-cors'});
+ if(window.saveStrikeNotification)await window.saveStrikeNotification(discDocId,{llamadoNumero:totalLlamados,notifiedAt:new Date().toISOString()});
+ console.log('[loadStrikes] Notificación de proceso disciplinario enviada para '+userEmail);
+ }catch(discNotifErr){console.warn('[loadStrikes] Error enviando notificación disciplinaria:',discNotifErr);}
+ }
+ }catch(discCheckErr){console.warn('[loadStrikes] Error verificando proceso disciplinario:',discCheckErr);}
+ }
  // Strikes faltantes para próximo llamado por tipo
  const faltanLeve=strikesLeve.length%3===0?3:3-(strikesLeve.length%3);
  const faltanModerado=strikesModerade.length%2===0?2:2-(strikesModerade.length%2);

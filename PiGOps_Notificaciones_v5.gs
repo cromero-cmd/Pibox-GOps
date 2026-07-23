@@ -6,6 +6,47 @@ const MALLA_SHEET_NAME = 'Malla';
 // es español (ej. producía "July" en vez de "julio") — se usa este array fijo para no depender
 // de esa configuración.
 const MESES_ES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+const FOOTER_HTML = '<p style="color:#6b7280;font-size:12px;margin-top:24px;">Este mensaje fue generado automáticamente por Pi GOps · Pibox Operaciones</p>';
+
+// Reemplaza el emoji de color de cada tipo de strike por texto con color HTML — los emojis de
+// color (🔴🔵🟠🟡) no se renderizan de forma confiable en varios clientes de correo. Compartida
+// entre sendStrikeWarning y sendDisciplinaryWarning.
+function tipoHTML(rawTipo) {
+  var t = (rawTipo || '').toUpperCase();
+  if (t.indexOf('LEVE') !== -1) return '<span style="color:#d97706;font-weight:bold;">Leve</span>';
+  if (t.indexOf('MODERADA') !== -1) return '<span style="color:#ea580c;font-weight:bold;">Moderada</span>';
+  if (t.indexOf('GRAVE') !== -1) return '<span style="color:#dc2626;font-weight:bold;">Grave</span>';
+  if (t.indexOf('DESCONEX') !== -1) return '<span style="color:#2563eb;font-weight:bold;">No desconexión</span>';
+  return rawTipo || '—';
+}
+
+// Deriva "mes de año" en español a partir de una fecha DD/MM/YYYY, en vez de confiar en un
+// campo "mes" que pueda llegar ya formateado (y potencialmente en inglés según el locale del
+// llamador). Compartida entre sendStrikeWarning y sendDisciplinaryWarning.
+function mesFromFecha(fechaStr, fallback) {
+  if (!fechaStr) return fallback || '—';
+  var parts = fechaStr.split('/');
+  if (parts.length !== 3) return fallback || '—';
+  var mesIdx = parseInt(parts[1], 10) - 1;
+  var anio = parts[2];
+  if (mesIdx < 0 || mesIdx > 11) return fallback || '—';
+  return MESES_ES[mesIdx] + ' de ' + anio;
+}
+
+// Bloque de recordatorio de la escala disciplinaria — idéntico en sendStrikeWarning y
+// sendDisciplinaryWarning.
+function escalaDisciplinariaHTML() {
+  return '<div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:16px;margin-top:20px;">' +
+    '<p style="font-weight:bold;color:#374151;margin:0 0 8px 0;">📋 Recordatorio — Escala disciplinaria (sin justa causa)</p>' +
+    '<table style="width:100%;font-size:13px;color:#6b7280;">' +
+    '<tr><td>Tardanza leve (5–19 min)</td><td>3 strikes = 1 llamado de atención</td></tr>' +
+    '<tr><td>Tardanza moderada (20–59 min)</td><td>2 strikes = 1 llamado de atención</td></tr>' +
+    '<tr><td>Tardanza grave (60+ min)</td><td>1 strike = 1 llamado de atención</td></tr>' +
+    '<tr><td>No desconexión (+4h)</td><td>3 strikes = 1 llamado de atención</td></tr>' +
+    '</table>' +
+    '<p style="color:#6b7280;font-size:12px;margin:8px 0 0 0;">⚖️ 3 llamados de atención acumulados (cualquier combinación) = proceso disciplinario formal.</p>' +
+    '</div>';
+}
 
 // ── MAIN HANDLER ──
 function doPost(e) {
@@ -45,6 +86,8 @@ function doGet(e) {
       sendOvertimeNotification(data);
     } else if (type === 'strike_warning') {
       sendStrikeWarning(data);
+    } else if (type === 'disciplinary_warning') {
+      sendDisciplinaryWarning(data);
     } else if (type === 'overtime_rejected') {
       const data = JSON.parse(decodeURIComponent(payload));
       sendOvertimeRejectedNotification(data);
@@ -134,31 +177,12 @@ function sendStrikeWarning(data) {
   const esTercerLlamado = !!data.esTercerLlamado;
   const detalle = data.detalle || [];
 
-  // El mes se deriva de la fecha del primer strike (formato DD/MM/YYYY) usando MESES_ES, en vez
-  // de confiar en data.mes tal cual llega — así el correo siempre queda en español sin importar
-  // el locale del llamador (Utilities.formatDate en sendPendingStrikeAlerts producía "July").
-  var mes = data.mes || '—';
-  if (detalle.length && detalle[0].fecha) {
-    var fechaParts = detalle[0].fecha.split('/');
-    if (fechaParts.length === 3) {
-      var mesIdx = parseInt(fechaParts[1], 10) - 1;
-      var anio = fechaParts[2];
-      if (mesIdx >= 0 && mesIdx < 12) mes = MESES_ES[mesIdx] + ' de ' + anio;
-    }
-  }
+  // El mes se deriva de la fecha del primer strike (formato DD/MM/YYYY), en vez de confiar en
+  // data.mes tal cual llega — así el correo siempre queda en español sin importar el locale del
+  // llamador (Utilities.formatDate en sendPendingStrikeAlerts producía "July").
+  const mes = (detalle.length && detalle[0].fecha) ? mesFromFecha(detalle[0].fecha, data.mes) : (data.mes || '—');
 
   const subject = '⚡ Acción requerida — Llamado de atención #' + llamadoNumero + ' para ' + agentName;
-
-  // Reemplaza el emoji de color de cada tipo de strike por texto con color HTML — los emojis de
-  // color (🔴🔵🟠🟡) no se renderizan de forma confiable en varios clientes de correo.
-  function tipoHTML(rawTipo) {
-    var t = (rawTipo || '').toUpperCase();
-    if (t.indexOf('LEVE') !== -1) return '<span style="color:#d97706;font-weight:bold;">Leve</span>';
-    if (t.indexOf('MODERADA') !== -1) return '<span style="color:#ea580c;font-weight:bold;">Moderada</span>';
-    if (t.indexOf('GRAVE') !== -1) return '<span style="color:#dc2626;font-weight:bold;">Grave</span>';
-    if (t.indexOf('DESCONEX') !== -1) return '<span style="color:#2563eb;font-weight:bold;">No desconexión</span>';
-    return rawTipo || '—';
-  }
 
   const rows = detalle.map(function(d) {
     return '<tr><td style="padding:8px 12px;border:1px solid #ddd;">' + (d.fecha || '—') + '</td>' +
@@ -188,17 +212,8 @@ function sendStrikeWarning(data) {
     '</table>' +
     '<p><strong>Por favor procede a realizar el llamado de atención verbal/escrito correspondiente según el reglamento interno de Pibox y notifica a Talento Humano.</strong></p>' +
     disciplinaryWarning +
-    '<div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:16px;margin-top:20px;">' +
-    '<p style="font-weight:bold;color:#374151;margin:0 0 8px 0;">📋 Recordatorio — Escala disciplinaria (sin justa causa)</p>' +
-    '<table style="width:100%;font-size:13px;color:#6b7280;">' +
-    '<tr><td>Tardanza leve (5–19 min)</td><td>3 strikes = 1 llamado de atención</td></tr>' +
-    '<tr><td>Tardanza moderada (20–59 min)</td><td>2 strikes = 1 llamado de atención</td></tr>' +
-    '<tr><td>Tardanza grave (60+ min)</td><td>1 strike = 1 llamado de atención</td></tr>' +
-    '<tr><td>No desconexión (+4h)</td><td>3 strikes = 1 llamado de atención</td></tr>' +
-    '</table>' +
-    '<p style="color:#6b7280;font-size:12px;margin:8px 0 0 0;">⚖️ 3 llamados de atención acumulados (cualquier combinación) = proceso disciplinario formal.</p>' +
-    '</div>' +
-    '<p style="color:#6b7280;font-size:12px;margin-top:24px;">Este mensaje fue generado automáticamente por Pi GOps · Pibox Operaciones</p>' +
+    escalaDisciplinariaHTML() +
+    FOOTER_HTML +
     '</div></div>';
 
   if (liderEmail) {
@@ -207,6 +222,59 @@ function sendStrikeWarning(data) {
   } else {
     GmailApp.sendEmail('cromero@pibox.app', subject, '', { htmlBody: htmlBody });
     Logger.log('Strike warning sent to Super Admin only (no liderEmail) for agent ' + agentEmail);
+  }
+}
+
+// ── DISCIPLINARY WARNING (3 llamados acumulados) ──
+function sendDisciplinaryWarning(data) {
+  const agentName = data.agentName || '—';
+  const agentEmail = data.agentEmail || '—';
+  const liderEmail = data.liderEmail || '';
+  const historial = data.historial || [];
+
+  // Mismo criterio que sendStrikeWarning: derivar el mes del primer strike del primer llamado,
+  // en vez de confiar en data.mes tal cual llega.
+  const primerFecha = (historial[0] && historial[0].strikes && historial[0].strikes[0]) ? historial[0].strikes[0].fecha : null;
+  const mes = mesFromFecha(primerFecha, data.mes);
+
+  const subject = '⚖️ Proceso disciplinario requerido — ' + agentName;
+
+  const historialHTML = historial.map(function(h) {
+    const rows = (h.strikes || []).map(function(s) {
+      return '<tr><td style="padding:6px 10px;border:1px solid #ddd;">' + (s.fecha || '—') + '</td>' +
+        '<td style="padding:6px 10px;border:1px solid #ddd;">' + tipoHTML(s.tipo) + '</td>' +
+        '<td style="padding:6px 10px;border:1px solid #ddd;">' + (s.descripcion || '—') + '</td></tr>';
+    }).join('');
+    return '<div style="margin-bottom:16px;">' +
+      '<p style="font-weight:bold;color:#374151;margin:0 0 6px 0;">Llamado #' + h.llamadoNumero + '</p>' +
+      '<table style="width:100%;border-collapse:collapse;font-size:12px;">' +
+      '<tr style="background:#f3f0ff;"><th style="padding:6px 10px;text-align:left;border:1px solid #ddd;">Fecha</th>' +
+      '<th style="padding:6px 10px;text-align:left;border:1px solid #ddd;">Tipo</th>' +
+      '<th style="padding:6px 10px;text-align:left;border:1px solid #ddd;">Descripción</th></tr>' +
+      rows +
+      '</table></div>';
+  }).join('');
+
+  const htmlBody = '<div style="font-family:Arial,sans-serif;color:#333;max-width:600px;">' +
+    '<div style="background:#dc2626;padding:16px;border-radius:8px 8px 0 0;">' +
+    '<h2 style="color:white;margin:0;">⚖️ Proceso disciplinario requerido</h2></div>' +
+    '<div style="padding:20px;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px;">' +
+    '<p>Estimado(a) coordinador(a),</p>' +
+    '<p>El colaborador <strong>' + agentName + '</strong> (' + agentEmail + ') ha acumulado <strong>3 llamados de atención</strong> ' +
+    'durante <strong>' + mes + '</strong>, por lo que corresponde <strong>iniciar un proceso disciplinario formal</strong> con Talento Humano.</p>' +
+    '<p style="font-weight:bold;color:#374151;">Historial completo de llamados</p>' +
+    historialHTML +
+    '<p><strong>Por favor coordina con Talento Humano de inmediato para iniciar el proceso disciplinario formal según el reglamento interno de Pibox.</strong></p>' +
+    escalaDisciplinariaHTML() +
+    FOOTER_HTML +
+    '</div></div>';
+
+  if (liderEmail) {
+    GmailApp.sendEmail(liderEmail, subject, '', { htmlBody: htmlBody, cc: 'cromero@pibox.app' });
+    Logger.log('Disciplinary warning sent to leader: ' + liderEmail + ' (cc cromero@pibox.app) for agent ' + agentEmail);
+  } else {
+    GmailApp.sendEmail('cromero@pibox.app', subject, '', { htmlBody: htmlBody });
+    Logger.log('Disciplinary warning sent to Super Admin only (no liderEmail) for agent ' + agentEmail);
   }
 }
 
@@ -285,14 +353,10 @@ function sendPendingStrikeAlerts() {
 
     if (totalLlamados <= 0) return;
 
-    var docId = agent.email + '_' + yearMonth;
-    var existing = firestoreGetDocRaw('strike_notifications/' + docId);
-    if (existing) {
-      Logger.log('Ya notificado: ' + docId + ' — se omite');
-      return;
-    }
-
-    // Resolver email del líder — columna J de la malla del agente puede traer nombre o email
+    // Resolver email del líder — columna J de la malla del agente puede traer nombre o email.
+    // Se resuelve una sola vez aquí porque tanto el llamado regular como el aviso de proceso
+    // disciplinario (más abajo) lo necesitan, y este último NO debe quedar bloqueado si el
+    // llamado regular de este mes ya se había notificado antes.
     var liderRaw = '';
     for (var k = 0; k < agentMallaRows.length; k++) { if (agentMallaRows[k].lider) { liderRaw = agentMallaRows[k].lider; break; } }
     var liderEmail = '';
@@ -310,25 +374,56 @@ function sendPendingStrikeAlerts() {
     var mesLabel = MESES_ES[MONTH - 1] + ' de ' + YEAR; // sendStrikeWarning igual lo recalcula desde detalle[0].fecha, pero se deja consistente aquí
     var totalStrikes = strikesLeve.length + strikesModerado.length + strikesGrave.length + strikesNoDesconex.length;
 
-    sendStrikeWarning({
-      agentName: agent.nombre,
-      agentEmail: agent.email,
-      liderEmail: liderEmail,
-      mes: mesLabel,
-      llamadoNumero: totalLlamados,
-      totalStrikes: totalStrikes,
-      esTercerLlamado: totalLlamados >= 3,
-      detalle: detalle
-    });
+    // ── Llamado regular del mes ──
+    var docId = agent.email + '_' + yearMonth;
+    var existing = firestoreGetDocRaw('strike_notifications/' + docId);
+    if (!existing) {
+      sendStrikeWarning({
+        agentName: agent.nombre,
+        agentEmail: agent.email,
+        liderEmail: liderEmail,
+        mes: mesLabel,
+        llamadoNumero: totalLlamados,
+        totalStrikes: totalStrikes,
+        esTercerLlamado: totalLlamados >= 3,
+        detalle: detalle
+      });
 
-    firestoreSetDocRaw('strike_notifications/' + docId, {
-      llamadoNumero: { integerValue: totalLlamados },
-      notifiedAt: { timestampValue: new Date().toISOString() },
-      source: { stringValue: 'sendPendingStrikeAlerts' }
-    });
+      firestoreSetDocRaw('strike_notifications/' + docId, {
+        llamadoNumero: { integerValue: totalLlamados },
+        notifiedAt: { timestampValue: new Date().toISOString() },
+        source: { stringValue: 'sendPendingStrikeAlerts' }
+      });
 
-    sentCount++;
-    Logger.log('Llamado #' + totalLlamados + ' notificado para ' + agent.email + (liderEmail ? ' (líder: ' + liderEmail + ')' : ' (sin líder resuelto)'));
+      sentCount++;
+      Logger.log('Llamado #' + totalLlamados + ' notificado para ' + agent.email + (liderEmail ? ' (líder: ' + liderEmail + ')' : ' (sin líder resuelto)'));
+    } else {
+      Logger.log('Llamado regular ya notificado: ' + docId + ' — se omite');
+    }
+
+    // ── Proceso disciplinario (3+ llamados acumulados) — clave sin mes, es un evento único ──
+    if (totalLlamados >= 3) {
+      var discDocId = agent.email + '_disciplinary';
+      var discExisting = firestoreGetDocRaw('strike_notifications/' + discDocId);
+      if (!discExisting) {
+        var historial = buildLlamadoHistorial(strikesLeve, strikesModerado, strikesGrave, strikesNoDesconex).slice(0, 3);
+        sendDisciplinaryWarning({
+          agentName: agent.nombre,
+          agentEmail: agent.email,
+          liderEmail: liderEmail,
+          mes: mesLabel,
+          historial: historial
+        });
+        firestoreSetDocRaw('strike_notifications/' + discDocId, {
+          llamadoNumero: { integerValue: totalLlamados },
+          notifiedAt: { timestampValue: new Date().toISOString() },
+          source: { stringValue: 'sendPendingStrikeAlerts' }
+        });
+        Logger.log('Proceso disciplinario notificado para ' + agent.email);
+      } else {
+        Logger.log('Proceso disciplinario ya notificado: ' + discDocId + ' — se omite');
+      }
+    }
   });
 
   Logger.log('sendPendingStrikeAlerts terminado — correos enviados: ' + sentCount + ' de ' + agents.length + ' agentes evaluados');
@@ -415,6 +510,40 @@ function parseMallaDateDDMMYYYY(fechaStr) {
 
 function sameCalendarDay(a, b) {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+}
+
+// Reconstruye cronológicamente qué strikes generaron cada llamado numerado — cruza las 4
+// categorías por fecha y, cada vez que UNA categoría acumula suficientes strikes propios para
+// cruzar su propio umbral (3 leve, 2 moderada, 1 grave, 3 no desconexión), cierra ese lote como
+// "el siguiente llamado" (numeración global, no por categoría) y reinicia el contador de esa
+// categoría. Usada tanto para el correo de llamado individual (detalle) como para el historial
+// completo del correo de proceso disciplinario.
+function buildLlamadoHistorial(strikesLeve, strikesModerado, strikesGrave, strikesNoDesconex) {
+  var events = []
+    .concat(strikesLeve.map(function(s) { return { tipo: 'Leve', fecha: s.fecha, descripcion: s.descripcion, cat: 'leve' }; }))
+    .concat(strikesModerado.map(function(s) { return { tipo: 'Moderada', fecha: s.fecha, descripcion: s.descripcion, cat: 'moderado' }; }))
+    .concat(strikesGrave.map(function(s) { return { tipo: 'Grave', fecha: s.fecha, descripcion: s.descripcion, cat: 'grave' }; }))
+    .concat(strikesNoDesconex.map(function(s) { return { tipo: 'No desconexión', fecha: s.fecha, descripcion: s.descripcion, cat: 'noDesconex' }; }));
+  events.sort(function(a, b) { return parseMallaDateDDMMYYYY(a.fecha) - parseMallaDateDDMMYYYY(b.fecha); });
+
+  var thresholds = { leve: 3, moderado: 2, grave: 1, noDesconex: 3 };
+  var buffers = { leve: [], moderado: [], grave: [], noDesconex: [] };
+  var historial = [];
+  var llamadoNum = 0;
+
+  events.forEach(function(ev) {
+    buffers[ev.cat].push(ev);
+    if (buffers[ev.cat].length >= thresholds[ev.cat]) {
+      llamadoNum++;
+      historial.push({
+        llamadoNumero: llamadoNum,
+        strikes: buffers[ev.cat].map(function(s) { return { tipo: s.tipo, fecha: s.fecha, descripcion: s.descripcion }; })
+      });
+      buffers[ev.cat] = [];
+    }
+  });
+
+  return historial;
 }
 
 // ── PAYROLL REPORT ──
