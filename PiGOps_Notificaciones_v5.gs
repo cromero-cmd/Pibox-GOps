@@ -188,6 +188,16 @@ function sendStrikeWarning(data) {
     '</table>' +
     '<p><strong>Por favor procede a realizar el llamado de atención verbal/escrito correspondiente según el reglamento interno de Pibox y notifica a Talento Humano.</strong></p>' +
     disciplinaryWarning +
+    '<div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:16px;margin-top:20px;">' +
+    '<p style="font-weight:bold;color:#374151;margin:0 0 8px 0;">📋 Recordatorio — Escala disciplinaria (sin justa causa)</p>' +
+    '<table style="width:100%;font-size:13px;color:#6b7280;">' +
+    '<tr><td>Tardanza leve (5–19 min)</td><td>3 strikes = 1 llamado de atención</td></tr>' +
+    '<tr><td>Tardanza moderada (20–59 min)</td><td>2 strikes = 1 llamado de atención</td></tr>' +
+    '<tr><td>Tardanza grave (60+ min)</td><td>1 strike = 1 llamado de atención</td></tr>' +
+    '<tr><td>No desconexión (+4h)</td><td>3 strikes = 1 llamado de atención</td></tr>' +
+    '</table>' +
+    '<p style="color:#6b7280;font-size:12px;margin:8px 0 0 0;">⚖️ 3 llamados de atención acumulados (cualquier combinación) = proceso disciplinario formal.</p>' +
+    '</div>' +
     '<p style="color:#6b7280;font-size:12px;margin-top:24px;">Este mensaje fue generado automáticamente por Pi GOps · Pibox Operaciones</p>' +
     '</div></div>';
 
