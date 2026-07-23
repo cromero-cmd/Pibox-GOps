@@ -2,6 +2,10 @@
 const FIREBASE_PROJECT = 'copper-eye-468704-f8';
 const FIREBASE_REST = 'https://firestore.googleapis.com/v1/projects/' + FIREBASE_PROJECT + '/databases/(default)/documents';
 const MALLA_SHEET_NAME = 'Malla';
+// Utilities.formatDate('MMMM') depende del locale del proyecto de Apps Script, que no siempre
+// es español (ej. producía "July" en vez de "julio") — se usa este array fijo para no depender
+// de esa configuración.
+const MESES_ES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
 
 // ── MAIN HANDLER ──
 function doPost(e) {
@@ -125,17 +129,40 @@ function sendStrikeWarning(data) {
   const agentName = data.agentName || '—';
   const agentEmail = data.agentEmail || '—';
   const liderEmail = data.liderEmail || '';
-  const mes = data.mes || '—';
   const llamadoNumero = data.llamadoNumero || 1;
   const totalStrikes = data.totalStrikes || 0;
   const esTercerLlamado = !!data.esTercerLlamado;
   const detalle = data.detalle || [];
 
+  // El mes se deriva de la fecha del primer strike (formato DD/MM/YYYY) usando MESES_ES, en vez
+  // de confiar en data.mes tal cual llega — así el correo siempre queda en español sin importar
+  // el locale del llamador (Utilities.formatDate en sendPendingStrikeAlerts producía "July").
+  var mes = data.mes || '—';
+  if (detalle.length && detalle[0].fecha) {
+    var fechaParts = detalle[0].fecha.split('/');
+    if (fechaParts.length === 3) {
+      var mesIdx = parseInt(fechaParts[1], 10) - 1;
+      var anio = fechaParts[2];
+      if (mesIdx >= 0 && mesIdx < 12) mes = MESES_ES[mesIdx] + ' de ' + anio;
+    }
+  }
+
   const subject = '⚡ Acción requerida — Llamado de atención #' + llamadoNumero + ' para ' + agentName;
+
+  // Reemplaza el emoji de color de cada tipo de strike por texto con color HTML — los emojis de
+  // color (🔴🔵🟠🟡) no se renderizan de forma confiable en varios clientes de correo.
+  function tipoHTML(rawTipo) {
+    var t = (rawTipo || '').toUpperCase();
+    if (t.indexOf('LEVE') !== -1) return '<span style="color:#d97706;font-weight:bold;">Leve</span>';
+    if (t.indexOf('MODERADA') !== -1) return '<span style="color:#ea580c;font-weight:bold;">Moderada</span>';
+    if (t.indexOf('GRAVE') !== -1) return '<span style="color:#dc2626;font-weight:bold;">Grave</span>';
+    if (t.indexOf('DESCONEX') !== -1) return '<span style="color:#2563eb;font-weight:bold;">No desconexión</span>';
+    return rawTipo || '—';
+  }
 
   const rows = detalle.map(function(d) {
     return '<tr><td style="padding:8px 12px;border:1px solid #ddd;">' + (d.fecha || '—') + '</td>' +
-      '<td style="padding:8px 12px;border:1px solid #ddd;">' + (d.tipo || '—') + '</td>' +
+      '<td style="padding:8px 12px;border:1px solid #ddd;">' + tipoHTML(d.tipo) + '</td>' +
       '<td style="padding:8px 12px;border:1px solid #ddd;">' + (d.descripcion || '—') + '</td></tr>';
   }).join('');
 
@@ -270,7 +297,7 @@ function sendPendingStrikeAlerts() {
       .concat(strikesNoDesconex.map(function(s) { return { tipo: '🔵 No desconexión', fecha: s.fecha, descripcion: s.descripcion }; }));
     detalle.sort(function(a, b) { return parseMallaDateDDMMYYYY(a.fecha) - parseMallaDateDDMMYYYY(b.fecha); });
 
-    var mesLabel = Utilities.formatDate(new Date(YEAR, MONTH - 1, 1), 'America/Bogota', "MMMM 'de' yyyy");
+    var mesLabel = MESES_ES[MONTH - 1] + ' de ' + YEAR; // sendStrikeWarning igual lo recalcula desde detalle[0].fecha, pero se deja consistente aquí
     var totalStrikes = strikesLeve.length + strikesModerado.length + strikesGrave.length + strikesNoDesconex.length;
 
     sendStrikeWarning({
