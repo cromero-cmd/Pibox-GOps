@@ -1311,7 +1311,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
-const APP_VERSION='15.88';
+const APP_VERSION='15.89';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 const SUPER_ADMIN_NAME='Camilo Romero';
@@ -3277,17 +3277,33 @@ async function loadMallaPersonal(){
  const lines=csv.trim().split('\n').slice(1);
  const userEmail=document.getElementById('user-email').textContent;
  const isAdmin=(window.ADMINS||ADMINS).includes(userEmail)||userEmail===SUPER_ADMIN;
- // getRecentTurnos() está limitada a los últimos 300 turnos de TODO el sistema — para un agente
- // (o un admin en modo "vista de agente") viendo su propia malla, eso puede dejar fuera períodos
- // alejados de hoy (ej. 1-6 jul). window.getUserTurnos(userEmail) consulta Firestore filtrado
- // por email, sin ese límite. Los admins viendo la malla de TODOS los agentes (isAdmin sin modo
- // vista de agente) siguen necesitando getRecentTurnos(), porque allTurnos se cruza más abajo
- // por m.usuario de cada fila sin importar de qué agente sea.
- const needsAllAgentsTurnos=isAdmin&&!window._agentPreviewMode;
- const allTurnos=needsAllAgentsTurnos?await window.getRecentTurnos():(window.getUserTurnos?await window.getUserTurnos(userEmail):await window.getRecentTurnos());
- window._mallaTurnos=allTurnos;
  const now=new Date();
  let allMalla=lines.map(l=>{const c=parseCSVLine(l);return{fecha:c[1]?.trim(),usuario:c[2]?.trim(),nombre:c[3]?.trim(),rol:c[4]?.trim(),inicio:c[5]?.trim(),fin:c[6]?.trim(),almuerzo:c[7]?.trim(),linea:c[8]?.trim(),lider:c[9]?.trim(),novedad:c[10]?.trim()};}).filter(m=>m.fecha&&m.usuario);
+ // getRecentTurnos() SIN rango está limitada a los últimos 300 turnos de TODO el sistema — con
+ // ~20 agentes, eso puede cubrir apenas unos días recientes, dejando fuera cualquier período más
+ // alejado de hoy (ej. 1-6 jul) y marcando agentes como "Ausente" aunque sí tengan turno real
+ // registrado (confirmado en vivo: con 300 turnos cargados, el más antiguo era del 6 de julio,
+ // dejando el 1-5 de julio completamente sin cruzar). window.getUserTurnos(userEmail) resuelve
+ // esto para un agente viendo su propia malla (o un admin en modo "vista de agente"), consultando
+ // Firestore filtrado por email sin ese límite. Para el admin viendo la malla de TODOS los
+ // agentes, la solución es la misma usada en loadPanel2: pasarle a getRecentTurnos() el rango de
+ // fechas completo de la malla ya cargada (fromDate/toDate), que activa su modo de consulta por
+ // rango en Firestore — SIN límite de 300 — en vez de su modo "últimos 300 del sistema".
+ const needsAllAgentsTurnos=isAdmin&&!window._agentPreviewMode;
+ let allTurnos;
+ if(needsAllAgentsTurnos){
+ const mallaDates=allMalla.map(m=>parseDate(m.fecha)).filter(Boolean);
+ if(mallaDates.length){
+ const minDate=new Date(Math.min(...mallaDates));minDate.setHours(0,0,0,0);
+ const maxDate=new Date(Math.max(...mallaDates));maxDate.setHours(23,59,59,999);
+ allTurnos=await window.getRecentTurnos(minDate,false,maxDate);
+ } else {
+ allTurnos=await window.getRecentTurnos();
+ }
+ } else {
+ allTurnos=window.getUserTurnos?await window.getUserTurnos(userEmail):await window.getRecentTurnos();
+ }
+ window._mallaTurnos=allTurnos;
  // Populate line filter
  const lineaSel=document.getElementById('malla-linea-filter');
  if(lineaSel){
