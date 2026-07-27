@@ -1377,7 +1377,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
-const APP_VERSION='15.90';
+const APP_VERSION='15.91';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 const SUPER_ADMIN_NAME='Camilo Romero';
@@ -4846,8 +4846,21 @@ async function approveOvertime(eventId,approved,btn){
  toast('Error al guardar. Intenta de nuevo.');
  }
 }
+async function resolvePayrollEmails(){
+ // pg_payroll_emails vive en localStorage, por dispositivo/sesión — un Super Admin delegado
+ // (window._delegatedSuperAdmin) nunca lo tuvo guardado en su propio navegador, aunque el Super
+ // Admin real sí lo tenga configurado. Antes de mandarlo a Configuración, intentar leer el valor
+ // ya guardado en configs/global.payrollEmails y usarlo directamente si existe.
+ let payrollEmails=localStorage.getItem('pg_payroll_emails')||'';
+ if(!payrollEmails){
+ const globalCfg=window.getGlobalConfig?await window.getGlobalConfig():null;
+ payrollEmails=globalCfg?.payrollEmails||'';
+ if(payrollEmails)localStorage.setItem('pg_payroll_emails',payrollEmails);
+ }
+ return payrollEmails;
+}
 async function openPayrollPreview(){
- const payrollEmails=localStorage.getItem('pg_payroll_emails')||'';
+ const payrollEmails=await resolvePayrollEmails();
  if(!payrollEmails){toast('Configura los correos de nómina primero ⚙');openConfig();return;}
  // Mostrar modal de carga
  const overlay=document.createElement('div');
@@ -5239,7 +5252,7 @@ async function confirmAndSendPayroll(){
  }
 }
 async function sendPayrollReport(){
- const payrollEmails=localStorage.getItem('pg_payroll_emails')||'';
+ const payrollEmails=await resolvePayrollEmails();
  if(!payrollEmails){toast('Configura los correos de nómina primero ⚙');openConfig();return;}
  const recipients=payrollEmails.split(',').map(e=>e.trim()).filter(Boolean);
  const now=new Date();
