@@ -36,7 +36,26 @@ onAuthStateChanged(auth, async user => {
  window._fbReady = true;
  // Load admins from Firebase
  await window.loadAdmins();
- const isSuperAdmin = user.email === window.SUPER_ADMIN;
+ // Delegación temporal de Super Admin — se lee ANTES de calcular isSuperAdmin/isAdmin (y antes
+ // de fetchear la config global de más abajo, que reutiliza este mismo globalCfg) para que la
+ // UI ya refleje la delegación activa desde el primer render, en vez de con el estado previo
+ // (no delegado) durante un instante.
+ let globalCfg = {};
+ try {
+ const globalSnap = await getDoc(doc(db, 'configs', 'global'));
+ globalCfg = globalSnap.exists() ? globalSnap.data() : {};
+ } catch(e) { console.warn('No se pudo leer configs/global:', e); }
+ window._delegatedSuperAdmin = null;
+ window._delegatedUntil = null;
+ if (globalCfg.delegatedSuperAdmin) {
+ const untilDate = globalCfg.delegatedUntil ? new Date(globalCfg.delegatedUntil) : null;
+ const expired = untilDate && untilDate.getTime() < Date.now();
+ if (!expired) {
+ window._delegatedSuperAdmin = globalCfg.delegatedSuperAdmin;
+ window._delegatedUntil = untilDate;
+ }
+ }
+ const isSuperAdmin = window.isSuperAdminUser ? window.isSuperAdminUser(user.email) : (user.email === window.SUPER_ADMIN);
  const isAdmin = window.ADMINS.includes(user.email) || isSuperAdmin;
  const cfgBtn = document.getElementById('btn-config');
  if (cfgBtn) cfgBtn.style.display = isSuperAdmin ? 'flex' : 'none';
@@ -46,10 +65,13 @@ onAuthStateChanged(auth, async user => {
  if (clearBtn) clearBtn.style.display = isAdmin ? 'flex' : 'none';
  const subtabPanel = document.getElementById('subtab-panel');
  if (subtabPanel) subtabPanel.style.display = isAdmin ? 'flex' : 'none';
+ // Banner discreto cuando se opera con el rol delegado (no el Super Admin real) — el Super
+ // Admin real no ve este banner sobre sí mismo, solo quien recibió la delegación.
+ if (window._delegatedSuperAdmin && user.email === window._delegatedSuperAdmin) {
+ window.showDelegatedSuperAdminBanner && window.showDelegatedSuperAdminBanner(window._delegatedUntil);
+ }
  try {
  const snap = await getDoc(doc(db, 'configs', user.uid));
- const globalSnap = await getDoc(doc(db, 'configs', 'global'));
- const globalCfg = globalSnap.exists() ? globalSnap.data() : {};
  const cfg = snap.exists() ? snap.data() : {};
  // Para key, sheet, vid, faq, sys: usar config global si el usuario no tiene la suya
  const merged = {
@@ -173,6 +195,31 @@ window.getAdminList = async () => {
  const snap = await getDocs(collection(db, 'admins'));
  return snap.docs.map(d => ({ email: d.id, ...d.data() }));
  } catch(e) { return []; }
+};
+window.getGlobalConfig = async () => {
+ try {
+ const snap = await getDoc(doc(db, 'configs', 'global'));
+ return snap.exists() ? snap.data() : null;
+ } catch(e) { return null; }
+};
+window.setDelegatedSuperAdmin = async (email, untilISO) => {
+ // untilISO: string ISO de la fecha de expiración, o null/undefined para delegación indefinida
+ // (hasta que se revoque manualmente).
+ try {
+ await setDoc(doc(db, 'configs', 'global'), {
+ delegatedSuperAdmin: email,
+ delegatedUntil: untilISO || null,
+ delegatedBy: auth.currentUser.email,
+ delegatedAt: serverTimestamp()
+ }, { merge: true });
+ return true;
+ } catch(e) { console.error('setDelegatedSuperAdmin error:', e); return false; }
+};
+window.revokeDelegatedSuperAdmin = async () => {
+ try {
+ await setDoc(doc(db, 'configs', 'global'), { delegatedSuperAdmin: null, delegatedUntil: null }, { merge: true });
+ return true;
+ } catch(e) { console.error('revokeDelegatedSuperAdmin error:', e); return false; }
 };
 window.saveTurnoToFirebase = async (data) => {
  if (!auth.currentUser) return null;
@@ -801,6 +848,7 @@ body.agent-preview-mode header{margin-top:34px;}
  </div>
  </div>
  </header>
+ <div id="delegated-superadmin-banner" style="display:none;background:rgba(123,47,255,0.1);border-bottom:1px solid rgba(123,47,255,0.3);padding:7px 20px;text-align:center;font-size:12px;color:var(--p2);font-family:var(--mono);font-weight:600;"></div>
  <div class="overlay" id="overlay">
  <div class="modal">
  <div class="modal-title">Configurar Pi GOps</div>
@@ -883,6 +931,24 @@ body.agent-preview-mode header{margin-top:34px;}
  <div style="display:flex;gap:8px;">
  <input type="text" id="inp-new-admin" placeholder="correo@pibox.app" style="flex:1;"/>
  <button class="btn-save" onclick="addAdminFromModal()" style="white-space:nowrap;padding:8px 16px;">+ Agregar</button>
+ </div>
+ </div>
+ <div id="delegation-section-wrap" style="display:none;">
+ <hr/>
+ <div class="msec">🔑 Delegación de Super Admin</div>
+ <div id="delegation-current-status" style="font-size:12px;color:var(--text-dim);margin-bottom:10px;"></div>
+ <div class="field">
+ <label>Delegar a</label>
+ <select id="sel-delegate-admin" style="width:100%;"></select>
+ </div>
+ <div class="field">
+ <label>Fecha de expiración (opcional)</label>
+ <input type="date" id="inp-delegate-until" style="width:100%;"/>
+ <div style="font-size:10px;color:var(--text-dim);margin-top:4px;font-family:var(--mono);">Si se deja vacío, el acceso delegado es indefinido hasta que lo revoques manualmente.</div>
+ </div>
+ <div style="display:flex;gap:8px;margin-bottom:12px;">
+ <button class="btn-save" onclick="delegateSuperAdmin()" style="flex:1;">Delegar</button>
+ <button onclick="revokeSuperAdminDelegation()" style="flex:1;background:rgba(248,113,113,0.1);border:1px solid rgba(248,113,113,0.3);color:#f87171;padding:8px;border-radius:8px;cursor:pointer;font-family:var(--font);font-size:13px;">Revocar delegación</button>
  </div>
  </div>
  <div class="modal-actions">
@@ -1311,11 +1377,24 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
-const APP_VERSION='15.89';
+const APP_VERSION='15.90';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 const SUPER_ADMIN_NAME='Camilo Romero';
 let ADMINS=['cromero@pibox.app']; // will be loaded from Firebase
+// Delegación temporal de Super Admin (configs/global.delegatedSuperAdmin/.delegatedUntil) —
+// window._delegatedSuperAdmin/_delegatedUntil se cargan una vez en onAuthStateChanged. Esta
+// función es el único punto que decide "¿este email tiene privilegios de Super Admin AHORA?",
+// usado en vez de comparar directo contra SUPER_ADMIN en cada chequeo de permisos del archivo —
+// así un solo lugar cubre tanto al Super Admin real como a quien tenga la delegación activa, y
+// revisa la expiración en cada llamada (no solo al cargar la app), por si la delegación vence
+// en medio de una sesión larga ya abierta.
+function isSuperAdminUser(email){
+ if(email===SUPER_ADMIN)return true;
+ if(!window._delegatedSuperAdmin)return false;
+ if(window._delegatedUntil&&window._delegatedUntil.getTime()<Date.now())return false;
+ return email===window._delegatedSuperAdmin;
+}
 const SCRIPT_URL='https://script.google.com/macros/s/AKfycbyam6j2MG1NH11120KjvAfxU1f_z9BYh4uamQw8QgNeGsjpwoo394IeqzbDSPXSO9e5/exec';
 const MALLA_SCRIPT='https://script.google.com/macros/s/AKfycbyxBZWba6M1eXcwQUdBBUTqTrgGd8zwHiM6wwecXI3mUYOUP-RT9LnxSwqeXRy9prCm/exec';
 const NOTIF_SCRIPT='https://script.google.com/macros/s/AKfycbxAbTLIFiavJUN6LMsglw9vhlacUq4DN25jfH4_w2NW-stZ9Xuwb67l1LFpQ5gaKY8bfA/exec';
@@ -1445,7 +1524,7 @@ function filterHomeCards(query){
 function initHomeView(){
  const userEmail=document.getElementById('user-email')?.textContent||'';
  const userName=document.getElementById('user-name')?.textContent||'';
- const isSuperAdmin=userEmail===SUPER_ADMIN;
+ const isSuperAdmin=isSuperAdminUser(userEmail);
  const isAdmin=(window.ADMINS||ADMINS).includes(userEmail)||isSuperAdmin;
  const greet=document.getElementById('home-greeting');
  if(greet)greet.textContent='Hola, '+userName+' 👋';
@@ -1637,7 +1716,7 @@ function buildLlamadoHistorial(strikesLeve,strikesModerada,strikesGrave,strikesN
 }
 async function loadStrikes(){
  const userEmail=document.getElementById('user-email').textContent;
- const isAdmin=(window.ADMINS||ADMINS).includes(userEmail)||userEmail===SUPER_ADMIN;
+ const isAdmin=(window.ADMINS||ADMINS).includes(userEmail)||isSuperAdminUser(userEmail);
  if(isAdmin&&!window._agentPreviewMode){document.getElementById('strikes-wrap').style.display='none';return;}
  const strikeTardanzaMins=parseInt(localStorage.getItem('pg_strike_tardanza')||'5');
  const strikeNoDesconexionHrs=parseFloat(localStorage.getItem('pg_strike_nodesconexion')||'4');
@@ -1952,6 +2031,7 @@ function switchTurnoTab(tab){
 function openConfig(){
  document.getElementById('overlay').classList.add('open');
  loadAdminListInModal();
+ loadDelegationSectionInModal();
  const pe=localStorage.getItem('pg_payroll_emails')||'';
  const re=localStorage.getItem('pg_reminder_emails')||'cromero@pibox.app';
  const cd=localStorage.getItem('pg_cut_day')||'1';
@@ -1966,6 +2046,13 @@ function openConfig(){
  const inpSN=document.getElementById('inp-strike-nodesconexion');if(inpSN)inpSN.value=localStorage.getItem('pg_strike_nodesconexion')||'4';
 }
 function closeConfig(){document.getElementById('overlay').classList.remove('open');}
+function showDelegatedSuperAdminBanner(untilDate){
+ const el=document.getElementById('delegated-superadmin-banner');
+ if(!el)return;
+ const untilStr=untilDate?untilDate.toLocaleDateString('es-CO',{day:'2-digit',month:'long',year:'numeric'}):'sin fecha límite (indefinido)';
+ el.textContent=`🔑 Operando como Super Admin delegado hasta ${untilStr}`;
+ el.style.display='block';
+}
 async function saveConfig(){
  const k=document.getElementById('inp-key').value.trim();
  const u=document.getElementById('inp-url').value.trim();
@@ -2501,7 +2588,7 @@ function showTurnoDoneToday(turno){
 }
 async function checkTodayNovedad(){
  const userEmail=document.getElementById('user-email').textContent;
- const isAdmin=(window.ADMINS||ADMINS).includes(userEmail)||userEmail===SUPER_ADMIN;
+ const isAdmin=(window.ADMINS||ADMINS).includes(userEmail)||isSuperAdminUser(userEmail);
  const today=new Date();
  if(currentTurnoId)return;
  if(isAdmin&&!window._agentPreviewMode)return;
@@ -3001,7 +3088,7 @@ function clearTurnoDateFilter(){
 }
 async function checkTodayNovedad(){
  const userEmail=document.getElementById('user-email').textContent;
- const isAdmin=(window.ADMINS||ADMINS).includes(userEmail)||userEmail===SUPER_ADMIN;
+ const isAdmin=(window.ADMINS||ADMINS).includes(userEmail)||isSuperAdminUser(userEmail);
  const today=new Date();
  if(currentTurnoId)return;
  if(isAdmin&&!window._agentPreviewMode)return;
@@ -3030,7 +3117,7 @@ async function loadTurnoHistory(){
  cardsEl.innerHTML='<div style="padding:20px;text-align:center;color:var(--text-dim);font-size:12px;grid-column:span 2;">Cargando...</div>';
  const allTurnos=await window.getRecentTurnos();
  const userEmail=document.getElementById('user-email').textContent;
- const isAdminRole=(window.ADMINS||ADMINS).includes(userEmail)||userEmail===SUPER_ADMIN;
+ const isAdminRole=(window.ADMINS||ADMINS).includes(userEmail)||isSuperAdminUser(userEmail);
  const myTurnos=isAdminRole&&!window._agentPreviewMode?allTurnos:allTurnos.filter(t=>t.userEmail===userEmail);
  const myMalla=window.mallaAllRows||[];
  const now=new Date();
@@ -3276,7 +3363,7 @@ async function loadMallaPersonal(){
  const csv=await resp.text();
  const lines=csv.trim().split('\n').slice(1);
  const userEmail=document.getElementById('user-email').textContent;
- const isAdmin=(window.ADMINS||ADMINS).includes(userEmail)||userEmail===SUPER_ADMIN;
+ const isAdmin=(window.ADMINS||ADMINS).includes(userEmail)||isSuperAdminUser(userEmail);
  const now=new Date();
  let allMalla=lines.map(l=>{const c=parseCSVLine(l);return{fecha:c[1]?.trim(),usuario:c[2]?.trim(),nombre:c[3]?.trim(),rol:c[4]?.trim(),inicio:c[5]?.trim(),fin:c[6]?.trim(),almuerzo:c[7]?.trim(),linea:c[8]?.trim(),lider:c[9]?.trim(),novedad:c[10]?.trim()};}).filter(m=>m.fecha&&m.usuario);
  // getRecentTurnos() SIN rango está limitada a los últimos 300 turnos de TODO el sistema — con
@@ -3378,7 +3465,7 @@ function renderMallaPersonal(){
  const summaryEl=document.getElementById('malla-summary-cards');
  if(!body)return;
  const userEmail=document.getElementById('user-email').textContent;
- const isAdminView=!window._agentPreviewMode&&((window.ADMINS||ADMINS).includes(userEmail)||userEmail===SUPER_ADMIN&&(window._mallaSelectedUsers?.size!==1||[...window._mallaSelectedUsers][0]!==userEmail));
+ const isAdminView=!window._agentPreviewMode&&((window.ADMINS||ADMINS).includes(userEmail)||isSuperAdminUser(userEmail)&&(window._mallaSelectedUsers?.size!==1||[...window._mallaSelectedUsers][0]!==userEmail));
  const DIAS=['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
  // Set dynamic header
  const thead=document.getElementById('malla-thead');
@@ -3663,7 +3750,7 @@ async function loadPanel2(){
  <div style="font-size:18px;font-weight:800;font-family:var(--mono);color:${isStuck?'#f87171':'#4ade80'};" id="${id}">00:00:00</div>
  <div id="${id}_def" style="font-size:10px;font-weight:600;font-family:var(--mono);margin-top:2px;"></div>
  <div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);margin-bottom:10px;">desde las ${sinceStr}</div>
- ${userEmail===SUPER_ADMIN?`<button onclick="forceCloseTurno('${t.id}',this)" style="width:100%;background:rgba(248,113,113,0.12);border:1px solid rgba(248,113,113,0.4);color:#f87171;padding:5px 8px;border-radius:7px;font-size:11px;font-family:var(--mono);font-weight:700;cursor:pointer;">⚠ Forzar cierre</button>`:''}
+ ${isSuperAdminUser(userEmail)?`<button onclick="forceCloseTurno('${t.id}',this)" style="width:100%;background:rgba(248,113,113,0.12);border:1px solid rgba(248,113,113,0.4);color:#f87171;padding:5px 8px;border-radius:7px;font-size:11px;font-family:var(--mono);font-weight:700;cursor:pointer;">⚠ Forzar cierre</button>`:''}
  </div>`;
  }).join('');
  // Timers se inician después de cargar malla (ver abajo)
@@ -3865,7 +3952,7 @@ async function loadPanel2(){
  <div style="padding:8px 8px;border-right:1px solid var(--border);font-family:var(--mono);font-weight:700;color:var(--p2);display:flex;align-items:center;gap:4px;">${dur}${anomalyReason?`<span title="${esc(anomalyReason)}" style="cursor:help;font-size:11px;">⚠️</span>`:''}</div>
  <div style="padding:8px 8px;border-right:1px solid var(--border);font-family:var(--mono);color:var(--text-dim);display:flex;align-items:center;">${durProg}</div>
  <div style="padding:6px 8px;border-right:1px solid var(--border);display:flex;flex-direction:column;gap:4px;align-items:flex-start;">
- ${userEmailPanel===SUPER_ADMIN&&r.turnoId?`<button onclick="editTurnoTimes('${r.turnoId}','${rs24}','${re24}','${r.nombre||r.usuario?.split('@')[0]||''}','${r.fecha||''}')" style="background:rgba(251,146,60,0.08);border:1px solid rgba(251,146,60,0.3);color:#fb923c;padding:3px 8px;border-radius:5px;font-size:9px;font-family:var(--mono);cursor:pointer;white-space:nowrap;">✏️ Editar tiempos</button>`:''}
+ ${isSuperAdminUser(userEmailPanel)&&r.turnoId?`<button onclick="editTurnoTimes('${r.turnoId}','${rs24}','${re24}','${r.nombre||r.usuario?.split('@')[0]||''}','${r.fecha||''}')" style="background:rgba(251,146,60,0.08);border:1px solid rgba(251,146,60,0.3);color:#fb923c;padding:3px 8px;border-radius:5px;font-size:9px;font-family:var(--mono);cursor:pointer;white-space:nowrap;">✏️ Editar tiempos</button>`:''}
  ${r.turnoId&&t?.status==='ended'&&!t?.resumeAuthorized?`<button onclick="authorizeResume('${r.turnoId}',this)" style="background:rgba(123,47,255,0.1);border:1px solid rgba(123,47,255,0.3);color:var(--p2);padding:3px 8px;border-radius:5px;font-size:9px;font-family:var(--mono);cursor:pointer;white-space:nowrap;">▶ Autorizar reanudación</button>`:''}
  ${r.turnoId&&t?.resumeAuthorized?'<span style="font-size:9px;color:var(--p2);font-family:var(--mono);">✔ Reanudación autorizada</span>':''}
  ${r.turnoId&&t?.earlyLeave&&t?.earlyLeaveStatus==='pending_review'?`<button onclick="reviewEarlyLeave('${r.turnoId}',true,this)" style="background:rgba(74,222,128,0.08);border:1px solid rgba(74,222,128,0.3);color:#4ade80;padding:3px 8px;border-radius:5px;font-size:9px;font-family:var(--mono);cursor:pointer;white-space:nowrap;">✅ Justificar salida</button><button onclick="reviewEarlyLeave('${r.turnoId}',false,this)" style="background:rgba(248,113,113,0.08);border:1px solid rgba(248,113,113,0.3);color:#f87171;padding:3px 8px;border-radius:5px;font-size:9px;font-family:var(--mono);cursor:pointer;margin-top:2px;white-space:nowrap;">❌ No justificar</button>`:''}
@@ -4530,7 +4617,7 @@ function renderOvertimeList(el,events){
  rows.forEach(e=>{window._overtimeEventsCache[e.id]=e;});
  if(!rows.length){el.innerHTML='<div style="font-size:12px;color:var(--text-dim);text-align:center;padding:20px;font-family:var(--mono);">Sin solicitudes pendientes ✓</div>';return;}
  const userEmail=document.getElementById('user-email').textContent;
- const isSuperAdmin=userEmail===SUPER_ADMIN;
+ const isSuperAdmin=isSuperAdminUser(userEmail);
  if(!isSuperAdmin){
  // Coordinador: primero lo accionable (pending_review), luego el seguimiento de sus propias
  // solicitudes (pending_super_admin/rejected) — ya diferenciadas por color/texto/opacidad.
@@ -4693,7 +4780,7 @@ async function approveOvertime(eventId,approved,btn){
  const priorDecidedBy=cached.decidedBy||'';
  const priorDecidedAt=cached.decidedAt||'';
  const userEmail=document.getElementById('user-email').textContent;
- const isSuperAdmin=userEmail===SUPER_ADMIN;
+ const isSuperAdmin=isSuperAdminUser(userEmail);
  const newStatus=approved?(isSuperAdmin?'approved':'pending_super_admin'):'rejected';
  // Si el Super Admin rechaza una solicitud que ya había aprobado un coordinador (pending_super_admin),
  // pedir un motivo opcional para que quede en la bandeja del coordinador y en el correo de aviso.
@@ -5621,7 +5708,7 @@ function exportMallaXLSX(){
  const filteredRows=window.mallaFilteredRows||mallaAllRows;
  if(!filteredRows||!filteredRows.length){toast('Sin datos para exportar');return;}
  const userEmail=document.getElementById('user-email').textContent;
- const isAdmin=(window.ADMINS||ADMINS).includes(userEmail)||userEmail===SUPER_ADMIN;
+ const isAdmin=(window.ADMINS||ADMINS).includes(userEmail)||isSuperAdminUser(userEmail);
  const fmt=t=>t?t.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
  const fmtD=d=>parseDate(d)?.toLocaleDateString('es-CO',{day:'2-digit',month:'short',year:'numeric'})||d||'—';
  const DIAS=['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
@@ -5689,9 +5776,82 @@ async function removeAdmin(email){
  if(ok){toast('Admin removido ✓');loadAdminListInModal();applyAdminUI();}
  else toast('Error al remover admin');
 }
+async function loadDelegationSectionInModal(){
+ // Sección exclusiva del Super Admin REAL (no isSuperAdminUser, que también incluiría a quien
+ // ya tenga la delegación activa) — un admin delegado no debe poder re-delegar ni revocar su
+ // propio acceso.
+ const wrap=document.getElementById('delegation-section-wrap');
+ if(!wrap)return;
+ const userEmail=document.getElementById('user-email').textContent;
+ if(userEmail!==SUPER_ADMIN){wrap.style.display='none';return;}
+ wrap.style.display='block';
+ const statusEl=document.getElementById('delegation-current-status');
+ const selEl=document.getElementById('sel-delegate-admin');
+ if(statusEl)statusEl.textContent='Cargando...';
+ const[admins,globalCfg]=await Promise.all([window.getAdminList(),window.getGlobalConfig()]);
+ const delegableAdmins=admins.filter(a=>a.email!==SUPER_ADMIN);
+ if(selEl){
+ selEl.innerHTML=delegableAdmins.length
+ ?delegableAdmins.map(a=>`<option value="${esc(a.email)}">${esc(a.email)}</option>`).join('')
+ :'<option value="">Sin otros admins configurados</option>';
+ }
+ const delegatedEmail=globalCfg?.delegatedSuperAdmin||null;
+ const delegatedUntilRaw=globalCfg?.delegatedUntil||null;
+ const delegatedUntilDate=delegatedUntilRaw?new Date(delegatedUntilRaw):null;
+ const expired=delegatedUntilDate&&delegatedUntilDate.getTime()<Date.now();
+ if(statusEl){
+ if(delegatedEmail&&!expired){
+ const untilStr=delegatedUntilDate?delegatedUntilDate.toLocaleDateString('es-CO',{day:'2-digit',month:'long',year:'numeric'}):'sin fecha límite (indefinido)';
+ statusEl.innerHTML=`🔑 Delegación activa: <strong style="color:var(--text);">${esc(delegatedEmail)}</strong> hasta ${untilStr}`;
+ } else if(delegatedEmail&&expired){
+ statusEl.innerHTML=`Delegación anterior a <strong style="color:var(--text);">${esc(delegatedEmail)}</strong> ya venció — sin delegación activa.`;
+ } else {
+ statusEl.textContent='Sin delegación activa.';
+ }
+ }
+}
+async function delegateSuperAdmin(){
+ const selEl=document.getElementById('sel-delegate-admin');
+ const untilEl=document.getElementById('inp-delegate-until');
+ const email=selEl?.value||'';
+ if(!email){toast('Selecciona un admin para delegar');return;}
+ const untilStr=untilEl?.value||'';
+ let untilISO=null;
+ if(untilStr){
+ const untilDate=new Date(untilStr+'T23:59:59');
+ if(isNaN(untilDate)){toast('Fecha de expiración inválida');return;}
+ untilISO=untilDate.toISOString();
+ }
+ if(!confirm(`¿Delegar el rol de Super Admin a ${email}${untilStr?' hasta '+untilStr:' de forma indefinida'}?`))return;
+ const ok=await window.setDelegatedSuperAdmin(email,untilISO);
+ if(ok){
+ toast('✅ Delegación otorgada a '+email);
+ if(untilEl)untilEl.value='';
+ loadDelegationSectionInModal();
+ } else {
+ toast('❌ Error al delegar');
+ }
+}
+async function revokeSuperAdminDelegation(){
+ if(!confirm('¿Revocar la delegación de Super Admin activa?'))return;
+ const ok=await window.revokeDelegatedSuperAdmin();
+ if(ok){
+ toast('Delegación revocada ✓');
+ // Limpiar el estado local por si el propio Super Admin la había recibido en algún momento de
+ // esta sesión (caso extremo) — el usuario delegado real solo lo verá reflejado al recargar,
+ // igual que el resto de estado (ADMINS, etc.) que no usa listeners en tiempo real.
+ window._delegatedSuperAdmin=null;
+ window._delegatedUntil=null;
+ const banner=document.getElementById('delegated-superadmin-banner');
+ if(banner)banner.style.display='none';
+ loadDelegationSectionInModal();
+ } else {
+ toast('❌ Error al revocar');
+ }
+}
 function applyAdminUI(){
  const userEmail=document.getElementById('user-email').textContent;
- const isSuperAdmin=userEmail===SUPER_ADMIN;
+ const isSuperAdmin=isSuperAdminUser(userEmail);
  const isAdmin=(window.ADMINS||[]).includes(userEmail)||isSuperAdmin;
  const clearBtn=document.getElementById('btn-clear-metrics');
  if(clearBtn)clearBtn.style.display=isSuperAdmin?'flex':'none';
