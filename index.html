@@ -152,7 +152,7 @@ window.saveConfigToFirebase = async (cfg) => {
  await firestoreOpWithRetry(async () => {
  await setDoc(doc(db, 'configs', auth.currentUser.uid), cfg);
  if (auth.currentUser.email === window.SUPER_ADMIN) {
- await setDoc(doc(db, 'configs', 'global'), { key: cfg.key, sheet: cfg.sheet, vid: cfg.vid, faq: cfg.faq, sys: cfg.sys }, { merge: true });
+ await setDoc(doc(db, 'configs', 'global'), cfg, { merge: true });
  }
  });
 };
@@ -1377,7 +1377,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
-const APP_VERSION='15.91';
+const APP_VERSION='15.92';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 const SUPER_ADMIN_NAME='Camilo Romero';
