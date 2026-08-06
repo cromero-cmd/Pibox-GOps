@@ -241,15 +241,19 @@ window.getTodayTurno = async () => {
  if (!auth.currentUser) return null;
  try {
  const today = new Date(); today.setHours(0,0,0,0);
- const snap = await getDocs(query(collection(db, 'turnos'), orderBy('startTime', 'desc'), limit(30)));
+ // Query directo por userId (sin limit(30) global) — antes traía los 30 turnos más recientes
+ // de TODO el sistema y filtraba por usuario en cliente, así que con suficiente actividad de
+ // otros agentes el turno de hoy del usuario podía quedar fuera de esa ventana.
+ const snap = await getDocs(query(collection(db, 'turnos'), where('userId', '==', auth.currentUser.uid)));
  const mine = snap.docs.map(d => ({ id: d.id, ...d.data() }))
- .filter(t => t.userId === auth.currentUser.uid && t.startTime?.toDate() >= today);
- if(!mine.length) return null;
- const ended = mine.find(t => t.status === 'ended');
- if(ended) return ended;
- const interrupted = mine.find(t => t.status === 'interrupted');
- if(interrupted) return interrupted;
- return mine.sort((a,b) => b.startTime?.toDate() - a.startTime?.toDate())[0] || null;
+ .filter(t => t.startTime?.toDate() >= today)
+ .sort((a,b) => b.startTime?.toDate() - a.startTime?.toDate());
+ // El turno MÁS RECIENTE del día manda. Antes esta función priorizaba cualquier turno
+ // 'ended'/'interrupted' del día por encima de uno 'active' más nuevo — al iniciar un turno
+ // nuevo tras uno interrumpido/finalizado el mismo día (botón "Iniciar turno nuevo"), el turno
+ // recién creado (activo) quedaba oculto detrás del turno huérfano anterior, y la app lo
+ // mostraba como ya finalizado/interrumpido de inmediato.
+ return mine[0] || null;
  } catch(e) { return null; }
 };
 window._turnosRangeCache = {};
@@ -294,13 +298,22 @@ window.getRecentTurnos = async (fromDate, forceRefresh, toDate) => {
  if (!forceRefresh && window._turnosCache && (now - window._turnosCacheTime) < TURNOS_CACHE_TTL) {
  return window._turnosCache;
  }
+ // Reintentos con backoff — una falla transitoria de Firestore (p.ej. justo después de un
+ // deploy, con muchos usuarios recargando a la vez) dejaba el Panel de Control con tarjetas y
+ // tablas vacías sin ningún error visible en consola (el catch no registraba nada).
+ for (let attempt = 1; attempt <= 3; attempt++) {
  try {
  const snap = await getDocs(query(collection(db, 'turnos'), orderBy('startTime', 'desc'), limit(300)));
  const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
  window._turnosCache = all;
  window._turnosCacheTime = now;
  return all;
- } catch(e) { return []; }
+ } catch(e) {
+ console.error(`[getRecentTurnos] intento ${attempt} falló:`, e);
+ if (attempt < 3) await new Promise(res => setTimeout(res, 1500 * attempt));
+ }
+ }
+ return [];
 };
 window.updateOvertimeEvent = async (eventId, data) => {
  try {
@@ -1377,7 +1390,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
-const APP_VERSION='15.93';
+const APP_VERSION='15.94';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 const SUPER_ADMIN_NAME='Camilo Romero';
@@ -3762,13 +3775,20 @@ async function loadPanel2(){
  // Timers se inician después de cargar malla (ver abajo)
  window._pendingActiveTimers=activeFiltered;
  }
- // Load malla completa
+ // Load malla completa — reintentos con backoff, misma razón que getRecentTurnos: sin esto,
+ // una falla transitoria dejaba la tabla del Panel de Control vacía sin ningún rastro en consola.
  let mallaData=[];
+ for(let attempt=1;attempt<=3;attempt++){
  try{
  const resp=await fetch(MALLA_SCRIPT+'?sheet=Malla',{signal:AbortSignal.timeout(10000)});
  const csv=await resp.text();
  mallaData=csv.trim().split('\n').slice(1).map(l=>{const c=parseCSVLine(l);return{fecha:c[1]?.trim(),usuario:c[2]?.trim(),nombre:c[3]?.trim(),rol:c[4]?.trim(),inicio:c[5]?.trim(),fin:c[6]?.trim(),linea:c[8]?.trim(),lider:c[9]?.trim(),novedad:c[10]?.trim(),almuerzo:c[12]?.trim()};}).filter(m=>m.fecha&&m.usuario);
- }catch(e){}
+ break;
+ }catch(e){
+ console.error(`[loadPanel2] malla intento ${attempt} falló:`,e);
+ if(attempt<3)await new Promise(res=>setTimeout(res,1500*attempt));
+ }
+ }
  window._panel2MallaData=mallaData;
  updateExceededWeeksBadge();
  // Iniciar timers con déficit ahora que tenemos mallaData
