@@ -1390,7 +1390,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
-const APP_VERSION='15.94';
+const APP_VERSION='15.95';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 const SUPER_ADMIN_NAME='Camilo Romero';
@@ -2678,6 +2678,10 @@ async function _doStartTurno(){
  // de abajo, que ya maneja este caso correctamente dejando iniciar el turno sin bloquear.
  if(!resp.ok)throw new Error('MALLA_SCRIPT respondió '+resp.status);
  const csv=await resp.text();
+ // Un 200 con body truncado (confirmado en vivo) no lo detecta resp.ok — sin este check, se
+ // parseaba como 0 filas de hoy y bloqueaba el inicio en vez de caer al catch de abajo.
+ const rowCount=csv.trim().split('\n').length-1;
+ if(rowCount<20)throw new Error(`MALLA_SCRIPT devolvió una respuesta sospechosamente corta (${rowCount} filas)`);
  const lines=csv.trim().split('\n').slice(1);
  const todayEntries=lines.map(l=>{const c=parseCSVLine(l);return{fecha:c[1]?.trim(),usuario:c[2]?.trim(),inicio:c[5]?.trim(),fin:c[6]?.trim(),lider:c[9]?.trim(),novedad:c[10]?.trim()};})
  .filter(m=>{
@@ -3381,9 +3385,30 @@ async function loadMallaPersonal(){
  document.getElementById('malla-table-body').innerHTML='<div style="padding:30px;text-align:center;color:var(--text-dim);font-size:12px;">Cargando malla...</div>';
  try{
  // Timeout ampliado a 20s — el Apps Script puede tardar más en "cold start" con el CSV actual (~300KB+)
+ // Reintentos con backoff + validación de tamaño mínimo: confirmado en vivo que MALLA_SCRIPT
+ // puede devolver un 200 con el body truncado/incompleto (unas pocas filas en vez de miles) —
+ // resp.ok no detecta esto porque el status HTTP sigue siendo "exitoso". Sin esta validación,
+ // una respuesta truncada se parseaba como CSV válido pero vacío para cualquier agente cuyas
+ // filas hubieran quedado fuera del fragmento recibido, mostrando "Sin registros en este
+ // período" sin ningún error en consola — reportado para srodriguez@pibox.app y
+ // smartinez@pibox.app, pero no específico de esos usuarios: cuestión de en qué momento cada
+ // quien cargó la vista.
+ let csv=null;
+ for(let attempt=1;attempt<=3;attempt++){
+ try{
  const resp=await fetch(MALLA_SCRIPT+'?sheet=Malla',{signal:AbortSignal.timeout(20000)});
  if(!resp.ok)throw new Error(`MALLA_SCRIPT respondió ${resp.status}`);
- const csv=await resp.text();
+ const text=await resp.text();
+ const rowCount=text.trim().split('\n').length-1;
+ if(rowCount<20)throw new Error(`MALLA_SCRIPT devolvió una respuesta sospechosamente corta (${rowCount} filas)`);
+ csv=text;
+ break;
+ }catch(e){
+ console.error(`[loadMallaPersonal] intento ${attempt} falló:`,e);
+ if(attempt<3)await new Promise(res=>setTimeout(res,1500*attempt));
+ else throw e;
+ }
+ }
  const lines=csv.trim().split('\n').slice(1);
  const userEmail=document.getElementById('user-email').textContent;
  const isAdmin=(window.ADMINS||ADMINS).includes(userEmail)||isSuperAdminUser(userEmail);
@@ -3787,6 +3812,9 @@ async function loadPanel2(){
  const resp=await fetch(MALLA_SCRIPT+'?sheet=Malla',{signal:AbortSignal.timeout(10000)});
  if(!resp.ok)throw new Error('MALLA_SCRIPT respondió '+resp.status);
  const csv=await resp.text();
+ // Un 200 con body truncado (confirmado en vivo) no lo detecta resp.ok — validar tamaño mínimo.
+ const rowCount=csv.trim().split('\n').length-1;
+ if(rowCount<20)throw new Error(`MALLA_SCRIPT devolvió una respuesta sospechosamente corta (${rowCount} filas)`);
  mallaData=csv.trim().split('\n').slice(1).map(l=>{const c=parseCSVLine(l);return{fecha:c[1]?.trim(),usuario:c[2]?.trim(),nombre:c[3]?.trim(),rol:c[4]?.trim(),inicio:c[5]?.trim(),fin:c[6]?.trim(),linea:c[8]?.trim(),lider:c[9]?.trim(),novedad:c[10]?.trim(),almuerzo:c[12]?.trim()};}).filter(m=>m.fecha&&m.usuario);
  break;
  }catch(e){
