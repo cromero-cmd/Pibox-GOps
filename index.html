@@ -9,7 +9,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, setPersistence, browserSessionPersistence } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
 import { getFirestore, collection, addDoc, getDocs, query, where, orderBy, limit, serverTimestamp, doc, setDoc, getDoc, deleteDoc, enableNetwork, disableNetwork } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 const firebaseConfig = {
  apiKey: "AIzaSyBvF_cChu_PQ_RvaVGh0AaXvphzGCRmV5A",
@@ -21,12 +21,27 @@ const firebaseConfig = {
 };
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
+// Persistencia a nivel de sesión de pestaña (no browserLocalPersistence, el default) — evita que
+// el estado de Auth se comparta entre pestañas del mismo navegador/perfil y no sobrevive a cerrar
+// la pestaña, reduciendo el riesgo de que una pestaña vieja quede con una identidad residual.
+setPersistence(auth, browserSessionPersistence).catch(e => console.error('[Pi GOps] setPersistence falló:', e));
 const db = getFirestore(app);
 const provider = new GoogleAuthProvider();
 provider.setCustomParameters({ hd: 'pibox.app' });
 let currentUser = null;
+// Si onAuthStateChanged dispara con un usuario DISTINTO mientras esta pestaña ya estaba
+// inicializada (login después de un logout sin recargar, o cualquier cambio de identidad en
+// caliente), se fuerza un reload completo ANTES de tocar el DOM — así se elimina por completo la
+// posibilidad de una mezcla de identidad (ej. avatar viejo con email nuevo) en vez de intentar
+// parchear el estado incrementalmente.
+let authProcessedUID = null;
 onAuthStateChanged(auth, async user => {
  if (user) {
+ if (authProcessedUID && authProcessedUID !== user.uid) {
+ location.reload();
+ return;
+ }
+ authProcessedUID = user.uid;
  currentUser = user;
  document.getElementById('login-screen').style.display = 'none';
  document.getElementById('app').style.display = 'flex';
@@ -99,6 +114,7 @@ onAuthStateChanged(auth, async user => {
  window._loadAppConfig && window._loadAppConfig();
  } catch(e) { console.log('Config load:', e); }
  } else {
+ authProcessedUID = null;
  currentUser = null;
  document.getElementById('login-screen').style.display = 'flex';
  document.getElementById('app').style.display = 'none';
@@ -120,7 +136,7 @@ window.loginWithGoogle = async () => {
  document.getElementById('login-error').style.display = 'block';
  }
 };
-window.logoutUser = async () => { await signOut(auth); };
+window.logoutUser = async () => { await signOut(auth); location.reload(); };
 window.trackEvent = async (type, data) => {
  if (!currentUser) return;
  try { await addDoc(collection(db, 'events'), { type, user: currentUser.email, userName: currentUser.displayName, ...data, timestamp: serverTimestamp() }); }
@@ -1390,7 +1406,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
-const APP_VERSION='15.95';
+const APP_VERSION='15.96';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 const SUPER_ADMIN_NAME='Camilo Romero';
@@ -2672,16 +2688,10 @@ async function _doStartTurno(){
  const today=new Date();
  let mallaEntry=null;
  try{
- const resp=await fetch(MALLA_SCRIPT+'?sheet=Malla',{signal:AbortSignal.timeout(8000)});
- // Un 503/error de Apps Script sin este check se parseaba como CSV vacío (0 filas de hoy),
- // bloqueando el inicio de turno con "No tienes un turno programado" en vez de caer al catch
- // de abajo, que ya maneja este caso correctamente dejando iniciar el turno sin bloquear.
- if(!resp.ok)throw new Error('MALLA_SCRIPT respondió '+resp.status);
- const csv=await resp.text();
- // Un 200 con body truncado (confirmado en vivo) no lo detecta resp.ok — sin este check, se
- // parseaba como 0 filas de hoy y bloqueaba el inicio en vez de caer al catch de abajo.
- const rowCount=csv.trim().split('\n').length-1;
- if(rowCount<20)throw new Error(`MALLA_SCRIPT devolvió una respuesta sospechosamente corta (${rowCount} filas)`);
+ // fetchMallaCSV ya reintenta, valida tamaño mínimo, y cae a caché local si el endpoint falla
+ // del todo — si aun así no hay nada disponible, lanza y el catch de abajo permite iniciar el
+ // turno sin bloquear (más seguro que bloquear a un agente por una falla externa).
+ const csv=await fetchMallaCSV('_doStartTurno');
  const lines=csv.trim().split('\n').slice(1);
  const todayEntries=lines.map(l=>{const c=parseCSVLine(l);return{fecha:c[1]?.trim(),usuario:c[2]?.trim(),inicio:c[5]?.trim(),fin:c[6]?.trim(),lider:c[9]?.trim(),novedad:c[10]?.trim()};})
  .filter(m=>{
@@ -3381,19 +3391,20 @@ function clearMallaFilters(){
  // hace falta recargar para que el reset realmente traiga esas filas de vuelta.
  loadMallaPersonal();
 }
-async function loadMallaPersonal(){
- document.getElementById('malla-table-body').innerHTML='<div style="padding:30px;text-align:center;color:var(--text-dim);font-size:12px;">Cargando malla...</div>';
- try{
- // Timeout ampliado a 20s — el Apps Script puede tardar más en "cold start" con el CSV actual (~300KB+)
- // Reintentos con backoff + validación de tamaño mínimo: confirmado en vivo que MALLA_SCRIPT
- // puede devolver un 200 con el body truncado/incompleto (unas pocas filas en vez de miles) —
- // resp.ok no detecta esto porque el status HTTP sigue siendo "exitoso". Sin esta validación,
- // una respuesta truncada se parseaba como CSV válido pero vacío para cualquier agente cuyas
- // filas hubieran quedado fuera del fragmento recibido, mostrando "Sin registros en este
- // período" sin ningún error en consola — reportado para srodriguez@pibox.app y
- // smartinez@pibox.app, pero no específico de esos usuarios: cuestión de en qué momento cada
- // quien cargó la vista.
- let csv=null;
+const MALLA_CACHE_KEY='pg_malla_csv_cache';
+const MALLA_CACHE_TTL=30*60*1000; // 30 minutos
+// Fetch centralizado del CSV de malla — reintentos con backoff + validación de tamaño mínimo:
+// confirmado en vivo que MALLA_SCRIPT puede devolver un 200 con el body truncado/incompleto (unas
+// pocas filas en vez de miles) — resp.ok no detecta esto porque el status HTTP sigue siendo
+// "exitoso". Sin esta validación, una respuesta truncada se parseaba como CSV válido pero vacío
+// para cualquier agente cuyas filas hubieran quedado fuera del fragmento recibido, mostrando "Sin
+// registros en este período" sin ningún error en consola — reportado para srodriguez@pibox.app y
+// smartinez@pibox.app, pero no específico de esos usuarios: cuestión de en qué momento cada quien
+// cargó la vista mientras el endpoint estaba degradado (confirmado con 200 completo, 404, timeout
+// y 200 truncado en la misma sesión). Si los 3 intentos fallan, se usa el último CSV cacheado en
+// localStorage como último recurso en vez de dejar la vista vacía — el usuario ve la malla
+// (marcada como posiblemente desactualizada) en lugar de "Sin registros".
+async function fetchMallaCSV(callerTag){
  for(let attempt=1;attempt<=3;attempt++){
  try{
  const resp=await fetch(MALLA_SCRIPT+'?sheet=Malla',{signal:AbortSignal.timeout(20000)});
@@ -3401,14 +3412,29 @@ async function loadMallaPersonal(){
  const text=await resp.text();
  const rowCount=text.trim().split('\n').length-1;
  if(rowCount<20)throw new Error(`MALLA_SCRIPT devolvió una respuesta sospechosamente corta (${rowCount} filas)`);
- csv=text;
- break;
+ try{localStorage.setItem(MALLA_CACHE_KEY,JSON.stringify({csv:text,ts:Date.now()}));}catch(e){}
+ return text;
  }catch(e){
- console.error(`[loadMallaPersonal] intento ${attempt} falló:`,e);
+ console.error(`[${callerTag}] intento ${attempt} falló:`,e);
  if(attempt<3)await new Promise(res=>setTimeout(res,1500*attempt));
- else throw e;
  }
  }
+ try{
+ const cached=JSON.parse(localStorage.getItem(MALLA_CACHE_KEY)||'null');
+ if(cached&&cached.csv){
+ const ageMin=Math.round((Date.now()-cached.ts)/60000);
+ const stale=(Date.now()-cached.ts)>MALLA_CACHE_TTL;
+ console.warn(`[${callerTag}] MALLA_SCRIPT no disponible tras 3 intentos — usando caché local de hace ${ageMin} min${stale?' (fuera del TTL de 30 min)':''}`);
+ toast(`⚠️ Malla desde caché local (hace ${ageMin} min) — Apps Script no disponible`);
+ return cached.csv;
+ }
+ }catch(e){}
+ throw new Error('MALLA_SCRIPT no disponible y sin caché local');
+}
+async function loadMallaPersonal(){
+ document.getElementById('malla-table-body').innerHTML='<div style="padding:30px;text-align:center;color:var(--text-dim);font-size:12px;">Cargando malla...</div>';
+ try{
+ const csv=await fetchMallaCSV('loadMallaPersonal');
  const lines=csv.trim().split('\n').slice(1);
  const userEmail=document.getElementById('user-email').textContent;
  const isAdmin=(window.ADMINS||ADMINS).includes(userEmail)||isSuperAdminUser(userEmail);
@@ -3804,24 +3830,12 @@ async function loadPanel2(){
  // Timers se inician después de cargar malla (ver abajo)
  window._pendingActiveTimers=activeFiltered;
  }
- // Load malla completa — reintentos con backoff, misma razón que getRecentTurnos: sin esto,
- // una falla transitoria dejaba la tabla del Panel de Control vacía sin ningún rastro en consola.
+ // Load malla completa — ver fetchMallaCSV() para el detalle de reintentos/validación/caché.
  let mallaData=[];
- for(let attempt=1;attempt<=3;attempt++){
  try{
- const resp=await fetch(MALLA_SCRIPT+'?sheet=Malla',{signal:AbortSignal.timeout(10000)});
- if(!resp.ok)throw new Error('MALLA_SCRIPT respondió '+resp.status);
- const csv=await resp.text();
- // Un 200 con body truncado (confirmado en vivo) no lo detecta resp.ok — validar tamaño mínimo.
- const rowCount=csv.trim().split('\n').length-1;
- if(rowCount<20)throw new Error(`MALLA_SCRIPT devolvió una respuesta sospechosamente corta (${rowCount} filas)`);
+ const csv=await fetchMallaCSV('loadPanel2');
  mallaData=csv.trim().split('\n').slice(1).map(l=>{const c=parseCSVLine(l);return{fecha:c[1]?.trim(),usuario:c[2]?.trim(),nombre:c[3]?.trim(),rol:c[4]?.trim(),inicio:c[5]?.trim(),fin:c[6]?.trim(),linea:c[8]?.trim(),lider:c[9]?.trim(),novedad:c[10]?.trim(),almuerzo:c[12]?.trim()};}).filter(m=>m.fecha&&m.usuario);
- break;
- }catch(e){
- console.error(`[loadPanel2] malla intento ${attempt} falló:`,e);
- if(attempt<3)await new Promise(res=>setTimeout(res,1500*attempt));
- }
- }
+ }catch(e){console.error('[loadPanel2] malla:',e);}
  window._panel2MallaData=mallaData;
  updateExceededWeeksBadge();
  // Iniciar timers con déficit ahora que tenemos mallaData
