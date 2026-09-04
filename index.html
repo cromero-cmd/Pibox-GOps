@@ -1406,7 +1406,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
-const APP_VERSION='15.96';
+const APP_VERSION='15.97';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 const SUPER_ADMIN_NAME='Camilo Romero';
@@ -2690,8 +2690,15 @@ async function _doStartTurno(){
  try{
  // fetchMallaCSV ya reintenta, valida tamaño mínimo, y cae a caché local si el endpoint falla
  // del todo — si aun así no hay nada disponible, lanza y el catch de abajo permite iniciar el
- // turno sin bloquear (más seguro que bloquear a un agente por una falla externa).
- const csv=await fetchMallaCSV('_doStartTurno');
+ // turno sin bloquear (más seguro que bloquear a un agente por una falla externa). Además, en
+ // el peor caso (3 intentos de 20s + backoff) fetchMallaCSV puede tardar ~65s — un agente puede
+ // quedar "atascado" en el botón "Iniciando..." todo ese tiempo. Se limita la espera aquí a 20s:
+ // si no resuelve a tiempo, se cae al mismo catch de abajo (permite iniciar sin validar malla)
+ // en vez de bloquear la UI mientras fetchMallaCSV sigue reintentando en segundo plano.
+ const csv=await Promise.race([
+ fetchMallaCSV('_doStartTurno'),
+ new Promise((_,reject)=>setTimeout(()=>reject(new Error('Timeout de 20s esperando MALLA_SCRIPT')),20000))
+ ]);
  const lines=csv.trim().split('\n').slice(1);
  const todayEntries=lines.map(l=>{const c=parseCSVLine(l);return{fecha:c[1]?.trim(),usuario:c[2]?.trim(),inicio:c[5]?.trim(),fin:c[6]?.trim(),lider:c[9]?.trim(),novedad:c[10]?.trim()};})
  .filter(m=>{
