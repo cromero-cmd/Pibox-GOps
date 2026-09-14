@@ -1406,7 +1406,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
-const APP_VERSION='15.97';
+const APP_VERSION='15.98';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 const SUPER_ADMIN_NAME='Camilo Romero';
@@ -3400,6 +3400,7 @@ function clearMallaFilters(){
 }
 const MALLA_CACHE_KEY='pg_malla_csv_cache';
 const MALLA_CACHE_TTL=30*60*1000; // 30 minutos
+const MALLA_HOT_CACHE_TTL=60*1000; // 1 minuto — igual que TURNOS_CACHE_TTL
 // Fetch centralizado del CSV de malla — reintentos con backoff + validación de tamaño mínimo:
 // confirmado en vivo que MALLA_SCRIPT puede devolver un 200 con el body truncado/incompleto (unas
 // pocas filas en vez de miles) — resp.ok no detecta esto porque el status HTTP sigue siendo
@@ -3412,6 +3413,16 @@ const MALLA_CACHE_TTL=30*60*1000; // 30 minutos
 // localStorage como último recurso en vez de dejar la vista vacía — el usuario ve la malla
 // (marcada como posiblemente desactualizada) en lugar de "Sin registros".
 async function fetchMallaCSV(callerTag){
+ // Caché "caliente" (1 min, igual que TURNOS_CACHE_TTL): sin esto, cada cambio de filtro en
+ // Panel de Control (Línea/Líder/Agente) llama a loadPanel2() completo, que a su vez llama a
+ // fetchMallaCSV() cada vez — con MALLA_SCRIPT degradado, cada click podía tardar hasta ~65s
+ // (3 reintentos) aunque el fetch anterior hubiera terminado hace segundos. Reutilizar un fetch
+ // reciente hace que filtrar sea instantáneo en el caso normal (varios cambios de filtro
+ // seguidos), sin afectar la frescura de datos en uso normal (recarga de pestaña, etc.).
+ try{
+ const hot=JSON.parse(localStorage.getItem(MALLA_CACHE_KEY)||'null');
+ if(hot&&hot.csv&&(Date.now()-hot.ts)<MALLA_HOT_CACHE_TTL)return hot.csv;
+ }catch(e){}
  for(let attempt=1;attempt<=3;attempt++){
  try{
  const resp=await fetch(MALLA_SCRIPT+'?sheet=Malla',{signal:AbortSignal.timeout(20000)});
@@ -5031,11 +5042,12 @@ async function loadFreshPayrollData(){
  console.log('[openPayrollPreview] lastMonday:',lastMonday,'lastSunday:',lastSunday);
  let mallaData=[];
  try{
- // Timeout ampliado a 20s — el Apps Script puede tardar en "cold start" con el CSV actual (~300KB+)
- const resp=await fetch(MALLA_SCRIPT+'?sheet=Malla',{signal:AbortSignal.timeout(20000)});
- console.log('[openPayrollPreview] MALLA_SCRIPT status:',resp.status,resp.ok);
- if(!resp.ok)throw new Error(`MALLA_SCRIPT respondió ${resp.status}`);
- const csv=await resp.text();
+ // Antes hacía su propio fetch(MALLA_SCRIPT) directo, sin reintentos ni fallback a caché —
+ // a diferencia de loadPanel2/loadMallaPersonal/_doStartTurno, que ya usan fetchMallaCSV()
+ // desde v15.96. Con MALLA_SCRIPT degradado, ese fetch aislado fallaba (confirmado en vivo:
+ // TimeoutError) y dejaba mallaData=[], mostrando "Sin registros para la semana anterior"
+ // aunque la semana calculada (lastMonday/lastSunday) fuera correcta.
+ const csv=await fetchMallaCSV('openPayrollPreview');
  mallaData=csv.trim().split('\n').slice(1).map(l=>{const c=parseCSVLine(l);return{fecha:c[1]?.trim(),usuario:c[2]?.trim(),nombre:c[3]?.trim(),inicio:c[5]?.trim(),fin:c[6]?.trim(),lider:c[9]?.trim(),novedad:c[10]?.trim(),almuerzo:c[12]?.trim()};})
  .filter(m=>{if(!m.fecha||!m.usuario)return false;const d=parseDate(m.fecha);return d&&d>=lastMonday&&d<=lastSunday;});
  console.log('[openPayrollPreview] filas de malla en el rango:',mallaData.length);
@@ -5348,11 +5360,12 @@ async function sendPayrollReport(){
  const weekStart=fmtDate(lastMonday);
  const weekEnd=fmtDate(lastSunday);
  toast('Generando reporte...');
- // Cargar malla completa de la semana anterior
+ // Cargar malla completa de la semana anterior — antes hacía su propio fetch(MALLA_SCRIPT)
+ // aislado (catch vacío, sin reintentos), igual que openPayrollPreview: una falla transitoria
+ // hacía abortar el envío real con "Sin registros" aunque la semana sí tuviera datos.
  let mallaData=[];
  try{
- const resp=await fetch(MALLA_SCRIPT+'?sheet=Malla',{signal:AbortSignal.timeout(10000)});
- const csv=await resp.text();
+ const csv=await fetchMallaCSV('sendPayrollReport');
  mallaData=csv.trim().split('\n').slice(1).map(l=>{
  const c=parseCSVLine(l);
  return{fecha:c[1]?.trim(),usuario:c[2]?.trim(),nombre:c[3]?.trim(),inicio:c[5]?.trim(),fin:c[6]?.trim(),lider:c[9]?.trim(),novedad:c[10]?.trim(),almuerzo:c[12]?.trim()};
@@ -5361,7 +5374,7 @@ async function sendPayrollReport(){
  const d=parseDate(m.fecha);
  return d&&d>=lastMonday&&d<=lastSunday;
  });
- }catch(e){}
+ }catch(e){console.error('[sendPayrollReport] malla:',e);}
  const allTurnos=await window.getRecentTurnos();
  const adminEmails=new Set([...(window.ADMINS||ADMINS),SUPER_ADMIN]);
  // Respaldo: turno.overtimeStatus solo queda escrito si el evento de extras tenía turnoId al
