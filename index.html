@@ -1406,7 +1406,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
-const APP_VERSION='15.98';
+const APP_VERSION='15.99';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 const SUPER_ADMIN_NAME='Camilo Romero';
@@ -2734,7 +2734,7 @@ async function _doStartTurno(){
  window._scheduledTurnoSecs=ss&&se?Math.max(0,Math.round((se-ss)/1000)):0;
  window._scheduledTurnoStart=ss;
  }else{window._scheduledTurnoSecs=0;}
- const data={startTime:turnoStartTime,endTime:null,accumulatedSeconds:0,status:'active',device:device.label,isMobile:device.isMobile,ua:device.ua};
+ const data={startTime:turnoStartTime,endTime:null,accumulatedSeconds:0,status:'active',device:device.label,isMobile:device.isMobile,ua:device.ua,deviceType:device.isMobile?'mobile':'desktop',userAgent:navigator.userAgent,screenWidth:screen.width};
  currentTurnoId=await window.saveTurnoToFirebase(data);
  setTurnoActive({...data,startTime:{toDate:()=>turnoStartTime}});startTimer();scheduleEndNotification();
  toast('✅ Turno iniciado — '+turnoStartTime.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}));
@@ -4019,6 +4019,9 @@ async function loadPanel2(){
  const re24=r.realEnd?r.realEnd.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit',hour12:false}):'';
  const dur=r.realStart&&r.realEnd?secsToHm(Math.max(0,(r.realEnd-r.realStart)/1000)):'—';
  const t=r.turno;
+ // Ícono de dispositivo desde el que se inició el turno — deviceType solo existe en turnos
+ // creados desde v15.99 en adelante; sin ícono para registros anteriores.
+ const deviceIcon=t?.deviceType==='mobile'?'📱':t?.deviceType==='desktop'?'💻':'';
  const gridCols='36px 160px 65px 85px 85px 70px 70px 180px 100px 110px';
  const seAdjRow=(r.scheduledStart&&r.scheduledEnd&&r.scheduledEnd<r.scheduledStart)?new Date(r.scheduledEnd.getTime()+24*3600000):r.scheduledEnd;
  const durProg=r.scheduledStart&&seAdjRow?secsToHm(Math.max(0,Math.round((seAdjRow-r.scheduledStart)/1000))):'—';
@@ -4039,7 +4042,7 @@ async function loadPanel2(){
  <div style="padding:8px 10px;border-right:1px solid var(--border);display:flex;flex-direction:column;justify-content:center;min-width:0;"><div style="font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${r.nombre||r.usuario||''}">${r.nombre||r.usuario?.split('@')[0]||'—'}</div><div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${r.linea||'—'}</div></div>
  <div style="padding:8px 10px;border-right:1px solid var(--border);font-family:var(--mono);color:var(--text-muted);display:flex;align-items:center;">${ds}</div>
  <div style="padding:8px 10px;border-right:1px solid var(--border);font-family:var(--mono);color:var(--text-dim);display:flex;flex-direction:column;justify-content:center;"><div style="font-size:9px;color:var(--text-dim);margin-bottom:1px;">Prog.</div><div>${ss}→${se}</div></div>
- <div style="padding:8px 10px;border-right:1px solid var(--border);font-family:var(--mono);color:${r.realStart&&r.cumplStatus.cls==='tardanza'?'#fbbf24':r.cumplStatus.cls==='cumplió'?'#4ade80':'var(--text-muted)'};display:flex;flex-direction:column;justify-content:center;"><div style="font-size:9px;color:var(--text-dim);margin-bottom:1px;">Real</div><div>${rs}→${re}</div></div>
+ <div style="padding:8px 10px;border-right:1px solid var(--border);font-family:var(--mono);color:${r.realStart&&r.cumplStatus.cls==='tardanza'?'#fbbf24':r.cumplStatus.cls==='cumplió'?'#4ade80':'var(--text-muted)'};display:flex;flex-direction:column;justify-content:center;"><div style="font-size:9px;color:var(--text-dim);margin-bottom:1px;">Real</div><div>${deviceIcon?`<span title="${deviceIcon==='📱'?'Iniciado desde móvil':'Iniciado desde escritorio'}">${deviceIcon}</span> `:''}${rs}→${re}</div></div>
  <div style="padding:8px 8px;border-right:1px solid var(--border);font-family:var(--mono);font-weight:700;color:var(--p2);display:flex;align-items:center;gap:4px;">${dur}${anomalyReason?`<span title="${esc(anomalyReason)}" style="cursor:help;font-size:11px;">⚠️</span>`:''}</div>
  <div style="padding:8px 8px;border-right:1px solid var(--border);font-family:var(--mono);color:var(--text-dim);display:flex;align-items:center;">${durProg}</div>
  <div style="padding:6px 8px;border-right:1px solid var(--border);display:flex;flex-direction:column;gap:4px;align-items:flex-start;">
@@ -4512,12 +4515,20 @@ async function renderPanel2Insights(rows,allTurnos,fromDate,toDate){
  const pctCumplimiento=teamTotalRows?Math.round(((teamCumplio+teamEnCurso+teamNovedad)/teamTotalRows)*100):0;
  let totalExtrasAprobadasMins=0,totalNocturnoSecs=0,totalAusencias=0;
  Object.values(userStats).forEach(v=>{totalExtrasAprobadasMins+=v.extrasAprobadasMins;totalNocturnoSecs+=v.nocturnoSecs;totalAusencias+=v.ausenteTotal;});
+ // Turnos iniciados por dispositivo — deviceType solo existe en turnos creados desde v15.99,
+ // así que registros anteriores simplemente no cuentan en ninguno de los dos totales.
+ let dispositivoMovil=0,dispositivoDesktop=0;
+ rows.forEach(r=>{
+ if(r.turno?.deviceType==='mobile')dispositivoMovil++;
+ else if(r.turno?.deviceType==='desktop')dispositivoDesktop++;
+ });
  function kpiTile(label,value,color){return`<div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:14px;text-align:center;"><div style="font-size:20px;font-weight:800;color:${color};">${value}</div><div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);margin-top:4px;">${label}</div></div>`;}
  const resumenHTML=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px;">
  ${kpiTile('% Cumplimiento general',pctCumplimiento+'%',pctCumplimiento>=90?'#4ade80':pctCumplimiento>=75?'#fbbf24':'#f87171')}
  ${kpiTile('⚡ Extras aprobadas del equipo',fmtHM(totalExtrasAprobadasMins),'#4ade80')}
  ${kpiTile('🌙 Recargo nocturno del equipo',fmtHrsSecs(totalNocturnoSecs),'#60a5fa')}
  ${kpiTile('🔴 Ausencias del período',totalAusencias,'#f87171')}
+ ${kpiTile('Inicios por dispositivo',`📱 ${dispositivoMovil} · 💻 ${dispositivoDesktop}`,'var(--text)')}
  </div>`;
  // Anomalías detectadas — turnos sospechosos del período (umbral de 4h de diferencia, más
  // estricto que el resaltado de tabla de 2h, para no saturar esta lista con ruido menor).
