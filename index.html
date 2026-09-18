@@ -1406,7 +1406,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
-const APP_VERSION='15.99';
+const APP_VERSION='16.0';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 const SUPER_ADMIN_NAME='Camilo Romero';
@@ -3412,7 +3412,7 @@ const MALLA_HOT_CACHE_TTL=60*1000; // 1 minuto — igual que TURNOS_CACHE_TTL
 // y 200 truncado en la misma sesión). Si los 3 intentos fallan, se usa el último CSV cacheado en
 // localStorage como último recurso en vez de dejar la vista vacía — el usuario ve la malla
 // (marcada como posiblemente desactualizada) en lugar de "Sin registros".
-async function fetchMallaCSV(callerTag){
+async function fetchMallaCSV(callerTag,onProgress){
  // Caché "caliente" (1 min, igual que TURNOS_CACHE_TTL): sin esto, cada cambio de filtro en
  // Panel de Control (Línea/Líder/Agente) llama a loadPanel2() completo, que a su vez llama a
  // fetchMallaCSV() cada vez — con MALLA_SCRIPT degradado, cada click podía tardar hasta ~65s
@@ -3423,7 +3423,11 @@ async function fetchMallaCSV(callerTag){
  const hot=JSON.parse(localStorage.getItem(MALLA_CACHE_KEY)||'null');
  if(hot&&hot.csv&&(Date.now()-hot.ts)<MALLA_HOT_CACHE_TTL)return hot.csv;
  }catch(e){}
+ // onProgress(attempt,total) opcional — permite al caller (ej. loadPanel2) mostrar en la UI que
+ // sigue reintentando en vez de dejar un "Cargando..." estático indistinguible de un cuelgue
+ // real durante los ~65s que puede tardar el peor caso con MALLA_SCRIPT degradado.
  for(let attempt=1;attempt<=3;attempt++){
+ try{onProgress?.(attempt,3);}catch(e){}
  try{
  const resp=await fetch(MALLA_SCRIPT+'?sheet=Malla',{signal:AbortSignal.timeout(20000)});
  if(!resp.ok)throw new Error(`MALLA_SCRIPT respondió ${resp.status}`);
@@ -3437,6 +3441,7 @@ async function fetchMallaCSV(callerTag){
  if(attempt<3)await new Promise(res=>setTimeout(res,1500*attempt));
  }
  }
+ try{onProgress?.('fallback');}catch(e){}
  try{
  const cached=JSON.parse(localStorage.getItem(MALLA_CACHE_KEY)||'null');
  if(cached&&cached.csv){
@@ -3452,7 +3457,12 @@ async function fetchMallaCSV(callerTag){
 async function loadMallaPersonal(){
  document.getElementById('malla-table-body').innerHTML='<div style="padding:30px;text-align:center;color:var(--text-dim);font-size:12px;">Cargando malla...</div>';
  try{
- const csv=await fetchMallaCSV('loadMallaPersonal');
+ const csv=await fetchMallaCSV('loadMallaPersonal',(attempt,total)=>{
+ const body=document.getElementById('malla-table-body');
+ if(!body)return;
+ if(attempt==='fallback')body.innerHTML='<div style="padding:30px;text-align:center;color:var(--text-dim);font-size:12px;">El servicio de malla no responde — usando datos guardados localmente...</div>';
+ else if(attempt>1)body.innerHTML=`<div style="padding:30px;text-align:center;color:var(--text-dim);font-size:12px;">Cargando malla... (el servicio está lento, reintentando — intento ${attempt} de ${total})</div>`;
+ });
  const lines=csv.trim().split('\n').slice(1);
  const userEmail=document.getElementById('user-email').textContent;
  const isAdmin=(window.ADMINS||ADMINS).includes(userEmail)||isSuperAdminUser(userEmail);
@@ -3849,9 +3859,16 @@ async function loadPanel2(){
  window._pendingActiveTimers=activeFiltered;
  }
  // Load malla completa — ver fetchMallaCSV() para el detalle de reintentos/validación/caché.
+ // onProgress actualiza el placeholder de la tabla para que un "Cargando..." estático de hasta
+ // ~65s (peor caso con MALLA_SCRIPT degradado) no se vea indistinguible de la vista congelada.
  let mallaData=[];
  try{
- const csv=await fetchMallaCSV('loadPanel2');
+ const csv=await fetchMallaCSV('loadPanel2',(attempt,total)=>{
+ const tbody=document.getElementById('panel2-table');
+ if(!tbody)return;
+ if(attempt==='fallback')tbody.innerHTML='<div style="padding:20px;text-align:center;color:var(--text-dim);font-size:12px;">El servicio de malla no responde — usando datos guardados localmente...</div>';
+ else if(attempt>1)tbody.innerHTML=`<div style="padding:20px;text-align:center;color:var(--text-dim);font-size:12px;">Cargando... (el servicio está lento, reintentando — intento ${attempt} de ${total})</div>`;
+ });
  mallaData=csv.trim().split('\n').slice(1).map(l=>{const c=parseCSVLine(l);return{fecha:c[1]?.trim(),usuario:c[2]?.trim(),nombre:c[3]?.trim(),rol:c[4]?.trim(),inicio:c[5]?.trim(),fin:c[6]?.trim(),linea:c[8]?.trim(),lider:c[9]?.trim(),novedad:c[10]?.trim(),almuerzo:c[12]?.trim()};}).filter(m=>m.fecha&&m.usuario);
  }catch(e){console.error('[loadPanel2] malla:',e);}
  window._panel2MallaData=mallaData;
