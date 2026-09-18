@@ -1406,7 +1406,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
-const APP_VERSION='16.1';
+const APP_VERSION='16.2';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 const SUPER_ADMIN_NAME='Camilo Romero';
@@ -2764,6 +2764,8 @@ function loadAgentCity(){
  return p;
 }
 // Devuelve solo los campos location* a guardar en el turno. Nunca lanza ni bloquea el inicio.
+// Solo registro interno: el agente no ve ningún aviso, ni se notifica a nadie (el aviso al agente y
+// al coordinador quedan para una segunda fase, tras la confirmación legal).
 async function evaluateStartLocation(geoPromise,cityPromise){
  try{
  const geo=await geoPromise;
@@ -2781,21 +2783,6 @@ async function evaluateStartLocation(geoPromise,cityPromise){
  console.warn('[ubicación] error inesperado:',e);
  return{locationStatus:'error'};
  }
-}
-function showLocationMismatchModal(detected,registered){
- return new Promise(resolve=>{
- const overlay=document.createElement('div');
- overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:10000;display:flex;align-items:center;justify-content:center;padding:16px;';
- overlay.innerHTML=`<div role="alertdialog" aria-modal="true" style="background:var(--surface);border:1px solid rgba(251,146,60,0.4);border-radius:16px;max-width:440px;width:100%;padding:24px;box-shadow:var(--shadow);">
- <div style="font-size:15px;font-weight:700;color:#fb923c;margin-bottom:12px;line-height:1.4;">⚠️ Estás iniciando turno fuera de tu lugar de trabajo registrado.</div>
- <div style="font-size:13px;color:var(--text-muted);line-height:1.8;">Ciudad detectada: <strong style="color:var(--text);">${esc(detected)}</strong>.<br>Ciudad registrada: <strong style="color:var(--text);">${esc(registered)}</strong>.<br>Tu coordinador será notificado.</div>
- <button id="loc-mismatch-ok" style="margin-top:18px;width:100%;background:rgba(251,146,60,0.12);border:1px solid rgba(251,146,60,0.4);color:#fb923c;padding:10px 14px;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;">Entendido</button>
- </div>`;
- document.body.appendChild(overlay);
- const btn=overlay.querySelector('#loc-mismatch-ok');
- btn.onclick=()=>{overlay.remove();resolve();};
- btn.focus();
- });
 }
 async function startTurno(){
  // Bloquear doble clic
@@ -2865,9 +2852,6 @@ async function _doStartTurno(){
  }
  const locationFields=await evaluateStartLocation(geoPromise,registeredCityPromise);
  const device=getDeviceInfo();turnoStartTime=new Date();accumulatedSeconds=0;
- // La hora de inicio se fija ANTES del modal: esperar el clic en "Entendido" no debe correr ni
- // esconder la hora real en que el agente pulsó "Iniciar turno".
- if(locationFields.locationMatch===false)await showLocationMismatchModal(locationFields.locationCity,locationFields.locationRegistered);
  // Guardar horas programadas para el cronómetro de déficit
  if(mallaEntry){
  const ss=parseTime(mallaEntry.fecha,mallaEntry.inicio);
