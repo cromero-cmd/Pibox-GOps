@@ -1406,7 +1406,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
-const APP_VERSION='16.0';
+const APP_VERSION='16.1';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 const SUPER_ADMIN_NAME='Camilo Romero';
@@ -1478,6 +1478,8 @@ window._loadAppConfig=()=>{
  fetchSheet();loadFAQs();
  if(vidUrl)loadVideos();
  }
+ // Precargar la ciudad registrada (BASE 3.0) para que esté lista al iniciar turno; cacheada 1 día.
+ loadAgentCity();
  // Restaurar tab activa
  const savedTab=localStorage.getItem('pg_active_tab');
  if(savedTab&&savedTab!=='home'){
@@ -2664,6 +2666,125 @@ function setTurnoInactive(){
  if(turnoInterval){clearInterval(turnoInterval);turnoInterval=null;}
  const ft=document.getElementById('floating-timer');if(ft)ft.style.display='none';
 }
+// ── VALIDACIÓN DE UBICACIÓN AL INICIAR TURNO ──
+// Solo se guarda la CIUDAD (nunca las coordenadas), y las coordenadas se redondean a 3 decimales
+// (~110 m) antes de enviarlas a Nominatim: para resolver una ciudad no hace falta más precisión.
+const AGENT_CITY_CACHE_KEY='pg_agent_city';
+const AGENT_CITY_TTL=24*60*60*1000; // 1 día
+function normalizeCityName(s){return String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();}
+// Ignora tildes y mayúsculas, y compara por palabras completas (no por substring): "Bogotá D.C." coincide
+// con "Bogotá" y "Santiago de Cali" con "Cali", pero "Cali" no coincide con "Calima". Un mismatch falso
+// le muestra al agente una advertencia injusta, así que la comparación es tolerante a propósito.
+function citiesMatch(detectedCandidates,registered){
+ const reg=normalizeCityName(registered).split(' ').filter(Boolean);
+ if(!reg.length)return false;
+ return (detectedCandidates||[]).some(c=>{
+ const t=normalizeCityName(c).split(' ').filter(Boolean);
+ if(!t.length)return false;
+ const [small,big]=reg.length<=t.length?[reg,t]:[t,reg];
+ return small.every(tok=>big.includes(tok));
+ });
+}
+// getCurrentPosition no hace red. Su `timeout` NO cuenta el tiempo que el usuario tarda en responder
+// el prompt de permiso, así que sin el tope duro de 15s un prompt sin responder dejaría el botón en
+// "Iniciando..." para siempre. Nunca rechaza: resuelve con un status.
+function getStartPosition(){
+ return new Promise(resolve=>{
+ if(!('geolocation' in navigator)){resolve({status:'unsupported'});return;}
+ let settled=false;
+ const done=r=>{if(settled)return;settled=true;clearTimeout(hard);resolve(r);};
+ const hard=setTimeout(()=>done({status:'timeout'}),15000);
+ try{
+ navigator.geolocation.getCurrentPosition(
+ pos=>done({status:'ok',lat:pos.coords.latitude,lon:pos.coords.longitude}),
+ err=>done({status:err&&err.code===1?'denied':err&&err.code===3?'timeout':'unavailable'}),
+ {enableHighAccuracy:false,timeout:10000,maximumAge:300000}
+ );
+ }catch(e){done({status:'unavailable'});}
+ });
+}
+async function reverseGeocodeCity(lat,lon){
+ const url=`https://nominatim.openstreetmap.org/reverse?lat=${lat.toFixed(3)}&lon=${lon.toFixed(3)}&format=json&zoom=10&addressdetails=1&accept-language=es`;
+ const resp=await fetch(url,{signal:AbortSignal.timeout(8000)});
+ if(!resp.ok)throw new Error('Nominatim respondió '+resp.status);
+ const a=(await resp.json()).address||{};
+ const candidates=[a.city,a.town,a.village,a.municipality,a.state].filter(Boolean);
+ return{city:candidates[0]||null,candidates};
+}
+// Ciudad registrada del agente = BASE 3.0, col G (índice 6) = correo, col J (índice 9) = ciudad.
+// Solo se conserva la ciudad del usuario actual (en memoria y en localStorage): BASE 3.0 contiene
+// cédulas y direcciones de todo el equipo y no debe quedar guardada en el navegador.
+function loadAgentCity(){
+ const email=(document.getElementById('user-email')?.textContent||'').trim().toLowerCase();
+ if(!email)return Promise.resolve(null);
+ if(window._agentCityPromise&&window._agentCityEmail===email)return window._agentCityPromise;
+ window._agentCityEmail=email;
+ let networkFailed=false;
+ const p=(async()=>{
+ let cached=null;
+ try{const c=JSON.parse(localStorage.getItem(AGENT_CITY_CACHE_KEY)||'null');if(c&&c.email===email&&c.city)cached=c;}catch(e){}
+ if(cached&&(Date.now()-cached.ts)<AGENT_CITY_TTL){window._agentCity=cached.city;return cached.city;}
+ for(let attempt=1;attempt<=3;attempt++){
+ try{
+ const resp=await fetch(MALLA_SCRIPT+'?sheet='+encodeURIComponent('BASE 3.0'),{signal:AbortSignal.timeout(10000)});
+ if(!resp.ok)throw new Error('BASE 3.0 respondió '+resp.status);
+ const text=await resp.text();
+ if(/^\s*<(!doctype|html)/i.test(text))throw new Error('BASE 3.0 devolvió HTML en vez de CSV');
+ let city=null;
+ for(const line of text.split('\n')){
+ const c=parseCSVLine(line);
+ if((c[6]||'').toLowerCase()===email){city=c[9]||null;break;}
+ }
+ if(city){try{localStorage.setItem(AGENT_CITY_CACHE_KEY,JSON.stringify({email,city,ts:Date.now()}));}catch(e){}}
+ window._agentCity=city;
+ return city;
+ }catch(e){
+ console.warn(`[loadAgentCity] intento ${attempt} falló:`,e);
+ if(attempt<3)await new Promise(res=>setTimeout(res,1000*attempt));
+ }
+ }
+ networkFailed=true;
+ window._agentCity=cached?cached.city:null;
+ return window._agentCity;
+ })();
+ window._agentCityPromise=p;
+ p.then(()=>{if(networkFailed&&window._agentCityPromise===p)window._agentCityPromise=null;});
+ return p;
+}
+// Devuelve solo los campos location* a guardar en el turno. Nunca lanza ni bloquea el inicio.
+async function evaluateStartLocation(geoPromise,cityPromise){
+ try{
+ const geo=await geoPromise;
+ if(geo.status!=='ok')return{locationStatus:geo.status};
+ const registered=await Promise.race([cityPromise,new Promise(res=>setTimeout(()=>res(null),8000))]);
+ let g;
+ try{g=await reverseGeocodeCity(geo.lat,geo.lon);}
+ catch(e){console.warn('[ubicación] geocodificación falló:',e);return{locationStatus:'geocode_failed'};}
+ if(!g.city)return{locationStatus:'geocode_failed'};
+ if(!registered)return{locationStatus:'no_registered_city',locationCity:g.city};
+ return citiesMatch(g.candidates,registered)
+ ?{locationStatus:'ok',locationCity:g.city,locationMatch:true}
+ :{locationStatus:'ok',locationCity:g.city,locationMatch:false,locationRegistered:registered};
+ }catch(e){
+ console.warn('[ubicación] error inesperado:',e);
+ return{locationStatus:'error'};
+ }
+}
+function showLocationMismatchModal(detected,registered){
+ return new Promise(resolve=>{
+ const overlay=document.createElement('div');
+ overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:10000;display:flex;align-items:center;justify-content:center;padding:16px;';
+ overlay.innerHTML=`<div role="alertdialog" aria-modal="true" style="background:var(--surface);border:1px solid rgba(251,146,60,0.4);border-radius:16px;max-width:440px;width:100%;padding:24px;box-shadow:var(--shadow);">
+ <div style="font-size:15px;font-weight:700;color:#fb923c;margin-bottom:12px;line-height:1.4;">⚠️ Estás iniciando turno fuera de tu lugar de trabajo registrado.</div>
+ <div style="font-size:13px;color:var(--text-muted);line-height:1.8;">Ciudad detectada: <strong style="color:var(--text);">${esc(detected)}</strong>.<br>Ciudad registrada: <strong style="color:var(--text);">${esc(registered)}</strong>.<br>Tu coordinador será notificado.</div>
+ <button id="loc-mismatch-ok" style="margin-top:18px;width:100%;background:rgba(251,146,60,0.12);border:1px solid rgba(251,146,60,0.4);color:#fb923c;padding:10px 14px;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;">Entendido</button>
+ </div>`;
+ document.body.appendChild(overlay);
+ const btn=overlay.querySelector('#loc-mismatch-ok');
+ btn.onclick=()=>{overlay.remove();resolve();};
+ btn.focus();
+ });
+}
 async function startTurno(){
  // Bloquear doble clic
  const btnStart=document.getElementById('btn-turno-start');
@@ -2683,6 +2804,10 @@ async function _doStartTurno(){
  alert('⚠️ El registro de turno solo está disponible desde un computador de escritorio.\n\nPor favor inicia sesión desde tu computador para registrar tu turno.');
  return;
  }
+ // Ubicación: se arranca ya (el prompt de permiso aparece mientras carga la malla, sin sumar
+ // espera), pero el reverse-geocode a Nominatim solo ocurre más abajo si el turno realmente inicia.
+ const geoPromise=getStartPosition();
+ const registeredCityPromise=loadAgentCity();
  // Check malla for today
  const userEmail=document.getElementById('user-email').textContent;
  const today=new Date();
@@ -2726,7 +2851,11 @@ async function _doStartTurno(){
  }catch(e){
  console.warn('Malla check failed, allowing start:', e);
  }
+ const locationFields=await evaluateStartLocation(geoPromise,registeredCityPromise);
  const device=getDeviceInfo();turnoStartTime=new Date();accumulatedSeconds=0;
+ // La hora de inicio se fija ANTES del modal: esperar el clic en "Entendido" no debe correr ni
+ // esconder la hora real en que el agente pulsó "Iniciar turno".
+ if(locationFields.locationMatch===false)await showLocationMismatchModal(locationFields.locationCity,locationFields.locationRegistered);
  // Guardar horas programadas para el cronómetro de déficit
  if(mallaEntry){
  const ss=parseTime(mallaEntry.fecha,mallaEntry.inicio);
@@ -2734,7 +2863,7 @@ async function _doStartTurno(){
  window._scheduledTurnoSecs=ss&&se?Math.max(0,Math.round((se-ss)/1000)):0;
  window._scheduledTurnoStart=ss;
  }else{window._scheduledTurnoSecs=0;}
- const data={startTime:turnoStartTime,endTime:null,accumulatedSeconds:0,status:'active',device:device.label,isMobile:device.isMobile,ua:device.ua,deviceType:device.isMobile?'mobile':'desktop',userAgent:navigator.userAgent,screenWidth:screen.width};
+ const data={startTime:turnoStartTime,endTime:null,accumulatedSeconds:0,status:'active',device:device.label,isMobile:device.isMobile,ua:device.ua,deviceType:device.isMobile?'mobile':'desktop',userAgent:navigator.userAgent,screenWidth:screen.width,...locationFields};
  currentTurnoId=await window.saveTurnoToFirebase(data);
  setTurnoActive({...data,startTime:{toDate:()=>turnoStartTime}});startTimer();scheduleEndNotification();
  toast('✅ Turno iniciado — '+turnoStartTime.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}));
@@ -3463,6 +3592,7 @@ async function loadMallaPersonal(){
  if(attempt==='fallback')body.innerHTML='<div style="padding:30px;text-align:center;color:var(--text-dim);font-size:12px;">El servicio de malla no responde — usando datos guardados localmente...</div>';
  else if(attempt>1)body.innerHTML=`<div style="padding:30px;text-align:center;color:var(--text-dim);font-size:12px;">Cargando malla... (el servicio está lento, reintentando — intento ${attempt} de ${total})</div>`;
  });
+ loadAgentCity(); // ciudad registrada (BASE 3.0) — deduplicada y cacheada, no bloquea la malla
  const lines=csv.trim().split('\n').slice(1);
  const userEmail=document.getElementById('user-email').textContent;
  const isAdmin=(window.ADMINS||ADMINS).includes(userEmail)||isSuperAdminUser(userEmail);
@@ -4039,6 +4169,14 @@ async function loadPanel2(){
  // Ícono de dispositivo desde el que se inició el turno — deviceType solo existe en turnos
  // creados desde v15.99 en adelante; sin ícono para registros anteriores.
  const deviceIcon=t?.deviceType==='mobile'?'📱':t?.deviceType==='desktop'?'💻':'';
+ // Validación de ubicación (v16.1): sin ícono para turnos sin locationMatch (anteriores, permiso
+ // denegado, sin ciudad registrada, etc.). esc() no escapa comillas, así que se hace para el atributo.
+ const escAttr=s=>esc(s).replace(/"/g,'&quot;');
+ const locIcon=t?.locationMatch===true
+ ?`<span title="${escAttr('Inicio dentro de la ciudad registrada'+(t.locationCity?' ('+t.locationCity+')':''))}">📍✅</span>`
+ :t?.locationMatch===false
+ ?`<span title="${escAttr('Ciudad detectada: '+(t.locationCity||'—')+(t.locationRegistered?' · Registrada: '+t.locationRegistered:''))}" style="cursor:help;">📍⚠️</span>`
+ :'';
  const gridCols='36px 160px 65px 85px 85px 70px 70px 180px 100px 110px';
  const seAdjRow=(r.scheduledStart&&r.scheduledEnd&&r.scheduledEnd<r.scheduledStart)?new Date(r.scheduledEnd.getTime()+24*3600000):r.scheduledEnd;
  const durProg=r.scheduledStart&&seAdjRow?secsToHm(Math.max(0,Math.round((seAdjRow-r.scheduledStart)/1000))):'—';
@@ -4059,7 +4197,7 @@ async function loadPanel2(){
  <div style="padding:8px 10px;border-right:1px solid var(--border);display:flex;flex-direction:column;justify-content:center;min-width:0;"><div style="font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${r.nombre||r.usuario||''}">${r.nombre||r.usuario?.split('@')[0]||'—'}</div><div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${r.linea||'—'}</div></div>
  <div style="padding:8px 10px;border-right:1px solid var(--border);font-family:var(--mono);color:var(--text-muted);display:flex;align-items:center;">${ds}</div>
  <div style="padding:8px 10px;border-right:1px solid var(--border);font-family:var(--mono);color:var(--text-dim);display:flex;flex-direction:column;justify-content:center;"><div style="font-size:9px;color:var(--text-dim);margin-bottom:1px;">Prog.</div><div>${ss}→${se}</div></div>
- <div style="padding:8px 10px;border-right:1px solid var(--border);font-family:var(--mono);color:${r.realStart&&r.cumplStatus.cls==='tardanza'?'#fbbf24':r.cumplStatus.cls==='cumplió'?'#4ade80':'var(--text-muted)'};display:flex;flex-direction:column;justify-content:center;"><div style="font-size:9px;color:var(--text-dim);margin-bottom:1px;">Real</div><div>${deviceIcon?`<span title="${deviceIcon==='📱'?'Iniciado desde móvil':'Iniciado desde escritorio'}">${deviceIcon}</span> `:''}${rs}→${re}</div></div>
+ <div style="padding:8px 10px;border-right:1px solid var(--border);font-family:var(--mono);color:${r.realStart&&r.cumplStatus.cls==='tardanza'?'#fbbf24':r.cumplStatus.cls==='cumplió'?'#4ade80':'var(--text-muted)'};display:flex;flex-direction:column;justify-content:center;"><div style="font-size:9px;color:var(--text-dim);margin-bottom:1px;">Real</div><div>${deviceIcon?`<span title="${deviceIcon==='📱'?'Iniciado desde móvil':'Iniciado desde escritorio'}">${deviceIcon}</span> `:''}${locIcon?locIcon+' ':''}${rs}→${re}</div></div>
  <div style="padding:8px 8px;border-right:1px solid var(--border);font-family:var(--mono);font-weight:700;color:var(--p2);display:flex;align-items:center;gap:4px;">${dur}${anomalyReason?`<span title="${esc(anomalyReason)}" style="cursor:help;font-size:11px;">⚠️</span>`:''}</div>
  <div style="padding:8px 8px;border-right:1px solid var(--border);font-family:var(--mono);color:var(--text-dim);display:flex;align-items:center;">${durProg}</div>
  <div style="padding:6px 8px;border-right:1px solid var(--border);display:flex;flex-direction:column;gap:4px;align-items:flex-start;">
@@ -4534,10 +4672,12 @@ async function renderPanel2Insights(rows,allTurnos,fromDate,toDate){
  Object.values(userStats).forEach(v=>{totalExtrasAprobadasMins+=v.extrasAprobadasMins;totalNocturnoSecs+=v.nocturnoSecs;totalAusencias+=v.ausenteTotal;});
  // Turnos iniciados por dispositivo — deviceType solo existe en turnos creados desde v15.99,
  // así que registros anteriores simplemente no cuentan en ninguno de los dos totales.
- let dispositivoMovil=0,dispositivoDesktop=0;
+ let dispositivoMovil=0,dispositivoDesktop=0,iniciosFueraCiudad=0;
  rows.forEach(r=>{
  if(r.turno?.deviceType==='mobile')dispositivoMovil++;
  else if(r.turno?.deviceType==='desktop')dispositivoDesktop++;
+ // Solo locationMatch===false cuenta: permiso denegado o sin ciudad registrada no son "fuera de ciudad".
+ if(r.turno?.locationMatch===false)iniciosFueraCiudad++;
  });
  function kpiTile(label,value,color){return`<div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:14px;text-align:center;"><div style="font-size:20px;font-weight:800;color:${color};">${value}</div><div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);margin-top:4px;">${label}</div></div>`;}
  const resumenHTML=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px;">
@@ -4546,6 +4686,7 @@ async function renderPanel2Insights(rows,allTurnos,fromDate,toDate){
  ${kpiTile('🌙 Recargo nocturno del equipo',fmtHrsSecs(totalNocturnoSecs),'#60a5fa')}
  ${kpiTile('🔴 Ausencias del período',totalAusencias,'#f87171')}
  ${kpiTile('Inicios por dispositivo',`📱 ${dispositivoMovil} · 💻 ${dispositivoDesktop}`,'var(--text)')}
+ ${kpiTile('📍 Inicios fuera de la ciudad registrada',iniciosFueraCiudad,iniciosFueraCiudad>0?'#fb923c':'var(--text-dim)')}
  </div>`;
  // Anomalías detectadas — turnos sospechosos del período (umbral de 4h de diferencia, más
  // estricto que el resaltado de tabla de 2h, para no saturar esta lista con ruido menor).
