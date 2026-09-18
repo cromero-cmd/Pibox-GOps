@@ -2671,7 +2671,18 @@ function setTurnoInactive(){
 // (~110 m) antes de enviarlas a Nominatim: para resolver una ciudad no hace falta más precisión.
 const AGENT_CITY_CACHE_KEY='pg_agent_city';
 const AGENT_CITY_TTL=24*60*60*1000; // 1 día
-function normalizeCityName(s){return String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();}
+// Nominatim (es) devuelve etiquetas como "Bogotá ciudad", "Cali ciudad", "Perímetro Urbano Medellín"
+// o "Bogotá, Distrito Capital" (confirmado en vivo) — se limpian para mostrar y comparar solo la ciudad.
+function cleanCityLabel(s){
+ return String(s||'').replace(/^\s*(per[ií]metro urbano|municipio de|distrito de)\s+/i,'')
+ .replace(/,\s*distrito capital\s*$/i,'').replace(/\s+(ciudad|municipio)\s*$/i,'').trim();
+}
+const CITY_NOISE_TOKENS=new Set(['ciudad','distrito','capital','d','c','dc']);
+function normalizeCityName(s){
+ const tokens=String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim().split(' ').filter(Boolean);
+ const core=tokens.filter(t=>!CITY_NOISE_TOKENS.has(t));
+ return (core.length?core:tokens).join(' ');
+}
 // Ignora tildes y mayúsculas, y compara por palabras completas (no por substring): "Bogotá D.C." coincide
 // con "Bogotá" y "Santiago de Cali" con "Cali", pero "Cali" no coincide con "Calima". Un mismatch falso
 // le muestra al agente una advertencia injusta, así que la comparación es tolerante a propósito.
@@ -2708,7 +2719,7 @@ async function reverseGeocodeCity(lat,lon){
  const resp=await fetch(url,{signal:AbortSignal.timeout(8000)});
  if(!resp.ok)throw new Error('Nominatim respondió '+resp.status);
  const a=(await resp.json()).address||{};
- const candidates=[a.city,a.town,a.village,a.municipality,a.state].filter(Boolean);
+ const candidates=[a.city,a.town,a.village,a.municipality,a.state].filter(Boolean).map(cleanCityLabel).filter(Boolean);
  return{city:candidates[0]||null,candidates};
 }
 // Ciudad registrada del agente = BASE 3.0, col G (índice 6) = correo, col J (índice 9) = ciudad.
@@ -2724,7 +2735,8 @@ function loadAgentCity(){
  let cached=null;
  try{const c=JSON.parse(localStorage.getItem(AGENT_CITY_CACHE_KEY)||'null');if(c&&c.email===email&&c.city)cached=c;}catch(e){}
  if(cached&&(Date.now()-cached.ts)<AGENT_CITY_TTL){window._agentCity=cached.city;return cached.city;}
- for(let attempt=1;attempt<=3;attempt++){
+ // 5 intentos: corre en segundo plano al cargar la app y BASE 3.0 (vía MALLA_SCRIPT) llegó a necesitar 4.
+ for(let attempt=1;attempt<=5;attempt++){
  try{
  const resp=await fetch(MALLA_SCRIPT+'?sheet='+encodeURIComponent('BASE 3.0'),{signal:AbortSignal.timeout(10000)});
  if(!resp.ok)throw new Error('BASE 3.0 respondió '+resp.status);
@@ -2740,7 +2752,7 @@ function loadAgentCity(){
  return city;
  }catch(e){
  console.warn(`[loadAgentCity] intento ${attempt} falló:`,e);
- if(attempt<3)await new Promise(res=>setTimeout(res,1000*attempt));
+ if(attempt<5)await new Promise(res=>setTimeout(res,1500*attempt));
  }
  }
  networkFailed=true;
