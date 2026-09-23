@@ -1409,7 +1409,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
-const APP_VERSION='16.4';
+const APP_VERSION='16.5';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 const SUPER_ADMIN_NAME='Camilo Romero';
@@ -1464,6 +1464,55 @@ function softReload(){
  }
  window.location.href=window.location.pathname+'?r='+Date.now();
 }
+// ── DETECCIÓN DE VERSIÓN NUEVA (v16.5) ──
+// Pi GOps no actualizaba pestañas ya abiertas: el aviso de arriba solo sale DESPUÉS de cargar una versión
+// nueva. Un agente con la pestaña abierta días seguía en una versión vieja (sin campos nuevos de dispositivo
+// ni ubicación) y, con el permiso de ubicación obligatorio, la esquivaría. Aquí se consulta la versión
+// publicada: al iniciar turno se recarga si está desactualizada, y cada 15 min se avisa en pantalla.
+function versionIsNewer(a,b){
+ const pa=String(a).split('.').map(Number),pb=String(b).split('.').map(Number);
+ for(let i=0;i<Math.max(pa.length,pb.length);i++){const x=pa[i]||0,y=pb[i]||0;if(x!==y)return x>y;}
+ return false;
+}
+async function fetchLatestAppVersion(){
+ try{
+ const resp=await fetch(location.pathname+'?vc='+Date.now(),{cache:'no-store',signal:AbortSignal.timeout(4000)});
+ if(!resp.ok)return null;
+ const m=(await resp.text()).match(/const APP_VERSION='([^']+)'/);
+ return m?m[1]:null;
+ }catch(e){return null;}
+}
+// Devuelve la versión publicada si es MÁS NUEVA que la que corre esta pestaña; si no (o si no se pudo
+// consultar), null — falla abierta.
+async function isAppOutdated(){
+ const latest=await fetchLatestAppVersion();
+ return latest&&versionIsNewer(latest,APP_VERSION)?latest:null;
+}
+// Recarga si hay versión nueva. El seguro de 3 min evita un bucle de recargas si la CDN sirve versiones distintas.
+async function reloadIfOutdated(){
+ const latest=await isAppOutdated();
+ if(!latest)return false;
+ let last=0;try{last=Number(sessionStorage.getItem('pg_update_reload')||0);}catch(e){}
+ if(Date.now()-last<3*60*1000)return false;
+ try{sessionStorage.setItem('pg_update_reload',String(Date.now()));}catch(e){}
+ toast('🔄 Hay una versión nueva de Pi GOps. Actualizando… luego vuelve a pulsar «Iniciar turno»');
+ await sleep(1500);
+ window.location.href=window.location.pathname+'?r='+Date.now();
+ return true;
+}
+let _lastVersionCheck=0;
+async function checkForNewVersion(){
+ if(Date.now()-_lastVersionCheck<5*60*1000)return;
+ _lastVersionCheck=Date.now();
+ const latest=await isAppOutdated();
+ if(!latest)return;
+ const b=document.getElementById('update-banner'),c=document.getElementById('update-changelog');
+ if(b)b.style.display='flex';
+ if(c)c.textContent='✦ Esta pestaña tiene la versión '+APP_VERSION+' y ya está publicada la '+latest+'.';
+}
+setInterval(checkForNewVersion,15*60*1000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)checkForNewVersion();});
+// ── FIN DETECCIÓN DE VERSIÓN NUEVA ──
 window._loadAppConfig=()=>{
  applyStoredTheme();
  apiKey=localStorage.getItem('pg_key')||'';
@@ -1499,6 +1548,8 @@ window.onload=()=>{
  if(c)c.textContent='✦ '+APP_CHANGELOG;
  }
  localStorage.setItem('pg_version',APP_VERSION);
+ // Tras una recarga forzada por versión nueva (reloadIfOutdated), confirmarle al agente que ya puede iniciar.
+ try{const u=Number(sessionStorage.getItem('pg_update_reload')||0);if(u&&Date.now()-u<60000)setTimeout(()=>toast('✅ Pi GOps actualizado a la versión '+APP_VERSION+'. Ya puedes iniciar tu turno.'),1500);}catch(e){}
  apiKey=localStorage.getItem('pg_key')||'';
  sheetUrl=localStorage.getItem('pg_sheet')||'';
  vidUrl=localStorage.getItem('pg_vid')||'';
@@ -2954,6 +3005,10 @@ async function _doStartTurno(){
  alert('⚠️ El registro de turno solo está disponible desde un computador de escritorio.\n\nPor favor inicia sesión desde tu computador para registrar tu turno.');
  return;
  }
+ // Versión al día ANTES de iniciar (v16.5): una pestaña vieja esquivaría el permiso de ubicación
+ // obligatorio y no guardaría los campos nuevos. Si hay una versión nueva se recarga y el agente vuelve a
+ // pulsar «Iniciar turno». Falla abierta: si no se puede consultar la versión, se sigue.
+ if(await reloadIfOutdated())return;
  // Ubicación OBLIGATORIA (v16.4): sin permiso no se inicia el turno. Va ANTES de la malla porque puede
  // requerir una acción del agente (activar el permiso) y esa espera no debe consumir el timeout de 20 s de
  // la malla —si lo hiciera, la validación de malla se saltaría en silencio—. El reverse-geocode a Nominatim
