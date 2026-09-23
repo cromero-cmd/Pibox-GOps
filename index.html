@@ -1406,7 +1406,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
-const APP_VERSION='16.2';
+const APP_VERSION='16.3';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 const SUPER_ADMIN_NAME='Camilo Romero';
@@ -2784,6 +2784,53 @@ async function evaluateStartLocation(geoPromise,cityPromise){
  return{locationStatus:'error'};
  }
 }
+// Ícono de dispositivo de INICIO de un turno. Lee los campos nuevos (deviceType, userAgent) y, si no
+// existen, los antiguos (isMobile, ua): faltan los nuevos en turnos anteriores a v15.99 y en los
+// iniciados desde una pestaña que seguía corriendo una versión vieja de la app. El UA se revisa
+// siempre: un iPhone/iPad con "sitio de escritorio" trae plataforma Macintosh + CriOS/FxiOS/EdgiOS,
+// que getDeviceInfo() no detecta como móvil (isMobile/deviceType quedan en escritorio) y el Panel
+// mostraría 💻 para un teléfono.
+function describeTurnoDevice(t){
+ if(!t)return null;
+ const ua=String(t.userAgent||t.ua||'');
+ const iosDesktopMode=/CriOS|FxiOS|EdgiOS/.test(ua);
+ const mobileUA=/iPhone|iPad|iPod|Android|Mobile/i.test(ua);
+ const flaggedMobile=t.deviceType==='mobile'||t.isMobile===true||mobileUA;
+ if(flaggedMobile||iosDesktopMode)return{kind:'mobile',label:!flaggedMobile&&iosDesktopMode?'iPhone/iPad (Chrome iOS en modo «sitio de escritorio»)':'móvil'};
+ if(t.deviceType==='desktop'||t.isMobile===false||ua)return{kind:'desktop',label:'escritorio'};
+ return null;
+}
+// Ícono de ubicación de un turno. Además de ✅/⚠️ (hay locationMatch) muestra un ícono neutro con el
+// motivo cuando la ubicación no pudo validarse, para que "sin ícono" solo signifique "sin dato"
+// (turno anterior a v16.1 o de una pestaña con versión vieja) y no se confunda con las demás causas.
+function turnoLocationBadge(t){
+ if(!t)return '';
+ const attr=s=>esc(s).replace(/"/g,'&quot;'); // esc() no escapa comillas
+ const city=t.locationCity;
+ if(t.locationMatch===true)return`<span title="${attr('Inicio dentro de la ciudad registrada'+(city?' ('+city+')':''))}">📍✅</span>`;
+ if(t.locationMatch===false)return`<span title="${attr('Ciudad detectada: '+(city||'—')+(t.locationRegistered?' · Registrada: '+t.locationRegistered:''))}" style="cursor:help;">📍⚠️</span>`;
+ const why={
+ denied:['📍🚫','Sin validar: el agente bloqueó el permiso de ubicación en su navegador'],
+ timeout:['📍⏳','Sin validar: el navegador no entregó la ubicación a tiempo (permiso sin responder o sin señal de ubicación)'],
+ unavailable:['📍❔','Sin validar: el dispositivo no pudo determinar la ubicación'],
+ unsupported:['📍❔','Sin validar: el navegador no soporta geolocalización'],
+ geocode_failed:['📍❔','Sin validar: se obtuvo la ubicación pero no se pudo convertir a ciudad'],
+ no_registered_city:['📍❔','Sin validar: ciudad detectada '+(city||'—')+', pero no hay ciudad registrada para comparar'],
+ error:['📍❔','Sin validar: error inesperado al validar la ubicación']
+ }[t.locationStatus];
+ return why?`<span title="${attr(why[1])}" style="cursor:help;opacity:.75;">${why[0]}</span>`:'';
+}
+// Falso "sin ciudad registrada": BASE 3.0 (vía MALLA_SCRIPT, inestable) no alcanzó a responder en los
+// 8 s que espera el inicio de turno, aunque el agente sí figure ahí (confirmado en vivo con 3 agentes).
+// Si la ciudad llega después, se completa la validación sobre el mismo turno, sin avisar al agente.
+async function completeLocationValidation(turnoId,detectedCity){
+ try{
+ const registered=await loadAgentCity();
+ if(!registered||!turnoId)return;
+ const match=citiesMatch([detectedCity],registered);
+ await window.updateTurnoInFirebase(turnoId,match?{locationStatus:'ok',locationMatch:true}:{locationStatus:'ok',locationMatch:false,locationRegistered:registered});
+ }catch(e){console.warn('[ubicación] no se pudo completar la validación diferida:',e);}
+}
 async function startTurno(){
  // Bloquear doble clic
  const btnStart=document.getElementById('btn-turno-start');
@@ -2861,6 +2908,8 @@ async function _doStartTurno(){
  }else{window._scheduledTurnoSecs=0;}
  const data={startTime:turnoStartTime,endTime:null,accumulatedSeconds:0,status:'active',device:device.label,isMobile:device.isMobile,ua:device.ua,deviceType:device.isMobile?'mobile':'desktop',userAgent:navigator.userAgent,screenWidth:screen.width,...locationFields};
  currentTurnoId=await window.saveTurnoToFirebase(data);
+ // Sin await: completar la validación en segundo plano no debe retrasar el inicio del turno.
+ if(locationFields.locationStatus==='no_registered_city'&&locationFields.locationCity&&currentTurnoId)completeLocationValidation(currentTurnoId,locationFields.locationCity);
  setTurnoActive({...data,startTime:{toDate:()=>turnoStartTime}});startTimer();scheduleEndNotification();
  toast('✅ Turno iniciado — '+turnoStartTime.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}));
 }
@@ -4162,17 +4211,13 @@ async function loadPanel2(){
  const re24=r.realEnd?r.realEnd.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit',hour12:false}):'';
  const dur=r.realStart&&r.realEnd?secsToHm(Math.max(0,(r.realEnd-r.realStart)/1000)):'—';
  const t=r.turno;
- // Ícono de dispositivo desde el que se inició el turno — deviceType solo existe en turnos
- // creados desde v15.99 en adelante; sin ícono para registros anteriores.
- const deviceIcon=t?.deviceType==='mobile'?'📱':t?.deviceType==='desktop'?'💻':'';
- // Validación de ubicación (v16.1): sin ícono para turnos sin locationMatch (anteriores, permiso
- // denegado, sin ciudad registrada, etc.). esc() no escapa comillas, así que se hace para el atributo.
- const escAttr=s=>esc(s).replace(/"/g,'&quot;');
- const locIcon=t?.locationMatch===true
- ?`<span title="${escAttr('Inicio dentro de la ciudad registrada'+(t.locationCity?' ('+t.locationCity+')':''))}">📍✅</span>`
- :t?.locationMatch===false
- ?`<span title="${escAttr('Ciudad detectada: '+(t.locationCity||'—')+(t.locationRegistered?' · Registrada: '+t.locationRegistered:''))}" style="cursor:help;">📍⚠️</span>`
- :'';
+ // Íconos de dispositivo y ubicación del inicio del turno — ver describeTurnoDevice() y
+ // turnoLocationBadge(): el dispositivo cae a los campos antiguos (isMobile/ua) cuando faltan los
+ // nuevos, y la ubicación muestra un ícono neutro con el motivo cuando no pudo validarse.
+ const dev=describeTurnoDevice(t);
+ const deviceIcon=dev?(dev.kind==='mobile'?'📱':'💻'):'';
+ const deviceTitle=dev?'Iniciado desde '+dev.label:'';
+ const locIcon=turnoLocationBadge(t);
  const gridCols='36px 160px 65px 85px 85px 70px 70px 180px 100px 110px';
  const seAdjRow=(r.scheduledStart&&r.scheduledEnd&&r.scheduledEnd<r.scheduledStart)?new Date(r.scheduledEnd.getTime()+24*3600000):r.scheduledEnd;
  const durProg=r.scheduledStart&&seAdjRow?secsToHm(Math.max(0,Math.round((seAdjRow-r.scheduledStart)/1000))):'—';
@@ -4193,7 +4238,7 @@ async function loadPanel2(){
  <div style="padding:8px 10px;border-right:1px solid var(--border);display:flex;flex-direction:column;justify-content:center;min-width:0;"><div style="font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${r.nombre||r.usuario||''}">${r.nombre||r.usuario?.split('@')[0]||'—'}</div><div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${r.linea||'—'}</div></div>
  <div style="padding:8px 10px;border-right:1px solid var(--border);font-family:var(--mono);color:var(--text-muted);display:flex;align-items:center;">${ds}</div>
  <div style="padding:8px 10px;border-right:1px solid var(--border);font-family:var(--mono);color:var(--text-dim);display:flex;flex-direction:column;justify-content:center;"><div style="font-size:9px;color:var(--text-dim);margin-bottom:1px;">Prog.</div><div>${ss}→${se}</div></div>
- <div style="padding:8px 10px;border-right:1px solid var(--border);font-family:var(--mono);color:${r.realStart&&r.cumplStatus.cls==='tardanza'?'#fbbf24':r.cumplStatus.cls==='cumplió'?'#4ade80':'var(--text-muted)'};display:flex;flex-direction:column;justify-content:center;"><div style="font-size:9px;color:var(--text-dim);margin-bottom:1px;">Real</div><div>${deviceIcon?`<span title="${deviceIcon==='📱'?'Iniciado desde móvil':'Iniciado desde escritorio'}">${deviceIcon}</span> `:''}${locIcon?locIcon+' ':''}${rs}→${re}</div></div>
+ <div style="padding:8px 10px;border-right:1px solid var(--border);font-family:var(--mono);color:${r.realStart&&r.cumplStatus.cls==='tardanza'?'#fbbf24':r.cumplStatus.cls==='cumplió'?'#4ade80':'var(--text-muted)'};display:flex;flex-direction:column;justify-content:center;"><div style="font-size:9px;color:var(--text-dim);margin-bottom:1px;">Real</div><div>${deviceIcon?`<span title="${esc(deviceTitle).replace(/"/g,'&quot;')}">${deviceIcon}</span> `:''}${locIcon?locIcon+' ':''}${rs}→${re}</div></div>
  <div style="padding:8px 8px;border-right:1px solid var(--border);font-family:var(--mono);font-weight:700;color:var(--p2);display:flex;align-items:center;gap:4px;">${dur}${anomalyReason?`<span title="${esc(anomalyReason)}" style="cursor:help;font-size:11px;">⚠️</span>`:''}</div>
  <div style="padding:8px 8px;border-right:1px solid var(--border);font-family:var(--mono);color:var(--text-dim);display:flex;align-items:center;">${durProg}</div>
  <div style="padding:6px 8px;border-right:1px solid var(--border);display:flex;flex-direction:column;gap:4px;align-items:flex-start;">
@@ -4666,12 +4711,14 @@ async function renderPanel2Insights(rows,allTurnos,fromDate,toDate){
  const pctCumplimiento=teamTotalRows?Math.round(((teamCumplio+teamEnCurso+teamNovedad)/teamTotalRows)*100):0;
  let totalExtrasAprobadasMins=0,totalNocturnoSecs=0,totalAusencias=0;
  Object.values(userStats).forEach(v=>{totalExtrasAprobadasMins+=v.extrasAprobadasMins;totalNocturnoSecs+=v.nocturnoSecs;totalAusencias+=v.ausenteTotal;});
- // Turnos iniciados por dispositivo — deviceType solo existe en turnos creados desde v15.99,
- // así que registros anteriores simplemente no cuentan en ninguno de los dos totales.
+ // Turnos iniciados por dispositivo — turnos sin ningún dato de dispositivo no cuentan en ninguno de
+ // los dos totales.
  let dispositivoMovil=0,dispositivoDesktop=0,iniciosFueraCiudad=0;
  rows.forEach(r=>{
- if(r.turno?.deviceType==='mobile')dispositivoMovil++;
- else if(r.turno?.deviceType==='desktop')dispositivoDesktop++;
+ // Misma clasificación que el ícono de la tabla (campos nuevos, con respaldo en los antiguos y en el UA).
+ const dv=describeTurnoDevice(r.turno);
+ if(dv?.kind==='mobile')dispositivoMovil++;
+ else if(dv?.kind==='desktop')dispositivoDesktop++;
  // Solo locationMatch===false cuenta: permiso denegado o sin ciudad registrada no son "fuera de ciudad".
  if(r.turno?.locationMatch===false)iniciosFueraCiudad++;
  });
