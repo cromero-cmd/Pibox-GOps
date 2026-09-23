@@ -60,6 +60,9 @@ onAuthStateChanged(auth, async user => {
  const globalSnap = await getDoc(doc(db, 'configs', 'global'));
  globalCfg = globalSnap.exists() ? globalSnap.data() : {};
  } catch(e) { console.warn('No se pudo leer configs/global:', e); }
+ // Interruptor de emergencia del permiso de ubicación obligatorio (v16.4): en Firestore, configs/global
+ // con requireLocation:false lo desactiva sin desplegar. Por defecto (sin campo, o si la lectura falló) está ACTIVO.
+ window._requireLocation = globalCfg.requireLocation !== false;
  window._delegatedSuperAdmin = null;
  window._delegatedUntil = null;
  if (globalCfg.delegatedSuperAdmin) {
@@ -1406,7 +1409,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
-const APP_VERSION='16.3';
+const APP_VERSION='16.4';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 const SUPER_ADMIN_NAME='Camilo Romero';
@@ -2831,6 +2834,107 @@ async function completeLocationValidation(turnoId,detectedCity){
  await window.updateTurnoInFirebase(turnoId,match?{locationStatus:'ok',locationMatch:true}:{locationStatus:'ok',locationMatch:false,locationRegistered:registered});
  }catch(e){console.warn('[ubicación] no se pudo completar la validación diferida:',e);}
 }
+// ── PERMISO DE UBICACIÓN OBLIGATORIO PARA INICIAR TURNO (v16.4) ──
+// Sin permiso de ubicación NO se inicia el turno. Solo bloquea el permiso denegado: una falla técnica con
+// el permiso ya concedido (sin señal, sin soporte, timeout) NO bloquea — se reintenta una vez y, si sigue
+// fallando, el turno inicia y queda registrado el estado (📍⏳/📍❔ en el Panel). Interruptor de emergencia:
+// configs/global.requireLocation:false en Firestore desactiva el bloqueo (vuelve al comportamiento v16.2).
+async function queryGeoPermission(){
+ try{if(navigator.permissions&&navigator.permissions.query)return(await navigator.permissions.query({name:'geolocation'})).state;}catch(e){}
+ return'unknown';
+}
+// Sin tope duro: el `timeout` de getCurrentPosition no cuenta lo que el agente tarda en responder el
+// aviso del navegador, y aquí hay que ESPERAR esa respuesta (con overlay y botón Cancelar).
+function getPositionOnce(){
+ return new Promise(resolve=>{
+ try{
+ navigator.geolocation.getCurrentPosition(
+ pos=>resolve({status:'ok',lat:pos.coords.latitude,lon:pos.coords.longitude}),
+ err=>resolve({status:err&&err.code===1?'denied':err&&err.code===3?'timeout':'unavailable'}),
+ {enableHighAccuracy:false,timeout:10000,maximumAge:300000}
+ );
+ }catch(e){resolve({status:'unavailable'});}
+ });
+}
+// Se resuelve cuando el agente cambia el permiso a "Permitir" desde el candado del navegador.
+function watchGeoGranted(){
+ let stop=()=>{};
+ const promise=new Promise(resolve=>{
+ (async()=>{try{
+ if(!(navigator.permissions&&navigator.permissions.query))return;
+ const st=await navigator.permissions.query({name:'geolocation'});
+ st.onchange=()=>{if(st.state==='granted')resolve();};
+ stop=()=>{st.onchange=null;};
+ }catch(e){}})();
+ });
+ return{promise,stop:()=>stop()};
+}
+function showLocationOverlay(html){
+ const overlay=document.createElement('div');
+ overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:10000;display:flex;align-items:center;justify-content:center;padding:16px;';
+ overlay.innerHTML=`<div role="alertdialog" aria-modal="true" style="background:var(--surface);border:1px solid rgba(96,165,250,0.4);border-radius:16px;max-width:480px;width:100%;padding:24px;box-shadow:var(--shadow);max-height:90vh;overflow-y:auto;">${html}</div>`;
+ document.body.appendChild(overlay);
+ return overlay;
+}
+const LOC_BTN_PRIMARY='width:100%;background:rgba(96,165,250,0.14);border:1px solid rgba(96,165,250,0.5);color:#60a5fa;padding:10px 14px;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;';
+const LOC_BTN_SECONDARY='width:100%;background:transparent;border:1px solid var(--border);color:var(--text-muted);padding:9px 14px;border-radius:10px;font-size:12px;cursor:pointer;margin-top:8px;';
+// Aviso del navegador pendiente: se le dice al agente dónde mirar. Resuelve con la posición o {cancelled:true}.
+function waitForLocationDecision(positionPromise){
+ const overlay=showLocationOverlay(`
+ <div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:10px;">📍 Permite el acceso a tu ubicación</div>
+ <div style="font-size:13px;color:var(--text-muted);line-height:1.7;">Tu navegador te está mostrando un aviso (arriba, junto a la dirección web). Elige <strong style="color:var(--text);">«Permitir»</strong> para iniciar tu turno.</div>
+ <button id="loc-cancel" style="${LOC_BTN_SECONDARY}margin-top:16px;">Cancelar</button>`);
+ return new Promise(resolve=>{
+ overlay.querySelector('#loc-cancel').onclick=()=>{overlay.remove();resolve({cancelled:true});};
+ positionPromise.then(pos=>{overlay.remove();resolve(pos);});
+ });
+}
+// Ubicación bloqueada: instrucciones para activarla. Resuelve 'retry' (botón, o automático apenas el agente
+// la permite desde el candado) o 'cancel'.
+function showLocationRequiredModal(repeated,grantedSignal){
+ return new Promise(resolve=>{
+ const overlay=showLocationOverlay(`
+ <div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:10px;">📍 Activa tu ubicación para iniciar tu turno</div>
+ <div style="font-size:13px;color:var(--text-muted);line-height:1.7;">Para iniciar tu turno necesitamos verificar la ciudad desde la que te conectas. Solo se guarda la ciudad detectada, no tu ubicación exacta.</div>
+ ${repeated?'<div style="margin-top:10px;font-size:12px;color:#fb923c;font-weight:600;">La ubicación sigue bloqueada para Pi GOps. Revisa los pasos y vuelve a intentarlo.</div>':''}
+ <div style="margin-top:14px;font-size:12px;color:var(--text-muted);line-height:1.8;">
+ <strong style="color:var(--text);">Cómo activarla (Chrome / Edge):</strong><br>
+ 1. Haz clic en el ícono del <strong>candado</strong> (o de ajustes) a la izquierda de la dirección web, arriba.<br>
+ 2. Busca <strong>«Ubicación»</strong> y cámbiala a <strong>«Permitir»</strong>.<br>
+ 3. Si el navegador te pide recargar la página, hazlo y vuelve a pulsar «Iniciar turno».<br>
+ <span style="color:var(--text-dim);">Si sigue sin funcionar, revisa que la ubicación esté activada en tu computador (Windows: Configuración → Privacidad y seguridad → Ubicación).</span>
+ </div>
+ <button id="loc-retry" style="${LOC_BTN_PRIMARY}margin-top:16px;">Ya la activé, reintentar</button>
+ <button id="loc-cancel" style="${LOC_BTN_SECONDARY}">Cancelar</button>`);
+ let done=false;
+ const finish=v=>{if(done)return;done=true;overlay.remove();resolve(v);};
+ overlay.querySelector('#loc-retry').onclick=()=>finish('retry');
+ overlay.querySelector('#loc-cancel').onclick=()=>finish('cancel');
+ if(grantedSignal)grantedSignal.then(()=>finish('retry'));
+ });
+}
+async function requireLocationForStart(){
+ if(window._requireLocation===false)return{ok:true,pos:await getStartPosition()};
+ if(!('geolocation' in navigator))return{ok:true,pos:{status:'unsupported'}};
+ let repeated=false;
+ for(;;){
+ const state=await queryGeoPermission();
+ if(state!=='denied'){
+ const positionPromise=getPositionOnce();
+ let pos=state==='granted'?await positionPromise:await waitForLocationDecision(positionPromise);
+ if(pos.cancelled)return{ok:false};
+ // Permiso concedido pero sin fix: un reintento; si sigue fallando NO se bloquea (queda el estado).
+ if(pos.status==='timeout'||pos.status==='unavailable')pos=await getPositionOnce();
+ if(pos.status!=='denied')return{ok:true,pos};
+ }
+ // Bloqueada: el estado es 'denied' o el agente rechazó el aviso (sin re-preguntar en bucle).
+ const watch=watchGeoGranted();
+ const action=await showLocationRequiredModal(repeated,watch.promise);
+ watch.stop();
+ if(action==='cancel')return{ok:false};
+ repeated=true;
+ }
+}
 async function startTurno(){
  // Bloquear doble clic
  const btnStart=document.getElementById('btn-turno-start');
@@ -2850,10 +2954,14 @@ async function _doStartTurno(){
  alert('⚠️ El registro de turno solo está disponible desde un computador de escritorio.\n\nPor favor inicia sesión desde tu computador para registrar tu turno.');
  return;
  }
- // Ubicación: se arranca ya (el prompt de permiso aparece mientras carga la malla, sin sumar
- // espera), pero el reverse-geocode a Nominatim solo ocurre más abajo si el turno realmente inicia.
- const geoPromise=getStartPosition();
+ // Ubicación OBLIGATORIA (v16.4): sin permiso no se inicia el turno. Va ANTES de la malla porque puede
+ // requerir una acción del agente (activar el permiso) y esa espera no debe consumir el timeout de 20 s de
+ // la malla —si lo hiciera, la validación de malla se saltaría en silencio—. El reverse-geocode a Nominatim
+ // sigue ocurriendo más abajo, solo si el turno realmente inicia. loadAgentCity() corre en paralelo.
  const registeredCityPromise=loadAgentCity();
+ const locGate=await requireLocationForStart();
+ if(!locGate.ok){toast('📍 Para iniciar tu turno debes permitir el acceso a tu ubicación');return;}
+ const geoPromise=Promise.resolve(locGate.pos);
  // Check malla for today
  const userEmail=document.getElementById('user-email').textContent;
  const today=new Date();
