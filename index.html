@@ -1427,7 +1427,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
-const APP_VERSION='16.7';
+const APP_VERSION='16.8';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 const SUPER_ADMIN_NAME='Camilo Romero';
@@ -1835,14 +1835,12 @@ async function loadStrikes(){
  const now=new Date();
  const som=new Date(now.getFullYear(),now.getMonth(),1);
  const eom=new Date(now.getFullYear(),now.getMonth()+1,0,23,59,59);
- let mallaData=[];
+ let mallaData=[];let mallaFalló=false;
  try{
- const resp=await fetch(MALLA_SCRIPT+'?sheet=Malla',{signal:AbortSignal.timeout(20000)});
- if(!resp.ok)throw new Error(`MALLA_SCRIPT respondió ${resp.status}`);
- const csv=await resp.text();
+ const csv=await fetchMallaCSV('loadStrikes');
  mallaData=csv.trim().split('\n').slice(1).map(l=>{const c=parseCSVLine(l);return{fecha:c[1]?.trim(),usuario:c[2]?.trim(),inicio:c[5]?.trim(),fin:c[6]?.trim(),lider:c[9]?.trim(),novedad:c[10]?.trim()};})
  .filter(m=>m.fecha&&m.usuario===userEmail&&!m.novedad);
- }catch(e){console.error('[loadStrikes] fetch MALLA_SCRIPT falló:',e);}
+ }catch(e){console.error('[loadStrikes] fetch MALLA_SCRIPT falló:',e);mallaFalló=true;}
  // Consulta dedicada por agente (window.getUserTurnos) en vez de getRecentTurnos(), que limita a
  // los últimos 300 turnos de TODO el sistema — con suficientes agentes activos, el turno de este
  // agente para el día en cuestión puede quedar fuera de esa ventana según el momento en que se
@@ -1868,7 +1866,9 @@ async function loadStrikes(){
  const dayTurnos=myTurnos.filter(t=>{const td=t.startTime?.toDate?.();return td&&td.toDateString()===d.toDateString();});
  const turno=dayTurnos.find(t=>t.status==='ended')||dayTurnos.find(t=>t.status==='interrupted')||dayTurnos[0]||null;
  const rs=turno?turno.startTime.toDate():null;
- const re=turno?.endTime?.toDate?.();
+ // Turno activo (sin endTime): la salida "real" es ahora — así la no desconexión también se ve en vivo,
+ // no solo al finalizar el turno.
+ const re=turno?.endTime?.toDate?.()||(turno?.status==='active'?new Date():undefined);
  const esVotaciones=esNovedadVotaciones(m.novedad);
  const diffMinsDebug=rs&&ss?Math.round((rs-ss)/60000):null;
  console.log('[loadStrikes]',m.fecha,'ss:',ss,'rs:',rs,'diffMins:',diffMinsDebug,'dayTurnos:',dayTurnos.length,'turnoStatus:',turno?.status,'esVotaciones:',!!esVotaciones);
@@ -2070,6 +2070,10 @@ async function loadStrikes(){
  <div style="margin-top:8px;font-size:10px;color:var(--text-dim);font-family:var(--mono);">⚖️ 3 llamados de atención acumulados (cualquier combinación) = proceso disciplinario</div>
  </div>`;
  const retiradosHTML=strikesRetirados.length?`<div style="padding:10px 16px;border-top:1px solid var(--border);background:rgba(74,222,128,0.05);"><div style="font-size:11px;font-weight:700;color:#4ade80;margin-bottom:4px;">✅ Strikes retirados por justa causa (${strikesRetirados.length})</div>${strikesRetirados.map(s=>`<div style="font-size:10px;color:var(--text-muted);margin-top:3px;">• ${esc(s.fecha)} — ${esc(s.detalle)}${s.motivo?' · '+esc(s.motivo):''}</div>`).join('')}</div>`:'';
+ if(mallaFalló&&!mallaData.length){
+ list.innerHTML=`<div style="padding:24px 16px;text-align:center;font-size:12px;color:var(--text-dim);">⚠️ No se pudo cargar tu malla para calcular los strikes. Se reintentará al recargar.</div>`+reglamHTML;
+ return;
+ }
  if(totalStrikes===0){
  list.innerHTML=`<div style="padding:24px 16px;text-align:center;">
  <div style="font-size:40px;margin-bottom:10px;">🏆</div>
@@ -2624,6 +2628,9 @@ async function initTurnoView(){
  return;
  }
  const existing=await window.getTodayTurno();
+ // Los strikes se calculan siempre, sin depender de en qué estado esté el turno ni de que el resto de
+ // la vista se restaure sin errores (antes solo corrían al final de esta función).
+ loadStrikes().catch(e=>console.error('[loadStrikes]',e));
  if(existing&&existing.status==='active'){
  currentTurnoId=existing.id;turnoStartTime=existing.startTime.toDate();accumulatedSeconds=existing.accumulatedSeconds||0;
  // Cargar horas programadas para el déficit
@@ -2665,7 +2672,6 @@ async function initTurnoView(){
  // Pre-check malla for today
  checkTodayNovedad();
  checkNotifBanner();
- loadStrikes();
 }
 function showTurnoDoneToday(turno){
  const endTime=turno.endTime?.toDate?.();
@@ -3108,6 +3114,7 @@ async function _doStartTurno(){
  // Sin await: completar la validación en segundo plano no debe retrasar el inicio del turno.
  if(locationFields.locationStatus==='no_registered_city'&&locationFields.locationCity&&currentTurnoId)completeLocationValidation(currentTurnoId,locationFields.locationCity);
  setTurnoActive({...data,startTime:{toDate:()=>turnoStartTime}});startTimer();scheduleEndNotification();
+ loadStrikes().catch(e=>console.error('[loadStrikes]',e));
  toast('✅ Turno iniciado — '+turnoStartTime.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}));
 }
 function showTurnoBlocked(novedad){
