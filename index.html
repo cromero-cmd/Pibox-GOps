@@ -1409,7 +1409,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
-const APP_VERSION='16.5';
+const APP_VERSION='16.6';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 const SUPER_ADMIN_NAME='Camilo Romero';
@@ -4695,7 +4695,8 @@ async function renderPanel2Insights(rows,allTurnos,fromDate,toDate){
  novedadTotal:0,novedadPorTipo:{},novedadDetalle:[],
  extrasAprobadasMins:0,extrasAprobadasCount:0,extrasRechazadasCount:0,extrasPendientesCount:0,extrasDetalle:[],
  nocturnoSecs:0,nocturnoDetalle:[],
- strikeLeve:0,strikeModerado:0,strikeGrave:0,strikeNoDesconex:0,strikeDetalle:[]
+ strikeLeve:0,strikeModerado:0,strikeGrave:0,strikeNoDesconex:0,strikeDetalle:[],
+ movilDetalle:[],fueraCiudadDetalle:[]
  };
  return userStats[u];
  }
@@ -4882,9 +4883,25 @@ async function renderPanel2Insights(rows,allTurnos,fromDate,toDate){
  const dv=describeTurnoDevice(r.turno);
  if(dv?.kind==='mobile')dispositivoMovil++;
  else if(dv?.kind==='desktop')dispositivoDesktop++;
+ const uv=userStats[r.usuario||'—'];
+ const horaIni=r.realStart?r.realStart.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'—';
+ if(uv&&dv?.kind==='mobile')uv.movilDetalle.push({fecha:r.fecha||'',hora:horaIni,label:dv.label});
  // Solo locationMatch===false cuenta: permiso denegado o sin ciudad registrada no son "fuera de ciudad".
- if(r.turno?.locationMatch===false)iniciosFueraCiudad++;
+ if(r.turno?.locationMatch===false){
+ iniciosFueraCiudad++;
+ if(uv)uv.fueraCiudadDetalle.push({fecha:r.fecha||'',hora:horaIni,detectada:r.turno.locationCity||'—',registrada:r.turno.locationRegistered||'—'});
+ }
  });
+ // Reportes desplegables de los nuevos criterios (dispositivo móvil y inicio fuera de la ciudad registrada).
+ const movilEntries=Object.entries(userStats).filter(([,v])=>v.movilDetalle.length>0).sort((a,b)=>b[1].movilDetalle.length-a[1].movilDetalle.length);
+ const fueraCiudadEntries=Object.entries(userStats).filter(([,v])=>v.fueraCiudadDetalle.length>0).sort((a,b)=>b[1].fueraCiudadDetalle.length-a[1].fueraCiudadDetalle.length);
+ const cntBadge=(n,c)=>`<span style="font-size:11px;font-weight:800;color:${c};">${n} ${n===1?'inicio':'inicios'}</span>`;
+ const movilHTML=insightCard('movil','📱 Inicios desde dispositivo móvil','#38bdf8',movilEntries,'Sin inicios desde móvil en este período',
+ v=>cntBadge(v.movilDetalle.length,'#38bdf8'),
+ v=>v.movilDetalle.map(d=>detailRow(d.fecha,`${esc(d.hora)} · ${esc(d.label)}`)).join(''));
+ const fueraCiudadHTML=insightCard('fuera-ciudad','📍 Inicios fuera de la ciudad registrada','#fb923c',fueraCiudadEntries,'Sin inicios fuera de la ciudad registrada en este período',
+ v=>cntBadge(v.fueraCiudadDetalle.length,'#fb923c'),
+ v=>v.fueraCiudadDetalle.map(d=>detailRow(d.fecha,`${esc(d.hora)} · detectada: <b>${esc(d.detectada)}</b> · registrada: ${esc(d.registrada)}`)).join(''));
  function kpiTile(label,value,color){return`<div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:14px;text-align:center;"><div style="font-size:20px;font-weight:800;color:${color};">${value}</div><div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);margin-top:4px;">${label}</div></div>`;}
  const resumenHTML=`<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px;">
  ${kpiTile('% Cumplimiento general',pctCumplimiento+'%',pctCumplimiento>=90?'#4ade80':pctCumplimiento>=75?'#fbbf24':'#f87171')}
@@ -4945,6 +4962,8 @@ async function renderPanel2Insights(rows,allTurnos,fromDate,toDate){
  ${extrasHTML}
  ${nocturnoHTML}
  ${strikesHTML}
+ ${movilHTML}
+ ${fueraCiudadHTML}
  ${anomaliasHTML}
  </div>`;
  // Datos para exportInsightsExcel()
