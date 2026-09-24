@@ -327,7 +327,9 @@ function sendPendingStrikeAlerts() {
 
       if (realStart && scheduledStart) {
         var diffMins = Math.round((realStart - scheduledStart) / 60000);
-        if (diffMins >= 60) {
+        if (diffMins > 5 && isStrikeWaived(agent.email, m.fecha, 'tardanza')) {
+          Logger.log('Strike de tardanza retirado (justa causa): ' + agent.email + ' ' + m.fecha);
+        } else if (diffMins >= 60) {
           strikesGrave.push({ fecha: m.fecha, descripcion: 'Llegó ' + diffMins + ' min tarde (programado ' + m.inicio + ')' });
         } else if (diffMins >= 20) {
           strikesModerado.push({ fecha: m.fecha, descripcion: 'Llegó ' + diffMins + ' min tarde (programado ' + m.inicio + ')' });
@@ -339,7 +341,9 @@ function sendPendingStrikeAlerts() {
         // Turno nocturno: si fin programado < inicio programado, sumar 24h para comparar correctamente
         var scheduledEndAdj = (scheduledEnd < scheduledStart) ? new Date(scheduledEnd.getTime() + 24 * 3600000) : scheduledEnd;
         var extraHrs = (realEnd - scheduledEndAdj) / 3600000;
-        if (extraHrs > 4) {
+        if (extraHrs > 4 && isStrikeWaived(agent.email, m.fecha, 'nodesconex')) {
+          Logger.log('Strike de no desconexión retirado (justa causa): ' + agent.email + ' ' + m.fecha);
+        } else if (extraHrs > 4) {
           strikesNoDesconex.push({ fecha: m.fecha, descripcion: 'No se desconectó a tiempo — salida programada ' + m.fin });
         }
       }
@@ -1120,6 +1124,15 @@ function firestoreGetDocRaw(path) {
     Logger.log('firestoreGetDocRaw error (' + path + '): ' + e.message);
     return null;
   }
+}
+
+// ¿Este strike fue retirado por justa causa desde Insights? (colección strike_waivers, mismo id
+// que strikeWaiverId() en index.html: {email}_{YYYYMMDD}_{tardanza|nodesconex}). fecha = DD/MM/YYYY.
+function isStrikeWaived(email, fecha, cat) {
+  var p = String(fecha || '').split('/');
+  if (p.length !== 3) return false;
+  var id = email + '_' + p[2] + ('0' + p[1]).slice(-2) + ('0' + p[0]).slice(-2) + '_' + cat;
+  return !!firestoreGetDocRaw('strike_waivers/' + encodeURIComponent(id));
 }
 
 function firestoreSetDocRaw(path, fields) {

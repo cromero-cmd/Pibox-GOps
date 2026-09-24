@@ -374,6 +374,24 @@ window.saveStrikeNotification = async (docId, data) => {
  return true;
  } catch(e) { console.error('[saveStrikeNotification]', e); return false; }
 };
+window.getStrikeWaivers = async (userEmail) => {
+ // Strikes retirados por justa causa (colección strike_waivers, un doc por agente+día+categoría).
+ // Sin userEmail trae todos (Insights); con userEmail solo los del agente (su panel de strikes).
+ // Si las reglas de Firestore no permiten leer, devuelve [] y los strikes se cuentan completos.
+ try {
+ const col = collection(db, 'strike_waivers');
+ const snap = await getDocs(userEmail ? query(col, where('userEmail', '==', userEmail)) : col);
+ return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+ } catch(e) { console.error('[getStrikeWaivers]', e); return []; }
+};
+window.saveStrikeWaiver = async (docId, data) => {
+ try { await setDoc(doc(db, 'strike_waivers', docId), data); return { ok: true }; }
+ catch(e) { console.error('[saveStrikeWaiver]', e); return { ok: false, error: e.message || String(e) }; }
+};
+window.deleteStrikeWaiver = async (docId) => {
+ try { await deleteDoc(doc(db, 'strike_waivers', docId)); return { ok: true }; }
+ catch(e) { console.error('[deleteStrikeWaiver]', e); return { ok: false, error: e.message || String(e) }; }
+};
 window.getApprovedOvertimeEvents = async (fromDate, toDate) => {
  // Respaldo para el reporte de nómina: turno.overtimeStatus solo se marca si el evento de
  // horas extras tenía turnoId al momento de crearse (submitOvertimeResponse guarda
@@ -1409,7 +1427,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
-const APP_VERSION='16.6';
+const APP_VERSION='16.7';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 const SUPER_ADMIN_NAME='Camilo Romero';
@@ -1772,6 +1790,13 @@ function _sendEndNotification(endTime){
  };
 }
 // ── STRIKES ──
+// Retiro de strikes por justa causa — id estable por agente+día+categoría ('tardanza' cubre leve,
+// moderada o grave del día; 'nodesconex' es aparte). fecha viene como DD/MM/YYYY de la malla.
+function strikeWaiverId(email,fecha,cat){
+ const p=String(fecha||'').split('/');
+ if(p.length!==3)return null;
+ return `${email}_${p[2]}${p[1].padStart(2,'0')}${p[0].padStart(2,'0')}_${cat}`;
+}
 // Reconstruye cronológicamente qué strikes generaron cada llamado numerado — cruza las 4
 // categorías por fecha y, cada vez que UNA categoría acumula suficientes strikes propios para
 // cruzar su propio umbral (3 leve, 2 moderada, 1 grave, 3 no desconexión), cierra ese lote como
@@ -1801,6 +1826,8 @@ function buildLlamadoHistorial(strikesLeve,strikesModerada,strikesGrave,strikesN
 }
 async function loadStrikes(){
  const userEmail=document.getElementById('user-email').textContent;
+ const waiverMap=new Map(((window.getStrikeWaivers?await window.getStrikeWaivers(userEmail):[])).map(w=>[w.id,w]));
+ const strikesRetirados=[];
  const isAdmin=(window.ADMINS||ADMINS).includes(userEmail)||isSuperAdminUser(userEmail);
  if(isAdmin&&!window._agentPreviewMode){document.getElementById('strikes-wrap').style.display='none';return;}
  const strikeTardanzaMins=parseInt(localStorage.getItem('pg_strike_tardanza')||'5');
@@ -1845,9 +1872,12 @@ async function loadStrikes(){
  const esVotaciones=esNovedadVotaciones(m.novedad);
  const diffMinsDebug=rs&&ss?Math.round((rs-ss)/60000):null;
  console.log('[loadStrikes]',m.fecha,'ss:',ss,'rs:',rs,'diffMins:',diffMinsDebug,'dayTurnos:',dayTurnos.length,'turnoStatus:',turno?.status,'esVotaciones:',!!esVotaciones);
+ const waivT=waiverMap.get(strikeWaiverId(userEmail,m.fecha,'tardanza'));
  if(rs&&ss&&!esVotaciones){
  const diffMins=Math.round((rs-ss)/60000);
- if(diffMins>=60){
+ if(waivT&&diffMins>strikeTardanzaMins){
+ strikesRetirados.push({fecha:m.fecha,detalle:`Tardanza de ${diffMins} min`,motivo:waivT.motivo||''});
+ } else if(diffMins>=60){
  strikesGrave.push({fecha:m.fecha,detalle:`Llegó ${diffMins} min tarde (${rs.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'})}, programado ${m.inicio})`});
  } else if(diffMins>=20){
  strikesModerade.push({fecha:m.fecha,detalle:`Llegó ${diffMins} min tarde (${rs.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'})}, programado ${m.inicio})`});
@@ -1862,7 +1892,10 @@ async function loadStrikes(){
  // en vez de ~24h.
  const seAdj=(ss&&se<ss)?new Date(se.getTime()+24*3600000):se;
  const extraHrs=(re-seAdj)/3600000;
- if(extraHrs>strikeNoDesconexionHrs){
+ const waivN=waiverMap.get(strikeWaiverId(userEmail,m.fecha,'nodesconex'));
+ if(extraHrs>strikeNoDesconexionHrs&&waivN){
+ strikesRetirados.push({fecha:m.fecha,detalle:'No desconexión',motivo:waivN.motivo||''});
+ } else if(extraHrs>strikeNoDesconexionHrs){
  strikesNoDesconex.push({fecha:m.fecha,detalle:`No se desconectó a tiempo — salida ${m.fin}, salida real ${re.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'})}`});
  }
  }
@@ -2036,12 +2069,13 @@ async function loadStrikes(){
  </div>
  <div style="margin-top:8px;font-size:10px;color:var(--text-dim);font-family:var(--mono);">⚖️ 3 llamados de atención acumulados (cualquier combinación) = proceso disciplinario</div>
  </div>`;
+ const retiradosHTML=strikesRetirados.length?`<div style="padding:10px 16px;border-top:1px solid var(--border);background:rgba(74,222,128,0.05);"><div style="font-size:11px;font-weight:700;color:#4ade80;margin-bottom:4px;">✅ Strikes retirados por justa causa (${strikesRetirados.length})</div>${strikesRetirados.map(s=>`<div style="font-size:10px;color:var(--text-muted);margin-top:3px;">• ${esc(s.fecha)} — ${esc(s.detalle)}${s.motivo?' · '+esc(s.motivo):''}</div>`).join('')}</div>`:'';
  if(totalStrikes===0){
  list.innerHTML=`<div style="padding:24px 16px;text-align:center;">
  <div style="font-size:40px;margin-bottom:10px;">🏆</div>
  <div style="font-size:15px;font-weight:700;color:#4ade80;margin-bottom:4px;">¡Sin strikes este mes!</div>
  <div style="font-size:12px;color:var(--text-dim);">Tu puntualidad y responsabilidad son excelentes. ¡Sigue así!</div>
- </div>`+reglamHTML;
+ </div>`+retiradosHTML+reglamHTML;
  return;
  }
  list.innerHTML=llamadosHTML+avisoHTML+
@@ -2049,7 +2083,7 @@ async function loadStrikes(){
  tipoRow('🟠','Tardanza moderada','#fb923c',strikesModerade,2,faltanModerado)+
  tipoRow('🔴','Tardanza grave','#f87171',strikesGrave,1,faltanGrave)+
  tipoRow('🔵','No desconexión','#60a5fa',strikesNoDesconex,3,faltanNoDesconex)+
- reglamHTML;
+ retiradosHTML+reglamHTML;
 }
 function switchTab(t){
  if(t!=='home')localStorage.setItem('pg_active_tab',t);
@@ -4661,9 +4695,31 @@ function applyInsightsNovedadFilter(){
  if(!listEl)return;
  listEl.innerHTML=filtered.length?insightsAgentRowsHTML('novedad',filtered,insightsNovedadBadges,insightsNovedadDetail):'<div style="font-size:11px;color:var(--text-dim);padding:6px 0;">Sin resultados para este filtro</div>';
 }
+async function retirarStrike(wid){
+ const ctx=window._strikeCtx?.[wid];
+ if(!ctx||!isSuperAdminUser(document.getElementById('user-email').textContent))return;
+ const motivo=(prompt(`Retirar strike de ${ctx.nombre} (${ctx.fecha})\n${ctx.detalle}\n\nMotivo (obligatorio, ej. cita médica):`)||'').trim();
+ if(!motivo){toast('Retiro cancelado: el motivo es obligatorio');return;}
+ const r=await window.saveStrikeWaiver(wid,{userEmail:ctx.email,userName:ctx.nombre,fecha:ctx.fecha,cat:ctx.cat,detalle:ctx.detalle,motivo,waivedBy:document.getElementById('user-email').textContent,waivedAt:new Date().toISOString()});
+ if(!r.ok){toast('❌ No se pudo retirar el strike: '+r.error);return;}
+ toast('✅ Strike retirado');
+ if(window._insightsArgs)renderPanel2Insights(...window._insightsArgs);
+}
+async function restaurarStrike(wid){
+ if(!isSuperAdminUser(document.getElementById('user-email').textContent))return;
+ if(!confirm('¿Restaurar este strike? Volverá a contar para los llamados de atención.'))return;
+ const r=await window.deleteStrikeWaiver(wid);
+ if(!r.ok){toast('❌ No se pudo restaurar: '+r.error);return;}
+ toast('↩ Strike restaurado');
+ if(window._insightsArgs)renderPanel2Insights(...window._insightsArgs);
+}
 async function renderPanel2Insights(rows,allTurnos,fromDate,toDate){
  const el=document.getElementById('panel2-insights');
  if(!el||!rows.length)return;
+ window._insightsArgs=[rows,allTurnos,fromDate,toDate];
+ const waiverMap=new Map(((window.getStrikeWaivers?await window.getStrikeWaivers():[])).map(w=>[w.id,w]));
+ const canWaive=isSuperAdminUser(document.getElementById('user-email').textContent)&&!window._agentPreviewMode;
+ window._strikeCtx={};
  const strikeTardanzaMins=parseInt(localStorage.getItem('pg_strike_tardanza')||'5');
  const strikeNoDesconexionHrs=parseFloat(localStorage.getItem('pg_strike_nodesconexion')||'4');
  const fmtHM=mins=>{mins=Math.round(mins||0);const h=Math.floor(mins/60),m=mins%60;if(h&&m)return`${h}h ${m}m`;if(h)return`${h}h`;return`${m}m`;};
@@ -4695,7 +4751,7 @@ async function renderPanel2Insights(rows,allTurnos,fromDate,toDate){
  novedadTotal:0,novedadPorTipo:{},novedadDetalle:[],
  extrasAprobadasMins:0,extrasAprobadasCount:0,extrasRechazadasCount:0,extrasPendientesCount:0,extrasDetalle:[],
  nocturnoSecs:0,nocturnoDetalle:[],
- strikeLeve:0,strikeModerado:0,strikeGrave:0,strikeNoDesconex:0,strikeDetalle:[],
+ strikeLeve:0,strikeModerado:0,strikeGrave:0,strikeNoDesconex:0,strikeDetalle:[],strikeRetirados:[],
  movilDetalle:[],fueraCiudadDetalle:[]
  };
  return userStats[u];
@@ -4718,9 +4774,18 @@ async function renderPanel2Insights(rows,allTurnos,fromDate,toDate){
  if(!esVot){
  v.tardanzaCount++;v.tardanzaMins+=mins;
  v.tardanzaDetalle.push({fecha:r.fecha||'',mins,real:realStr,prog:progStr});
- if(mins>=60){v.strikeGrave++;v.strikeDetalle.push({tipo:'🔴 Grave',fecha:r.fecha||'',detalle:`+${mins} min tarde (${realStr}, prog. ${progStr})`});}
- else if(mins>=20){v.strikeModerado++;v.strikeDetalle.push({tipo:'🟠 Moderada',fecha:r.fecha||'',detalle:`+${mins} min tarde (${realStr}, prog. ${progStr})`});}
- else if(mins>strikeTardanzaMins){v.strikeLeve++;v.strikeDetalle.push({tipo:'🟡 Leve',fecha:r.fecha||'',detalle:`+${mins} min tarde (${realStr}, prog. ${progStr})`});}
+ const wid=strikeWaiverId(r.usuario,r.fecha,'tardanza');
+ const tipoT=mins>=60?'🔴 Grave':mins>=20?'🟠 Moderada':mins>strikeTardanzaMins?'🟡 Leve':null;
+ if(tipoT){
+ const det=`+${mins} min tarde (${realStr}, prog. ${progStr})`;
+ const w=wid&&waiverMap.get(wid);
+ if(wid)window._strikeCtx[wid]={email:r.usuario,nombre:v.nombre,fecha:r.fecha||'',cat:'tardanza',detalle:`${tipoT} — ${det}`};
+ if(w)v.strikeRetirados.push({tipo:tipoT,fecha:r.fecha||'',detalle:det,wid,motivo:w.motivo||'',por:w.waivedBy||''});
+ else{
+ if(mins>=60)v.strikeGrave++;else if(mins>=20)v.strikeModerado++;else v.strikeLeve++;
+ v.strikeDetalle.push({tipo:tipoT,fecha:r.fecha||'',detalle:det,wid});
+ }
+ }
  }
  } else if(cls==='ausente'||cls==='ausente_justificada'||cls==='ausente_injustificada'){
  v.ausenteTotal++;
@@ -4742,10 +4807,14 @@ async function renderPanel2Insights(rows,allTurnos,fromDate,toDate){
  const scheduledEndAdj=(r.scheduledStart&&r.scheduledEnd<r.scheduledStart)?new Date(r.scheduledEnd.getTime()+24*3600000):r.scheduledEnd;
  const extraHrs=(r.realEnd-scheduledEndAdj)/3600000;
  if(extraHrs>strikeNoDesconexionHrs){
- v.strikeNoDesconex++;
  const finProg=r.scheduledEnd.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'});
  const finReal=r.realEnd.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'});
- v.strikeDetalle.push({tipo:'🔵 No desconexión',fecha:r.fecha||'',detalle:`Salida prog. ${finProg}, salida real ${finReal} (+${Math.round(extraHrs*10)/10}h)`});
+ const det=`Salida prog. ${finProg}, salida real ${finReal} (+${Math.round(extraHrs*10)/10}h)`;
+ const wid=strikeWaiverId(r.usuario,r.fecha,'nodesconex');
+ const w=wid&&waiverMap.get(wid);
+ if(wid)window._strikeCtx[wid]={email:r.usuario,nombre:v.nombre,fecha:r.fecha||'',cat:'nodesconex',detalle:`🔵 No desconexión — ${det}`};
+ if(w)v.strikeRetirados.push({tipo:'🔵 No desconexión',fecha:r.fecha||'',detalle:det,wid,motivo:w.motivo||'',por:w.waivedBy||''});
+ else{v.strikeNoDesconex++;v.strikeDetalle.push({tipo:'🔵 No desconexión',fecha:r.fecha||'',detalle:det,wid});}
  }
  }
  // Recargo nocturno — cruza el turno real (ya viene de Firestore vía panel2AllRows) con 7pm-6am.
@@ -4812,7 +4881,7 @@ async function renderPanel2Insights(rows,allTurnos,fromDate,toDate){
  const novedadEntries=Object.entries(userStats).filter(([,v])=>v.novedadTotal>0).sort((a,b)=>b[1].novedadTotal-a[1].novedadTotal);
  const extrasEntries=Object.entries(userStats).filter(([,v])=>v.extrasAprobadasCount>0||v.extrasRechazadasCount>0||v.extrasPendientesCount>0).sort((a,b)=>b[1].extrasAprobadasMins-a[1].extrasAprobadasMins);
  const nocturnoEntries=Object.entries(userStats).filter(([,v])=>v.nocturnoSecs>0).sort((a,b)=>b[1].nocturnoSecs-a[1].nocturnoSecs);
- const strikeEntries=Object.entries(userStats).filter(([,v])=>v.totalStrikes>0).sort((a,b)=>b[1].totalStrikes-a[1].totalStrikes);
+ const strikeEntries=Object.entries(userStats).filter(([,v])=>v.totalStrikes>0||v.strikeRetirados.length>0).sort((a,b)=>b[1].totalStrikes-a[1].totalStrikes);
  // Tarjeta genérica expandible — igual patrón para las 6 categorías
  function detailRow(fecha,content){return`<div style="display:grid;grid-template-columns:100px 1fr;gap:6px;padding:4px 0;border-bottom:1px solid var(--border);"><span style="font-size:10px;color:var(--text-dim);font-family:var(--mono);">${esc(fecha)}</span><span style="font-size:10px;color:var(--text-muted);">${content}</span></div>`;}
  // Cada tarjeta es colapsable — mismo patrón de clic que el detalle por agente (toggle de
@@ -4867,10 +4936,13 @@ async function renderPanel2Insights(rows,allTurnos,fromDate,toDate){
  const nocturnoHTML=insightCard('nocturno','🌙 Recargo nocturno (7pm–6am)','#60a5fa',nocturnoEntries,'Sin horas de recargo nocturno en este período',
  v=>`<span style="font-size:11px;font-weight:800;color:#60a5fa;">${fmtHrsSecs(v.nocturnoSecs)}</span>`,
  v=>v.nocturnoDetalle.map(d=>detailRow(d.fecha,d.horas)).join(''));
+ const btnStyle='margin-left:8px;background:none;border:1px solid var(--border);color:var(--text-muted);padding:1px 7px;border-radius:6px;font-size:10px;font-family:var(--mono);cursor:pointer;';
+ const retirarBtn=wid=>canWaive&&wid?`<button onclick="retirarStrike('${wid}')" style="${btnStyle}">✂️ Retirar</button>`:'';
+ const restaurarBtn=wid=>canWaive&&wid?`<button onclick="restaurarStrike('${wid}')" style="${btnStyle}">↩ Restaurar</button>`:'';
  const strikesHTML=insightCard('strikes','⚖️ Strikes del período','#fbbf24',strikeEntries,'Sin strikes en este período',
  v=>{const color=v.llamados>=3?'#f87171':v.llamados===2?'#fb923c':v.llamados===1?'#fbbf24':'#9ca3af';
- return`${v.strikeLeve>0?`<span style="font-size:10px;background:rgba(251,191,36,0.1);color:#fbbf24;border:1px solid rgba(251,191,36,0.3);padding:1px 7px;border-radius:10px;font-family:var(--mono);">🟡 ${v.strikeLeve}</span>`:''}${v.strikeModerado>0?`<span style="font-size:10px;background:rgba(251,146,60,0.1);color:#fb923c;border:1px solid rgba(251,146,60,0.3);padding:1px 7px;border-radius:10px;font-family:var(--mono);">🟠 ${v.strikeModerado}</span>`:''}${v.strikeGrave>0?`<span style="font-size:10px;background:rgba(248,113,113,0.1);color:#f87171;border:1px solid rgba(248,113,113,0.3);padding:1px 7px;border-radius:10px;font-family:var(--mono);">🔴 ${v.strikeGrave}</span>`:''}${v.strikeNoDesconex>0?`<span style="font-size:10px;background:rgba(96,165,250,0.1);color:#60a5fa;border:1px solid rgba(96,165,250,0.3);padding:1px 7px;border-radius:10px;font-family:var(--mono);">🔵 ${v.strikeNoDesconex}</span>`:''}<span style="font-size:11px;font-weight:800;color:${color};background:${color}22;border:1px solid ${color}44;padding:2px 8px;border-radius:10px;font-family:var(--mono);">${v.totalStrikes} strike${v.totalStrikes!==1?'s':''}</span>${v.llamados>0?`<span style="font-size:10px;color:${color};font-family:var(--mono);">· ${v.llamados} llamado${v.llamados!==1?'s':''}</span>`:''}${v.llamados>=3?`<span style="font-size:11px;">⚖️</span>`:''}`;},
- v=>v.strikeDetalle.map(d=>detailRow(d.fecha,`<span style="background:${d.tipo.includes('Grave')?'rgba(248,113,113,0.1)':d.tipo.includes('Modera')?'rgba(251,146,60,0.1)':d.tipo.includes('Leve')?'rgba(251,191,36,0.1)':'rgba(96,165,250,0.1)'};color:${d.tipo.includes('Grave')?'#f87171':d.tipo.includes('Modera')?'#fb923c':d.tipo.includes('Leve')?'#fbbf24':'#60a5fa'};padding:1px 6px;border-radius:10px;margin-right:6px;">${d.tipo}</span>${d.detalle}`)).join(''));
+ return`${v.strikeLeve>0?`<span style="font-size:10px;background:rgba(251,191,36,0.1);color:#fbbf24;border:1px solid rgba(251,191,36,0.3);padding:1px 7px;border-radius:10px;font-family:var(--mono);">🟡 ${v.strikeLeve}</span>`:''}${v.strikeModerado>0?`<span style="font-size:10px;background:rgba(251,146,60,0.1);color:#fb923c;border:1px solid rgba(251,146,60,0.3);padding:1px 7px;border-radius:10px;font-family:var(--mono);">🟠 ${v.strikeModerado}</span>`:''}${v.strikeGrave>0?`<span style="font-size:10px;background:rgba(248,113,113,0.1);color:#f87171;border:1px solid rgba(248,113,113,0.3);padding:1px 7px;border-radius:10px;font-family:var(--mono);">🔴 ${v.strikeGrave}</span>`:''}${v.strikeNoDesconex>0?`<span style="font-size:10px;background:rgba(96,165,250,0.1);color:#60a5fa;border:1px solid rgba(96,165,250,0.3);padding:1px 7px;border-radius:10px;font-family:var(--mono);">🔵 ${v.strikeNoDesconex}</span>`:''}<span style="font-size:11px;font-weight:800;color:${color};background:${color}22;border:1px solid ${color}44;padding:2px 8px;border-radius:10px;font-family:var(--mono);">${v.totalStrikes} strike${v.totalStrikes!==1?'s':''}</span>${v.llamados>0?`<span style="font-size:10px;color:${color};font-family:var(--mono);">· ${v.llamados} llamado${v.llamados!==1?'s':''}</span>`:''}${v.llamados>=3?`<span style="font-size:11px;">⚖️</span>`:''}${v.strikeRetirados.length?`<span style="font-size:10px;color:#4ade80;font-family:var(--mono);">✅ ${v.strikeRetirados.length} retirado${v.strikeRetirados.length!==1?'s':''}</span>`:''}`;},
+ v=>v.strikeDetalle.map(d=>detailRow(d.fecha,`<span style="background:${d.tipo.includes('Grave')?'rgba(248,113,113,0.1)':d.tipo.includes('Modera')?'rgba(251,146,60,0.1)':d.tipo.includes('Leve')?'rgba(251,191,36,0.1)':'rgba(96,165,250,0.1)'};color:${d.tipo.includes('Grave')?'#f87171':d.tipo.includes('Modera')?'#fb923c':d.tipo.includes('Leve')?'#fbbf24':'#60a5fa'};padding:1px 6px;border-radius:10px;margin-right:6px;">${d.tipo}</span>${d.detalle}${retirarBtn(d.wid)}`)).join('')+v.strikeRetirados.map(d=>detailRow(d.fecha,`<span style="background:rgba(74,222,128,0.1);color:#4ade80;padding:1px 6px;border-radius:10px;margin-right:6px;">✅ Retirado</span><s style="opacity:.6;">${d.tipo} ${d.detalle}</s><br/>Motivo: ${esc(d.motivo)}${d.por?' · por '+esc(d.por):''}${restaurarBtn(d.wid)}`)).join(''));
  // Resumen del equipo
  const pctCumplimiento=teamTotalRows?Math.round(((teamCumplio+teamEnCurso+teamNovedad)/teamTotalRows)*100):0;
  let totalExtrasAprobadasMins=0,totalNocturnoSecs=0,totalAusencias=0;
