@@ -1172,6 +1172,7 @@ body.agent-preview-mode header{margin-top:34px;}
  <button class="turno-filter-btn" onclick="showOvertimeRequests()" style="border-color:rgba(251,146,60,0.4);color:#fb923c;" id="btn-overtime-requests">⏰ Horas extras <span id="overtime-badge" style="display:none;background:#fb923c;color:white;border-radius:100px;padding:1px 6px;font-size:10px;margin-left:4px;"></span></button>
  <button class="turno-filter-btn" onclick="showEarlyLeaveRequests()" style="border-color:rgba(96,165,250,0.4);color:#60a5fa;" id="btn-earlyleave-requests">🏁 Salidas anticipadas <span id="earlyleave-badge" style="display:none;background:#60a5fa;color:white;border-radius:100px;padding:1px 6px;font-size:10px;margin-left:4px;"></span></button>
  <button class="turno-filter-btn" onclick="showExceededWeeksModal()" style="border-color:rgba(167,139,250,0.4);color:#a78bfa;" id="btn-exceeded-weeks">📅 Semanas excedidas <span id="exceeded-weeks-badge" style="display:none;background:#a78bfa;color:white;border-radius:100px;padding:1px 6px;font-size:10px;margin-left:4px;"></span></button>
+ <button class="turno-filter-btn" onclick="showStrikeAppeals()" style="border-color:rgba(251,191,36,0.4);color:#fbbf24;" id="btn-strike-appeals">⚖️ Apelaciones de strikes <span id="strike-appeals-badge" style="display:none;background:#fbbf24;color:#1a1a1a;border-radius:100px;padding:1px 6px;font-size:10px;margin-left:4px;"></span></button>
  <button class="turno-filter-btn" onclick="openPayrollPreview()" style="border-color:rgba(74,222,128,0.3);color:#4ade80;">📋 Nómina</button>
  <button class="turno-filter-btn" onclick="exportPanel2XLSX()" style="border-color:rgba(74,222,128,0.3);color:#4ade80;">⬇ Excel</button>
  <button class="turno-filter-btn" onclick="loadPanel2()" style="padding:5px 12px;">↻</button>
@@ -1439,7 +1440,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
-const APP_VERSION='17.0';
+const APP_VERSION='17.1';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 const SUPER_ADMIN_NAME='Camilo Romero';
@@ -4254,6 +4255,7 @@ async function loadPanel2(){
  if(!activeEl){setTimeout(()=>loadPanel2(),200);return;}
  if(window.loadOvertimeEvents){window.loadOvertimeEvents().then(events=>{const badge=document.getElementById('overtime-badge');const n=events.filter(e=>e._actionable).length;if(badge&&n>0){badge.style.display='inline';badge.textContent=n;}else if(badge){badge.style.display='none';}});}
  loadEarlyLeaveBadge();
+ loadStrikeAppealsBadge();
  Object.values(panel2ActiveTimers).forEach(clearInterval);panel2ActiveTimers={};
  // Filtros superiores (línea y líder) sobre activos — usar malla ya cargada
  const topLinea=document.getElementById('panel2-linea-filter-top')?.value||'';
@@ -4750,20 +4752,73 @@ function applyInsightsNovedadFilter(){
  if(!listEl)return;
  listEl.innerHTML=filtered.length?insightsAgentRowsHTML('novedad',filtered,insightsNovedadBadges,insightsNovedadDetail):'<div style="font-size:11px;color:var(--text-dim);padding:6px 0;">Sin resultados para este filtro</div>';
 }
+function isAdminEmail(e){return (window.ADMINS||ADMINS).includes(e)||isSuperAdminUser(e);}
+async function loadStrikeAppealsBadge(){
+ try{
+ const list=await window.getStrikeAppeals();
+ window._appealsById=Object.fromEntries(list.map(a=>[a.id,a]));
+ const n=list.filter(a=>a.status==='pending').length;
+ const badge=document.getElementById('strike-appeals-badge');
+ if(badge){badge.style.display=n>0?'inline':'none';badge.textContent=n;}
+ return list;
+ }catch(e){return [];}
+}
+function renderStrikeAppealsList(list){
+ const el=document.getElementById('strike-appeals-list');if(!el)return;
+ const pend=list.filter(a=>a.status==='pending').sort((a,b)=>(a.createdAt||'').localeCompare(b.createdAt||''));
+ if(!pend.length){el.innerHTML='<div style="font-size:12px;color:var(--text-dim);text-align:center;padding:20px;font-family:var(--mono);">Sin apelaciones pendientes ✓</div>';return;}
+ const bs='padding:7px 14px;border-radius:8px;font-weight:700;cursor:pointer;font-size:12px;';
+ el.innerHTML=pend.map(a=>`<div style="background:var(--surface2);border:1px solid rgba(251,191,36,0.25);border-radius:12px;padding:14px 16px;margin-bottom:10px;">
+ <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+ <div style="min-width:0;flex:1;">
+ <div style="font-size:13px;font-weight:700;color:var(--text);">${esc(a.userName||a.userEmail)}</div>
+ <div style="font-size:11px;color:var(--text-dim);font-family:var(--mono);">${esc(a.userEmail)} · strike del ${esc(a.fecha)}${a.createdAt?' · apelado el '+esc(new Date(a.createdAt).toLocaleDateString('es-CO',{day:'2-digit',month:'short'})):''}</div>
+ <div style="font-size:12px;color:#fbbf24;margin-top:4px;">${esc(a.detalle)}</div>
+ <div style="font-size:12px;color:var(--text-muted);margin-top:4px;"><strong>Motivo del agente:</strong> ${esc(a.motivo)}</div>
+ </div>
+ <div style="display:flex;gap:8px;">
+ <button onclick="resolverApelacion('${a.id}','approved')" style="${bs}border:1px solid rgba(74,222,128,0.4);background:rgba(74,222,128,0.08);color:#4ade80;">✅ Aprobar</button>
+ <button onclick="resolverApelacion('${a.id}','rejected')" style="${bs}border:1px solid rgba(248,113,113,0.4);background:rgba(248,113,113,0.08);color:#f87171;">❌ Rechazar</button>
+ </div>
+ </div>
+ </div>`).join('');
+}
+async function showStrikeAppeals(){
+ if(!isAdminEmail(document.getElementById('user-email').textContent))return;
+ const modal=document.createElement('div');
+ modal.id='strike-appeals-modal';
+ modal.className='abs-overlay';
+ modal.style.cssText='position:fixed;inset:0;background:rgba(13,11,20,0.88);backdrop-filter:blur(8px);z-index:700;display:flex;align-items:center;justify-content:center;';
+ modal.innerHTML=`
+ <div style="background:var(--surface);border:1px solid rgba(251,191,36,0.3);border-radius:20px;padding:28px;width:min(640px,94vw);max-height:80vh;overflow-y:auto;position:relative;">
+ <div style="position:absolute;top:0;left:20px;right:20px;height:2px;background:linear-gradient(90deg,#fbbf24,#fb923c);border-radius:100px;"></div>
+ <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+ <div style="font-size:17px;font-weight:800;">⚖️ Apelaciones de strikes pendientes</div>
+ <button onclick="document.getElementById('strike-appeals-modal').remove()" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:20px;">×</button>
+ </div>
+ <div style="font-size:11px;color:var(--text-dim);margin-bottom:16px;">Al aprobar, el strike se retira y esa tardanza se paga por horario programado. El Super Admin ve todas las respuestas en Insights → Historial de apelaciones.</div>
+ <div id="strike-appeals-list">Cargando...</div>
+ </div>`;
+ document.body.appendChild(modal);
+ renderStrikeAppealsList(await loadStrikeAppealsBadge());
+}
 async function resolverApelacion(id,decision){
  const me=document.getElementById('user-email').textContent;
  const a=window._appealsById?.[id];
- if(!a||!isSuperAdminUser(me))return;
+ if(!a||!isAdminEmail(me)||a.status!=='pending')return;
+ const meName=document.getElementById('user-name')?.textContent||me.split('@')[0];
  const aprobar=decision==='approved';
  const respuesta=await askText(aprobar?'Aprobar apelación':'Rechazar apelación',`${a.userName} · ${a.fecha}\n${a.detalle}\n\nMotivo del agente: ${a.motivo}`,aprobar?'Comentario para el agente (opcional)':'Explica por qué se rechaza (obligatorio)',!aprobar);
  if(respuesta===null)return;
  if(aprobar){
- const w=await window.saveStrikeWaiver(id,{userEmail:a.userEmail,userName:a.userName,fecha:a.fecha,cat:a.cat,detalle:a.detalle,motivo:'Apelación aprobada: '+(respuesta||a.motivo),waivedBy:me,waivedAt:new Date().toISOString(),appealId:id});
+ const w=await window.saveStrikeWaiver(id,{userEmail:a.userEmail,userName:a.userName,fecha:a.fecha,cat:a.cat,detalle:a.detalle,motivo:'Apelación aprobada: '+(respuesta||a.motivo),waivedBy:me,waivedByName:meName,waivedAt:new Date().toISOString(),appealId:id});
  if(!w.ok){toast('❌ No se pudo retirar el strike: '+w.error);return;}
  }
- const r=await window.saveStrikeAppeal(id,{status:decision,respuesta,decidedBy:me,decidedAt:new Date().toISOString()});
+ const r=await window.saveStrikeAppeal(id,{status:decision,respuesta,decidedBy:me,decidedByName:meName,decidedAt:new Date().toISOString()});
  if(!r.ok){toast('❌ No se pudo guardar la respuesta: '+r.error);return;}
  toast(aprobar?'✅ Apelación aprobada — strike retirado':'Apelación rechazada');
+ const list=await loadStrikeAppealsBadge();
+ renderStrikeAppealsList(list);
  if(window._insightsArgs)renderPanel2Insights(...window._insightsArgs);
 }
 async function retirarStrike(wid){
@@ -5013,8 +5068,8 @@ async function renderPanel2Insights(rows,allTurnos,fromDate,toDate){
  const btnStyle='margin-left:8px;background:none;border:1px solid var(--border);color:var(--text-muted);padding:1px 7px;border-radius:6px;font-size:10px;font-family:var(--mono);cursor:pointer;';
  const apelacionHTML=wid=>{
  const a=wid&&appealMap.get(wid);if(!a)return'';
- if(a.status==='pending')return`<div style="margin-top:4px;padding:6px 8px;border:1px solid rgba(251,191,36,.4);border-radius:8px;background:rgba(251,191,36,.06);">📨 <b>Apelación pendiente:</b> ${esc(a.motivo)}${canWaive?`<div style="margin-top:6px;"><button onclick="resolverApelacion('${wid}','approved')" style="${btnStyle}margin-left:0;color:#4ade80;">✅ Aprobar</button><button onclick="resolverApelacion('${wid}','rejected')" style="${btnStyle}color:#f87171;">❌ Rechazar</button></div>`:''}</div>`;
- if(a.status==='rejected')return`<div style="margin-top:4px;color:var(--text-dim);">❌ Apelación rechazada${a.respuesta?': '+esc(a.respuesta):''} <i>(motivo del agente: ${esc(a.motivo)})</i></div>`;
+ if(a.status==='pending')return`<div style="margin-top:4px;padding:6px 8px;border:1px solid rgba(251,191,36,.4);border-radius:8px;background:rgba(251,191,36,.06);">📨 <b>Apelación pendiente:</b> ${esc(a.motivo)}</div>`;
+ if(a.status==='rejected')return`<div style="margin-top:4px;color:var(--text-dim);">❌ Apelación rechazada${a.decidedByName?' por '+esc(a.decidedByName):''}${a.respuesta?': '+esc(a.respuesta):''} <i>(motivo del agente: ${esc(a.motivo)})</i></div>`;
  return'';
  };
  const retirarBtn=wid=>canWaive&&wid?`<button onclick="retirarStrike('${wid}')" style="${btnStyle}">✂️ Retirar</button>`:'';
@@ -5023,13 +5078,23 @@ async function renderPanel2Insights(rows,allTurnos,fromDate,toDate){
  v=>{const color=v.llamados>=3?'#f87171':v.llamados===2?'#fb923c':v.llamados===1?'#fbbf24':'#9ca3af';
  return`${v.strikeLeve>0?`<span style="font-size:10px;background:rgba(251,191,36,0.1);color:#fbbf24;border:1px solid rgba(251,191,36,0.3);padding:1px 7px;border-radius:10px;font-family:var(--mono);">🟡 ${v.strikeLeve}</span>`:''}${v.strikeModerado>0?`<span style="font-size:10px;background:rgba(251,146,60,0.1);color:#fb923c;border:1px solid rgba(251,146,60,0.3);padding:1px 7px;border-radius:10px;font-family:var(--mono);">🟠 ${v.strikeModerado}</span>`:''}${v.strikeGrave>0?`<span style="font-size:10px;background:rgba(248,113,113,0.1);color:#f87171;border:1px solid rgba(248,113,113,0.3);padding:1px 7px;border-radius:10px;font-family:var(--mono);">🔴 ${v.strikeGrave}</span>`:''}${v.strikeNoDesconex>0?`<span style="font-size:10px;background:rgba(96,165,250,0.1);color:#60a5fa;border:1px solid rgba(96,165,250,0.3);padding:1px 7px;border-radius:10px;font-family:var(--mono);">🔵 ${v.strikeNoDesconex}</span>`:''}<span style="font-size:11px;font-weight:800;color:${color};background:${color}22;border:1px solid ${color}44;padding:2px 8px;border-radius:10px;font-family:var(--mono);">${v.totalStrikes} strike${v.totalStrikes!==1?'s':''}</span>${v.llamados>0?`<span style="font-size:10px;color:${color};font-family:var(--mono);">· ${v.llamados} llamado${v.llamados!==1?'s':''}</span>`:''}${v.llamados>=3?`<span style="font-size:11px;">⚖️</span>`:''}${v.strikeDetalle.some(d=>appealMap.get(d.wid)?.status==='pending')?`<span style="font-size:10px;color:#fbbf24;font-family:var(--mono);">📨 apelación</span>`:''}${v.strikeRetirados.length?`<span style="font-size:10px;color:#4ade80;font-family:var(--mono);">✅ ${v.strikeRetirados.length} retirado${v.strikeRetirados.length!==1?'s':''}</span>`:''}`;},
  v=>v.strikeDetalle.map(d=>detailRow(d.fecha,`<span style="background:${d.tipo.includes('Grave')?'rgba(248,113,113,0.1)':d.tipo.includes('Modera')?'rgba(251,146,60,0.1)':d.tipo.includes('Leve')?'rgba(251,191,36,0.1)':'rgba(96,165,250,0.1)'};color:${d.tipo.includes('Grave')?'#f87171':d.tipo.includes('Modera')?'#fb923c':d.tipo.includes('Leve')?'#fbbf24':'#60a5fa'};padding:1px 6px;border-radius:10px;margin-right:6px;">${d.tipo}</span>${d.detalle}${retirarBtn(d.wid)}${apelacionHTML(d.wid)}`)).join('')+v.strikeRetirados.map(d=>detailRow(d.fecha,`<span style="background:rgba(74,222,128,0.1);color:#4ade80;padding:1px 6px;border-radius:10px;margin-right:6px;">✅ Retirado</span><s style="opacity:.6;">${d.tipo} ${d.detalle}</s><br/>Motivo: ${esc(d.motivo)}${d.por?' · por '+esc(d.por):''}${restaurarBtn(d.wid)}`)).join(''));
- // Apelaciones pendientes (de cualquier período) — solo Super Admin, que es quien las responde.
- const pendientes=canWaive?appealList.filter(a=>a.status==='pending'):[];
- const pendPorAgente={};
- pendientes.forEach(a=>{(pendPorAgente[a.userEmail]=pendPorAgente[a.userEmail]||{nombre:a.userName||a.userEmail.split('@')[0],items:[]}).items.push(a);});
- const apelacionesHTMLcard=insightCard('apelaciones','📨 Apelaciones pendientes','#fbbf24',Object.entries(pendPorAgente),'Sin apelaciones pendientes',
- v=>`<span style="font-size:11px;font-weight:800;color:#fbbf24;">${v.items.length} pendiente${v.items.length!==1?'s':''}</span>`,
- v=>v.items.map(a=>detailRow(a.fecha,`${esc(a.detalle)}<br/><b>Motivo del agente:</b> ${esc(a.motivo)}<div style="margin-top:6px;"><button onclick="resolverApelacion('${a.id}','approved')" style="${btnStyle}margin-left:0;color:#4ade80;">✅ Aprobar</button><button onclick="resolverApelacion('${a.id}','rejected')" style="${btnStyle}color:#f87171;">❌ Rechazar</button></div>`)).join(''));
+
+ // Historial de apelaciones del período (strikes cuya fecha cae en el rango y agentes visibles con los filtros
+ // activos): estado, quién respondió y qué respondió. Las pendientes se responden en ⚖️ Apelaciones de strikes.
+ const apEnPeriodo=appealList.filter(a=>{
+ if(!allowedUsers.has(a.userEmail))return false;
+ const d=parseDate(a.fecha);
+ return !d||((!fromDate||d>=fromDate)&&(!toDate||d<=toDate));
+ });
+ const apPorAgente={};
+ apEnPeriodo.forEach(a=>{(apPorAgente[a.userEmail]=apPorAgente[a.userEmail]||{nombre:a.userName||a.userEmail.split('@')[0],items:[]}).items.push(a);});
+ const apEntries=Object.entries(apPorAgente).sort((x,y)=>y[1].items.length-x[1].items.length);
+ const apEstado={pending:['⏳ Pendiente','#fbbf24'],approved:['✅ Aprobada','#4ade80'],rejected:['❌ Rechazada','#f87171']};
+ const fmtDT=iso=>iso?new Date(iso).toLocaleDateString('es-CO',{day:'2-digit',month:'short',year:'numeric'}):'';
+ const apelacionesHTMLcard=insightCard('apelaciones','📨 Historial de apelaciones de strikes','#fbbf24',apEntries,'Sin apelaciones en este período',
+ v=>['pending','approved','rejected'].map(st=>{const n=v.items.filter(a=>a.status===st).length;return n?`<span style="font-size:10px;color:${apEstado[st][1]};font-family:var(--mono);">${apEstado[st][0]} ${n}</span>`:'';}).join(''),
+ v=>v.items.sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||'')).map(a=>{const [lbl,col]=apEstado[a.status]||['—','#9ca3af'];
+ return detailRow(a.fecha,`${esc(a.detalle)}<br/><b>Motivo del agente:</b> ${esc(a.motivo)}<br/><span style="color:${col};font-weight:700;">${lbl}</span>${a.status!=='pending'?` · por <b>${esc(a.decidedByName||a.decidedBy||'—')}</b>${a.decidedAt?' el '+esc(fmtDT(a.decidedAt)):''}${a.respuesta?`<br/><b>Respuesta:</b> ${esc(a.respuesta)}`:''}`:''}`);}).join(''));
  // Resumen del equipo
  const pctCumplimiento=teamTotalRows?Math.round(((teamCumplio+teamEnCurso+teamNovedad)/teamTotalRows)*100):0;
  let totalExtrasAprobadasMins=0,totalNocturnoSecs=0,totalAusencias=0;
@@ -5115,13 +5180,13 @@ async function renderPanel2Insights(rows,allTurnos,fromDate,toDate){
  el.innerHTML=`
  ${resumenHTML}
  <div style="display:flex;flex-direction:column;gap:10px;">
- ${canWaive?apelacionesHTMLcard:''}
  ${tardanzaHTML}
  ${ausenteHTML}
  ${novedadHTML}
  ${extrasHTML}
  ${nocturnoHTML}
  ${strikesHTML}
+ ${apelacionesHTMLcard}
  ${movilHTML}
  ${fueraCiudadHTML}
  ${anomaliasHTML}
