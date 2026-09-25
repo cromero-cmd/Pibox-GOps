@@ -1439,7 +1439,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
-const APP_VERSION='16.9';
+const APP_VERSION='17.0';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 const SUPER_ADMIN_NAME='Camilo Romero';
@@ -5614,6 +5614,9 @@ async function loadFreshPayrollData(){
  const approvedOvertimeEvents=window.getApprovedOvertimeEvents?await window.getApprovedOvertimeEvents(lastMonday,lastSunday):[];
  console.log('[openPayrollPreview] eventos de horas extras approved en el rango:',approvedOvertimeEvents.length);
  const approvedOvertimeKeys=new Set(approvedOvertimeEvents.map(e=>(e.agentEmail||e.user||'')+'|'+(e.mallaEntry?.fecha||'')));
+ // Tardanzas justificadas (strike retirado por retiro directo o apelación aprobada): se paga el horario
+ // programado, igual que si hubiera llegado dentro de la tolerancia. La marcación real del turno NO se toca.
+ const tardanzasJustificadas=new Set((window.getStrikeWaivers?await window.getStrikeWaivers():[]).filter(w=>w.cat==='tardanza').map(w=>w.id));
  // Construir registros igual que sendPayrollReport
  window._payrollPreviewRecords=mallaData.filter(m=>!adminEmails.has(m.usuario)).map(m=>{
  const d=parseDate(m.fecha);
@@ -5621,7 +5624,7 @@ async function loadFreshPayrollData(){
  const ss=parseTime(m.fecha,m.inicio),se=parseTime(m.fecha,m.fin);
  const rs=turno?turno.startTime.toDate():null,re=turno?.endTime?.toDate?.();
  let reportStart=ss;
- if(rs&&ss){const diffMins=Math.round((rs-ss)/60000);if(diffMins>TOLERANCE_MINS)reportStart=rs;}
+ if(rs&&ss){const diffMins=Math.round((rs-ss)/60000);if(diffMins>TOLERANCE_MINS&&!tardanzasJustificadas.has(strikeWaiverId(m.usuario,m.fecha,'tardanza')))reportStart=rs;}
  let reportEnd=se;
  const extrasApproved=turno?.overtimeStatus==='approved'||approvedOvertimeKeys.has(m.usuario+'|'+m.fecha);
  if(re&&se){if(extrasApproved)reportEnd=re;if(turno?.earlyLeave&&turno?.earlyLeaveStatus==='not_justified')reportEnd=re;}
@@ -5936,6 +5939,7 @@ async function sendPayrollReport(){
  // Firestore. Cruzar también por agente+fecha contra la colección 'events'.
  const approvedOvertimeEvents=window.getApprovedOvertimeEvents?await window.getApprovedOvertimeEvents(lastMonday,lastSunday):[];
  const approvedOvertimeKeys=new Set(approvedOvertimeEvents.map(e=>(e.agentEmail||e.user||'')+'|'+(e.mallaEntry?.fecha||'')));
+ const tardanzasJustificadas=new Set((window.getStrikeWaivers?await window.getStrikeWaivers():[]).filter(w=>w.cat==='tardanza').map(w=>w.id));
  // Cruzar cada fila de malla con turno real
  const records=mallaData.filter(m=>!adminEmails.has(m.usuario)).map(m=>{
  const d=parseDate(m.fecha);
@@ -5952,7 +5956,7 @@ async function sendPayrollReport(){
  let reportStart=ss; // por defecto: programado
  if(rs&&ss){
  const diffMins=Math.round((rs-ss)/60000);
- if(diffMins>TOLERANCE_MINS) reportStart=rs; // tardanza → usar real
+ if(diffMins>TOLERANCE_MINS&&!tardanzasJustificadas.has(strikeWaiverId(m.usuario,m.fecha,'tardanza'))) reportStart=rs; // tardanza → usar real (salvo justificada)
  // inicio anticipado → usar programado (ya está por defecto)
  }
  // Lógica de salida para reporte
