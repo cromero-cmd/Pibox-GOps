@@ -1440,7 +1440,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
-const APP_VERSION='17.2';
+const APP_VERSION='17.3';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 const SUPER_ADMIN_NAME='Camilo Romero';
@@ -2637,7 +2637,13 @@ async function confirmClearMetrics(){
  btn.disabled=false;
 }
 // ── TURNO ──
-function getDeviceInfo(){const ua=navigator.userAgent;const isMobile=/Android|iPhone|iPad|iPod|Mobile/i.test(ua);return{isMobile,icon:isMobile?'📱':'💻',label:isMobile?'Móvil':'Desktop',ua:ua.substring(0,120)};}
+// Móvil = UA móvil, o un teléfono/tablet con «sitio de escritorio» activado, que cambia el UA a escritorio:
+// iOS (Chrome/Firefox/Edge iOS traen CriOS/FxiOS/EdgiOS; Safari iPadOS/iPhone se hace pasar por Macintosh pero
+// con pantalla táctil, cosa que un Mac real no tiene) y Android (UA «Linux x86_64» con puntero táctil principal).
+function getDeviceInfo(){const ua=navigator.userAgent;const touch=navigator.maxTouchPoints||0;
+ let coarse=false;try{coarse=!!(window.matchMedia&&matchMedia('(pointer:coarse)').matches);}catch(e){}
+ const desktopModeMobile=/CriOS|FxiOS|EdgiOS/.test(ua)||(/Macintosh/.test(ua)&&touch>1)||(/X11|Linux/.test(ua)&&!/CrOS/.test(ua)&&touch>0&&coarse);
+ const isMobile=/Android|iPhone|iPad|iPod|Mobile/i.test(ua)||desktopModeMobile;return{isMobile,icon:isMobile?'📱':'💻',label:isMobile?'Móvil':'Desktop',ua:ua.substring(0,120)};}
 function formatDuration(s){const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sec=s%60;return`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;}
 function formatDeficit(s){
  // s es negativo — muestra cuánto falta para completar el tiempo programado
