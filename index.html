@@ -1440,7 +1440,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
-const APP_VERSION='17.1';
+const APP_VERSION='17.2';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 const SUPER_ADMIN_NAME='Camilo Romero';
@@ -2990,7 +2990,7 @@ function getPositionOnce(){
  try{
  navigator.geolocation.getCurrentPosition(
  pos=>resolve({status:'ok',lat:pos.coords.latitude,lon:pos.coords.longitude}),
- err=>resolve({status:err&&err.code===1?'denied':err&&err.code===3?'timeout':'unavailable'}),
+ err=>resolve({status:err&&err.code===1?'denied':err&&err.code===3?'timeout':'unavailable',code:err&&err.code,message:err&&err.message}),
  {enableHighAccuracy:false,timeout:10000,maximumAge:300000}
  );
  }catch(e){resolve({status:'unavailable'});}
@@ -3031,19 +3031,40 @@ function waitForLocationDecision(positionPromise){
 }
 // Ubicación bloqueada: instrucciones para activarla. Resuelve 'retry' (botón, o automático apenas el agente
 // la permite desde el candado) o 'cancel'.
-function showLocationRequiredModal(repeated,grantedSignal){
+// Plataforma del agente, para dar los pasos correctos (iPad/iPhone en modo escritorio se detectan por touch).
+function locationPlatform(){
+ const ua=(typeof navigator!=='undefined'&&navigator.userAgent)||'';
+ const touch=(typeof navigator!=='undefined'&&navigator.maxTouchPoints)||0;
+ if(/iPhone|iPad|iPod/i.test(ua)||(/Macintosh/i.test(ua)&&touch>1))return'ios';
+ if(/Android/i.test(ua))return'android';
+ return'desktop';
+}
+// diag = {perm: estado del permiso del navegador, code/message: error de getCurrentPosition}. Si el navegador
+// dice "granted" pero la lectura falla con PERMISSION_DENIED, el bloqueo está en el dispositivo (servicios de
+// ubicación apagados o sin permiso para el navegador), no en el candado del sitio.
+function locationHelpHTML(diag){
+ const plat=locationPlatform();
+ const osBlock=diag&&diag.perm==='granted';
+ let pasos;
+ if(plat==='ios')pasos=osBlock
+ ?'<strong style="color:var(--text);">El sitio tiene permiso, pero tu iPhone/iPad bloquea la ubicación:</strong><br>1. Ve a <strong>Ajustes → Privacidad y seguridad → Localización</strong> y activa <strong>Localización</strong>.<br>2. En esa misma pantalla abre tu navegador (<strong>Safari</strong> o <strong>Chrome</strong>) y elige <strong>«Al usar la app»</strong>.<br>3. Vuelve aquí y pulsa «Ya la activé, reintentar».'
+ :'<strong style="color:var(--text);">Cómo activarla (iPhone/iPad):</strong><br>1. Ajustes → Privacidad y seguridad → Localización → activa <strong>Localización</strong>.<br>2. Abre tu navegador en esa lista y elige <strong>«Al usar la app»</strong>.<br>3. Vuelve aquí y pulsa «Ya la activé, reintentar» (si usas Safari: ícono <strong>aA</strong> → Ajustes del sitio web → Ubicación → Permitir).';
+ else if(plat==='android')pasos=osBlock
+ ?'<strong style="color:var(--text);">El sitio tiene permiso, pero tu celular bloquea la ubicación:</strong><br>1. Desliza el panel superior y activa <strong>Ubicación</strong> (GPS).<br>2. Ajustes → Aplicaciones → <strong>Chrome</strong> → Permisos → Ubicación → <strong>«Permitir solo mientras la app está en uso»</strong>.<br>3. Vuelve aquí y pulsa «Ya la activé, reintentar».'
+ :'<strong style="color:var(--text);">Cómo activarla (Android / Chrome):</strong><br>1. Toca el ícono del <strong>candado</strong> junto a la dirección web → Permisos → Ubicación → <strong>Permitir</strong>.<br>2. Verifica que la <strong>Ubicación</strong> del celular esté activada.<br>3. Vuelve aquí y pulsa «Ya la activé, reintentar».';
+ else pasos=osBlock
+ ?'<strong style="color:var(--text);">El navegador tiene el permiso, pero tu computador bloquea la ubicación:</strong><br>1. <strong>Windows:</strong> Configuración → Privacidad y seguridad → Ubicación → activa «Servicios de ubicación» y «Permitir que las aplicaciones de escritorio accedan a tu ubicación».<br>2. <strong>Mac:</strong> Ajustes del Sistema → Privacidad y seguridad → Servicios de localización → activa tu navegador.<br>3. Vuelve aquí y pulsa «Ya la activé, reintentar».'
+ :'<strong style="color:var(--text);">Cómo activarla (Chrome / Edge):</strong><br>1. Haz clic en el ícono del <strong>candado</strong> (o de ajustes) a la izquierda de la dirección web, arriba.<br>2. Busca <strong>«Ubicación»</strong> y cámbiala a <strong>«Permitir»</strong>.<br>3. Si el navegador te pide recargar la página, hazlo y vuelve a pulsar «Iniciar turno».<br><span style="color:var(--text-dim);">Si sigue sin funcionar, revisa que la ubicación esté activada en tu computador (Windows: Configuración → Privacidad y seguridad → Ubicación).</span>';
+ const det=diag?`<div style="margin-top:10px;font-size:10px;color:var(--text-dim);font-family:var(--mono);">Detalle técnico: permiso del navegador = ${esc(diag.perm||'?')}${diag.code?' · error '+esc(diag.code):''}${diag.message?' · '+esc(String(diag.message).slice(0,80)):''}</div>`:'';
+ return`<div style="margin-top:14px;font-size:12px;color:var(--text-muted);line-height:1.8;">${pasos}</div>${det}`;
+}
+function showLocationRequiredModal(repeated,grantedSignal,diag){
  return new Promise(resolve=>{
  const overlay=showLocationOverlay(`
  <div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:10px;">📍 Activa tu ubicación para iniciar tu turno</div>
  <div style="font-size:13px;color:var(--text-muted);line-height:1.7;">Para iniciar tu turno necesitamos verificar la ciudad desde la que te conectas. Solo se guarda la ciudad detectada, no tu ubicación exacta.</div>
  ${repeated?'<div style="margin-top:10px;font-size:12px;color:#fb923c;font-weight:600;">La ubicación sigue bloqueada para Pi GOps. Revisa los pasos y vuelve a intentarlo.</div>':''}
- <div style="margin-top:14px;font-size:12px;color:var(--text-muted);line-height:1.8;">
- <strong style="color:var(--text);">Cómo activarla (Chrome / Edge):</strong><br>
- 1. Haz clic en el ícono del <strong>candado</strong> (o de ajustes) a la izquierda de la dirección web, arriba.<br>
- 2. Busca <strong>«Ubicación»</strong> y cámbiala a <strong>«Permitir»</strong>.<br>
- 3. Si el navegador te pide recargar la página, hazlo y vuelve a pulsar «Iniciar turno».<br>
- <span style="color:var(--text-dim);">Si sigue sin funcionar, revisa que la ubicación esté activada en tu computador (Windows: Configuración → Privacidad y seguridad → Ubicación).</span>
- </div>
+ ${locationHelpHTML(diag)}
  <button id="loc-retry" style="${LOC_BTN_PRIMARY}margin-top:16px;">Ya la activé, reintentar</button>
  <button id="loc-cancel" style="${LOC_BTN_SECONDARY}">Cancelar</button>`);
  let done=false;
@@ -3056,9 +3077,10 @@ function showLocationRequiredModal(repeated,grantedSignal){
 async function requireLocationForStart(){
  if(window._requireLocation===false)return{ok:true,pos:await getStartPosition()};
  if(!('geolocation' in navigator))return{ok:true,pos:{status:'unsupported'}};
- let repeated=false;
+ let repeated=false,diag={perm:'unknown'};
  for(;;){
  const state=await queryGeoPermission();
+ diag={perm:state};
  if(state!=='denied'){
  const positionPromise=getPositionOnce();
  let pos=state==='granted'?await positionPromise:await waitForLocationDecision(positionPromise);
@@ -3066,10 +3088,11 @@ async function requireLocationForStart(){
  // Permiso concedido pero sin fix: un reintento; si sigue fallando NO se bloquea (queda el estado).
  if(pos.status==='timeout'||pos.status==='unavailable')pos=await getPositionOnce();
  if(pos.status!=='denied')return{ok:true,pos};
+ diag={perm:state,code:pos.code,message:pos.message};
  }
  // Bloqueada: el estado es 'denied' o el agente rechazó el aviso (sin re-preguntar en bucle).
  const watch=watchGeoGranted();
- const action=await showLocationRequiredModal(repeated,watch.promise);
+ const action=await showLocationRequiredModal(repeated,watch.promise,diag);
  watch.stop();
  if(action==='cancel')return{ok:false};
  repeated=true;
