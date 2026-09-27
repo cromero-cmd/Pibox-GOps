@@ -1441,7 +1441,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
-const APP_VERSION='17.4';
+const APP_VERSION='17.5';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 const SUPER_ADMIN_NAME='Camilo Romero';
@@ -3315,8 +3315,12 @@ async function endTurno(status='ended'){
 async function checkOvertimeAndDiscrepancy(endTime,elapsedSecs){
  const userEmail=document.getElementById('user-email').textContent;
  try{
- const resp=await fetch(MALLA_SCRIPT+'?sheet=Malla',{signal:AbortSignal.timeout(8000)});
- const csv=await resp.text();
+ // fetchMallaCSV() en vez de un fetch propio: caso real confirmado (Tatiana Mosquera, 26-sep-2026,
+ // turno de 06:00:39 a 06:00:50) — este fetch aislado, sin reintentos ni caché de respaldo, falló
+ // en silencio (catch de abajo) y ni la salida anticipada le avisó a la agente ni quedó marcada
+ // para revisión en el Panel de Control. fetchMallaCSV ya reintenta 3 veces y cae a caché local si
+ // el endpoint sigue fallando, igual que _doStartTurno/loadStrikes/openPayrollPreview.
+ const csv=await fetchMallaCSV('checkOvertimeAndDiscrepancy');
  const lines=csv.trim().split('\n').slice(1);
  // Emparejar por la fecha en que el turno INICIÓ (turnoStartTime), no por "hoy" (new Date() al
  // momento de finalizar). En un turno nocturno que cruza medianoche (ej. 4:00pm→1:00am), al cerrar
