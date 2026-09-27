@@ -1094,7 +1094,7 @@ body.agent-preview-mode header{margin-top:34px;}
  </div>
  <div class="strikes-wrap" id="strikes-wrap" style="display:none;">
  <div class="strikes-header">
- <div class="strikes-title">⚡ Mis strikes del mes</div>
+ <div class="strikes-title">⚡ Mis strikes (últimos 6 meses)</div>
  <div id="strikes-summary" style="font-size:11px;color:var(--text-dim);font-family:var(--mono);"></div>
  </div>
  <div class="strike-meter"><div class="strike-meter-fill" id="strike-meter-fill" style="width:0%;background:#4ade80;"></div></div>
@@ -1441,7 +1441,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
-const APP_VERSION='17.6';
+const APP_VERSION='17.7';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 const SUPER_ADMIN_NAME='Camilo Romero';
@@ -1869,8 +1869,14 @@ async function loadStrikes(){
  const strikeTardanzaMins=parseInt(localStorage.getItem('pg_strike_tardanza')||'5');
  const strikeNoDesconexionHrs=parseFloat(localStorage.getItem('pg_strike_nodesconexion')||'4');
  const now=new Date();
- const som=new Date(now.getFullYear(),now.getMonth(),1);
- const eom=new Date(now.getFullYear(),now.getMonth()+1,0,23,59,59);
+ // Ventana MÓVIL de 6 meses (no mes calendario) — Camilo pidió (2026-09-27) que los strikes y
+ // llamados de atención del agente se vean acumulados en un período más largo que un mes. Se
+ // corre día a día: un strike "sale" de la ventana solo cuando pasan 6 meses desde que ocurrió,
+ // sin el salto brusco que tendría un semestre fijo el 1° de enero/julio. El umbral de "3
+ // llamados = proceso disciplinario" se mide sobre esta misma ventana (más abajo, totalLlamados
+ // ya sale calculado sobre este rango, sin código aparte).
+ const winStart=new Date(now);winStart.setMonth(winStart.getMonth()-6);winStart.setHours(0,0,0,0);
+ const winEnd=now;
  let mallaData=[];let mallaFalló=false;
  try{
  const csv=await fetchMallaCSV('loadStrikes');
@@ -1882,10 +1888,10 @@ async function loadStrikes(){
  // agente para el día en cuestión puede quedar fuera de esa ventana según el momento en que se
  // consulte, dejando el strike sin calcular de forma intermitente.
  const allMyTurnos=window.getUserTurnos?await window.getUserTurnos(userEmail):await window.getRecentTurnos();
- const myTurnos=allMyTurnos.filter(t=>t.userEmail===userEmail&&t.startTime?.toDate?.()>=som&&t.startTime?.toDate?.()<=eom);
+ const myTurnos=allMyTurnos.filter(t=>t.userEmail===userEmail&&t.startTime?.toDate?.()>=winStart&&t.startTime?.toDate?.()<=winEnd);
  // DEBUG temporal — diagnosticar por qué algunas tardanzas no generan strike
  console.log('[loadStrikes] userEmail:',userEmail,'allMyTurnos.length (consulta dedicada, sin límite de 300):',allMyTurnos.length);
- console.log('[loadStrikes] mallaData filas (mes actual, sin novedad):',mallaData.length,'myTurnos del mes:',myTurnos.length);
+ console.log('[loadStrikes] mallaData filas (todo el historial, sin novedad):',mallaData.length,'myTurnos en los últimos 6 meses:',myTurnos.length);
  // Clasificar strikes por tipo
  const strikesLeve=[]; // tardanza 5-19 min
  const strikesModerade=[]; // tardanza 20-59 min
@@ -1945,11 +1951,14 @@ async function loadStrikes(){
  const totalLlamados=llamadosLeve+llamadosModerado+llamadosGrave+llamadosNoDesconex;
  const enDescargos=totalLlamados>=3;
  // Notificación de llamado de atención por correo — se dispara solo cuando totalLlamados supera
- // el último registrado en Firestore (strike_notifications/{userEmail}_{yearMonth}), para no
- // reenviar el mismo correo cada vez que el agente recarga su propio panel de strikes.
+ // el último registrado en Firestore (strike_notifications/{userEmail}_llamados), para no reenviar
+ // el mismo correo cada vez que el agente recarga su propio panel de strikes. docId SIN mes: la
+ // ventana ahora es móvil de 6 meses, no un mes calendario — con docId mensual, el 1° de cada mes
+ // se abría un doc nuevo (sin "lastNotified") y se reenviaba el mismo aviso aunque el conteo no
+ // hubiera cambiado. Un solo doc por agente asegura "un correo por llamado nuevo", sin importar
+ // en qué mes caiga.
  try{
- const yearMonth=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
- const strikeNotifDocId=`${userEmail}_${yearMonth}`;
+ const strikeNotifDocId=`${userEmail}_llamados`;
  const lastNotified=window.getStrikeNotification?await window.getStrikeNotification(strikeNotifDocId):null;
  const lastLlamadoNumero=lastNotified?.llamadoNumero||0;
  if(totalLlamados>lastLlamadoNumero){
@@ -1961,10 +1970,11 @@ async function loadStrikes(){
  ...strikesGrave.map(s=>({tipo:'🔴 Grave',fecha:s.fecha,descripcion:s.detalle})),
  ...strikesNoDesconex.map(s=>({tipo:'🔵 No desconexión',fecha:s.fecha,descripcion:s.detalle}))
  ].sort((a,b)=>(parseDate(a.fecha)||0)-(parseDate(b.fecha)||0));
- const mesLabel=now.toLocaleDateString('es-CO',{month:'long',year:'numeric'});
+ // "mes" es solo el respaldo si el .gs no puede derivar el período de las fechas de "detalle"
+ // (periodoFromDetalle) — ya no es un mes calendario, así que no tiene sentido calcularlo así.
  const strikePayload={
  agentName,agentEmail:userEmail,liderEmail,
- mes:mesLabel,
+ mes:'últimos 6 meses',
  llamadoNumero:totalLlamados,
  totalStrikes:strikesLeve.length+strikesModerade.length+strikesGrave.length+strikesNoDesconex.length,
  esTercerLlamado:totalLlamados>=3,
@@ -1987,9 +1997,9 @@ async function loadStrikes(){
  if(!discExisting){
  const agentName=document.getElementById('user-name').textContent;
  const liderEmail=mallaData.find(m=>m.lider)?.lider||'';
- const mesLabel=now.toLocaleDateString('es-CO',{month:'long',year:'numeric'});
+ // "mes" es solo el respaldo si el .gs no puede derivar el período del historial (periodoFromDetalle).
  const historial=buildLlamadoHistorial(strikesLeve,strikesModerade,strikesGrave,strikesNoDesconex).slice(0,3);
- const discPayload={agentName,agentEmail:userEmail,liderEmail,mes:mesLabel,historial};
+ const discPayload={agentName,agentEmail:userEmail,liderEmail,mes:'últimos 6 meses',historial};
  try{
  await fetch(NOTIF_SCRIPT+'?type=disciplinary_warning&data='+encodeURIComponent(JSON.stringify(discPayload)),{mode:'no-cors'});
  if(window.saveStrikeNotification)await window.saveStrikeNotification(discDocId,{llamadoNumero:totalLlamados,notifiedAt:new Date().toISOString()});
@@ -2125,7 +2135,7 @@ async function loadStrikes(){
  if(totalStrikes===0){
  list.innerHTML=`<div style="padding:24px 16px;text-align:center;">
  <div style="font-size:40px;margin-bottom:10px;">🏆</div>
- <div style="font-size:15px;font-weight:700;color:#4ade80;margin-bottom:4px;">¡Sin strikes este mes!</div>
+ <div style="font-size:15px;font-weight:700;color:#4ade80;margin-bottom:4px;">¡Sin strikes en los últimos 6 meses!</div>
  <div style="font-size:12px;color:var(--text-dim);">Tu puntualidad y responsabilidad son excelentes. ¡Sigue así!</div>
  </div>`+retiradosHTML+reglamHTML;
  return;

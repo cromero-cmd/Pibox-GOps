@@ -33,6 +33,21 @@ function mesFromFecha(fechaStr, fallback) {
   return MESES_ES[mesIdx] + ' de ' + anio;
 }
 
+// Describe el período que cubren los strikes de "detalle" (ordenado por fecha ascendente): si la
+// primera y la última caen en el mismo mes calendario, dice solo ese mes (igual que antes — cubre
+// el backfill mensual de sendPendingStrikeAlerts). Si el sistema de strikes detectó (desde v17.x,
+// ventana móvil de 6 meses en vez de mes calendario) que la primera falta es de un mes distinto a
+// la última, muestra el rango de fechas exacto en vez de nombrar un solo mes que sería engañoso.
+function periodoFromDetalle(detalle, fallback) {
+  var fechas = (detalle || []).map(function(d) { return d.fecha; }).filter(Boolean);
+  if (!fechas.length) return fallback || '—';
+  var primera = fechas[0], ultima = fechas[fechas.length - 1];
+  var mesPrimera = mesFromFecha(primera, fallback);
+  var mesUltima = mesFromFecha(ultima, fallback);
+  if (mesPrimera === mesUltima) return mesPrimera;
+  return primera + ' al ' + ultima;
+}
+
 // Bloque de recordatorio de la escala disciplinaria — idéntico en sendStrikeWarning y
 // sendDisciplinaryWarning.
 function escalaDisciplinariaHTML() {
@@ -177,10 +192,12 @@ function sendStrikeWarning(data) {
   const esTercerLlamado = !!data.esTercerLlamado;
   const detalle = data.detalle || [];
 
-  // El mes se deriva de la fecha del primer strike (formato DD/MM/YYYY), en vez de confiar en
+  // El período se deriva de las fechas de "detalle" (formato DD/MM/YYYY) en vez de confiar en
   // data.mes tal cual llega — así el correo siempre queda en español sin importar el locale del
-  // llamador (Utilities.formatDate en sendPendingStrikeAlerts producía "July").
-  const mes = (detalle.length && detalle[0].fecha) ? mesFromFecha(detalle[0].fecha, data.mes) : (data.mes || '—');
+  // llamador (Utilities.formatDate en sendPendingStrikeAlerts producía "July"), y desde que los
+  // strikes se miden en una ventana móvil de 6 meses (no un mes calendario) puede ser un rango de
+  // fechas en vez de un solo mes.
+  const periodo = periodoFromDetalle(detalle, data.mes);
 
   const subject = '⚡ Acción requerida — Llamado de atención #' + llamadoNumero + ' para ' + agentName;
 
@@ -202,7 +219,7 @@ function sendStrikeWarning(data) {
     '<div style="padding:20px;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px;">' +
     '<p>Estimado(a) coordinador(a),</p>' +
     '<p>El sistema Pi GOps ha detectado que el colaborador <strong>' + agentName + '</strong> (' + agentEmail + ') ha acumulado ' +
-    'suficientes strikes durante <strong>' + mes + '</strong> (' + totalStrikes + ' strikes en total este mes) para generar el ' +
+    'suficientes strikes en el período <strong>' + periodo + '</strong> (' + totalStrikes + ' strikes en total en ese período) para generar el ' +
     '<strong>llamado de atención #' + llamadoNumero + '</strong>.</p>' +
     '<table style="width:100%;border-collapse:collapse;margin:16px 0;">' +
     '<tr style="background:#f3f0ff;"><th style="padding:8px 12px;text-align:left;border:1px solid #ddd;">Fecha</th>' +
@@ -232,10 +249,11 @@ function sendDisciplinaryWarning(data) {
   const liderEmail = data.liderEmail || '';
   const historial = data.historial || [];
 
-  // Mismo criterio que sendStrikeWarning: derivar el mes del primer strike del primer llamado,
-  // en vez de confiar en data.mes tal cual llega.
-  const primerFecha = (historial[0] && historial[0].strikes && historial[0].strikes[0]) ? historial[0].strikes[0].fecha : null;
-  const mes = mesFromFecha(primerFecha, data.mes);
+  // Mismo criterio que sendStrikeWarning: derivar el período de las fechas del historial (puede
+  // cruzar varios meses con la ventana móvil de 6 meses), en vez de confiar en data.mes tal cual
+  // llega.
+  const strikesHistorial = [].concat.apply([], historial.map(function(h) { return h.strikes || []; }));
+  const periodo = periodoFromDetalle(strikesHistorial, data.mes);
 
   const subject = '⚖️ Proceso disciplinario requerido — ' + agentName;
 
@@ -261,7 +279,7 @@ function sendDisciplinaryWarning(data) {
     '<div style="padding:20px;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px;">' +
     '<p>Estimado(a) coordinador(a),</p>' +
     '<p>El colaborador <strong>' + agentName + '</strong> (' + agentEmail + ') ha acumulado <strong>3 llamados de atención</strong> ' +
-    'durante <strong>' + mes + '</strong>, por lo que corresponde <strong>iniciar un proceso disciplinario formal</strong> con Talento Humano.</p>' +
+    'en el período <strong>' + periodo + '</strong>, por lo que corresponde <strong>iniciar un proceso disciplinario formal</strong> con Talento Humano.</p>' +
     '<p style="font-weight:bold;color:#374151;">Historial completo de llamados</p>' +
     historialHTML +
     '<p><strong>Por favor coordina con Talento Humano de inmediato para iniciar el proceso disciplinario formal según el reglamento interno de Pibox.</strong></p>' +
