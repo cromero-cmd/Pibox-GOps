@@ -1067,6 +1067,7 @@ body.agent-preview-mode header{margin-top:34px;}
  <div>
  <button class="btn-turno-start" id="btn-turno-start" onclick="startTurno()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/><path d="M12 6v6l4 2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>Iniciar turno</button>
  <button class="btn-turno-end" id="btn-turno-end" onclick="endTurno()" style="display:none;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="18" height="18" rx="3" stroke="currentColor" stroke-width="2"/></svg>Finalizar turno</button>
+ <div id="turno-start-status" style="display:none;font-size:11px;color:var(--text-dim);font-family:var(--mono);margin-top:8px;"></div>
  </div>
  <div class="turno-info" id="turno-info" style="display:none;">
  <div class="turno-info-card"><div class="turno-info-label">Inicio</div><div class="turno-info-value" id="turno-start-display">—</div></div>
@@ -1440,7 +1441,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
-const APP_VERSION='17.3';
+const APP_VERSION='17.4';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 const SUPER_ADMIN_NAME='Camilo Romero';
@@ -2993,13 +2994,21 @@ async function queryGeoPermission(){
 // aviso del navegador, y aquí hay que ESPERAR esa respuesta (con overlay y botón Cancelar).
 function getPositionOnce(){
  return new Promise(resolve=>{
+ // Cinturón de seguridad: getCurrentPosition debería respetar su propio `timeout`, pero hay
+ // equipos (reportado en vivo: Felipe Casallas, sep-2026) donde el servicio de ubicación del
+ // sistema operativo se cuelga y el navegador nunca llama a ninguno de los dos callbacks — sin
+ // este resolve manual, requireLocationForStart() (y con él "Iniciar turno") queda esperando
+ // para siempre, con el botón en "Iniciando..." sin ningún aviso.
+ let done=false;
+ const finish=v=>{if(done)return;done=true;resolve(v);};
+ const hardTimeout=setTimeout(()=>finish({status:'timeout',code:'hard-timeout',message:'El sistema no respondió tras 12s (posible falla del servicio de ubicación del equipo)'}),12000);
  try{
  navigator.geolocation.getCurrentPosition(
- pos=>resolve({status:'ok',lat:pos.coords.latitude,lon:pos.coords.longitude}),
- err=>resolve({status:err&&err.code===1?'denied':err&&err.code===3?'timeout':'unavailable',code:err&&err.code,message:err&&err.message}),
+ pos=>{clearTimeout(hardTimeout);finish({status:'ok',lat:pos.coords.latitude,lon:pos.coords.longitude});},
+ err=>{clearTimeout(hardTimeout);finish({status:err&&err.code===1?'denied':err&&err.code===3?'timeout':'unavailable',code:err&&err.code,message:err&&err.message});},
  {enableHighAccuracy:false,timeout:10000,maximumAge:300000}
  );
- }catch(e){resolve({status:'unavailable'});}
+ }catch(e){clearTimeout(hardTimeout);finish({status:'unavailable'});}
  });
 }
 // Se resuelve cuando el agente cambia el permiso a "Permitir" desde el candado del navegador.
@@ -3111,11 +3120,39 @@ async function startTurno(){
  btnStart._processing=true;
  btnStart.disabled=true;
  btnStart.textContent='Iniciando...';
- try{await _doStartTurno();}finally{
+ // Cinturón de seguridad: cada paso interno de _doStartTurno ya tiene su propio límite (versión
+ // 4s, ubicación ~12-24s, malla 20s), pero combinados pueden sumar ~40s con el botón mostrando
+ // solo "Iniciando..." sin explicar qué espera — se ve idéntico a "colgado" (reportado en vivo:
+ // Felipe Casallas, sep-2026). Un límite duro total avisa con un mensaje claro en vez de dejar
+ // la duda; si el proceso original igual termina después, el turno se guarda normalmente.
+ const HARD_LIMIT_MS=45000;
+ let finished=false;
+ const startPromise=_doStartTurno().then(()=>{finished=true;},err=>{finished=true;throw err;});
+ try{
+ await Promise.race([
+ startPromise,
+ new Promise(resolve=>setTimeout(resolve,HARD_LIMIT_MS))
+ ]);
+ if(!finished){
+ setTurnoStartStatus('');
+ alert('⏱️ Esto está tardando más de lo normal (posible problema de conexión o del servicio de ubicación de tu equipo).\n\nSi tu turno no aparece iniciado en unos segundos, vuelve a intentarlo o avisa a tu líder.');
+ }
+ }catch(e){
+ console.error('startTurno error:',e);
+ }finally{
+ setTurnoStartStatus('');
  btnStart._processing=false;
  btnStart.disabled=false;
  btnStart.innerHTML='<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/><path d="M12 6v6l4 2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>Iniciar turno';
  }
+}
+// Texto bajo el botón "Iniciar turno" que explica en qué paso va _doStartTurno — antes el único
+// indicio era el propio botón diciendo "Iniciando...", indistinguible de un cuelgue real.
+function setTurnoStartStatus(text){
+ const el=document.getElementById('turno-start-status');
+ if(!el)return;
+ el.textContent=text;
+ el.style.display=text?'block':'none';
 }
 async function _doStartTurno(){
  // Block from mobile
@@ -3126,16 +3163,19 @@ async function _doStartTurno(){
  // Versión al día ANTES de iniciar (v16.5): una pestaña vieja esquivaría el permiso de ubicación
  // obligatorio y no guardaría los campos nuevos. Si hay una versión nueva se recarga y el agente vuelve a
  // pulsar «Iniciar turno». Falla abierta: si no se puede consultar la versión, se sigue.
+ setTurnoStartStatus('Verificando versión…');
  if(await reloadIfOutdated())return;
  // Ubicación OBLIGATORIA (v16.4): sin permiso no se inicia el turno. Va ANTES de la malla porque puede
  // requerir una acción del agente (activar el permiso) y esa espera no debe consumir el timeout de 20 s de
  // la malla —si lo hiciera, la validación de malla se saltaría en silencio—. El reverse-geocode a Nominatim
  // sigue ocurriendo más abajo, solo si el turno realmente inicia. loadAgentCity() corre en paralelo.
+ setTurnoStartStatus('Obteniendo tu ubicación…');
  const registeredCityPromise=loadAgentCity();
  const locGate=await requireLocationForStart();
- if(!locGate.ok){toast('📍 Para iniciar tu turno debes permitir el acceso a tu ubicación');return;}
+ if(!locGate.ok){setTurnoStartStatus('');toast('📍 Para iniciar tu turno debes permitir el acceso a tu ubicación');return;}
  const geoPromise=Promise.resolve(locGate.pos);
  // Check malla for today
+ setTurnoStartStatus('Cargando tu malla…');
  const userEmail=document.getElementById('user-email').textContent;
  const today=new Date();
  let mallaEntry=null;
@@ -3178,6 +3218,7 @@ async function _doStartTurno(){
  }catch(e){
  console.warn('Malla check failed, allowing start:', e);
  }
+ setTurnoStartStatus('Guardando tu turno…');
  const locationFields=await evaluateStartLocation(geoPromise,registeredCityPromise);
  const device=getDeviceInfo();turnoStartTime=new Date();accumulatedSeconds=0;
  // Guardar horas programadas para el cronómetro de déficit
