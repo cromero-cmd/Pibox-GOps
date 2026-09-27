@@ -1441,7 +1441,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
-const APP_VERSION='17.5';
+const APP_VERSION='17.6';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 const SUPER_ADMIN_NAME='Camilo Romero';
@@ -1738,12 +1738,10 @@ function scheduleEndNotification(){
  const userEmail=document.getElementById('user-email')?.textContent;
  console.log('[Pi GOps] _scheduledTurnoSecs es 0/null — cargando malla como fallback para',userEmail);
  if(userEmail&&MALLA_SCRIPT){
- fetch(MALLA_SCRIPT+'?sheet=Malla',{signal:AbortSignal.timeout(20000)})
- .then(r=>{
- console.log('[Pi GOps] fallback malla — MALLA_SCRIPT status:',r.status,r.ok);
- if(!r.ok)throw new Error(`MALLA_SCRIPT respondió ${r.status}`);
- return r.text();
- }).then(csv=>{
+ // fetchMallaCSV() en vez de un fetch propio de un solo intento — mismo defecto ya corregido en
+ // checkOvertimeAndDiscrepancy/checkTodayNovedad (v17.5): con MALLA_SCRIPT degradado este
+ // recordatorio de fin de turno simplemente no se programaba, sin ningún reintento.
+ fetchMallaCSV('scheduleEndNotification').then(csv=>{
  const today=new Date();
  const lines=csv.trim().split('\n').slice(1);
  const entry=lines.map(l=>{const c=parseCSVLine(l);return{fecha:c[1]?.trim(),usuario:c[2]?.trim(),inicio:c[5]?.trim(),fin:c[6]?.trim()};})
@@ -2773,31 +2771,6 @@ function showTurnoDoneToday(turno){
  }
  },15000);
 }
-async function checkTodayNovedad(){
- const userEmail=document.getElementById('user-email').textContent;
- const isAdmin=(window.ADMINS||ADMINS).includes(userEmail)||isSuperAdminUser(userEmail);
- const today=new Date();
- if(currentTurnoId)return;
- if(isAdmin&&!window._agentPreviewMode)return;
- try{
- const resp=await fetch(MALLA_SCRIPT+'?sheet=Malla',{signal:AbortSignal.timeout(8000)});
- const csv=await resp.text();
- const lines=csv.trim().split('\n').slice(1);
- const todayEntry=lines.map(l=>{const c=parseCSVLine(l);return{fecha:c[1]?.trim(),usuario:c[2]?.trim(),lider:c[9]?.trim(),novedad:c[10]?.trim()};})
- .find(m=>{
- if(!m.fecha||m.usuario!==userEmail)return false;
- const d=parseDate(m.fecha);
- return d&&d.toDateString()===today.toDateString();
- });
- if(!todayEntry){
- showTurnoBlocked('No tienes un turno programado para hoy en la malla.');
- } else if(todayEntry.novedad){
- if(!esNovedadVotaciones(todayEntry.novedad)){
- showTurnoBlocked(todayEntry.novedad);
- }
- }
- }catch(e){}
-}
 function setTurnoActive(t){
  document.getElementById('turno-status').textContent='Turno en curso';
  document.getElementById('btn-turno-start').style.display='none';
@@ -3638,8 +3611,10 @@ async function checkTodayNovedad(){
  if(currentTurnoId)return;
  if(isAdmin&&!window._agentPreviewMode)return;
  try{
- const resp=await fetch(MALLA_SCRIPT+'?sheet=Malla',{signal:AbortSignal.timeout(8000)});
- const csv=await resp.text();
+ // fetchMallaCSV() en vez de un fetch propio de un solo intento — mismo defecto ya corregido en
+ // checkOvertimeAndDiscrepancy (v17.5): con MALLA_SCRIPT degradado fallaba en silencio y el aviso
+ // de novedad (vacaciones, incapacidad, etc.) simplemente no aparecía, sin avisar del problema.
+ const csv=await fetchMallaCSV('checkTodayNovedad');
  const lines=csv.trim().split('\n').slice(1);
  const todayEntry=lines.map(l=>{const c=parseCSVLine(l);return{fecha:c[1]?.trim(),usuario:c[2]?.trim(),lider:c[9]?.trim(),novedad:c[10]?.trim()};})
  .find(m=>{
@@ -3654,7 +3629,7 @@ async function checkTodayNovedad(){
  showTurnoBlocked(todayEntry.novedad);
  }
  }
- }catch(e){}
+ }catch(e){console.warn('[checkTodayNovedad] falló:',e);}
 }
 async function loadTurnoHistory(){
  const cardsEl=document.getElementById('turno-hours-cards');
