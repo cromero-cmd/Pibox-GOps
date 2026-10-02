@@ -1441,7 +1441,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
-const APP_VERSION='17.7';
+const APP_VERSION='17.8';
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 const SUPER_ADMIN_NAME='Camilo Romero';
@@ -2697,6 +2697,13 @@ async function initTurnoView(){
  loadStrikes().catch(e=>console.error('[loadStrikes]',e));
  if(existing&&existing.status==='active'){
  currentTurnoId=existing.id;turnoStartTime=existing.startTime.toDate();accumulatedSeconds=existing.accumulatedSeconds||0;
+ // Turno reanudado tras una interrupción: accumulatedSeconds ya contiene lo trabajado ANTES de la
+ // interrupción, y el cronómetro (startTimer) suma (ahora − turnoStartTime) + accumulatedSeconds. Si
+ // la base sigue siendo el startTime original, ese tramo se cuenta dos veces (más toda la pausa) y el
+ // reloj se infla — caso real 02-oct-2026: Sebastian Guarin y Santiago Piñeros veían 08:18 / 08:53 con
+ // ~6 h / ~4 h reales, y «Jornada completada» salía de más. La base correcta es la hora de reanudación.
+ const resumedAtDt=existing.resumedAt?.toDate?.();
+ if(resumedAtDt&&accumulatedSeconds>0&&resumedAtDt>=turnoStartTime&&resumedAtDt<=new Date())turnoStartTime=resumedAtDt;
  // Cargar horas programadas para el déficit
  if(existing.scheduledEndTime&&existing.startTime){
  try{
@@ -3586,7 +3593,9 @@ async function resumeTurno(){
  if(window._resumePollId){clearInterval(window._resumePollId);window._resumePollId=null;}
  document.getElementById('resume-banner').style.display='none';
  currentTurnoId=t.id;turnoStartTime=new Date();accumulatedSeconds=t.accumulatedSeconds||0;
- await window.updateTurnoInFirebase(currentTurnoId,{status:'active',resumedAt:turnoStartTime,resumeAuthorized:false});
+ // endTime:null — el turno vuelve a estar en curso; el endTime de la interrupción quedaba como si el turno
+ // hubiera terminado a esa hora (Panel/strikes leían una salida falsa).
+ await window.updateTurnoInFirebase(currentTurnoId,{status:'active',resumedAt:turnoStartTime,resumeAuthorized:false,endTime:null});
  setTurnoActive({...t,startTime:{toDate:()=>new Date(t.startTime.toDate())}});startTimer();scheduleEndNotification();
  toast('▶️ Turno reanudado');
 }
