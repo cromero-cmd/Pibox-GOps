@@ -183,6 +183,21 @@ async function waitOverlay(env,n=1){for(let i=0;i<400;i++){if(env.calls.overlays
  {const e=mkEnv({perm:'denied'});const G=build(e);const p=G.startTurno();await waitOverlay(e);await vsleep(100000);
   t('F23 el modal abierto 100 s NO dispara el límite duro de 45 s (espera humana)',e.calls.alerts.length===0);click(e,'#loc-skip');await p;t('F24 …y al continuar el turno inicia',e.calls.saved.length===1);}
 
+
+ // ───────── Avisos de llamado: respaldo local cuando Firestore niega strike_notifications ─────────
+ {const a=html.indexOf('async function getStrikeNotifSafe'),b=html.indexOf('async function loadStrikes(){');
+  const mk=(remoteGet,remoteSave)=>{const store={};const ls={getItem:k=>store[k]??null,setItem:(k,v)=>{store[k]=String(v);}};
+   const f=new Function('window','localStorage',html.slice(a,b)+'\nreturn {getStrikeNotifSafe,saveStrikeNotifSafe};');
+   return f({getStrikeNotification:remoteGet,saveStrikeNotification:remoteSave},ls);};
+  const denied={get:async()=>({_readError:true}),save:async()=>false};
+  let H=mk(denied.get,denied.save);
+  t('N1 Firestore niega la lectura y no hay registro local: se notifica (null)',(await H.getStrikeNotifSafe('a_llamados'))===null);
+  await H.saveStrikeNotifSafe('a_llamados',{llamadoNumero:1,notifiedAt:'x'});
+  const last=await H.getStrikeNotifSafe('a_llamados');
+  t('N2 …tras notificar queda el registro local aunque la escritura falle (no se reenvía en cada carga)',last&&last.llamadoNumero===1);
+  t('N3 …y si el contador SUBE (2 > 1) se vuelve a notificar',2>(last.llamadoNumero||0));
+  H=mk(async()=>({llamadoNumero:2}),async()=>true);
+  t('N4 Firestore sano: manda el registro remoto',(await H.getStrikeNotifSafe('b'))?.llamadoNumero===2);}
  out.forEach(l=>console.log(l));
  const fails=out.filter(l=>l.startsWith('FAIL')).length;console.log(`\n${out.length-fails}/${out.length} pasan`);process.exit(fails?1:0);
 })().catch(e=>{console.error('ERROR en la prueba:',e);process.exit(2);});

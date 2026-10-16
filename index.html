@@ -374,7 +374,7 @@ window.getStrikeNotification = async (docId) => {
  try {
  const snap = await getDoc(doc(db, 'strike_notifications', docId));
  return snap.exists() ? snap.data() : null;
- } catch(e) { console.error('[getStrikeNotification]', e); return null; }
+ } catch(e) { console.error('[getStrikeNotification]', e); return { _readError: true }; }
 };
 window.saveStrikeNotification = async (docId, data) => {
  try {
@@ -1450,7 +1450,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
-const APP_VERSION='17.9';
+const APP_VERSION='18.0';
 // Promesas rechazadas sin manejar y errores de script: antes desaparecían sin rastro en consola del agente.
 window.addEventListener('unhandledrejection',e=>console.error('[unhandledrejection]',e.reason&&(e.reason.stack||e.reason.message||e.reason)));
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
@@ -1870,6 +1870,23 @@ function buildLlamadoHistorial(strikesLeve,strikesModerada,strikesGrave,strikesN
  });
  return historial;
 }
+// Registro de «ya se notificó este llamado». Las reglas de Firestore NO permiten la colección strike_notifications
+// (error «Missing or insufficient permissions» confirmado en vivo el 16-oct-2026), así que la lectura devolvía null
+// y la escritura fallaba: cada carga del panel de un agente con ≥1 llamado volvía a enviar el correo al líder. Con
+// este respaldo en localStorage el aviso se envía una sola vez por navegador y por aumento del contador, aunque
+// Firestore no responda. (La solución completa es agregar la regla de strike_notifications en Firebase.)
+async function getStrikeNotifSafe(docId){
+ let remote=null;
+ try{remote=window.getStrikeNotification?await window.getStrikeNotification(docId):null;}catch(e){}
+ let local=null;
+ try{local=JSON.parse(localStorage.getItem('pg_sn_'+docId)||'null');}catch(e){}
+ if(remote&&!remote._readError){return(local&&(local.llamadoNumero||0)>(remote.llamadoNumero||0))?local:remote;}
+ return local;
+}
+async function saveStrikeNotifSafe(docId,data){
+ try{localStorage.setItem('pg_sn_'+docId,JSON.stringify({llamadoNumero:data.llamadoNumero,notifiedAt:data.notifiedAt}));}catch(e){}
+ try{return window.saveStrikeNotification?await window.saveStrikeNotification(docId,data):false;}catch(e){return false;}
+}
 async function loadStrikes(){
  const userEmail=document.getElementById('user-email').textContent;
  const waiverMap=new Map(((window.getStrikeWaivers?await window.getStrikeWaivers(userEmail):[])).map(w=>[w.id,w]));
@@ -1970,7 +1987,7 @@ async function loadStrikes(){
  // en qué mes caiga.
  try{
  const strikeNotifDocId=`${userEmail}_llamados`;
- const lastNotified=window.getStrikeNotification?await window.getStrikeNotification(strikeNotifDocId):null;
+ const lastNotified=await getStrikeNotifSafe(strikeNotifDocId);
  const lastLlamadoNumero=lastNotified?.llamadoNumero||0;
  if(totalLlamados>lastLlamadoNumero){
  const agentName=document.getElementById('user-name').textContent;
@@ -1993,7 +2010,7 @@ async function loadStrikes(){
  };
  try{
  await fetch(NOTIF_SCRIPT+'?type=strike_warning&data='+encodeURIComponent(JSON.stringify(strikePayload)),{mode:'no-cors'});
- if(window.saveStrikeNotification)await window.saveStrikeNotification(strikeNotifDocId,{llamadoNumero:totalLlamados,notifiedAt:new Date().toISOString()});
+ await saveStrikeNotifSafe(strikeNotifDocId,{llamadoNumero:totalLlamados,notifiedAt:new Date().toISOString()});
  console.log('[loadStrikes] Notificación de llamado #'+totalLlamados+' enviada para '+userEmail);
  }catch(notifErr){console.warn('[loadStrikes] Error enviando notificación de llamado:',notifErr);}
  }
@@ -2004,7 +2021,7 @@ async function loadStrikes(){
  if(totalLlamados>=3){
  try{
  const discDocId=`${userEmail}_disciplinary`;
- const discExisting=window.getStrikeNotification?await window.getStrikeNotification(discDocId):null;
+ const discExisting=await getStrikeNotifSafe(discDocId);
  if(!discExisting){
  const agentName=document.getElementById('user-name').textContent;
  const liderEmail=mallaData.find(m=>m.lider)?.lider||'';
@@ -2013,7 +2030,7 @@ async function loadStrikes(){
  const discPayload={agentName,agentEmail:userEmail,liderEmail,mes:'últimos 6 meses',historial};
  try{
  await fetch(NOTIF_SCRIPT+'?type=disciplinary_warning&data='+encodeURIComponent(JSON.stringify(discPayload)),{mode:'no-cors'});
- if(window.saveStrikeNotification)await window.saveStrikeNotification(discDocId,{llamadoNumero:totalLlamados,notifiedAt:new Date().toISOString()});
+ await saveStrikeNotifSafe(discDocId,{llamadoNumero:totalLlamados,notifiedAt:new Date().toISOString()});
  console.log('[loadStrikes] Notificación de proceso disciplinario enviada para '+userEmail);
  }catch(discNotifErr){console.warn('[loadStrikes] Error enviando notificación disciplinaria:',discNotifErr);}
  }

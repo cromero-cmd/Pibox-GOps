@@ -98,6 +98,7 @@ Commit messages use the `feat:` / `fix:` / `chore:` prefix and a Spanish subject
 
 - **Umbrales configurables**: solo el mínimo de tardanza leve y las horas de no desconexión. Los cortes de 20 y 60 min y los conteos 3/2/1/3 están fijos en el código. Viven duplicados en `buildLlamadoHistorial` de `index.html` y del `.gs`, que deben mantenerse iguales.
 - **Ojo:** los dos umbrales configurables se guardan solo en el localStorage del navegador que los edita. No van a Firestore como el resto de la configuración. `loadStrikes` corre en el navegador del agente, así que en la práctica los agentes usan los defaults 5 min / 4 h.
+- **Reglas de Firestore**: `strike_notifications` necesita regla (las reglas publicadas el 16-oct-2026 no la tienen: lectura y escritura dan «Missing or insufficient permissions»). Mientras no exista, `getStrikeNotifSafe`/`saveStrikeNotifSafe` (v18.0) usan un respaldo en localStorage (`pg_sn_<docId>`) para que el correo de llamado salga una sola vez por navegador y por aumento del contador. Con la regla puesta, el respaldo es inofensivo.
 - **Ventana de conteo**: los strikes y llamados se cuentan en una ventana móvil de 6 meses, no por mes calendario (v17.7).
 - **Proceso disciplinario**: al tercer llamado acumulado (cualquier combinación) se abre proceso disciplinario/descargos y se envía un correo único por agente.
 - **Visibilidad para el agente**: ve su progreso en "Mi Turno" y recibe el aviso "Estás a 1 strike de un nuevo llamado".
