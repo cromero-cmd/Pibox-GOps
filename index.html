@@ -240,12 +240,19 @@ window.revokeDelegatedSuperAdmin = async () => {
  return true;
  } catch(e) { console.error('revokeDelegatedSuperAdmin error:', e); return false; }
 };
-window.saveTurnoToFirebase = async (data) => {
+// id generado en el cliente: si el guardado expira (sin conexión), el reintento reutiliza el MISMO id y no puede
+// quedar un turno duplicado cuando la primera escritura llegue después.
+window.newTurnoId = () => doc(collection(db, 'turnos')).id;
+window.saveTurnoToFirebase = async (data, idHint) => {
  if (!auth.currentUser) return null;
  try {
- const ref = await addDoc(collection(db, 'turnos'), { ...data, userId: auth.currentUser.uid, userEmail: auth.currentUser.email, userName: auth.currentUser.displayName });
- return ref.id;
- } catch(e) { return null; }
+ const id = idHint || doc(collection(db, 'turnos')).id;
+ const write = setDoc(doc(db, 'turnos', id), { ...data, userId: auth.currentUser.uid, userEmail: auth.currentUser.email, userName: auth.currentUser.displayName });
+ write.catch(() => {}); // si pierde la carrera contra el tope, que no quede como rechazo sin manejar
+ await Promise.race([write, new Promise((_, rej) => setTimeout(() => rej(new Error('Timeout de 15s guardando el turno')), 15000))]);
+ window.invalidateTurnosCache && window.invalidateTurnosCache();
+ return id;
+ } catch(e) { console.error('[saveTurnoToFirebase]', e); return null; }
 };
 window.updateTurnoInFirebase = async (id, data) => {
  if (!auth.currentUser) return;
@@ -311,7 +318,7 @@ window.getRecentTurnos = async (fromDate, forceRefresh, toDate) => {
  const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
  window._turnosRangeCache[rangeKey] = { data: all, time: now };
  return all;
- } catch(e) { console.error('[getRecentTurnos] consulta por rango falló:', e); return []; }
+ } catch(e) { console.error('[getRecentTurnos] consulta por rango falló:', e); window._turnosReadFailedAt = Date.now(); return []; }
  }
  // Sin rango: comportamiento por defecto sin cambios — últimos 300 turnos del sistema, con caché.
  if (!forceRefresh && window._turnosCache && (now - window._turnosCacheTime) < TURNOS_CACHE_TTL) {
@@ -332,6 +339,7 @@ window.getRecentTurnos = async (fromDate, forceRefresh, toDate) => {
  if (attempt < 3) await new Promise(res => setTimeout(res, 1500 * attempt));
  }
  }
+ window._turnosReadFailedAt = Date.now();
  return [];
 };
 window.updateOvertimeEvent = async (eventId, data) => {
@@ -1068,6 +1076,7 @@ body.agent-preview-mode header{margin-top:34px;}
  <button class="btn-turno-start" id="btn-turno-start" onclick="startTurno()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/><path d="M12 6v6l4 2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>Iniciar turno</button>
  <button class="btn-turno-end" id="btn-turno-end" onclick="endTurno()" style="display:none;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="18" height="18" rx="3" stroke="currentColor" stroke-width="2"/></svg>Finalizar turno</button>
  <div id="turno-start-status" style="display:none;font-size:11px;color:var(--text-dim);font-family:var(--mono);margin-top:8px;"></div>
+ <div id="turno-start-notice" style="display:none;font-size:11.5px;line-height:1.6;color:#fbbf24;background:rgba(251,191,36,0.08);border:1px solid rgba(251,191,36,0.3);border-radius:10px;padding:10px 12px;margin-top:10px;max-width:420px;"></div>
  </div>
  <div class="turno-info" id="turno-info" style="display:none;">
  <div class="turno-info-card"><div class="turno-info-label">Inicio</div><div class="turno-info-value" id="turno-start-display">—</div></div>
@@ -1441,7 +1450,9 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
-const APP_VERSION='17.8';
+const APP_VERSION='17.9';
+// Promesas rechazadas sin manejar y errores de script: antes desaparecían sin rastro en consola del agente.
+window.addEventListener('unhandledrejection',e=>console.error('[unhandledrejection]',e.reason&&(e.reason.stack||e.reason.message||e.reason)));
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
 const SUPER_ADMIN='cromero@pibox.app';
 const SUPER_ADMIN_NAME='Camilo Romero';
@@ -2854,9 +2865,9 @@ function getStartPosition(){
  }catch(e){done({status:'unavailable'});}
  });
 }
-async function reverseGeocodeCity(lat,lon){
+async function reverseGeocodeCity(lat,lon,timeoutMs){
  const url=`https://nominatim.openstreetmap.org/reverse?lat=${lat.toFixed(3)}&lon=${lon.toFixed(3)}&format=json&zoom=10&addressdetails=1&accept-language=es`;
- const resp=await fetch(url,{signal:AbortSignal.timeout(8000)});
+ const resp=await fetch(url,{signal:AbortSignal.timeout(timeoutMs||8000)});
  if(!resp.ok)throw new Error('Nominatim respondió '+resp.status);
  const a=(await resp.json()).address||{};
  const candidates=[a.city,a.town,a.village,a.municipality,a.state].filter(Boolean).map(cleanCityLabel).filter(Boolean);
@@ -2909,10 +2920,16 @@ function loadAgentCity(){
 async function evaluateStartLocation(geoPromise,cityPromise){
  try{
  const geo=await geoPromise;
- if(geo.status!=='ok')return{locationStatus:geo.status};
- const registered=await Promise.race([cityPromise,new Promise(res=>setTimeout(()=>res(null),8000))]);
+ if(geo.status!=='ok'){
+ const f={locationStatus:geo.status};
+ if(geo.code!==undefined&&geo.code!==null)f.locationErrorCode=geo.code;
+ return f;
+ }
+ // Topes cortos (3 s ciudad registrada, 4 s Nominatim): lo que no llegue a tiempo se completa en segundo plano
+ // (finishLocationInBackground) sin retrasar el inicio. Las coordenadas NUNCA se guardan, solo la ciudad.
+ const registered=await Promise.race([cityPromise,new Promise(res=>setTimeout(()=>res(null),3000))]);
  let g;
- try{g=await reverseGeocodeCity(geo.lat,geo.lon);}
+ try{g=await Promise.race([reverseGeocodeCity(geo.lat,geo.lon,4000),new Promise((_,rej)=>setTimeout(()=>rej(new Error('Nominatim: tope de 4 s')),4500))]);}
  catch(e){console.warn('[ubicación] geocodificación falló:',e);return{locationStatus:'geocode_failed'};}
  if(!g.city)return{locationStatus:'geocode_failed'};
  if(!registered)return{locationStatus:'no_registered_city',locationCity:g.city};
@@ -2923,6 +2940,35 @@ async function evaluateStartLocation(geoPromise,cityPromise){
  console.warn('[ubicación] error inesperado:',e);
  return{locationStatus:'error'};
  }
+}
+// Completa la ubicación DESPUÉS de iniciar el turno (nunca retrasa el inicio): geocodificación que falló o que
+// Nominatim no alcanzó a responder, ciudad registrada que llegó tarde, o una lectura de posición que expiró (en
+// Windows el proveedor de ubicación a veces tarda ~20-30 s en arrancar). Solo se escribe la ciudad, no coordenadas.
+function finishLocationInBackground(turnoId,fields,pos){
+ try{
+ const st=fields.locationStatus;
+ if(st==='no_registered_city'&&fields.locationCity){completeLocationValidation(turnoId,fields.locationCity);return;}
+ const haveFix=pos&&pos.status==='ok';
+ const recoverable=(st==='geocode_failed'&&haveFix)||((st==='timeout'||st==='unavailable')&&!(pos&&pos.skipped));
+ if(!turnoId||!recoverable)return;
+ setTimeout(async()=>{
+ try{
+ let p=pos;
+ if(!haveFix){
+ if(await queryGeoPermission()!=='granted')return;
+ p=await getPositionOnce({timeout:20000,hard:22000,maximumAge:600000});
+ }
+ if(!p||p.status!=='ok')return;
+ const g=await reverseGeocodeCity(p.lat,p.lon,10000);
+ if(!g.city)return;
+ const registered=await loadAgentCity();
+ const upd=!registered?{locationStatus:'no_registered_city',locationCity:g.city}
+ :citiesMatch(g.candidates,registered)?{locationStatus:'ok',locationCity:g.city,locationMatch:true}
+ :{locationStatus:'ok',locationCity:g.city,locationMatch:false,locationRegistered:registered};
+ await window.updateTurnoInFirebase(turnoId,upd);
+ }catch(e){console.warn('[ubicación] recuperación tardía falló:',e);}
+ },3000);
+ }catch(e){console.warn('[ubicación] no se pudo programar la recuperación tardía:',e);}
 }
 // Ícono de dispositivo de INICIO de un turno. Lee los campos nuevos (deviceType, userAgent) y, si no
 // existen, los antiguos (isMobile, ua): faltan los nuevos en turnos anteriores a v15.99 y en los
@@ -2950,7 +2996,8 @@ function turnoLocationBadge(t){
  if(t.locationMatch===true)return`<span title="${attr('Inicio dentro de la ciudad registrada'+(city?' ('+city+')':''))}">📍✅</span>`;
  if(t.locationMatch===false)return`<span title="${attr('Ciudad detectada: '+(city||'—')+(t.locationRegistered?' · Registrada: '+t.locationRegistered:''))}" style="cursor:help;">📍⚠️</span>`;
  const why={
- denied:['📍🚫','Sin validar: el agente bloqueó el permiso de ubicación en su navegador'],
+ denied:['📍🚫','Sin validar: el agente bloqueó el permiso de ubicación en su navegador (o continuó sin darla)'],
+ os_blocked:['📍🔒','Sin validar: el navegador tiene el permiso, pero el sistema operativo (p. ej. Windows) bloqueó la lectura de la ubicación'],
  timeout:['📍⏳','Sin validar: el navegador no entregó la ubicación a tiempo (permiso sin responder o sin señal de ubicación)'],
  unavailable:['📍❔','Sin validar: el dispositivo no pudo determinar la ubicación'],
  unsupported:['📍❔','Sin validar: el navegador no soporta geolocalización'],
@@ -2980,26 +3027,36 @@ async function queryGeoPermission(){
  try{if(navigator.permissions&&navigator.permissions.query)return(await navigator.permissions.query({name:'geolocation'})).state;}catch(e){}
  return'unknown';
 }
-// Sin tope duro: el `timeout` de getCurrentPosition no cuenta lo que el agente tarda en responder el
-// aviso del navegador, y aquí hay que ESPERAR esa respuesta (con overlay y botón Cancelar).
-function getPositionOnce(){
+// Lectura única de la posición. opts: {timeout (ms del navegador), hard (tope propio en ms; null = sin tope,
+// para cuando se espera la respuesta del aviso del navegador), high (alta precisión), maximumAge}.
+// Devuelve siempre un objeto, nunca lanza: {status:'ok',lat,lon} | {status:'denied'|'timeout'|'unavailable',code,message}.
+function getPositionOnce(opts){
+ opts=opts||{};
+ const timeout=opts.timeout||10000;
+ const hard=opts.hard===null?null:(opts.hard||timeout+2000);
  return new Promise(resolve=>{
- // Cinturón de seguridad: getCurrentPosition debería respetar su propio `timeout`, pero hay
- // equipos (reportado en vivo: Felipe Casallas, sep-2026) donde el servicio de ubicación del
- // sistema operativo se cuelga y el navegador nunca llama a ninguno de los dos callbacks — sin
- // este resolve manual, requireLocationForStart() (y con él "Iniciar turno") queda esperando
- // para siempre, con el botón en "Iniciando..." sin ningún aviso.
- let done=false;
- const finish=v=>{if(done)return;done=true;resolve(v);};
- const hardTimeout=setTimeout(()=>finish({status:'timeout',code:'hard-timeout',message:'El sistema no respondió tras 12s (posible falla del servicio de ubicación del equipo)'}),12000);
+ // Cinturón de seguridad: getCurrentPosition debería respetar su propio `timeout`, pero hay equipos
+ // (Felipe Casallas, sep-2026) donde el servicio de ubicación del SO se cuelga y el navegador nunca llama a
+ // ninguno de los dos callbacks — sin este resolve manual "Iniciar turno" queda esperando para siempre.
+ let done=false,hardT=null;
+ const finish=v=>{if(done)return;done=true;if(hardT)clearTimeout(hardT);resolve(v);};
+ if(hard)hardT=setTimeout(()=>finish({status:'timeout',code:'hard-timeout',message:'El sistema no respondió tras '+Math.round(hard/1000)+'s (posible falla del servicio de ubicación del equipo)'}),hard);
  try{
  navigator.geolocation.getCurrentPosition(
- pos=>{clearTimeout(hardTimeout);finish({status:'ok',lat:pos.coords.latitude,lon:pos.coords.longitude});},
- err=>{clearTimeout(hardTimeout);finish({status:err&&err.code===1?'denied':err&&err.code===3?'timeout':'unavailable',code:err&&err.code,message:err&&err.message});},
- {enableHighAccuracy:false,timeout:10000,maximumAge:300000}
+ pos=>finish({status:'ok',lat:pos.coords.latitude,lon:pos.coords.longitude}),
+ err=>finish({status:err&&err.code===1?'denied':err&&err.code===3?'timeout':'unavailable',code:err&&err.code,message:err&&err.message}),
+ {enableHighAccuracy:!!opts.high,timeout,maximumAge:opts.maximumAge!==undefined?opts.maximumAge:300000}
  );
- }catch(e){clearTimeout(hardTimeout);finish({status:'unavailable'});}
+ }catch(e){finish({status:'unavailable',message:e&&e.message});}
  });
+}
+// Segundo intento con parámetros distintos cuando el primero falló y el permiso NO está bloqueado en el navegador.
+// En Windows el proveedor de ubicación del sistema a veces tarda en arrancar (timeout) o responde distinto con alta
+// precisión y sin caché; es el único «fallback» que se puede hacer desde la página. Conserva el error más informativo.
+async function retryPosition(first){
+ const second=await getPositionOnce({high:true,timeout:6000,hard:8000,maximumAge:0});
+ if(second.status==='ok')return second;
+ return (first.status==='denied'||second.status==='denied')?(second.status==='denied'?second:first):second;
 }
 // Se resuelve cuando el agente cambia el permiso a "Permitir" desde el candado del navegador.
 function watchGeoGranted(){
@@ -3023,15 +3080,22 @@ function showLocationOverlay(html){
 }
 const LOC_BTN_PRIMARY='width:100%;background:rgba(96,165,250,0.14);border:1px solid rgba(96,165,250,0.5);color:#60a5fa;padding:10px 14px;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;';
 const LOC_BTN_SECONDARY='width:100%;background:transparent;border:1px solid var(--border);color:var(--text-muted);padding:9px 14px;border-radius:10px;font-size:12px;cursor:pointer;margin-top:8px;';
-// Aviso del navegador pendiente: se le dice al agente dónde mirar. Resuelve con la posición o {cancelled:true}.
-function waitForLocationDecision(positionPromise){
+// Aviso del navegador pendiente (el agente aún no responde «Permitir/Bloquear»). Resuelve con la posición, o con
+// {skipped:true} si el agente pulsa «Continuar sin ubicación» o pasan 90 s sin respuesta (nunca espera sin tope).
+function waitForLocationDecision(positionPromise,ctl){
  const overlay=showLocationOverlay(`
  <div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:10px;">📍 Permite el acceso a tu ubicación</div>
- <div style="font-size:13px;color:var(--text-muted);line-height:1.7;">Tu navegador te está mostrando un aviso (arriba, junto a la dirección web). Elige <strong style="color:var(--text);">«Permitir»</strong> para iniciar tu turno.</div>
- <button id="loc-cancel" style="${LOC_BTN_SECONDARY}margin-top:16px;">Cancelar</button>`);
+ <div style="font-size:13px;color:var(--text-muted);line-height:1.7;">Tu navegador te está mostrando un aviso (arriba, junto a la dirección web). Elige <strong style="color:var(--text);">«Permitir»</strong> para validar la ciudad desde la que te conectas. Tu turno inicia igual si no lo haces.</div>
+ <button id="loc-skip" style="${LOC_BTN_SECONDARY}margin-top:16px;">Continuar sin ubicación</button>`);
+ if(ctl&&ctl.cancelled){overlay.remove();return Promise.resolve({skipped:true});}
+ window._startModalOpen=(window._startModalOpen||0)+1;
  return new Promise(resolve=>{
- overlay.querySelector('#loc-cancel').onclick=()=>{overlay.remove();resolve({cancelled:true});};
- positionPromise.then(pos=>{overlay.remove();resolve(pos);});
+ let done=false;
+ const finish=v=>{if(done)return;done=true;clearTimeout(cap);overlay.remove();window._startModalOpen=Math.max(0,(window._startModalOpen||1)-1);resolve(v);};
+ const cap=setTimeout(()=>finish({skipped:true}),90000);
+ overlay.querySelector('#loc-skip').onclick=()=>finish({skipped:true});
+ if(ctl)ctl._close=()=>finish({skipped:true});
+ positionPromise.then(pos=>finish(pos));
  });
 }
 // Ubicación bloqueada: instrucciones para activarla. Resuelve 'retry' (botón, o automático apenas el agente
@@ -3063,78 +3127,120 @@ function locationHelpHTML(diag){
  const det=diag?`<div style="margin-top:10px;font-size:10px;color:var(--text-dim);font-family:var(--mono);">Detalle técnico: permiso del navegador = ${esc(diag.perm||'?')}${diag.code?' · error '+esc(diag.code):''}${diag.message?' · '+esc(String(diag.message).slice(0,80)):''}</div>`:'';
  return`<div style="margin-top:14px;font-size:12px;color:var(--text-muted);line-height:1.8;">${pasos}</div>${det}`;
 }
-function showLocationRequiredModal(repeated,grantedSignal,diag){
+function showLocationRequiredModal(repeated,grantedSignal,diag,ctl){
  return new Promise(resolve=>{
  const overlay=showLocationOverlay(`
- <div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:10px;">📍 Activa tu ubicación para iniciar tu turno</div>
- <div style="font-size:13px;color:var(--text-muted);line-height:1.7;">Para iniciar tu turno necesitamos verificar la ciudad desde la que te conectas. Solo se guarda la ciudad detectada, no tu ubicación exacta.</div>
- ${repeated?'<div style="margin-top:10px;font-size:12px;color:#fb923c;font-weight:600;">La ubicación sigue bloqueada para Pi GOps. Revisa los pasos y vuelve a intentarlo.</div>':''}
+ <div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:10px;">📍 Activa tu ubicación</div>
+ <div style="font-size:13px;color:var(--text-muted);line-height:1.7;">Pedimos tu ubicación para verificar la ciudad desde la que te conectas. Solo se guarda la ciudad detectada, no tu ubicación exacta. <strong style="color:var(--text);">Si no puedes activarla ahora, tu turno inicia igual.</strong></div>
+ ${repeated?'<div style="margin-top:10px;font-size:12px;color:#fb923c;font-weight:600;">La ubicación sigue bloqueada para Pi GOps. Revisa los pasos y vuelve a intentarlo, o continúa sin ubicación.</div>':''}
  ${locationHelpHTML(diag)}
  <button id="loc-retry" style="${LOC_BTN_PRIMARY}margin-top:16px;">Ya la activé, reintentar</button>
- <button id="loc-cancel" style="${LOC_BTN_SECONDARY}">Cancelar</button>`);
- let done=false;
- const finish=v=>{if(done)return;done=true;overlay.remove();resolve(v);};
+ <button id="loc-skip" style="${LOC_BTN_SECONDARY}">Continuar sin ubicación <span id="loc-count" style="opacity:.7;"></span></button>`);
+ if(ctl&&ctl.cancelled){overlay.remove();resolve('skip');return;}
+ window._startModalOpen=(window._startModalOpen||0)+1;
+ let done=false,left=180;
+ // Tope: si nadie responde en 3 min, el turno inicia sin ubicación (nunca queda esperando indefinidamente).
+ const tick=setInterval(()=>{left--;const c=overlay.querySelector('#loc-count');if(c&&left<=30)c.textContent='('+left+' s)';if(left<=0)finish('skip');},1000);
+ const finish=v=>{if(done)return;done=true;clearInterval(tick);overlay.remove();window._startModalOpen=Math.max(0,(window._startModalOpen||1)-1);resolve(v);};
  overlay.querySelector('#loc-retry').onclick=()=>finish('retry');
- overlay.querySelector('#loc-cancel').onclick=()=>finish('cancel');
+ overlay.querySelector('#loc-skip').onclick=()=>finish('skip');
+ if(ctl)ctl._close=()=>finish('skip');
  if(grantedSignal)grantedSignal.then(()=>finish('retry'));
  });
 }
-async function requireLocationForStart(){
- if(window._requireLocation===false)return{ok:true,pos:await getStartPosition()};
+// Regla de negocio (Camilo, 16-oct-2026): NINGUNA falla de ubicación bloquea el inicio del turno. Esta función
+// siempre devuelve {ok:true,pos} — el estado queda en pos.status: ok | denied | os_blocked | unavailable | timeout |
+// unsupported. «denied» = el navegador/agente bloqueó el permiso; «os_blocked» = permiso concedido en el navegador pero
+// el sistema operativo respondió «User denied Geolocation» (error 1; típico de Windows con el servicio de ubicación
+// apagado o sin acceso para Chrome). Solo se muestra el modal cuando el AGENTE puede arreglarlo (permiso bloqueado en
+// el sitio), y siempre trae «Continuar sin ubicación». ctl permite cerrar los avisos si el inicio se aborta.
+async function requireLocationForStart(ctl){
+ ctl=ctl||{};
  if(!('geolocation' in navigator))return{ok:true,pos:{status:'unsupported'}};
- let repeated=false,diag={perm:'unknown'};
- for(;;){
+ if(window._requireLocation===false)return{ok:true,pos:await getStartPosition()};
+ let repeated=false;
+ for(let round=0;round<4&&!ctl.cancelled;round++){
  const state=await queryGeoPermission();
- diag={perm:state};
+ let diag={perm:state};
  if(state!=='denied'){
- const positionPromise=getPositionOnce();
- let pos=state==='granted'?await positionPromise:await waitForLocationDecision(positionPromise);
- if(pos.cancelled)return{ok:false};
- // Permiso concedido pero sin fix: un reintento; si sigue fallando NO se bloquea (queda el estado).
- if(pos.status==='timeout'||pos.status==='unavailable')pos=await getPositionOnce();
- if(pos.status!=='denied')return{ok:true,pos};
+ // Permiso concedido: lectura acotada (~11 s). Permiso sin responder: se espera la decisión del agente (≤90 s).
+ const first=getPositionOnce(state==='granted'?{timeout:9000,hard:11000}:{timeout:10000,hard:null});
+ let pos=state==='granted'?await first:await waitForLocationDecision(first,ctl);
+ if(pos.skipped)return{ok:true,pos:{status:'timeout',skipped:true}};
+ // El agente rechazó el aviso → modal. Cualquier otra falla se reintenta una vez con otros parámetros.
+ const userDenied=pos.status==='denied'&&state!=='granted';
+ if(pos.status!=='ok'&&!userDenied)pos=await retryPosition(pos);
+ if(pos.status==='ok')return{ok:true,pos};
+ if(pos.status==='denied'&&state==='granted')return{ok:true,pos:{status:'os_blocked',code:pos.code,message:pos.message}};
+ if(!userDenied)return{ok:true,pos};
  diag={perm:state,code:pos.code,message:pos.message};
  }
- // Bloqueada: el estado es 'denied' o el agente rechazó el aviso (sin re-preguntar en bucle).
+ if(ctl.cancelled)break;
  const watch=watchGeoGranted();
- const action=await showLocationRequiredModal(repeated,watch.promise,diag);
+ const action=await showLocationRequiredModal(repeated,watch.promise,diag,ctl);
  watch.stop();
- if(action==='cancel')return{ok:false};
+ if(action==='skip')return{ok:true,pos:{status:'denied',skipped:true,code:diag.code,message:diag.message}};
  repeated=true;
  }
+ return{ok:true,pos:{status:'denied',skipped:true}};
 }
 async function startTurno(){
  // Bloquear doble clic
  const btnStart=document.getElementById('btn-turno-start');
  if(btnStart._processing)return;
+ // Un solo inicio a la vez, aunque el botón ya se haya liberado (límite duro) o haya otra pestaña en el mismo
+ // flujo: sin esto, dos _doStartTurno concurrentes crearon DOS turnos activos con 2 s de diferencia
+ // (Lilleyra Romero, 15-oct-2026, 17:19:00 y 17:19:02).
+ if(window._startInFlight){toast('⏳ Tu turno ya se está iniciando…');return;}
  btnStart._processing=true;
  btnStart.disabled=true;
  btnStart.textContent='Iniciando...';
- // Cinturón de seguridad: cada paso interno de _doStartTurno ya tiene su propio límite (versión
- // 4s, ubicación ~12-24s, malla 20s), pero combinados pueden sumar ~40s con el botón mostrando
- // solo "Iniciando..." sin explicar qué espera — se ve idéntico a "colgado" (reportado en vivo:
- // Felipe Casallas, sep-2026). Un límite duro total avisa con un mensaje claro en vez de dejar
- // la duda; si el proceso original igual termina después, el turno se guarda normalmente.
- const HARD_LIMIT_MS=45000;
+ // La hora de inicio es la del CLIC: se fija antes de cualquier espera (ubicación, malla, avisos). Así ninguna
+ // falla técnica ni modal le suma tardanza al agente.
+ const clickTime=new Date();
+ window._startInFlight=true;
  let finished=false;
- const startPromise=_doStartTurno().then(()=>{finished=true;},err=>{finished=true;throw err;});
- try{
- await Promise.race([
- startPromise,
- new Promise(resolve=>setTimeout(resolve,HARD_LIMIT_MS))
- ]);
- if(!finished){
- setTurnoStartStatus('');
- alert('⏱️ Esto está tardando más de lo normal (posible problema de conexión o del servicio de ubicación de tu equipo).\n\nSi tu turno no aparece iniciado en unos segundos, vuelve a intentarlo o avisa a tu líder.');
+ // Candado entre pestañas (Web Locks): con dos pestañas de Pi GOps abiertas, un mismo cambio de permiso de
+ // ubicación liberaba el aviso de AMBAS y las dos creaban un turno (duplicado con 2 s de diferencia).
+ const runStart=()=>{
+ if(navigator.locks&&navigator.locks.request){
+ return navigator.locks.request('pigops-inicio-turno',{ifAvailable:true},async lock=>{
+ if(!lock){toast('⏳ Tu turno ya se está iniciando en otra pestaña de Pi GOps. Revisa esa pestaña.');return;}
+ await _doStartTurno(clickTime);
+ });
  }
- }catch(e){
- console.error('startTurno error:',e);
- }finally{
+ return _doStartTurno(clickTime);
+ };
+ const startPromise=runStart()
+ .catch(err=>{
+ console.error('[startTurno] error inesperado:',err);
+ setTurnoStartStatus('');
+ alert('❌ No se pudo iniciar el turno: '+((err&&err.message)||'error inesperado')+'\n\nVuelve a pulsar «Iniciar turno». Si se repite, avisa a tu líder.');
+ })
+ .finally(()=>{finished=true;window._startInFlight=false;});
+ // Límite duro de 45 s de espera TÉCNICA (no cuenta el tiempo que un aviso espera al agente): cada paso interno
+ // ya tiene su propio tope (versión 4 s, ubicación ~20 s, malla ~22 s, geocodificación 4 s, guardado 15 s), esto es
+ // la red de seguridad final para que el botón nunca quede en «Iniciando…» sin explicación.
+ const HARD_LIMIT_MS=45000;
+ let hardFired=false;
+ await new Promise(resolve=>{
+ let waited=0;
+ const iv=setInterval(()=>{
+ if(finished){clearInterval(iv);resolve();return;}
+ if((window._startModalOpen||0)>0)return;
+ waited+=500;
+ if(waited>=HARD_LIMIT_MS){clearInterval(iv);hardFired=true;resolve();}
+ },500);
+ startPromise.then(()=>{clearInterval(iv);resolve();});
+ });
+ if(hardFired&&!finished){
+ setTurnoStartStatus('');
+ alert('⏱️ Esto está tardando más de lo normal (posible problema de conexión).\n\nEspera unos segundos: si tu turno no aparece iniciado, vuelve a pulsar «Iniciar turno».');
+ }
  setTurnoStartStatus('');
  btnStart._processing=false;
  btnStart.disabled=false;
  btnStart.innerHTML='<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/><path d="M12 6v6l4 2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>Iniciar turno';
- }
 }
 // Texto bajo el botón "Iniciar turno" que explica en qué paso va _doStartTurno — antes el único
 // indicio era el propio botón diciendo "Iniciando...", indistinguible de un cuelgue real.
@@ -3144,87 +3250,144 @@ function setTurnoStartStatus(text){
  el.textContent=text;
  el.style.display=text?'block':'none';
 }
-async function _doStartTurno(){
+// Aviso NO bloqueante que se queda visible (a diferencia de un toast de 2,5 s) — p. ej. cuando el turno inició
+// pero la ubicación no se pudo leer y el agente necesita saber qué revisar.
+function setTurnoNotice(html){
+ const el=document.getElementById('turno-start-notice');
+ if(!el)return;
+ el.innerHTML=html?`<div style="display:flex;gap:8px;align-items:flex-start;"><div style="flex:1;">${html}</div><button onclick="setTurnoNotice('')" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:14px;">✕</button></div>`:'';
+ el.style.display=html?'block':'none';
+}
+// Lee la malla para el INICIO con topes cortos y caché como respaldo. Devuelve {csv,fromCache,ageMin} o
+// {csv:null} si no hay nada (el turno inicia igual, sin validar contra la malla). Nunca lanza ni espera más de ~22 s.
+async function getMallaForStart(){
+ const readCache=()=>{try{const c=JSON.parse(localStorage.getItem(MALLA_CACHE_KEY)||'null');if(c&&c.csv)return{csv:c.csv,fromCache:true,ageMin:Math.round((Date.now()-c.ts)/60000)};}catch(e){}return null;};
+ // Con caché disponible no vale la pena esperar más de 10 s al servidor (la petición de cobertura sale a los 5 s y
+ // responde en ~2,5 s cuando el servicio está sano); sin caché se espera hasta 22 s porque no hay alternativa.
+ const cacheAvail=!!readCache();
+ const capMs=cacheAvail?10000:22000;
+ try{
+ window._lastMallaFetchInfo=null;
+ const csv=await Promise.race([
+ fetchMallaCSV('_doStartTurno',null,{attempts:2,timeoutMs:12000,hedgeMs:5000,maxAgeMs:15*60000}),
+ new Promise((_,rej)=>setTimeout(()=>rej(new Error('Timeout de '+Math.round(capMs/1000)+'s esperando MALLA_SCRIPT')),capMs))
+ ]);
+ const info=window._lastMallaFetchInfo||{};
+ return{csv,fromCache:!!info.fromCache,ageMin:info.ageMin||0};
+ }catch(e){
+ console.warn('[inicio] malla no disponible, se intenta la caché local:',e);
+ const c=readCache();
+ if(c)toast(`⚠️ Malla desde caché local (hace ${c.ageMin} min) — Apps Script no disponible`);
+ return c||{csv:null};
+ }
+}
+// Valida el inicio contra la malla. Una malla que vino de caché vieja (>6 h) NO bloquea: podría estar desactualizada.
+function evaluateMallaForStart(m,userEmail,clickTime){
+ const out={blocked:null,mallaEntry:null};
+ if(!m||!m.csv)return out;
+ const trust=!m.fromCache||m.ageMin<=360;
+ const lines=m.csv.trim().split('\n').slice(1);
+ const todayEntries=lines.map(l=>{const c=parseCSVLine(l);return{fecha:c[1]?.trim(),usuario:c[2]?.trim(),inicio:c[5]?.trim(),fin:c[6]?.trim(),lider:c[9]?.trim(),novedad:c[10]?.trim()};})
+ .filter(x=>{
+ if(!x.fecha||x.usuario!==userEmail)return false;
+ const d=parseDate(x.fecha);
+ return d&&d.toDateString()===clickTime.toDateString();
+ });
+ if(todayEntries.length===0){if(trust)out.blocked='No tienes un turno programado para hoy en la malla.';return out;}
+ const entry=todayEntries[0];
+ out.mallaEntry=entry;
+ // Novedades que permiten iniciar turno (media jornada remunerada)
+ if(entry.novedad&&!esNovedadVotaciones(entry.novedad)){if(trust)out.blocked=entry.novedad;return out;}
+ // Bloquear inicio anticipado (máximo TOLERANCE_MINS antes)
+ const scheduledStart=parseTime(entry.fecha,entry.inicio);
+ if(scheduledStart&&trust){
+ const minsEarly=Math.round((scheduledStart-clickTime)/60000);
+ if(minsEarly>TOLERANCE_MINS){
+ const h=Math.floor(minsEarly/60),mm=minsEarly%60;
+ out.blocked=`Tu turno inicia a las ${entry.inicio}. Podrás iniciar ${TOLERANCE_MINS} minutos antes. Faltan ${h>0?h+'h ':''} ${mm}min.`;
+ }
+ }
+ return out;
+}
+async function _doStartTurno(clickTime){
+ clickTime=clickTime||new Date();
  // Block from mobile
  if(getDeviceInfo().isMobile){
  alert('⚠️ El registro de turno solo está disponible desde un computador de escritorio.\n\nPor favor inicia sesión desde tu computador para registrar tu turno.');
  return;
  }
- // Versión al día ANTES de iniciar (v16.5): una pestaña vieja esquivaría el permiso de ubicación
- // obligatorio y no guardaría los campos nuevos. Si hay una versión nueva se recarga y el agente vuelve a
- // pulsar «Iniciar turno». Falla abierta: si no se puede consultar la versión, se sigue.
+ // Versión al día ANTES de iniciar (v16.5): una pestaña vieja esquivaría los controles nuevos. Si hay una
+ // versión nueva se recarga y el agente vuelve a pulsar «Iniciar turno». Falla abierta (tope 4 s).
  setTurnoStartStatus('Verificando versión…');
  if(await reloadIfOutdated())return;
- // Ubicación OBLIGATORIA (v16.4): sin permiso no se inicia el turno. Va ANTES de la malla porque puede
- // requerir una acción del agente (activar el permiso) y esa espera no debe consumir el timeout de 20 s de
- // la malla —si lo hiciera, la validación de malla se saltaría en silencio—. El reverse-geocode a Nominatim
- // sigue ocurriendo más abajo, solo si el turno realmente inicia. loadAgentCity() corre en paralelo.
- setTurnoStartStatus('Obteniendo tu ubicación…');
- const registeredCityPromise=loadAgentCity();
- const locGate=await requireLocationForStart();
- if(!locGate.ok){setTurnoStartStatus('');toast('📍 Para iniciar tu turno debes permitir el acceso a tu ubicación');return;}
- const geoPromise=Promise.resolve(locGate.pos);
- // Check malla for today
- setTurnoStartStatus('Cargando tu malla…');
  const userEmail=document.getElementById('user-email').textContent;
- const today=new Date();
- let mallaEntry=null;
+ // ¿Ya hay un turno ACTIVO hoy? (la pestaña se recargó, o una lectura falló y la pantalla mostró «Iniciar turno»):
+ // se restaura en vez de crear un duplicado.
+ setTurnoStartStatus('Revisando tu turno de hoy…');
  try{
- // fetchMallaCSV ya reintenta, valida tamaño mínimo, y cae a caché local si el endpoint falla
- // del todo — si aun así no hay nada disponible, lanza y el catch de abajo permite iniciar el
- // turno sin bloquear (más seguro que bloquear a un agente por una falla externa). Además, en
- // el peor caso (3 intentos de 20s + backoff) fetchMallaCSV puede tardar ~65s — un agente puede
- // quedar "atascado" en el botón "Iniciando..." todo ese tiempo. Se limita la espera aquí a 20s:
- // si no resuelve a tiempo, se cae al mismo catch de abajo (permite iniciar sin validar malla)
- // en vez de bloquear la UI mientras fetchMallaCSV sigue reintentando en segundo plano.
- const csv=await Promise.race([
- fetchMallaCSV('_doStartTurno'),
- new Promise((_,reject)=>setTimeout(()=>reject(new Error('Timeout de 20s esperando MALLA_SCRIPT')),20000))
- ]);
- const lines=csv.trim().split('\n').slice(1);
- const todayEntries=lines.map(l=>{const c=parseCSVLine(l);return{fecha:c[1]?.trim(),usuario:c[2]?.trim(),inicio:c[5]?.trim(),fin:c[6]?.trim(),lider:c[9]?.trim(),novedad:c[10]?.trim()};})
- .filter(m=>{
- if(!m.fecha||m.usuario!==userEmail)return false;
- const d=parseDate(m.fecha);
- return d&&d.toDateString()===today.toDateString();
- });
- if(todayEntries.length===0){showTurnoBlocked('No tienes un turno programado para hoy en la malla.');return;}
- mallaEntry=todayEntries[0];
- if(mallaEntry.novedad){
- // Novedades que permiten iniciar turno (media jornada remunerada)
- const esPermitida=esNovedadVotaciones(mallaEntry.novedad);
- if(!esPermitida){showTurnoBlocked(mallaEntry.novedad);return;}
- }
- // Punto 3: bloquear inicio anticipado (máximo TOLERANCE_MINS antes)
- const scheduledStart=parseTime(mallaEntry.fecha,mallaEntry.inicio);
- if(scheduledStart){
- const minsEarly=Math.round((scheduledStart-today)/60000);
- if(minsEarly>TOLERANCE_MINS){
- const h=Math.floor(minsEarly/60),m=minsEarly%60;
- showTurnoBlocked(`Tu turno inicia a las ${mallaEntry.inicio}. Podrás iniciar ${TOLERANCE_MINS} minutos antes. Faltan ${h>0?h+'h ':''} ${m}min.`);
+ const prev=await Promise.race([window.getTodayTurno(),new Promise(res=>setTimeout(()=>res(null),6000))]);
+ if(prev&&prev.status==='active'){
+ toast('ℹ️ Ya tenías un turno en curso — lo restauré');
+ await initTurnoView();
  return;
  }
+ }catch(e){console.warn('[inicio] no se pudo revisar el turno previo:',e);}
+ // Reintento de un inicio que no se alcanzó a guardar: mismo id (idempotente) y misma hora de clic si fue hace <10 min.
+ let pending=window._pendingStart;
+ if(pending&&Date.now()-pending.at>10*60000)pending=window._pendingStart=null;
+ if(pending)clickTime=pending.clickTime;
+ else pending=window._pendingStart={id:window.newTurnoId?window.newTurnoId():null,clickTime,at:Date.now()};
+ // Ubicación y malla EN PARALELO. La ubicación nunca bloquea (ver requireLocationForStart); la malla usa topes
+ // cortos y, si MALLA_SCRIPT falla, la caché local.
+ setTurnoStartStatus('Cargando tu malla y ubicación…');
+ const registeredCityPromise=loadAgentCity();
+ const ctl={};
+ const locPromise=requireLocationForStart(ctl).catch(e=>{console.warn('[ubicación] error inesperado:',e);return{ok:true,pos:{status:'unavailable'}};});
+ const mallaRes=await getMallaForStart();
+ const mv=evaluateMallaForStart(mallaRes,userEmail,clickTime);
+ if(mv.blocked){
+ ctl.cancelled=true;if(ctl._close)ctl._close();
+ showTurnoBlocked(mv.blocked);
+ window._pendingStart=null;
+ return;
  }
- }catch(e){
- console.warn('Malla check failed, allowing start:', e);
- }
+ if(!mallaRes.csv)setTurnoNotice('⚠️ No se pudo consultar tu malla (el servicio no responde). Tu turno inició igual; se validará más tarde.');
+ const locGate=await locPromise;
+ const pos=locGate.pos||{status:'unavailable'};
  setTurnoStartStatus('Guardando tu turno…');
- const locationFields=await evaluateStartLocation(geoPromise,registeredCityPromise);
- const device=getDeviceInfo();turnoStartTime=new Date();accumulatedSeconds=0;
- // Guardar horas programadas para el cronómetro de déficit
- if(mallaEntry){
- const ss=parseTime(mallaEntry.fecha,mallaEntry.inicio);
- const se=parseTime(mallaEntry.fecha,mallaEntry.fin);
+ const locationFields=await evaluateStartLocation(Promise.resolve(pos),registeredCityPromise);
+ const device=getDeviceInfo();
+ turnoStartTime=clickTime;accumulatedSeconds=0;
+ if(mv.mallaEntry){
+ const ss=parseTime(mv.mallaEntry.fecha,mv.mallaEntry.inicio);
+ const se=parseTime(mv.mallaEntry.fecha,mv.mallaEntry.fin);
  window._scheduledTurnoSecs=ss&&se?Math.max(0,Math.round((se-ss)/1000)):0;
  window._scheduledTurnoStart=ss;
  }else{window._scheduledTurnoSecs=0;}
  const data={startTime:turnoStartTime,endTime:null,accumulatedSeconds:0,status:'active',device:device.label,isMobile:device.isMobile,ua:device.ua,deviceType:device.isMobile?'mobile':'desktop',userAgent:navigator.userAgent,screenWidth:screen.width,...locationFields};
- currentTurnoId=await window.saveTurnoToFirebase(data);
- // Sin await: completar la validación en segundo plano no debe retrasar el inicio del turno.
- if(locationFields.locationStatus==='no_registered_city'&&locationFields.locationCity&&currentTurnoId)completeLocationValidation(currentTurnoId,locationFields.locationCity);
+ const savedId=await window.saveTurnoToFirebase(data,pending.id);
+ if(!savedId){
+ // No se registró en Firestore: NO se activa la pantalla (antes quedaba un cronómetro «fantasma» sin turno
+ // guardado y sin poder finalizarlo). Se conserva el id/hora para reintentar sin duplicar.
+ turnoStartTime=null;
+ alert('❌ No pudimos registrar tu turno en el servidor (sin conexión o servicio lento).\n\nRevisa tu internet y vuelve a pulsar «Iniciar turno»: se conservará tu hora de inicio ('+clickTime.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'})+').');
+ return;
+ }
+ window._pendingStart=null;
+ currentTurnoId=savedId;
+ finishLocationInBackground(savedId,locationFields,pos);
  setTurnoActive({...data,startTime:{toDate:()=>turnoStartTime}});startTimer();scheduleEndNotification();
  loadStrikes().catch(e=>console.error('[loadStrikes]',e));
  toast('✅ Turno iniciado — '+turnoStartTime.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}));
+ if(locationFields.locationStatus==='os_blocked')setTurnoNotice(locationOsBlockedNoticeHTML(locationFields));
+}
+// Mensaje no bloqueante cuando el navegador tiene el permiso pero el sistema operativo no entrega la ubicación.
+function locationOsBlockedNoticeHTML(f){
+ const plat=locationPlatform();
+ const how=plat==='desktop'
+ ?'Windows: <strong>Configuración → Privacidad y seguridad → Ubicación</strong>: activa «Servicios de ubicación», «Permitir que las aplicaciones accedan a tu ubicación» y «Permitir que las aplicaciones de escritorio accedan a tu ubicación» (Chrome debe aparecer en la lista). Luego cierra y vuelve a abrir Chrome.'
+ :'Revisa que la ubicación del dispositivo esté activada y permitida para tu navegador.';
+ return`<strong>📍 Tu turno inició, pero no pudimos leer tu ubicación.</strong> Tu navegador tiene el permiso, pero el sistema operativo lo está bloqueando (error ${esc(f.locationErrorCode||1)}). ${how}`;
 }
 function showTurnoBlocked(novedad){
  const card=document.getElementById('turno-card-inner');
@@ -3269,11 +3432,17 @@ async function endTurno(status='ended'){
  const endTime=new Date();
  const elapsed=Math.floor((endTime-turnoStartTime)/1000)+accumulatedSeconds;
 
- // Intentar guardar en Firestore con reintentos — crítico que quede guardado
+ // Intentar guardar en Firestore con reintentos — crítico que quede guardado. Cada intento con tope de 15 s:
+ // sin conexión, la escritura de Firestore queda en cola y su promesa no resuelve nunca, dejando «Finalizar
+ // turno» colgado sin explicación (el cierre sí se aplica al volver la red; reintentar es idempotente).
+ window._endingTurno=true;
  let saved=false;
  for(let attempt=1;attempt<=3;attempt++){
    try{
-     await window.updateTurnoInFirebase(currentTurnoId,{endTime,accumulatedSeconds:elapsed,status});
+     await Promise.race([
+       window.updateTurnoInFirebase(currentTurnoId,{endTime,accumulatedSeconds:elapsed,status}),
+       new Promise((_,rej)=>setTimeout(()=>rej(new Error('Timeout de 15s guardando el cierre del turno')),15000))
+     ]);
      saved=true;
      break;
    }catch(e){
@@ -3285,6 +3454,7 @@ async function endTurno(status='ended'){
  }
 
  if(!saved){
+   window._endingTurno=false;
    // Restaurar el timer y alertar al agente
    if(!turnoInterval)startTimer();
    const retry=confirm('❌ Error al registrar el cierre del turno — sin conexión.\n\nPor favor verifica tu conexión a internet e intenta de nuevo.\n\n¿Reintentar ahora?');
@@ -3293,16 +3463,23 @@ async function endTurno(status='ended'){
  }
 
  window._lastTurnoId=currentTurnoId;
+ const endedStartTime=turnoStartTime;
+ // El estado local se libera ANTES de consultar la malla: antes la pantalla seguía mostrando «Finalizar turno» con el
+ // cronómetro congelado mientras checkOvertimeAndDiscrepancy esperaba a MALLA_SCRIPT (hasta ~65 s), el agente
+ // creía que no había cerrado, recargaba y beforeunload podía reescribir el turno como «interrumpido».
+ currentTurnoId=null;turnoStartTime=null;accumulatedSeconds=0;window._endingTurno=false;
  if(status==='ended'){
- await checkOvertimeAndDiscrepancy(endTime,elapsed);
  setTurnoInactive();
  toast('👋 Turno finalizado — duración: '+formatDuration(elapsed));
  loadTurnoHistory();
  setTimeout(()=>initTurnoView(),800);
+ try{await checkOvertimeAndDiscrepancy(endTime,elapsed,endedStartTime);}
+ catch(e){console.warn('[endTurno] revisión de extras/salida anticipada falló:',e);}
  }
- currentTurnoId=null;turnoStartTime=null;accumulatedSeconds=0;
 }
-async function checkOvertimeAndDiscrepancy(endTime,elapsedSecs){
+async function checkOvertimeAndDiscrepancy(endTime,elapsedSecs,startedAt){
+ startedAt=startedAt||turnoStartTime;
+ if(!startedAt)return;
  const userEmail=document.getElementById('user-email').textContent;
  try{
  // fetchMallaCSV() en vez de un fetch propio: caso real confirmado (Tatiana Mosquera, 26-sep-2026,
@@ -3321,7 +3498,7 @@ async function checkOvertimeAndDiscrepancy(endTime,elapsedSecs){
  .find(m=>{
  if(!m.fecha||m.usuario!==userEmail)return false;
  const d=parseDate(m.fecha);
- return d&&d.toDateString()===turnoStartTime.toDateString();
+ return d&&d.toDateString()===startedAt.toDateString();
  });
  if(!todayEntry)return;
  // Bug 1: novedades que permiten trabajar media jornada (remunerada completa)
@@ -3337,11 +3514,11 @@ async function checkOvertimeAndDiscrepancy(endTime,elapsedSecs){
  // Bug 2: para turnos nocturnos, verificar que el agente realmente salió antes
  // usando la hora real de fin vs scheduledEnd, no elapsed vs scheduled
  const now=new Date();
- const realEndTime=new Date(turnoStartTime.getTime()+elapsedSecs*1000);
+ const realEndTime=new Date(startedAt.getTime()+elapsedSecs*1000);
  const earlySecsByTime=Math.round((scheduledEnd-realEndTime)/1000);
  const extraSecsByTime=Math.round((realEndTime-scheduledEnd)/1000);
  // Check late start discrepancy (>60 min late from scheduled start)
- const lateStartMins=Math.round((turnoStartTime-scheduledStart)/60000);
+ const lateStartMins=Math.round((startedAt-scheduledStart)/60000);
  if(lateStartMins>60){
  await window.trackEvent('discrepancy',{
  type:'late_start',lateStartMins,
@@ -3716,7 +3893,7 @@ async function loadTurnoHistory(){
  cardsEl.innerHTML=todayCard+weekCard+monthCard+`<div style="grid-column:span 3;">${customCard}</div>`;
 }
 window.addEventListener('beforeunload',()=>{
- if(currentTurnoId&&turnoStartTime){
+ if(currentTurnoId&&turnoStartTime&&!window._endingTurno){
  const elapsed=Math.floor((Date.now()-turnoStartTime.getTime())/1000)+accumulatedSeconds;
  window.updateTurnoInFirebase(currentTurnoId,{endTime:new Date(),accumulatedSeconds:elapsed,status:'interrupted'});
  }
@@ -3907,33 +4084,67 @@ const MALLA_HOT_CACHE_TTL=60*1000; // 1 minuto — igual que TURNOS_CACHE_TTL
 // y 200 truncado en la misma sesión). Si los 3 intentos fallan, se usa el último CSV cacheado en
 // localStorage como último recurso en vez de dejar la vista vacía — el usuario ve la malla
 // (marcada como posiblemente desactualizada) en lugar de "Sin registros".
-async function fetchMallaCSV(callerTag,onProgress){
- // Caché "caliente" (1 min, igual que TURNOS_CACHE_TTL): sin esto, cada cambio de filtro en
- // Panel de Control (Línea/Líder/Agente) llama a loadPanel2() completo, que a su vez llama a
- // fetchMallaCSV() cada vez — con MALLA_SCRIPT degradado, cada click podía tardar hasta ~65s
- // (3 reintentos) aunque el fetch anterior hubiera terminado hace segundos. Reutilizar un fetch
- // reciente hace que filtrar sea instantáneo en el caso normal (varios cambios de filtro
- // seguidos), sin afectar la frescura de datos en uso normal (recarga de pestaña, etc.).
- try{
- const hot=JSON.parse(localStorage.getItem(MALLA_CACHE_KEY)||'null');
- if(hot&&hot.csv&&(Date.now()-hot.ts)<MALLA_HOT_CACHE_TTL)return hot.csv;
- }catch(e){}
- // onProgress(attempt,total) opcional — permite al caller (ej. loadPanel2) mostrar en la UI que
- // sigue reintentando en vez de dejar un "Cargando..." estático indistinguible de un cuelgue
- // real durante los ~65s que puede tardar el peor caso con MALLA_SCRIPT degradado.
- for(let attempt=1;attempt<=3;attempt++){
- try{onProgress?.(attempt,3);}catch(e){}
- try{
- const resp=await fetch(MALLA_SCRIPT+'?sheet=Malla',{signal:AbortSignal.timeout(20000)});
+// Una lectura de la malla con petición «de cobertura» (hedged): MALLA_SCRIPT responde en ~2,5 s casi siempre,
+// pero ~1 de cada 8 pedidos se cuelga hasta agotar el tiempo o devuelve 404 (medido en vivo el 16-oct-2026). Si el
+// primer pedido no ha respondido a los hedgeMs, se lanza un segundo EN PARALELO y gana el primero que traiga un CSV
+// válido — en vez de esperar el timeout completo y recién entonces reintentar. Rechaza solo si fallan todos.
+function fetchMallaOnce(timeoutMs,hedgeMs){
+ return new Promise((resolve,reject)=>{
+ let pending=0,done=false,hedged=!hedgeMs,lastErr=null,hedgeT=null;
+ const ctls=[];
+ const cleanup=()=>{clearTimeout(hedgeT);ctls.forEach(c=>{try{c.abort();}catch(e){}});};
+ const launch=()=>{
+ pending++;
+ const ctl=new AbortController();ctls.push(ctl);
+ const to=setTimeout(()=>ctl.abort(),timeoutMs);
+ // _t evita que un navegador/proxy reutilice una respuesta mala (404/colgada) para el mismo URL.
+ fetch(MALLA_SCRIPT+'?sheet=Malla&_t='+Date.now()+Math.floor(Math.random()*1000),{signal:ctl.signal})
+ .then(async resp=>{
  if(!resp.ok)throw new Error(`MALLA_SCRIPT respondió ${resp.status}`);
  const text=await resp.text();
  const rowCount=text.trim().split('\n').length-1;
  if(rowCount<20)throw new Error(`MALLA_SCRIPT devolvió una respuesta sospechosamente corta (${rowCount} filas)`);
+ return text;
+ })
+ .then(text=>{if(done)return;done=true;cleanup();resolve(text);})
+ .catch(e=>{lastErr=ctl.signal.aborted&&!done?new Error('MALLA_SCRIPT no respondió en '+Math.round(timeoutMs/1000)+'s'):e;})
+ .finally(()=>{
+ clearTimeout(to);pending--;
+ if(done||pending>0)return;
+ // Falló el único pedido en vuelo: si aún no se lanzó el de cobertura, se lanza ya (no esperar a hedgeMs).
+ if(!hedged){hedged=true;clearTimeout(hedgeT);launch();return;}
+ done=true;cleanup();reject(lastErr||new Error('MALLA_SCRIPT no disponible'));
+ });
+ };
+ launch();
+ if(hedgeMs)hedgeT=setTimeout(()=>{if(!done&&!hedged){hedged=true;launch();}},hedgeMs);
+ });
+}
+// opts (todas opcionales): attempts (3), timeoutMs (20000), hedgeMs (8000; 0 = sin cobertura), maxAgeMs (tope de la caché
+// «caliente»; por defecto 60 s). Tras agotar los intentos cae a la caché local de cualquier edad. Deja en
+// window._lastMallaFetchInfo {fromCache,ageMin} para que el llamador sepa si los datos pueden estar desactualizados.
+async function fetchMallaCSV(callerTag,onProgress,opts){
+ opts=opts||{};
+ const attempts=opts.attempts||3,timeoutMs=opts.timeoutMs||20000,hedgeMs=opts.hedgeMs!==undefined?opts.hedgeMs:8000;
+ const hotTtl=opts.maxAgeMs!==undefined?opts.maxAgeMs:MALLA_HOT_CACHE_TTL;
+ // Caché "caliente": sin esto, cada cambio de filtro en Panel de Control (Línea/Líder/Agente) llama a loadPanel2()
+ // completo, que a su vez llama a fetchMallaCSV() cada vez — con MALLA_SCRIPT degradado, cada click podía tardar
+ // hasta ~65s (3 reintentos) aunque el fetch anterior hubiera terminado hace segundos.
+ try{
+ const hot=JSON.parse(localStorage.getItem(MALLA_CACHE_KEY)||'null');
+ if(hot&&hot.csv&&(Date.now()-hot.ts)<hotTtl){window._lastMallaFetchInfo={fromCache:false,ageMin:Math.round((Date.now()-hot.ts)/60000)};return hot.csv;}
+ }catch(e){}
+ // onProgress(attempt,total) opcional — permite al caller (ej. loadPanel2) mostrar en la UI que sigue reintentando.
+ for(let attempt=1;attempt<=attempts;attempt++){
+ try{onProgress?.(attempt,attempts);}catch(e){}
+ try{
+ const text=await fetchMallaOnce(timeoutMs,hedgeMs);
  try{localStorage.setItem(MALLA_CACHE_KEY,JSON.stringify({csv:text,ts:Date.now()}));}catch(e){}
+ window._lastMallaFetchInfo={fromCache:false,ageMin:0};
  return text;
  }catch(e){
  console.error(`[${callerTag}] intento ${attempt} falló:`,e);
- if(attempt<3)await new Promise(res=>setTimeout(res,1500*attempt));
+ if(attempt<attempts)await new Promise(res=>setTimeout(res,1500*attempt));
  }
  }
  try{onProgress?.('fallback');}catch(e){}
@@ -3942,8 +4153,9 @@ async function fetchMallaCSV(callerTag,onProgress){
  if(cached&&cached.csv){
  const ageMin=Math.round((Date.now()-cached.ts)/60000);
  const stale=(Date.now()-cached.ts)>MALLA_CACHE_TTL;
- console.warn(`[${callerTag}] MALLA_SCRIPT no disponible tras 3 intentos — usando caché local de hace ${ageMin} min${stale?' (fuera del TTL de 30 min)':''}`);
+ console.warn(`[${callerTag}] MALLA_SCRIPT no disponible tras ${attempts} intentos — usando caché local de hace ${ageMin} min${stale?' (fuera del TTL de 30 min)':''}`);
  toast(`⚠️ Malla desde caché local (hace ${ageMin} min) — Apps Script no disponible`);
+ window._lastMallaFetchInfo={fromCache:true,ageMin};
  return cached.csv;
  }
  }catch(e){}
@@ -4230,26 +4442,7 @@ function renderPanelActiveNow(active){
 function filterPanelMobile(){window._mobileFilter=true;loadPanelData();toast('Mostrando turnos desde móvil');}
 function filterPanelUsers(){window._mobileFilter=false;const sel=document.getElementById('panel-user-filter');if(sel)sel.value='all';loadPanelData();}
 // ── FLOATING TIMER DRAG ──
-function initDraggableTimer(){
- const el=document.getElementById('floating-timer');if(!el)return;
- const saved=localStorage.getItem('ft_pos');
- if(saved){try{const{left,top}=JSON.parse(saved);el.style.left=left;el.style.top=top;el.style.right='auto';el.style.bottom='auto';}catch{}}
- let isDragging=false,startX,startY,startLeft,startTop;
- el.addEventListener('mousedown',e=>{if(e.target.classList.contains('ft-end'))return;isDragging=true;el.classList.add('dragging');const r=el.getBoundingClientRect();startX=e.clientX;startY=e.clientY;startLeft=r.left;startTop=r.top;el.style.left=startLeft+'px';el.style.top=startTop+'px';el.style.right='auto';el.style.bottom='auto';});
- document.addEventListener('mousemove',e=>{if(!isDragging)return;const nl=Math.max(0,Math.min(window.innerWidth-el.offsetWidth,startLeft+(e.clientX-startX)));const nt=Math.max(0,Math.min(window.innerHeight-el.offsetHeight,startTop+(e.clientY-startY)));el.style.left=nl+'px';el.style.top=nt+'px';});
- document.addEventListener('mouseup',()=>{if(!isDragging)return;isDragging=false;el.classList.remove('dragging');localStorage.setItem('ft_pos',JSON.stringify({left:el.style.left,top:el.style.top}));});
-}
 // ── FAQ RESIZER ──
-function initFAQResizer(){
- const resizer=document.getElementById('faq-resizer');const sidebar=document.querySelector('.faq-sidebar');
- if(!resizer||!sidebar)return;
- let startX,startW;
- resizer.addEventListener('mousedown',e=>{startX=e.clientX;startW=sidebar.offsetWidth;resizer.classList.add('dragging');document.body.style.cursor='col-resize';document.body.style.userSelect='none';
- function onMove(e){sidebar.style.width=Math.min(400,Math.max(160,startW+(e.clientX-startX)))+'px';}
- function onUp(){resizer.classList.remove('dragging');document.body.style.cursor='';document.body.style.userSelect='';document.removeEventListener('mousemove',onMove);document.removeEventListener('mouseup',onUp);}
- document.addEventListener('mousemove',onMove);document.addEventListener('mouseup',onUp);
- });
-}
 // ── PANEL DE CONTROL (subview) ──
 let panel2Filter='today';
 let panel2ActiveTimers={};
@@ -4302,6 +4495,9 @@ function turnoAnomalyFacts(r){
 }
 async function loadPanel2(){
  const allTurnos=await window.getRecentTurnos();
+ // getRecentTurnos devuelve [] si Firestore falla (cuota, red): sin este aviso el Panel se veía «vacío» o con todos
+ // en «Ausente» como si fuera información real.
+ if(!allTurnos.length&&window._turnosReadFailedAt&&Date.now()-window._turnosReadFailedAt<20000)toast('⚠️ No se pudieron leer los turnos de Firestore — el Panel puede verse incompleto. Pulsa ↻ para reintentar.');
  const allAbsences=await (window.getAbsences?window.getAbsences():[]);
  const now=new Date();
  const sod=new Date(now.getFullYear(),now.getMonth(),now.getDate());

@@ -108,6 +108,15 @@ Commit messages use the `feat:` / `fix:` / `chore:` prefix and a Spanish subject
   - Una tardanza justificada se paga por el horario programado en nómina (v17.0).
 - **Turnos que cruzan medianoche** (ej. 16:00→01:00): si el fin programado es menor que el inicio programado, se suman 24 h antes de calcular horas. Este ajuste está en `loadStrikes`, `renderPanel2Insights`, la prenómina y el Panel de Control. No romperlo.
 
+### Inicio de turno (regla de negocio, v17.9)
+- **Ninguna falla de ubicación bloquea el inicio de turno** (no negociable). Permiso negado, error 1 con permiso concedido, error 2, error 3, Nominatim caído o lento, agente sin ciudad en BASE 3.0: el turno inicia y se guarda `locationStatus` (`ok`, `denied`, `os_blocked`, `unavailable`, `timeout`, `unsupported`, `geocode_failed`, `no_registered_city`, `error`) y el Panel muestra un ícono neutro. Nunca se guardan coordenadas, solo la ciudad.
+- **`os_blocked`** = el navegador tiene el permiso pero `getCurrentPosition` responde error 1 «User denied Geolocation» (el sistema operativo, típicamente Windows, no entrega la ubicación). Se reintenta una vez con alta precisión y `maximumAge:0`; si sigue fallando, el turno inicia con aviso persistente al agente.
+- **La hora de inicio es la del clic**, fijada en `startTurno()` antes de cualquier modal o espera.
+- **Todo paso del inicio lleva tope**: versión 4 s, ubicación ~20 s, malla ≤22 s (10 s si hay caché), geocodificación 4 s, guardado 15 s, y un límite duro de 45 s de espera técnica en `startTurno()` (no cuenta el tiempo de un modal esperando al agente). Los modales siempre traen «Continuar sin ubicación» y se continúan solos (90 s el aviso del navegador, 180 s el modal de bloqueo).
+- **Sin duplicados**: `window._startInFlight` (misma pestaña), candado `navigator.locks` (entre pestañas), revisión de turno activo de hoy antes de crear, e id del turno generado en el cliente (`newTurnoId`) para que un reintento sea idempotente.
+- **Malla en el inicio**: `fetchMallaCSV(tag,null,{attempts:2,timeoutMs:12000,hedgeMs:5000,maxAgeMs:15*60000})`. MALLA_SCRIPT se cuelga o da 404 en ~1 de cada 8 pedidos, por eso `fetchMallaOnce` lanza un segundo pedido «de cobertura» a los `hedgeMs`. Si todo falla se usa la caché local; una caché de más de 6 h no bloquea el inicio.
+- Prueba: `node test/pigops_inicio_turno_test.js` (extrae el código real de `index.html` y simula geolocalización, fetch, Firestore y reloj).
+
 ### Nómina
 - **Pre-revisión** (`openPayrollPreview`):
   - Edición en línea con recálculo en tiempo real. Las horas se muestran en formato colombiano "hh:mm a. m./p. m.".
