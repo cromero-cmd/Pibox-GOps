@@ -1451,7 +1451,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
-const APP_VERSION='18.1';
+const APP_VERSION='18.2';
 // Promesas rechazadas sin manejar y errores de script: antes desaparecían sin rastro en consola del agente.
 window.addEventListener('unhandledrejection',e=>console.error('[unhandledrejection]',e.reason&&(e.reason.stack||e.reason.message||e.reason)));
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
@@ -1879,6 +1879,8 @@ function computeAgentStrikes(o){
  const{email,malla,turnos,waiverMap,appealMap,cfg,now}=o;
  const byDay=new Map();
  (turnos||[]).forEach(t=>{const td=t.startTime?.toDate?.();if(!td)return;const k=td.toDateString();if(!byDay.has(k))byDay.set(k,[]);byDay.get(k).push(t);});
+ // con turnos duplicados el mismo día manda el MÁS TEMPRANO de su estado (el inicio real), no el orden de lectura
+ byDay.forEach(a=>a.sort((x,y)=>x.startTime.toDate()-y.startTime.toDate()));
  const out=[];
  (malla||[]).forEach(m=>{
  if(!m.fecha||m.usuario!==email||m.novedad)return;
@@ -1891,7 +1893,9 @@ function computeAgentStrikes(o){
  if(!turno)return;
  const rs=turno.startTime.toDate();
  // turno activo (sin endTime): la salida «real» es ahora, así la no desconexión también se ve en vivo
- const re=turno.endTime?.toDate?.()||(turno.status==='active'?now:undefined);
+ // …salvo un turno «active» huérfano de hace más de 20 h (nunca se cerró): no hay salida real y usar «ahora» inventaba un
+ // strike distinto cada día (Felipe Casallas, turnos del 25 y 26-sep sin cerrar).
+ const re=turno.endTime?.toDate?.()||(turno.status==='active'&&(now-rs)/3600000<=20?now:undefined);
  const hhmm=x=>x.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'});
  const mk=(cat,detalle)=>{
  const wid=strikeWaiverId(email,m.fecha,STRIKE_CATS[cat].waiver);
@@ -1985,7 +1989,7 @@ async function buildAgentStrikeModel(email,now){
  const appealMap=new Map(appeals.map(a=>[a.id,a]));
  let malla=[],mallaFalló=false;
  try{
- const csv=await fetchMallaCSV('strikes');
+ const csv=await fetchMallaCSV('strikes',null,{maxAgeMs:10*60000});
  malla=csv.trim().split('\n').slice(1).map(l=>{const c=parseCSVLine(l);return{fecha:c[1]?.trim(),usuario:c[2]?.trim(),nombre:c[3]?.trim(),inicio:c[5]?.trim(),fin:c[6]?.trim(),lider:c[9]?.trim(),novedad:c[10]?.trim()};})
  .filter(m=>m.fecha&&m.usuario===email);
  }catch(e){console.error('[strikes] malla falló:',e);mallaFalló=true;}
@@ -1999,7 +2003,7 @@ function strikeWaivedInfo(s){
  const porApelacion=!!(w.appealId||a);
  const quien=(a&&(a.decidedByName||a.decidedBy))||w.porNombre||w.por||'—';
  const cuando=(a&&a.decidedAt?new Date(a.decidedAt):null)||w.at;
- return{motivo:porApelacion?'Apelación aprobada':'Retirado por justa causa',quien,cuando,texto:w.motivo||''};
+ return{motivo:porApelacion?'Apelación aprobada':'Retirado por justa causa',quien,cuando,texto:String(w.motivo||'').replace(/^Apelación aprobada:\s*/i,'')};
 }
 // Listado de strikes VIGENTES agrupado por mes (más reciente primero), con los llamados emitidos ese mes.
 // opts.apelar(s) → HTML extra por strike (botón/estado de apelación del agente); opts.admin(s) → HTML extra del admin.
@@ -2147,7 +2151,7 @@ async function loadStrikes(){
  ${lls>0?`<span style="font-size:10px;color:${c.color};font-family:var(--mono);">${lls} llamado${lls!==1?'s':''}</span>`:''}
  </div>
  <div style="height:4px;background:var(--surface3);border-radius:2px;overflow:hidden;margin-bottom:4px;"><div style="height:100%;width:${progPct}%;background:${c.color};border-radius:2px;transition:width 0.5s;"></div></div>
- <div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);">Faltan ${faltan} strike${faltan!==1?'s':''} para ${lls>0?'el siguiente':'un'} llamado de atención · ${c.per} strikes = 1 llamado</div>
+ <div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);">Faltan ${faltan} strike${faltan!==1?'s':''} para ${lls>0?'el siguiente':'un'} llamado de atención · ${c.per} strike${c.per!==1?'s':''} = 1 llamado</div>
  </div>`;
  }).join('');
  const near=Object.keys(STRIKE_CATS).filter(k=>model.pending[k]>0&&STRIKE_CATS[k].per-model.pending[k]===1&&STRIKE_CATS[k].per>1).map(k=>STRIKE_CATS[k].label.toLowerCase());
@@ -2199,7 +2203,7 @@ async function showStrikeHistorial(prefEmail){
  [...agents.entries()].sort((a,b)=>a[1].localeCompare(b[1])).forEach(([e,n])=>{const o=document.createElement('option');o.value=e;o.textContent=`${n} — ${e}`;sel.appendChild(o);});
  const show=async email=>{
  const body=document.getElementById('strike-hist-body');if(!body||!email){return;}
- body.innerHTML='Cargando…';
+ body.innerHTML='Cargando… (si el servicio de malla está lento puede tardar un poco)';
  try{
  const model=await buildAgentStrikeModel(email,new Date());
  const nombre=agents.get(email)||email;

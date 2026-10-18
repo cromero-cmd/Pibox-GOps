@@ -72,5 +72,18 @@ function calc(dias,now,w,a){const wm=new Map();(w||[]).forEach(x=>wm.set(typeof 
  t('E9 el historial del correo disciplinario usa solo llamados vigentes (máx. 3) con tipos legibles',h.length===1&&h[0].strikes.length===3&&h[0].strikes[0].tipo==='Leve');
  const k=calc([dia('3/9/2026',10),dia('4/9/2026',10),dia('5/9/2026',10)],D(2026,10,17),[{id:EM+'_20260903_tardanza',motivo:'x',waivedBy:'admin@pibox.app'}]);
  t('E10 un retiro directo (sin apelación) también sale de todos los contadores',k.totalActive===2&&k.totalLlamados===0&&k.waived.length===1&&!k.waived[0].waived.appealId);}
+{// turnos duplicados el mismo día (caso real Lilleyra 16-oct): manda el inicio más temprano, no el orden de lectura
+ const d=dia('16/10/2026',0);const dup={userEmail:EM,status:'active',startTime:ts(new Date(2026,9,16,8,56,0)),endTime:null};
+ d.turno.status='active';d.turno.endTime=null;
+ const a=E.computeAgentStrikes({email:EM,malla:[d.row],turnos:[dup,d.turno],waiverMap:new Map(),appealMap:new Map(),cfg,now:D(2026,10,16,23,0)});
+ const b=E.computeAgentStrikes({email:EM,malla:[d.row],turnos:[d.turno,dup],waiverMap:new Map(),appealMap:new Map(),cfg,now:D(2026,10,16,23,0)});
+ t('E11 turnos activos duplicados el mismo día: mismo resultado sin importar el orden de lectura (usa el más temprano)',a.length===b.length&&a.every((x,i)=>x.cat===b[i].cat),JSON.stringify([a.map(x=>x.cat),b.map(x=>x.cat)]));}
+{// turno activo huérfano (nunca se cerró) vs turno activo de hoy
+ const orf=dia('1/10/2026',0);orf.turno.status='active';orf.turno.endTime=null;
+ const a=E.computeAgentStrikes({email:EM,malla:[orf.row],turnos:[orf.turno],waiverMap:new Map(),appealMap:new Map(),cfg,now:D(2026,10,17,22,0)});
+ t('E12 turno «active» huérfano de hace días NO inventa un strike de no desconexión',a.length===0,JSON.stringify(a.map(x=>x.cat)));
+ const hoy=dia('17/10/2026',0);hoy.turno.status='active';hoy.turno.endTime=null;
+ const b=E.computeAgentStrikes({email:EM,malla:[hoy.row],turnos:[hoy.turno],waiverMap:new Map(),appealMap:new Map(),cfg,now:D(2026,10,17,21,30)});
+ t('E13 …pero un turno activo de HOY sí se evalúa en vivo (5 h 30 min tras la salida programada → no desconexión)',b.length===1&&b[0].cat==='nodesc',JSON.stringify(b.map(x=>x.cat)));}
 out.forEach(l=>console.log(l));
 const fails=out.filter(l=>l.startsWith('FAIL')).length;console.log(`\n${out.length-fails}/${out.length} pasan`);process.exit(fails?1:0);
