@@ -1103,7 +1103,7 @@ body.agent-preview-mode header{margin-top:34px;}
  </div>
  <div class="strikes-wrap" id="strikes-wrap" style="display:none;">
  <div class="strikes-header">
- <div class="strikes-title">⚡ Mis strikes (últimos 6 meses)</div>
+ <div class="strikes-title" id="strikes-title">⚡ Mis strikes</div>
  <div id="strikes-summary" style="font-size:11px;color:var(--text-dim);font-family:var(--mono);"></div>
  </div>
  <div class="strike-meter"><div class="strike-meter-fill" id="strike-meter-fill" style="width:0%;background:#4ade80;"></div></div>
@@ -1183,6 +1183,7 @@ body.agent-preview-mode header{margin-top:34px;}
  <button class="turno-filter-btn" onclick="showEarlyLeaveRequests()" style="border-color:rgba(96,165,250,0.4);color:#60a5fa;" id="btn-earlyleave-requests">🏁 Salidas anticipadas <span id="earlyleave-badge" style="display:none;background:#60a5fa;color:white;border-radius:100px;padding:1px 6px;font-size:10px;margin-left:4px;"></span></button>
  <button class="turno-filter-btn" onclick="showExceededWeeksModal()" style="border-color:rgba(167,139,250,0.4);color:#a78bfa;" id="btn-exceeded-weeks">📅 Semanas excedidas <span id="exceeded-weeks-badge" style="display:none;background:#a78bfa;color:white;border-radius:100px;padding:1px 6px;font-size:10px;margin-left:4px;"></span></button>
  <button class="turno-filter-btn" onclick="showStrikeAppeals()" style="border-color:rgba(251,191,36,0.4);color:#fbbf24;" id="btn-strike-appeals">⚖️ Apelaciones de strikes <span id="strike-appeals-badge" style="display:none;background:#fbbf24;color:#1a1a1a;border-radius:100px;padding:1px 6px;font-size:10px;margin-left:4px;"></span></button>
+ <button class="turno-filter-btn" onclick="showStrikeHistorial()" style="border-color:rgba(156,163,175,0.4);color:#9ca3af;" id="btn-strike-historial">📜 Historial de strikes</button>
  <button class="turno-filter-btn" onclick="openPayrollPreview()" style="border-color:rgba(74,222,128,0.3);color:#4ade80;">📋 Nómina</button>
  <button class="turno-filter-btn" onclick="exportPanel2XLSX()" style="border-color:rgba(74,222,128,0.3);color:#4ade80;">⬇ Excel</button>
  <button class="turno-filter-btn" onclick="loadPanel2()" style="padding:5px 12px;">↻</button>
@@ -1450,7 +1451,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
-const APP_VERSION='18.0';
+const APP_VERSION='18.1';
 // Promesas rechazadas sin manejar y errores de script: antes desaparecían sin rastro en consola del agente.
 window.addEventListener('unhandledrejection',e=>console.error('[unhandledrejection]',e.reason&&(e.reason.stack||e.reason.message||e.reason)));
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
@@ -1843,32 +1844,115 @@ function strikeWaiverId(email,fecha,cat){
  if(p.length!==3)return null;
  return `${email}_${p[2]}${p[1].padStart(2,'0')}${p[0].padStart(2,'0')}_${cat}`;
 }
-// Reconstruye cronológicamente qué strikes generaron cada llamado numerado — cruza las 4
-// categorías por fecha y, cada vez que UNA categoría acumula suficientes strikes propios para
-// cruzar su propio umbral (3 leve, 2 moderada, 1 grave, 3 no desconexión), cierra ese lote como
-// "el siguiente llamado" (numeración global, no por categoría) y reinicia el contador de esa
-// categoría. Misma lógica que buildLlamadoHistorial en PiGOps_Notificaciones_v5.gs, usada aquí
-// para armar el historial completo del correo de proceso disciplinario.
-function buildLlamadoHistorial(strikesLeve,strikesModerada,strikesGrave,strikesNoDesconex){
- const events=[
- ...strikesLeve.map(s=>({tipo:'Leve',fecha:s.fecha,descripcion:s.detalle,cat:'leve'})),
- ...strikesModerada.map(s=>({tipo:'Moderada',fecha:s.fecha,descripcion:s.detalle,cat:'moderado'})),
- ...strikesGrave.map(s=>({tipo:'Grave',fecha:s.fecha,descripcion:s.detalle,cat:'grave'})),
- ...strikesNoDesconex.map(s=>({tipo:'No desconexión',fecha:s.fecha,descripcion:s.detalle,cat:'noDesconex'}))
- ].sort((a,b)=>(parseDate(a.fecha)||0)-(parseDate(b.fecha)||0));
- const thresholds={leve:3,moderado:2,grave:1,noDesconex:3};
- const buffers={leve:[],moderado:[],grave:[],noDesconex:[]};
- const historial=[];
- let llamadoNum=0;
- events.forEach(ev=>{
- buffers[ev.cat].push(ev);
- if(buffers[ev.cat].length>=thresholds[ev.cat]){
- llamadoNum++;
- historial.push({llamadoNumero:llamadoNum,strikes:buffers[ev.cat].map(s=>({tipo:s.tipo,fecha:s.fecha,descripcion:s.descripcion}))});
- buffers[ev.cat]=[];
+// ── POLÍTICA DE VIGENCIA DE STRIKES (v18.1, definida por Talento Humano) ──
+// Vigencia de 3 meses calendario: están activos los strikes y llamados del mes actual y de los dos meses calendario
+// anteriores COMPLETOS. Hoy (octubre) = agosto, septiembre y octubre; el 1 de noviembre = septiembre, octubre y
+// noviembre. Lo que queda fuera se considera ARCHIVADO («Vencido»): no cuenta para contadores, umbrales,
+// escalamiento ni nuevos llamados. Todo se calcula por fecha AL LEER: no se borra ni se mueve nada en Firestore y no
+// hay procesos programados. Un strike con apelación aprobada (strike_waivers) tampoco cuenta nunca.
+const STRIKE_CATS={
+ leve:{label:'Tardanza leve',icon:'🟡',color:'#fbbf24',per:3,tipo:'🟡 Leve',waiver:'tardanza'},
+ moderada:{label:'Tardanza moderada',icon:'🟠',color:'#fb923c',per:2,tipo:'🟠 Moderada',waiver:'tardanza'},
+ grave:{label:'Tardanza grave',icon:'🔴',color:'#f87171',per:1,tipo:'🔴 Grave',waiver:'tardanza'},
+ nodesc:{label:'No desconexión',icon:'🔵',color:'#60a5fa',per:3,tipo:'🔵 No desconexión',waiver:'nodesconex'}
+};
+const MESES_LARGO=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+const capStr=s=>s.charAt(0).toUpperCase()+s.slice(1);
+function strikeVigencia(now){
+ now=now||new Date();
+ const start=new Date(now.getFullYear(),now.getMonth()-2,1);
+ const months=[0,1,2].map(i=>{const d=new Date(start.getFullYear(),start.getMonth()+i,1);return{y:d.getFullYear(),m:d.getMonth(),key:d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'),nombre:MESES_LARGO[d.getMonth()]};});
+ const a=months[0],c=months[2];
+ const label=a.y===c.y?`${capStr(a.nombre)} – ${capStr(c.nombre)} ${c.y}`:`${capStr(a.nombre)} ${a.y} – ${capStr(c.nombre)} ${c.y}`;
+ return{start,months,label,nombres:`${a.nombre}, ${months[1].nombre} y ${c.nombre}`};
+}
+// Primer día en que un strike de la fecha d deja de contar (inicio del 4.º mes contando el suyo).
+function strikeExpiryDate(d){return new Date(d.getFullYear(),d.getMonth()+3,1);}
+function strikeMonthKey(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');}
+function strikeMonthLabel(key){const [y,m]=key.split('-');return capStr(MESES_LARGO[parseInt(m,10)-1])+' '+y;}
+const fmtDMYs=d=>d?`${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`:'—';
+// Strikes de UN agente a partir de su malla y sus turnos (sin ventana: devuelve todo el historial; la vigencia se
+// aplica después en applyStrikePolicy). Misma lógica que usaba loadStrikes: tardanza (leve >tolerancia, moderada ≥20,
+// grave ≥60) y no desconexión (>N h tras la salida programada, con ajuste de turnos que cruzan medianoche). Los días
+// con cualquier novedad en la malla no generan strikes. cfg={tardanzaMins,nodescHrs}.
+function computeAgentStrikes(o){
+ const{email,malla,turnos,waiverMap,appealMap,cfg,now}=o;
+ const byDay=new Map();
+ (turnos||[]).forEach(t=>{const td=t.startTime?.toDate?.();if(!td)return;const k=td.toDateString();if(!byDay.has(k))byDay.set(k,[]);byDay.get(k).push(t);});
+ const out=[];
+ (malla||[]).forEach(m=>{
+ if(!m.fecha||m.usuario!==email||m.novedad)return;
+ const d=parseDate(m.fecha);
+ if(!d||d>now)return;
+ const ss=parseTime(m.fecha,m.inicio),se=parseTime(m.fecha,m.fin);
+ const dayTurnos=byDay.get(d.toDateString())||[];
+ // si hay varios turnos el mismo día (cierre forzado, reanudación…) priorizar 'ended' > 'interrupted' > el primero
+ const turno=dayTurnos.find(t=>t.status==='ended')||dayTurnos.find(t=>t.status==='interrupted')||dayTurnos[0]||null;
+ if(!turno)return;
+ const rs=turno.startTime.toDate();
+ // turno activo (sin endTime): la salida «real» es ahora, así la no desconexión también se ve en vivo
+ const re=turno.endTime?.toDate?.()||(turno.status==='active'?now:undefined);
+ const hhmm=x=>x.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'});
+ const mk=(cat,detalle)=>{
+ const wid=strikeWaiverId(email,m.fecha,STRIKE_CATS[cat].waiver);
+ const w=wid&&waiverMap?waiverMap.get(wid):null;
+ const ap=wid&&appealMap?appealMap.get(wid):null;
+ out.push({date:d,fecha:m.fecha,cat,detalle,wid,waived:w?{motivo:w.motivo||'',por:w.waivedBy||'',porNombre:w.waivedByName||'',at:w.waivedAt?new Date(w.waivedAt):null,appealId:w.appealId||null,appeal:ap||null}:null,appeal:ap||null});
+ };
+ if(rs&&ss){
+ const diff=Math.round((rs-ss)/60000);
+ const det=`Llegó ${diff} min tarde (${hhmm(rs)}, programado ${m.inicio})`;
+ if(diff>=60)mk('grave',det);
+ else if(diff>=20)mk('moderada',det);
+ else if(diff>cfg.tardanzaMins)mk('leve',det);
+ }
+ if(se&&re){
+ // turno nocturno: parseTime da el fin con la fecha de inicio; si se<ss sumar 24 h
+ const seAdj=(ss&&se<ss)?new Date(se.getTime()+24*3600000):se;
+ const extraHrs=(re-seAdj)/3600000;
+ if(extraHrs>cfg.nodescHrs)mk('nodesc',`No se desconectó a tiempo — salida ${m.fin}, salida real ${hhmm(re)}`);
  }
  });
- return historial;
+ return out.sort((a,b)=>a.date-b.date);
+}
+// Aplica la política de vigencia. Los llamados se reconstruyen cronológicamente (un llamado se «emite» cuando UNA
+// categoría completa su umbral: 3 leves, 2 moderadas, 1 grave, 3 no desconexión) y quedan fechados con el día del
+// strike que lo completó. Al sumar un strike solo cuentan para ese llamado los de su misma ventana de 3 meses:
+// los archivados no se acumulan hacia llamados nuevos. Un llamado es vigente según el MES EN QUE SE EMITIÓ. Los
+// strikes con apelación aprobada se excluyen por completo (si habían generado un llamado, ese llamado desaparece).
+function applyStrikePolicy(strikes,now){
+ now=now||new Date();
+ const vig=strikeVigencia(now);
+ const waived=strikes.filter(s=>s.waived);
+ const valid=strikes.filter(s=>!s.waived).sort((a,b)=>a.date-b.date);
+ const buf={leve:[],moderada:[],grave:[],nodesc:[]};
+ const llamados=[];
+ valid.forEach(s=>{
+ const ws=new Date(s.date.getFullYear(),s.date.getMonth()-2,1);
+ Object.keys(buf).forEach(k=>{buf[k]=buf[k].filter(x=>x.date>=ws);});
+ buf[s.cat].push(s);
+ if(buf[s.cat].length>=STRIKE_CATS[s.cat].per){llamados.push({cat:s.cat,issued:s.date,strikes:buf[s.cat].slice()});buf[s.cat]=[];}
+ });
+ Object.keys(buf).forEach(k=>{buf[k]=buf[k].filter(x=>x.date>=vig.start);});
+ const active=valid.filter(s=>s.date>=vig.start);
+ const vencidos=valid.filter(s=>s.date<vig.start);
+ const llamadosActive=llamados.filter(l=>l.issued>=vig.start);
+ const llamadosArchived=llamados.filter(l=>l.issued<vig.start);
+ const counts={},llamadosByCat={},pending={};
+ Object.keys(STRIKE_CATS).forEach(k=>{
+ counts[k]=active.filter(s=>s.cat===k).length;
+ llamadosByCat[k]=llamadosActive.filter(l=>l.cat===k).length;
+ pending[k]=buf[k].length;
+ });
+ const byMonth={};
+ vig.months.forEach(mo=>{byMonth[mo.key]=[];});
+ active.forEach(s=>{const k=strikeMonthKey(s.date);if(byMonth[k])byMonth[k].push(s);});
+ return{vig,active,vencidos,waived,llamados,llamadosActive,llamadosArchived,counts,llamadosByCat,pending,byMonth,
+ totalActive:active.length,totalLlamados:llamadosActive.length};
+}
+// Historial para el correo de proceso disciplinario: los primeros 3 llamados VIGENTES con sus strikes.
+function buildLlamadoHistorialVigente(policy){
+ return policy.llamadosActive.slice(0,3).map((l,i)=>({llamadoNumero:i+1,strikes:l.strikes.map(s=>({tipo:STRIKE_CATS[s.cat].tipo.replace(/^\S+\s/,''),fecha:s.fecha,descripcion:s.detalle}))}));
 }
 // Registro de «ya se notificó este llamado». Las reglas de Firestore NO permiten la colección strike_notifications
 // (error «Missing or insufficient permissions» confirmado en vivo el 16-oct-2026), así que la lectura devolvía null
@@ -1880,196 +1964,155 @@ async function getStrikeNotifSafe(docId){
  try{remote=window.getStrikeNotification?await window.getStrikeNotification(docId):null;}catch(e){}
  let local=null;
  try{local=JSON.parse(localStorage.getItem('pg_sn_'+docId)||'null');}catch(e){}
- if(remote&&!remote._readError){return(local&&(local.llamadoNumero||0)>(remote.llamadoNumero||0))?local:remote;}
+ if(remote&&!remote._readError){return(local&&local.notifiedAt&&(!remote.notifiedAt||local.notifiedAt>remote.notifiedAt))?local:remote;}
  return local;
 }
 async function saveStrikeNotifSafe(docId,data){
- try{localStorage.setItem('pg_sn_'+docId,JSON.stringify({llamadoNumero:data.llamadoNumero,notifiedAt:data.notifiedAt}));}catch(e){}
+ try{localStorage.setItem('pg_sn_'+docId,JSON.stringify({llamadoNumero:data.llamadoNumero,notifiedAt:data.notifiedAt,activo:data.activo}));}catch(e){}
  try{return window.saveStrikeNotification?await window.saveStrikeNotification(docId,data):false;}catch(e){return false;}
+}
+// Modelo completo de strikes de UN agente (lo usan «Mis strikes» del agente y el Historial del admin): una sola
+// lectura de sus turnos + sus retiros + sus apelaciones + la malla (en caché). No hay lecturas en bucle por agente.
+async function buildAgentStrikeModel(email,now){
+ now=now||new Date();
+ const cfg={tardanzaMins:parseInt(localStorage.getItem('pg_strike_tardanza')||'5'),nodescHrs:parseFloat(localStorage.getItem('pg_strike_nodesconexion')||'4')};
+ const[waivers,appeals,turnos]=await Promise.all([
+ window.getStrikeWaivers?window.getStrikeWaivers(email):[],
+ window.getStrikeAppeals?window.getStrikeAppeals(email):[],
+ window.getUserTurnos?window.getUserTurnos(email):[]
+ ]);
+ const waiverMap=new Map(waivers.map(w=>[w.id,w]));
+ const appealMap=new Map(appeals.map(a=>[a.id,a]));
+ let malla=[],mallaFalló=false;
+ try{
+ const csv=await fetchMallaCSV('strikes');
+ malla=csv.trim().split('\n').slice(1).map(l=>{const c=parseCSVLine(l);return{fecha:c[1]?.trim(),usuario:c[2]?.trim(),nombre:c[3]?.trim(),inicio:c[5]?.trim(),fin:c[6]?.trim(),lider:c[9]?.trim(),novedad:c[10]?.trim()};})
+ .filter(m=>m.fecha&&m.usuario===email);
+ }catch(e){console.error('[strikes] malla falló:',e);mallaFalló=true;}
+ const strikes=computeAgentStrikes({email,malla,turnos:turnos.filter(t=>t.userEmail===email),waiverMap,appealMap,cfg,now});
+ return{email,now,cfg,malla,mallaFalló,waiverMap,appealMap,...applyStrikePolicy(strikes,now)};
+}
+const STRIKE_BADGE=(txt,color)=>`<span style="font-size:10px;font-weight:700;color:${color};background:${color}22;border:1px solid ${color}44;padding:1px 8px;border-radius:10px;font-family:var(--mono);white-space:nowrap;">${txt}</span>`;
+// Motivo de archivo de un strike con retiro: «Apelación aprobada» (con quién y cuándo) o «Retirado por justa causa».
+function strikeWaivedInfo(s){
+ const w=s.waived,a=w.appeal&&w.appeal.status==='approved'?w.appeal:null;
+ const porApelacion=!!(w.appealId||a);
+ const quien=(a&&(a.decidedByName||a.decidedBy))||w.porNombre||w.por||'—';
+ const cuando=(a&&a.decidedAt?new Date(a.decidedAt):null)||w.at;
+ return{motivo:porApelacion?'Apelación aprobada':'Retirado por justa causa',quien,cuando,texto:w.motivo||''};
+}
+// Listado de strikes VIGENTES agrupado por mes (más reciente primero), con los llamados emitidos ese mes.
+// opts.apelar(s) → HTML extra por strike (botón/estado de apelación del agente); opts.admin(s) → HTML extra del admin.
+function strikeMonthsHTML(model,opts){
+ opts=opts||{};
+ const rows=[...model.vig.months].reverse().map(mo=>{
+ const list=(model.byMonth[mo.key]||[]).slice().sort((a,b)=>b.date-a.date);
+ const lls=model.llamadosActive.filter(l=>strikeMonthKey(l.issued)===mo.key);
+ const items=list.map(s=>{
+ const c=STRIKE_CATS[s.cat];
+ return`<div style="padding:5px 0;border-bottom:1px solid var(--border);"><div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;flex-wrap:wrap;"><span style="font-size:11px;color:var(--text-muted);">${c.icon} <span style="font-family:var(--mono);">${esc(s.fecha)}</span> — ${esc(s.detalle)}</span>${opts.apelar?opts.apelar(s):''}</div>${opts.admin?opts.admin(s):''}</div>`;
+ }).join('');
+ const llHTML=lls.map(l=>`<div style="font-size:10.5px;color:#fb923c;margin-top:5px;">📣 Llamado de atención emitido el ${fmtDMYs(l.issued)} · ${STRIKE_CATS[l.cat].label} (${l.strikes.length} strike${l.strikes.length!==1?'s':''})</div>`).join('');
+ return`<div style="padding:10px 16px;border-top:1px solid var(--border);"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;"><span style="font-size:12px;font-weight:700;color:var(--text);">🗓️ ${capStr(mo.nombre)} ${mo.y}</span><span style="font-size:10px;color:var(--text-dim);font-family:var(--mono);">${list.length} strike${list.length!==1?'s':''}</span></div>${items||'<div style="font-size:10.5px;color:var(--text-dim);">Sin strikes este mes</div>'}${llHTML}</div>`;
+ }).join('');
+ return rows;
+}
+// Historial (solo consulta): strikes y llamados ARCHIVADOS — «Vencido» (fuera de la ventana de 3 meses) o «Apelación
+// aprobada» (retirado) — con fechas y, si aplica, quién aprobó. idp = prefijo único para el desplegable.
+function strikeHistorialHTML(model,idp){
+ const venc=model.vencidos.slice().sort((a,b)=>b.date-a.date);
+ const waived=model.waived.slice().sort((a,b)=>b.date-a.date);
+ const llArch=model.llamadosArchived.slice().sort((a,b)=>b.issued-a.issued);
+ const n=venc.length+waived.length+llArch.length;
+ const line=(s,badge,extra)=>{const c=STRIKE_CATS[s.cat];return`<div style="padding:5px 0;border-bottom:1px solid var(--border);"><div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;flex-wrap:wrap;"><span style="font-size:11px;color:var(--text-muted);">${c.icon} <span style="font-family:var(--mono);">${esc(s.fecha)}</span> — ${esc(s.detalle)}</span>${badge}</div>${extra?`<div style="font-size:10px;color:var(--text-dim);margin-top:2px;">${extra}</div>`:''}</div>`;};
+ const vencHTML=venc.map(s=>line(s,STRIKE_BADGE('Vencido','#9ca3af'),`Dejó de contar el ${fmtDMYs(strikeExpiryDate(s.date))}`)).join('');
+ const llHTML=llArch.map(l=>`<div style="padding:5px 0;border-bottom:1px solid var(--border);"><div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;flex-wrap:wrap;"><span style="font-size:11px;color:var(--text-muted);">📣 Llamado de atención · ${STRIKE_CATS[l.cat].label} <span style="font-family:var(--mono);">${fmtDMYs(l.issued)}</span></span>${STRIKE_BADGE('Vencido','#9ca3af')}</div><div style="font-size:10px;color:var(--text-dim);margin-top:2px;">Dejó de contar el ${fmtDMYs(strikeExpiryDate(l.issued))}</div></div>`).join('');
+ const wHTML=waived.map(s=>{const i=strikeWaivedInfo(s);return line(s,STRIKE_BADGE(i.motivo,'#4ade80'),`${i.motivo==='Apelación aprobada'?'Aprobada':'Retirado'} el ${fmtDMYs(i.cuando)} por ${esc(i.quien)}${i.texto?' — «'+esc(i.texto)+'»':''}`);}).join('');
+ const sec=(t,c,h)=>h?`<div style="margin-top:10px;"><div style="font-size:10px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:.06em;font-family:var(--mono);margin-bottom:4px;">${t} (${c})</div>${h}</div>`:'';
+ const body=n?(sec('Apelación aprobada / retirados',waived.length,wHTML)+sec('Strikes vencidos',venc.length,vencHTML)+sec('Llamados de atención vencidos',llArch.length,llHTML)):'<div style="font-size:11px;color:var(--text-dim);">No hay strikes ni llamados archivados.</div>';
+ const bid='strike-hist-'+idp;
+ return`<div style="border-top:1px solid var(--border);"><div onclick="const b=document.getElementById('${bid}');b.style.display=b.style.display==='none'?'block':'none'" style="padding:12px 16px;cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between;gap:8px;"><span style="font-size:12px;font-weight:700;color:var(--text);">📜 Historial (solo consulta) <span style="font-weight:400;color:var(--text-dim);">· ${n} archivado${n!==1?'s':''}</span></span><span style="font-size:10px;color:var(--text-dim);">▸</span></div><div id="${bid}" style="display:none;padding:0 16px 14px 16px;"><div style="font-size:10.5px;color:var(--text-dim);margin-bottom:2px;">Lo archivado ya no cuenta para tus contadores ni para llamados de atención.</div>${body}</div></div>`;
+}
+// Notificaciones por correo (llamado nuevo / proceso disciplinario) sobre los llamados VIGENTES.
+async function notifyStrikeLevels(model,userEmail,agentName){
+ const total=model.totalLlamados;
+ const liderEmail=model.malla.find(m=>m.lider)?.lider||'';
+ const vig=model.vig;
+ const detalleActivos=model.active.map(s=>({tipo:STRIKE_CATS[s.cat].tipo,fecha:s.fecha,descripcion:s.detalle}));
+ try{
+ const docId=`${userEmail}_llamados`;
+ const last=await getStrikeNotifSafe(docId);
+ const lastN=last?.llamadoNumero||0;
+ if(total>lastN){
+ const payload={agentName,agentEmail:userEmail,liderEmail,mes:vig.label,llamadoNumero:total,totalStrikes:model.totalActive,esTercerLlamado:total>=3,detalle:detalleActivos};
+ try{
+ await fetch(NOTIF_SCRIPT+'?type=strike_warning&data='+encodeURIComponent(JSON.stringify(payload)),{mode:'no-cors'});
+ await saveStrikeNotifSafe(docId,{llamadoNumero:total,notifiedAt:new Date().toISOString()});
+ console.log('[strikes] Notificación de llamado #'+total+' enviada para '+userEmail);
+ }catch(e){console.warn('[strikes] Error enviando notificación de llamado:',e);}
+ }else if(total<lastN){
+ // Bajó por archivo/apelación: se actualiza el registro (sin correo) para que el próximo aumento SÍ se notifique.
+ await saveStrikeNotifSafe(docId,{llamadoNumero:total,notifiedAt:new Date().toISOString()});
+ }
+ }catch(e){console.warn('[strikes] Error verificando llamado nuevo:',e);}
+ try{
+ const discId=`${userEmail}_disciplinary`;
+ const disc=await getStrikeNotifSafe(discId);
+ if(total>=3){
+ if(!disc||disc.activo===false){
+ const hist=buildLlamadoHistorialVigente(model);
+ const payload={agentName,agentEmail:userEmail,liderEmail,mes:vig.label,historial:hist};
+ try{
+ await fetch(NOTIF_SCRIPT+'?type=disciplinary_warning&data='+encodeURIComponent(JSON.stringify(payload)),{mode:'no-cors'});
+ await saveStrikeNotifSafe(discId,{llamadoNumero:total,notifiedAt:new Date().toISOString(),activo:true});
+ console.log('[strikes] Notificación de proceso disciplinario enviada para '+userEmail);
+ }catch(e){console.warn('[strikes] Error enviando notificación disciplinaria:',e);}
+ }
+ }else if(disc&&disc.activo!==false){
+ // Ya no hay 3 llamados vigentes: el evento queda cerrado (sin correo) y podrá notificarse de nuevo si se repite.
+ await saveStrikeNotifSafe(discId,{llamadoNumero:total,notifiedAt:new Date().toISOString(),activo:false});
+ }
+ }catch(e){console.warn('[strikes] Error verificando proceso disciplinario:',e);}
 }
 async function loadStrikes(){
  const userEmail=document.getElementById('user-email').textContent;
- const waiverMap=new Map(((window.getStrikeWaivers?await window.getStrikeWaivers(userEmail):[])).map(w=>[w.id,w]));
- const appealMap=new Map(((window.getStrikeAppeals?await window.getStrikeAppeals(userEmail):[])).map(a=>[a.id,a]));
- const strikesRetirados=[];
  const isAdmin=(window.ADMINS||ADMINS).includes(userEmail)||isSuperAdminUser(userEmail);
  if(isAdmin&&!window._agentPreviewMode){document.getElementById('strikes-wrap').style.display='none';return;}
- const strikeTardanzaMins=parseInt(localStorage.getItem('pg_strike_tardanza')||'5');
- const strikeNoDesconexionHrs=parseFloat(localStorage.getItem('pg_strike_nodesconexion')||'4');
- const now=new Date();
- // Ventana MÓVIL de 6 meses (no mes calendario) — Camilo pidió (2026-09-27) que los strikes y
- // llamados de atención del agente se vean acumulados en un período más largo que un mes. Se
- // corre día a día: un strike "sale" de la ventana solo cuando pasan 6 meses desde que ocurrió,
- // sin el salto brusco que tendría un semestre fijo el 1° de enero/julio. El umbral de "3
- // llamados = proceso disciplinario" se mide sobre esta misma ventana (más abajo, totalLlamados
- // ya sale calculado sobre este rango, sin código aparte).
- const winStart=new Date(now);winStart.setMonth(winStart.getMonth()-6);winStart.setHours(0,0,0,0);
- const winEnd=now;
- let mallaData=[];let mallaFalló=false;
- try{
- const csv=await fetchMallaCSV('loadStrikes');
- mallaData=csv.trim().split('\n').slice(1).map(l=>{const c=parseCSVLine(l);return{fecha:c[1]?.trim(),usuario:c[2]?.trim(),inicio:c[5]?.trim(),fin:c[6]?.trim(),lider:c[9]?.trim(),novedad:c[10]?.trim()};})
- .filter(m=>m.fecha&&m.usuario===userEmail&&!m.novedad);
- }catch(e){console.error('[loadStrikes] fetch MALLA_SCRIPT falló:',e);mallaFalló=true;}
- // Consulta dedicada por agente (window.getUserTurnos) en vez de getRecentTurnos(), que limita a
- // los últimos 300 turnos de TODO el sistema — con suficientes agentes activos, el turno de este
- // agente para el día en cuestión puede quedar fuera de esa ventana según el momento en que se
- // consulte, dejando el strike sin calcular de forma intermitente.
- const allMyTurnos=window.getUserTurnos?await window.getUserTurnos(userEmail):await window.getRecentTurnos();
- const myTurnos=allMyTurnos.filter(t=>t.userEmail===userEmail&&t.startTime?.toDate?.()>=winStart&&t.startTime?.toDate?.()<=winEnd);
- // DEBUG temporal — diagnosticar por qué algunas tardanzas no generan strike
- console.log('[loadStrikes] userEmail:',userEmail,'allMyTurnos.length (consulta dedicada, sin límite de 300):',allMyTurnos.length);
- console.log('[loadStrikes] mallaData filas (todo el historial, sin novedad):',mallaData.length,'myTurnos en los últimos 6 meses:',myTurnos.length);
- // Clasificar strikes por tipo
- const strikesLeve=[]; // tardanza 5-19 min
- const strikesModerade=[]; // tardanza 20-59 min
- const strikesGrave=[]; // tardanza 60+ min
- const strikesNoDesconex=[]; // no desconexión
- mallaData.forEach(m=>{
- const d=parseDate(m.fecha);
- if(!d||d>now)return;
- const ss=parseTime(m.fecha,m.inicio);
- const se=parseTime(m.fecha,m.fin);
- // Igual que loadMallaPersonal/panel: si hay varios turnos el mismo día (cierre forzado,
- // reanudación, etc.) priorizar 'ended' > 'interrupted' > el primero — antes se tomaba
- // el primer match sin prioridad, lo que podía cruzar con el turno equivocado del día.
- const dayTurnos=myTurnos.filter(t=>{const td=t.startTime?.toDate?.();return td&&td.toDateString()===d.toDateString();});
- const turno=dayTurnos.find(t=>t.status==='ended')||dayTurnos.find(t=>t.status==='interrupted')||dayTurnos[0]||null;
- const rs=turno?turno.startTime.toDate():null;
- // Turno activo (sin endTime): la salida "real" es ahora — así la no desconexión también se ve en vivo,
- // no solo al finalizar el turno.
- const re=turno?.endTime?.toDate?.()||(turno?.status==='active'?new Date():undefined);
- const esVotaciones=esNovedadVotaciones(m.novedad);
- const diffMinsDebug=rs&&ss?Math.round((rs-ss)/60000):null;
- console.log('[loadStrikes]',m.fecha,'ss:',ss,'rs:',rs,'diffMins:',diffMinsDebug,'dayTurnos:',dayTurnos.length,'turnoStatus:',turno?.status,'esVotaciones:',!!esVotaciones);
- const waivT=waiverMap.get(strikeWaiverId(userEmail,m.fecha,'tardanza'));
- if(rs&&ss&&!esVotaciones){
- const diffMins=Math.round((rs-ss)/60000);
- if(waivT&&diffMins>strikeTardanzaMins){
- strikesRetirados.push({fecha:m.fecha,detalle:`Tardanza de ${diffMins} min`,motivo:waivT.motivo||''});
- } else if(diffMins>=60){
- strikesGrave.push({fecha:m.fecha,detalle:`Llegó ${diffMins} min tarde (${rs.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'})}, programado ${m.inicio})`});
- } else if(diffMins>=20){
- strikesModerade.push({fecha:m.fecha,detalle:`Llegó ${diffMins} min tarde (${rs.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'})}, programado ${m.inicio})`});
- } else if(diffMins>strikeTardanzaMins){
- strikesLeve.push({fecha:m.fecha,detalle:`Llegó ${diffMins} min tarde (${rs.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'})}, programado ${m.inicio})`});
- }
- }
- if(se&&re&&!esVotaciones){
- // Turno nocturno (cruza medianoche): parseTime calcula `se` con la fecha del día de inicio del
- // turno, así que un fin de "1:00 a.m." queda ANTES que el inicio (ej. 5:00 p.m.) en vez de al
- // día siguiente. Si se<ss, sumar 24h a se para que la resta con la salida real dé minutos reales
- // en vez de ~24h.
- const seAdj=(ss&&se<ss)?new Date(se.getTime()+24*3600000):se;
- const extraHrs=(re-seAdj)/3600000;
- const waivN=waiverMap.get(strikeWaiverId(userEmail,m.fecha,'nodesconex'));
- if(extraHrs>strikeNoDesconexionHrs&&waivN){
- strikesRetirados.push({fecha:m.fecha,detalle:'No desconexión',motivo:waivN.motivo||''});
- } else if(extraHrs>strikeNoDesconexionHrs){
- strikesNoDesconex.push({fecha:m.fecha,detalle:`No se desconectó a tiempo — salida ${m.fin}, salida real ${re.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'})}`});
- }
- }
- });
- console.log('[loadStrikes] resultado — leve:',strikesLeve.length,'moderada:',strikesModerade.length,'grave:',strikesGrave.length,'noDesconex:',strikesNoDesconex.length);
- // Calcular llamados por tipo (cada N strikes = 1 llamado)
- const llamadosLeve=Math.floor(strikesLeve.length/3);
- const llamadosModerado=Math.floor(strikesModerade.length/2);
- const llamadosGrave=Math.floor(strikesGrave.length/1);
- const llamadosNoDesconex=Math.floor(strikesNoDesconex.length/3);
- const totalLlamados=llamadosLeve+llamadosModerado+llamadosGrave+llamadosNoDesconex;
- const enDescargos=totalLlamados>=3;
- // Notificación de llamado de atención por correo — se dispara solo cuando totalLlamados supera
- // el último registrado en Firestore (strike_notifications/{userEmail}_llamados), para no reenviar
- // el mismo correo cada vez que el agente recarga su propio panel de strikes. docId SIN mes: la
- // ventana ahora es móvil de 6 meses, no un mes calendario — con docId mensual, el 1° de cada mes
- // se abría un doc nuevo (sin "lastNotified") y se reenviaba el mismo aviso aunque el conteo no
- // hubiera cambiado. Un solo doc por agente asegura "un correo por llamado nuevo", sin importar
- // en qué mes caiga.
- try{
- const strikeNotifDocId=`${userEmail}_llamados`;
- const lastNotified=await getStrikeNotifSafe(strikeNotifDocId);
- const lastLlamadoNumero=lastNotified?.llamadoNumero||0;
- if(totalLlamados>lastLlamadoNumero){
- const agentName=document.getElementById('user-name').textContent;
- const liderEmail=mallaData.find(m=>m.lider)?.lider||'';
- const strikeDetalle=[
- ...strikesLeve.map(s=>({tipo:'🟡 Leve',fecha:s.fecha,descripcion:s.detalle})),
- ...strikesModerade.map(s=>({tipo:'🟠 Moderada',fecha:s.fecha,descripcion:s.detalle})),
- ...strikesGrave.map(s=>({tipo:'🔴 Grave',fecha:s.fecha,descripcion:s.detalle})),
- ...strikesNoDesconex.map(s=>({tipo:'🔵 No desconexión',fecha:s.fecha,descripcion:s.detalle}))
- ].sort((a,b)=>(parseDate(a.fecha)||0)-(parseDate(b.fecha)||0));
- // "mes" es solo el respaldo si el .gs no puede derivar el período de las fechas de "detalle"
- // (periodoFromDetalle) — ya no es un mes calendario, así que no tiene sentido calcularlo así.
- const strikePayload={
- agentName,agentEmail:userEmail,liderEmail,
- mes:'últimos 6 meses',
- llamadoNumero:totalLlamados,
- totalStrikes:strikesLeve.length+strikesModerade.length+strikesGrave.length+strikesNoDesconex.length,
- esTercerLlamado:totalLlamados>=3,
- detalle:strikeDetalle
- };
- try{
- await fetch(NOTIF_SCRIPT+'?type=strike_warning&data='+encodeURIComponent(JSON.stringify(strikePayload)),{mode:'no-cors'});
- await saveStrikeNotifSafe(strikeNotifDocId,{llamadoNumero:totalLlamados,notifiedAt:new Date().toISOString()});
- console.log('[loadStrikes] Notificación de llamado #'+totalLlamados+' enviada para '+userEmail);
- }catch(notifErr){console.warn('[loadStrikes] Error enviando notificación de llamado:',notifErr);}
- }
- }catch(notifCheckErr){console.warn('[loadStrikes] Error verificando llamado nuevo:',notifCheckErr);}
- // Notificación de proceso disciplinario — evento único por agente (no por mes), se dispara al
- // alcanzar 3 llamados acumulados independientemente de si el llamado regular de este mes ya se
- // había notificado antes (docId sin sufijo de mes: "{userEmail}_disciplinary").
- if(totalLlamados>=3){
- try{
- const discDocId=`${userEmail}_disciplinary`;
- const discExisting=await getStrikeNotifSafe(discDocId);
- if(!discExisting){
- const agentName=document.getElementById('user-name').textContent;
- const liderEmail=mallaData.find(m=>m.lider)?.lider||'';
- // "mes" es solo el respaldo si el .gs no puede derivar el período del historial (periodoFromDetalle).
- const historial=buildLlamadoHistorial(strikesLeve,strikesModerade,strikesGrave,strikesNoDesconex).slice(0,3);
- const discPayload={agentName,agentEmail:userEmail,liderEmail,mes:'últimos 6 meses',historial};
- try{
- await fetch(NOTIF_SCRIPT+'?type=disciplinary_warning&data='+encodeURIComponent(JSON.stringify(discPayload)),{mode:'no-cors'});
- await saveStrikeNotifSafe(discDocId,{llamadoNumero:totalLlamados,notifiedAt:new Date().toISOString()});
- console.log('[loadStrikes] Notificación de proceso disciplinario enviada para '+userEmail);
- }catch(discNotifErr){console.warn('[loadStrikes] Error enviando notificación disciplinaria:',discNotifErr);}
- }
- }catch(discCheckErr){console.warn('[loadStrikes] Error verificando proceso disciplinario:',discCheckErr);}
- }
- // Strikes faltantes para próximo llamado por tipo
- const faltanLeve=strikesLeve.length%3===0?3:3-(strikesLeve.length%3);
- const faltanModerado=strikesModerade.length%2===0?2:2-(strikesModerade.length%2);
- const faltanGrave=strikesGrave.length===0?1:strikesGrave.length%1===0?1:0;
- const faltanNoDesconex=strikesNoDesconex.length%3===0?3:3-(strikesNoDesconex.length%3);
  const wrap=document.getElementById('strikes-wrap');
  const list=document.getElementById('strikes-list');
  const summary=document.getElementById('strikes-summary');
  const meterFill=document.getElementById('strike-meter-fill');
  if(!wrap||!list)return;
+ const now=new Date();
+ const model=await buildAgentStrikeModel(userEmail,now);
+ const vig=model.vig;
+ const titleEl=document.getElementById('strikes-title');
+ if(titleEl)titleEl.textContent='⚡ Mis strikes · '+vig.label;
+ console.log('[loadStrikes] vigencia',vig.label,'— activos:',model.counts,'llamados vigentes:',model.totalLlamados,'archivados:',model.vencidos.length,'retirados:',model.waived.length);
+ if(model.mallaFalló&&!model.malla.length){
  wrap.style.display='block';
- const totalStrikes=strikesLeve.length+strikesModerade.length+strikesGrave.length+strikesNoDesconex.length;
+ list.innerHTML=`<div style="padding:24px 16px;text-align:center;font-size:12px;color:var(--text-dim);">⚠️ No se pudo cargar tu malla para calcular los strikes. Se reintentará al recargar.</div>`;
+ return;
+ }
+ notifyStrikeLevels(model,userEmail,document.getElementById('user-name').textContent).catch(e=>console.warn('[strikes] notificaciones:',e));
+ const totalLlamados=model.totalLlamados,totalStrikes=model.totalActive,enDescargos=totalLlamados>=3;
+ wrap.style.display='block';
  const pct=Math.min(100,Math.round((totalLlamados/3)*100));
  const meterColor=enDescargos?'#f87171':totalLlamados===2?'#fb923c':totalLlamados===1?'#fbbf24':'#4ade80';
  meterFill.style.width=pct+'%';
  meterFill.style.background=meterColor;
- // Header con estado general
  let estadoBadge='';
- if(enDescargos){
- estadoBadge=`<span style="background:rgba(248,113,113,0.15);border:1px solid rgba(248,113,113,0.4);color:#f87171;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;">🚨 Proceso disciplinario</span>`;
- } else if(totalLlamados===2){
- estadoBadge=`<span style="background:rgba(251,146,60,0.15);border:1px solid rgba(251,146,60,0.4);color:#fb923c;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;">⚠️ ${3-totalLlamados} llamado más = descargos</span>`;
- } else if(totalLlamados===1){
- estadoBadge=`<span style="background:rgba(251,191,36,0.12);border:1px solid rgba(251,191,36,0.3);color:#fbbf24;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;">⚠️ ${totalLlamados} llamado de atención</span>`;
- } else if(totalStrikes===0){
- estadoBadge=`<span style="background:rgba(74,222,128,0.1);border:1px solid rgba(74,222,128,0.3);color:#4ade80;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;">🏆 Sin strikes</span>`;
- } else {
- estadoBadge=`<span style="background:rgba(74,222,128,0.08);border:1px solid rgba(74,222,128,0.2);color:#4ade80;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;">✅ Sin llamados aún</span>`;
- }
+ if(enDescargos)estadoBadge=`<span style="background:rgba(248,113,113,0.15);border:1px solid rgba(248,113,113,0.4);color:#f87171;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;">🚨 Proceso disciplinario</span>`;
+ else if(totalLlamados===2)estadoBadge=`<span style="background:rgba(251,146,60,0.15);border:1px solid rgba(251,146,60,0.4);color:#fb923c;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;">⚠️ ${3-totalLlamados} llamado más = descargos</span>`;
+ else if(totalLlamados===1)estadoBadge=`<span style="background:rgba(251,191,36,0.12);border:1px solid rgba(251,191,36,0.3);color:#fbbf24;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;">⚠️ ${totalLlamados} llamado de atención</span>`;
+ else if(totalStrikes===0)estadoBadge=`<span style="background:rgba(74,222,128,0.1);border:1px solid rgba(74,222,128,0.3);color:#4ade80;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;">🏆 Sin strikes</span>`;
+ else estadoBadge=`<span style="background:rgba(74,222,128,0.08);border:1px solid rgba(74,222,128,0.2);color:#4ade80;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;">✅ Sin llamados aún</span>`;
  summary.innerHTML=estadoBadge;
- // Llamados acumulados visual
+ // Política de vigencia — visible siempre, con los nombres de los meses de la ventana vigente.
+ const politicaHTML=`<div style="margin:12px 16px 4px;background:rgba(96,165,250,0.08);border:1px solid rgba(96,165,250,0.3);border-radius:10px;padding:10px 12px;font-size:11.5px;line-height:1.6;color:var(--text-muted);">🗓️ Tus faltas tienen una vigencia de 3 meses. Aquí ves las de los últimos tres meses (${vig.nombres}). Al iniciar cada mes, las del mes más antiguo se archivan y dejan de contar. Las apelaciones aprobadas tampoco cuentan.</div>`;
  const llamadosHTML=`<div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;">
  <div style="flex:1;">
- <div style="font-size:11px;color:var(--text-dim);margin-bottom:6px;font-family:var(--mono);">Llamados de atención acumulados</div>
+ <div style="font-size:11px;color:var(--text-dim);margin-bottom:6px;font-family:var(--mono);">Llamados de atención vigentes</div>
  <div style="display:flex;gap:6px;">
  ${[1,2,3].map(n=>{
  const filled=n<=totalLlamados;
@@ -2088,92 +2131,104 @@ async function loadStrikes(){
  </div>
  <div style="text-align:right;">
  <div style="font-size:22px;font-weight:800;color:${meterColor};">${totalStrikes}</div>
- <div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);">strikes totales</div>
+ <div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);">strikes vigentes</div>
  </div>
  </div>`;
- // Tabla de tipos con progreso
- function tipoRow(icon,label,color,strikes,strikesXLlamado,faltan){
- if(!strikes.length)return'';
- const llamados=Math.floor(strikes.length/strikesXLlamado);
- const progPct=Math.min(100,Math.round(((strikes.length%strikesXLlamado||strikesXLlamado)/strikesXLlamado)*100));
+ // Progreso por categoría (solo strikes vigentes y el avance hacia el siguiente llamado)
+ const tipoRows=Object.keys(STRIKE_CATS).map(k=>{
+ const c=STRIKE_CATS[k];
+ if(!model.counts[k])return'';
+ const pend=model.pending[k],faltan=c.per-pend,lls=model.llamadosByCat[k];
+ const progPct=Math.min(100,Math.round((pend/c.per)*100));
  return`<div style="padding:10px 16px;border-bottom:1px solid var(--border);">
  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
- <div style="display:flex;align-items:center;gap:6px;">
- <span style="font-size:14px;">${icon}</span>
- <span style="font-size:12px;font-weight:600;color:${color};">${label}</span>
- <span style="font-size:11px;background:${color}22;border:1px solid ${color}44;color:${color};padding:1px 7px;border-radius:10px;font-family:var(--mono);">${strikes.length} strike${strikes.length!==1?'s':''}</span>
+ <div style="display:flex;align-items:center;gap:6px;"><span style="font-size:14px;">${c.icon}</span><span style="font-size:12px;font-weight:600;color:${c.color};">${c.label}</span>
+ <span style="font-size:11px;background:${c.color}22;border:1px solid ${c.color}44;color:${c.color};padding:1px 7px;border-radius:10px;font-family:var(--mono);">${model.counts[k]} strike${model.counts[k]!==1?'s':''}</span></div>
+ ${lls>0?`<span style="font-size:10px;color:${c.color};font-family:var(--mono);">${lls} llamado${lls!==1?'s':''}</span>`:''}
  </div>
- ${llamados>0?`<span style="font-size:10px;color:${color};font-family:var(--mono);">${llamados} llamado${llamados!==1?'s':''}</span>`:''}
- </div>
- <div style="height:4px;background:var(--surface3);border-radius:2px;overflow:hidden;margin-bottom:4px;">
- <div style="height:100%;width:${progPct}%;background:${color};border-radius:2px;transition:width 0.5s;"></div>
- </div>
- <div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);">Faltan ${faltan} strike${faltan!==1?'s':''} para ${llamados>0?'el siguiente':'un'} llamado de atención · ${strikesXLlamado} strikes = 1 llamado</div>
- ${strikes.slice(-3).map(s=>`<div style="font-size:10px;color:var(--text-muted);margin-top:3px;padding-left:20px;">• ${s.fecha} — ${s.detalle}</div>`).join('')}
- ${strikes.length>3?`<div style="font-size:10px;color:var(--text-dim);padding-left:20px;margin-top:2px;">...y ${strikes.length-3} más</div>`:''}
+ <div style="height:4px;background:var(--surface3);border-radius:2px;overflow:hidden;margin-bottom:4px;"><div style="height:100%;width:${progPct}%;background:${c.color};border-radius:2px;transition:width 0.5s;"></div></div>
+ <div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);">Faltan ${faltan} strike${faltan!==1?'s':''} para ${lls>0?'el siguiente':'un'} llamado de atención · ${c.per} strikes = 1 llamado</div>
  </div>`;
- }
- // Aviso de proximidad
+ }).join('');
+ const near=Object.keys(STRIKE_CATS).filter(k=>model.pending[k]>0&&STRIKE_CATS[k].per-model.pending[k]===1&&STRIKE_CATS[k].per>1).map(k=>STRIKE_CATS[k].label.toLowerCase());
  let avisoHTML='';
- const strikesAlLimite=[];
- if(faltanLeve===1&&strikesLeve.length>0)strikesAlLimite.push('tardanza leve');
- if(faltanModerado===1&&strikesModerade.length>0)strikesAlLimite.push('tardanza moderada');
- if(faltanGrave===1&&strikesGrave.length>0)strikesAlLimite.push('tardanza grave');
- if(faltanNoDesconex===1&&strikesNoDesconex.length>0)strikesAlLimite.push('no desconexión');
- if(strikesAlLimite.length>0){
- avisoHTML=`<div style="margin:10px 16px;background:rgba(251,146,60,0.08);border:1px solid rgba(251,146,60,0.3);border-radius:8px;padding:10px 12px;font-size:11px;color:#fb923c;">
- ⚠️ Estás a <strong>1 strike</strong> de un nuevo llamado de atención por: ${strikesAlLimite.join(', ')}.
- </div>`;
- }
- if(totalLlamados===2){
- avisoHTML+=`<div style="margin:10px 16px;background:rgba(248,113,113,0.08);border:1px solid rgba(248,113,113,0.3);border-radius:8px;padding:10px 12px;font-size:11px;color:#f87171;">
- 🚨 Tienes 2 llamados de atención. <strong>Un llamado más activa un proceso disciplinario.</strong>
- </div>`;
- }
- // Reglamento informativo
+ if(near.length)avisoHTML=`<div style="margin:10px 16px;background:rgba(251,146,60,0.08);border:1px solid rgba(251,146,60,0.3);border-radius:8px;padding:10px 12px;font-size:11px;color:#fb923c;">⚠️ Estás a <strong>1 strike</strong> de un nuevo llamado de atención por: ${near.join(', ')}.</div>`;
+ if(totalLlamados===2)avisoHTML+=`<div style="margin:10px 16px;background:rgba(248,113,113,0.08);border:1px solid rgba(248,113,113,0.3);border-radius:8px;padding:10px 12px;font-size:11px;color:#f87171;">🚨 Tienes 2 llamados de atención vigentes. <strong>Un llamado más activa un proceso disciplinario.</strong></div>`;
  const reglamHTML=`<div style="padding:12px 16px;border-top:1px solid var(--border);background:var(--surface2);">
  <div style="font-size:10px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px;font-family:var(--mono);">📋 Escala disciplinaria (sin justa causa)</div>
  <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
- ${[
- ['🟡','Tardanza leve (5–19 min)','3 strikes = llamado'],
- ['🟠','Tardanza moderada (20–59 min)','2 strikes = llamado'],
- ['🔴','Tardanza grave (60+ min)','1 strike = llamado'],
- ['🔵','No desconexión (+4h)','3 strikes = llamado'],
- ].map(([icon,label,rule])=>`<div style="font-size:10px;color:var(--text-muted);display:flex;align-items:flex-start;gap:4px;"><span>${icon}</span><span><strong>${label}</strong><br/>${rule}</span></div>`).join('')}
+ ${[['🟡','Tardanza leve (5–19 min)','3 strikes = llamado'],['🟠','Tardanza moderada (20–59 min)','2 strikes = llamado'],['🔴','Tardanza grave (60+ min)','1 strike = llamado'],['🔵','No desconexión (+4h)','3 strikes = llamado']]
+ .map(([icon,label,rule])=>`<div style="font-size:10px;color:var(--text-muted);display:flex;align-items:flex-start;gap:4px;"><span>${icon}</span><span><strong>${label}</strong><br/>${rule}</span></div>`).join('')}
  </div>
- <div style="margin-top:8px;font-size:10px;color:var(--text-dim);font-family:var(--mono);">⚖️ 3 llamados de atención acumulados (cualquier combinación) = proceso disciplinario</div>
+ <div style="margin-top:8px;font-size:10px;color:var(--text-dim);font-family:var(--mono);">⚖️ 3 llamados de atención vigentes (cualquier combinación) = proceso disciplinario</div>
  </div>`;
+ // Apelaciones: el botón/estado va en cada strike vigente del detalle por mes
  window._myStrikeCtx={};
- const misStrikes=[
- ...strikesLeve.map(x=>({...x,tipo:'🟡 Leve',cat:'tardanza'})),...strikesModerade.map(x=>({...x,tipo:'🟠 Moderada',cat:'tardanza'})),
- ...strikesGrave.map(x=>({...x,tipo:'🔴 Grave',cat:'tardanza'})),...strikesNoDesconex.map(x=>({...x,tipo:'🔵 No desconexión',cat:'nodesconex'}))
- ].map(x=>({...x,wid:strikeWaiverId(userEmail,x.fecha,x.cat)})).filter(x=>x.wid);
- misStrikes.forEach(x=>{window._myStrikeCtx[x.wid]={fecha:x.fecha,cat:x.cat,detalle:`${x.tipo} — ${x.detalle}`};});
- const apelacionesHTML=misStrikes.length?`<div style="padding:10px 16px;border-top:1px solid var(--border);"><div style="font-size:11px;font-weight:700;color:var(--text-dim);font-family:var(--mono);margin-bottom:6px;">📨 ¿Un strike fue justificado? Puedes apelarlo</div>${misStrikes.map(x=>{
- const a=appealMap.get(x.wid);
- let est=`<button onclick="apelarStrike('${x.wid}')" style="background:none;border:1px solid var(--border);color:var(--text-muted);padding:2px 9px;border-radius:6px;font-size:10px;font-family:var(--mono);cursor:pointer;">📝 Apelar</button>`;
- if(a?.status==='pending')est='<span style="font-size:10px;color:#fbbf24;">⏳ Apelación en revisión</span>';
- else if(a?.status==='rejected')est='<span style="font-size:10px;color:#f87171;">❌ Apelación rechazada</span>';
- return`<div style="padding:5px 0;border-bottom:1px solid var(--border);"><div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;"><span style="font-size:10px;color:var(--text-muted);">${esc(x.fecha)} · ${x.tipo} — ${esc(x.detalle)}</span>${est}</div>${a?.status==='rejected'&&a.respuesta?`<div style="font-size:10px;color:var(--text-dim);margin-top:2px;">Respuesta: ${esc(a.respuesta)}</div>`:''}</div>`;}).join('')}</div>`:'';
- const retiradosHTML=strikesRetirados.length?`<div style="padding:10px 16px;border-top:1px solid var(--border);background:rgba(74,222,128,0.05);"><div style="font-size:11px;font-weight:700;color:#4ade80;margin-bottom:4px;">✅ Strikes retirados por justa causa (${strikesRetirados.length})</div>${strikesRetirados.map(s=>`<div style="font-size:10px;color:var(--text-muted);margin-top:3px;">• ${esc(s.fecha)} — ${esc(s.detalle)}${s.motivo?' · '+esc(s.motivo):''}</div>`).join('')}</div>`:'';
- if(mallaFalló&&!mallaData.length){
- list.innerHTML=`<div style="padding:24px 16px;text-align:center;font-size:12px;color:var(--text-dim);">⚠️ No se pudo cargar tu malla para calcular los strikes. Se reintentará al recargar.</div>`+reglamHTML;
- return;
- }
- if(totalStrikes===0){
- list.innerHTML=`<div style="padding:24px 16px;text-align:center;">
- <div style="font-size:40px;margin-bottom:10px;">🏆</div>
- <div style="font-size:15px;font-weight:700;color:#4ade80;margin-bottom:4px;">¡Sin strikes en los últimos 6 meses!</div>
- <div style="font-size:12px;color:var(--text-dim);">Tu puntualidad y responsabilidad son excelentes. ¡Sigue así!</div>
- </div>`+retiradosHTML+reglamHTML;
- return;
- }
- list.innerHTML=llamadosHTML+avisoHTML+
- tipoRow('🟡','Tardanza leve','#fbbf24',strikesLeve,3,faltanLeve)+
- tipoRow('🟠','Tardanza moderada','#fb923c',strikesModerade,2,faltanModerado)+
- tipoRow('🔴','Tardanza grave','#f87171',strikesGrave,1,faltanGrave)+
- tipoRow('🔵','No desconexión','#60a5fa',strikesNoDesconex,3,faltanNoDesconex)+
- apelacionesHTML+retiradosHTML+reglamHTML;
+ model.active.forEach(s=>{if(s.wid)window._myStrikeCtx[s.wid]={fecha:s.fecha,cat:STRIKE_CATS[s.cat].waiver,detalle:`${STRIKE_CATS[s.cat].tipo} — ${s.detalle}`};});
+ const apelar=s=>{
+ const a=s.appeal;
+ if(a&&a.status==='pending')return'<span style="font-size:10px;color:#fbbf24;">⏳ Apelación en revisión</span>';
+ if(a&&a.status==='rejected')return`<span style="font-size:10px;color:#f87171;" title="${esc(a.respuesta||'')}">❌ Apelación rechazada${a.respuesta?' — '+esc(a.respuesta):''}</span>`;
+ if(!s.wid)return'';
+ return`<button onclick="apelarStrike('${s.wid}')" style="background:none;border:1px solid var(--border);color:var(--text-muted);padding:2px 9px;border-radius:6px;font-size:10px;font-family:var(--mono);cursor:pointer;">📝 Apelar</button>`;
+ };
+ const detalleHTML=totalStrikes===0?`<div style="padding:24px 16px;text-align:center;"><div style="font-size:40px;margin-bottom:10px;">🏆</div><div style="font-size:15px;font-weight:700;color:#4ade80;margin-bottom:4px;">¡Sin strikes vigentes en ${vig.label}!</div><div style="font-size:12px;color:var(--text-dim);">Tu puntualidad y responsabilidad son excelentes. ¡Sigue así!</div></div>`
+ :`<div style="padding:8px 16px 0;font-size:10px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:.06em;font-family:var(--mono);">📨 ¿Un strike fue justificado? Puedes apelarlo</div>`+strikeMonthsHTML(model,{apelar});
+ list.innerHTML=politicaHTML+llamadosHTML+avisoHTML+tipoRows+detalleHTML+strikeHistorialHTML(model,'agente')+reglamHTML;
+}
+// ── Historial de strikes por agente (solo consulta) para admins y coordinadores ──
+async function showStrikeHistorial(prefEmail){
+ const me=document.getElementById('user-email').textContent;
+ if(!isAdminEmail(me))return;
+ document.getElementById('strike-hist-modal')?.remove();
+ const modal=document.createElement('div');
+ modal.id='strike-hist-modal';modal.className='abs-overlay';
+ modal.style.cssText='position:fixed;inset:0;background:rgba(13,11,20,0.88);backdrop-filter:blur(8px);z-index:700;display:flex;align-items:center;justify-content:center;';
+ modal.innerHTML=`<div style="background:var(--surface);border:1px solid rgba(251,191,36,0.3);border-radius:20px;padding:24px;width:min(680px,94vw);max-height:84vh;overflow-y:auto;position:relative;">
+ <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;"><div style="font-size:17px;font-weight:800;">📜 Historial de strikes por agente</div><button onclick="document.getElementById('strike-hist-modal').remove()" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:20px;">×</button></div>
+ <div style="font-size:11px;color:var(--text-dim);margin-bottom:12px;">Solo consulta. Muestra lo vigente (últimos 3 meses) y lo archivado (vencido o con apelación aprobada) de un agente.</div>
+ <select id="strike-hist-agent" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 10px;color:var(--text);font-size:12px;margin-bottom:12px;"><option value="">Selecciona un agente…</option></select>
+ <div id="strike-hist-body" style="font-size:12px;color:var(--text-dim);">Elige un agente para ver su historial.</div></div>`;
+ document.body.appendChild(modal);
+ let md=window._panel2MallaData||[];
+ if(!md.length){try{const csv=await fetchMallaCSV('historialStrikes');md=csv.trim().split('\n').slice(1).map(l=>{const c=parseCSVLine(l);return{fecha:c[1]?.trim(),usuario:c[2]?.trim(),nombre:c[3]?.trim()};});}catch(e){}}
+ const vig=strikeVigencia(new Date());
+ const agents=new Map();
+ md.forEach(m=>{if(!m.usuario||!m.fecha)return;const d=parseDate(m.fecha);if(!d||d<vig.start)return;if(!agents.has(m.usuario))agents.set(m.usuario,m.nombre||m.usuario.split('@')[0]);});
+ const sel=document.getElementById('strike-hist-agent');
+ [...agents.entries()].sort((a,b)=>a[1].localeCompare(b[1])).forEach(([e,n])=>{const o=document.createElement('option');o.value=e;o.textContent=`${n} — ${e}`;sel.appendChild(o);});
+ const show=async email=>{
+ const body=document.getElementById('strike-hist-body');if(!body||!email){return;}
+ body.innerHTML='Cargando…';
+ try{
+ const model=await buildAgentStrikeModel(email,new Date());
+ const nombre=agents.get(email)||email;
+ const chips=Object.keys(STRIKE_CATS).filter(k=>model.counts[k]).map(k=>STRIKE_BADGE(`${STRIKE_CATS[k].icon} ${model.counts[k]}`,STRIKE_CATS[k].color)).join(' ');
+ body.innerHTML=`<div style="border:1px solid var(--border);border-radius:12px;overflow:hidden;background:var(--surface2);">
+ <div style="padding:12px 16px;"><div style="font-size:14px;font-weight:700;color:var(--text);">${esc(nombre)}</div>
+ <div style="font-size:11px;color:var(--text-dim);margin-top:2px;">Vigencia: <strong>${vig.label}</strong> · ${model.totalActive} strike${model.totalActive!==1?'s':''} vigente${model.totalActive!==1?'s':''} · <strong style="color:${model.totalLlamados>=3?'#f87171':model.totalLlamados?'#fb923c':'#4ade80'};">${model.totalLlamados} llamado${model.totalLlamados!==1?'s':''} vigente${model.totalLlamados!==1?'s':''}</strong>${model.totalLlamados>=3?' · 🚨 proceso disciplinario':''}</div>
+ <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;">${chips}</div></div>
+ <div style="padding:6px 16px 0;font-size:10px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:.06em;font-family:var(--mono);">✅ Vigente</div>
+ ${strikeMonthsHTML(model,{apelar:s=>s.appeal&&s.appeal.status==='pending'?'<span style="font-size:10px;color:#fbbf24;">⏳ Apelación pendiente</span>':''})}
+ ${strikeHistorialHTML(model,'admin')}</div>`;
+ const h=document.getElementById('strike-hist-admin');if(h)h.style.display='block';
+ }catch(e){console.error('[historial strikes]',e);body.innerHTML='❌ No se pudo cargar el historial de este agente.';}
+ };
+ sel.onchange=()=>show(sel.value);
+ if(prefEmail&&agents.has(prefEmail)){sel.value=prefEmail;show(prefEmail);}
+}
+// Turnos de TODOS los agentes de los últimos 5 meses calendario (3 de vigencia + 2 previos que pueden formar parte de
+// un llamado emitido dentro de la ventana), en UNA consulta por rango con caché de 15 min — Insights la reutiliza en
+// cada filtro/refresco en vez de volver a leer Firestore.
+async function getTurnosForStrikeCalc(now){
+ const start5=new Date(now.getFullYear(),now.getMonth()-4,1);
+ const key=strikeMonthKey(start5);
+ const c=window._strikeTurnosCache;
+ if(c&&c.key===key&&Date.now()-c.ts<15*60000)return c.data;
+ const end=new Date(now.getFullYear(),now.getMonth(),now.getDate(),23,59,59);
+ const data=await window.getRecentTurnos(start5,false,end);
+ if(data.length)window._strikeTurnosCache={key,ts:Date.now(),data};
+ return data;
 }
 function switchTab(t){
  if(t!=='home')localStorage.setItem('pg_active_tab',t);
@@ -5184,18 +5239,6 @@ async function renderPanel2Insights(rows,allTurnos,fromDate,toDate){
  if(!esVot){
  v.tardanzaCount++;v.tardanzaMins+=mins;
  v.tardanzaDetalle.push({fecha:r.fecha||'',mins,real:realStr,prog:progStr});
- const wid=strikeWaiverId(r.usuario,r.fecha,'tardanza');
- const tipoT=mins>=60?'🔴 Grave':mins>=20?'🟠 Moderada':mins>strikeTardanzaMins?'🟡 Leve':null;
- if(tipoT){
- const det=`+${mins} min tarde (${realStr}, prog. ${progStr})`;
- const w=wid&&waiverMap.get(wid);
- if(wid)window._strikeCtx[wid]={email:r.usuario,nombre:v.nombre,fecha:r.fecha||'',cat:'tardanza',detalle:`${tipoT} — ${det}`};
- if(w)v.strikeRetirados.push({tipo:tipoT,fecha:r.fecha||'',detalle:det,wid,motivo:w.motivo||'',por:w.waivedBy||''});
- else{
- if(mins>=60)v.strikeGrave++;else if(mins>=20)v.strikeModerado++;else v.strikeLeve++;
- v.strikeDetalle.push({tipo:tipoT,fecha:r.fecha||'',detalle:det,wid});
- }
- }
  }
  } else if(cls==='ausente'||cls==='ausente_justificada'||cls==='ausente_injustificada'){
  v.ausenteTotal++;
@@ -5208,24 +5251,6 @@ async function renderPanel2Insights(rows,allTurnos,fromDate,toDate){
  v.novedadTotal++;
  v.novedadPorTipo[tipo]=(v.novedadPorTipo[tipo]||0)+1;
  v.novedadDetalle.push({fecha:r.fecha||'',tipo});
- }
- // No desconexión (strike)
- if(r.realEnd&&r.scheduledEnd){
- // Turno nocturno (cruza medianoche): scheduledEnd se calcula con la fecha del día de inicio,
- // así que un fin de "1:00 a.m." queda ANTES que scheduledStart en vez de al día siguiente.
- // Sumar 24h en ese caso para que la resta con la salida real dé minutos reales, no ~24h.
- const scheduledEndAdj=(r.scheduledStart&&r.scheduledEnd<r.scheduledStart)?new Date(r.scheduledEnd.getTime()+24*3600000):r.scheduledEnd;
- const extraHrs=(r.realEnd-scheduledEndAdj)/3600000;
- if(extraHrs>strikeNoDesconexionHrs){
- const finProg=r.scheduledEnd.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'});
- const finReal=r.realEnd.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'});
- const det=`Salida prog. ${finProg}, salida real ${finReal} (+${Math.round(extraHrs*10)/10}h)`;
- const wid=strikeWaiverId(r.usuario,r.fecha,'nodesconex');
- const w=wid&&waiverMap.get(wid);
- if(wid)window._strikeCtx[wid]={email:r.usuario,nombre:v.nombre,fecha:r.fecha||'',cat:'nodesconex',detalle:`🔵 No desconexión — ${det}`};
- if(w)v.strikeRetirados.push({tipo:'🔵 No desconexión',fecha:r.fecha||'',detalle:det,wid,motivo:w.motivo||'',por:w.waivedBy||''});
- else{v.strikeNoDesconex++;v.strikeDetalle.push({tipo:'🔵 No desconexión',fecha:r.fecha||'',detalle:det,wid});}
- }
  }
  // Recargo nocturno — cruza el turno real (ya viene de Firestore vía panel2AllRows) con 7pm-6am.
  // Excluir turnos huérfanos, igual criterio que activeRaw en loadPanel2: un turno "active" cuyo
@@ -5243,10 +5268,6 @@ async function renderPanel2Insights(rows,allTurnos,fromDate,toDate){
  if(nSecs>0){v.nocturnoSecs+=nSecs;v.nocturnoDetalle.push({fecha:r.fecha||'',horas:fmtHrsSecs(nSecs)});}
  }
  }
- });
- Object.values(userStats).forEach(v=>{
- v.llamados=Math.floor(v.strikeLeve/3)+Math.floor(v.strikeModerado/2)+v.strikeGrave+Math.floor(v.strikeNoDesconex/3);
- v.totalStrikes=v.strikeLeve+v.strikeModerado+v.strikeGrave+v.strikeNoDesconex;
  });
  // Extras — desde los turnos ya cruzados (overtimeStatus en el documento). allTurnos
  // (turnosDelPeriodo) trae TODOS los agentes del período sin importar el filtro activo — se
@@ -5291,7 +5312,6 @@ async function renderPanel2Insights(rows,allTurnos,fromDate,toDate){
  const novedadEntries=Object.entries(userStats).filter(([,v])=>v.novedadTotal>0).sort((a,b)=>b[1].novedadTotal-a[1].novedadTotal);
  const extrasEntries=Object.entries(userStats).filter(([,v])=>v.extrasAprobadasCount>0||v.extrasRechazadasCount>0||v.extrasPendientesCount>0).sort((a,b)=>b[1].extrasAprobadasMins-a[1].extrasAprobadasMins);
  const nocturnoEntries=Object.entries(userStats).filter(([,v])=>v.nocturnoSecs>0).sort((a,b)=>b[1].nocturnoSecs-a[1].nocturnoSecs);
- const strikeEntries=Object.entries(userStats).filter(([,v])=>v.totalStrikes>0||v.strikeRetirados.length>0).sort((a,b)=>b[1].totalStrikes-a[1].totalStrikes);
  // Tarjeta genérica expandible — igual patrón para las 6 categorías
  function detailRow(fecha,content){return`<div style="display:grid;grid-template-columns:100px 1fr;gap:6px;padding:4px 0;border-bottom:1px solid var(--border);"><span style="font-size:10px;color:var(--text-dim);font-family:var(--mono);">${esc(fecha)}</span><span style="font-size:10px;color:var(--text-muted);">${content}</span></div>`;}
  // Cada tarjeta es colapsable — mismo patrón de clic que el detalle por agente (toggle de
@@ -5346,19 +5366,68 @@ async function renderPanel2Insights(rows,allTurnos,fromDate,toDate){
  const nocturnoHTML=insightCard('nocturno','🌙 Recargo nocturno (7pm–6am)','#60a5fa',nocturnoEntries,'Sin horas de recargo nocturno en este período',
  v=>`<span style="font-size:11px;font-weight:800;color:#60a5fa;">${fmtHrsSecs(v.nocturnoSecs)}</span>`,
  v=>v.nocturnoDetalle.map(d=>detailRow(d.fecha,d.horas)).join(''));
+ // ── Strikes VIGENTES: ventana de 3 meses calendario, sin apelaciones aprobadas — NO depende del período elegido arriba
+ // (los demás módulos de Insights sí). Misma lógica y mismos números que ve cada agente en «Mis strikes».
+ const nowI=new Date();
+ const vigI=strikeVigencia(nowI);
+ let strikesHTML;
+ try{
+ const turnosV=await getTurnosForStrikeCalc(nowI);
+ if(!turnosV.length&&window._turnosReadFailedAt&&Date.now()-window._turnosReadFailedAt<30000)throw new Error('lectura de turnos falló');
+ const cfgI={tardanzaMins:strikeTardanzaMins,nodescHrs:strikeNoDesconexionHrs};
+ // Agentes: todos los de la malla en la ventana, respetando los filtros de agente / línea / líder (no el período).
+ const start5=new Date(nowI.getFullYear(),nowI.getMonth()-4,1);
+ const lineaSel=document.getElementById('panel2-linea-filter')?.value||'';
+ const liderSel=window._panel2LiderFilter||'';
+ const info=new Map(),mallaByUser=new Map();
+ (window._panel2MallaData||[]).forEach(m=>{
+ if(!m.usuario||!m.fecha)return;
+ const d=parseDate(m.fecha);if(!d||d<start5)return;
+ if(!mallaByUser.has(m.usuario))mallaByUser.set(m.usuario,[]);
+ mallaByUser.get(m.usuario).push(m);
+ const prev=info.get(m.usuario);
+ if(!prev||d>=prev.d)info.set(m.usuario,{d,nombre:m.nombre,linea:m.linea,lider:m.lider});
+ });
+ const adminSet=new Set([...(window.ADMINS||ADMINS),SUPER_ADMIN]);
+ const users=[...info.keys()].filter(u=>!adminSet.has(u)&&(panel2SelectedUsers.size===0||panel2SelectedUsers.has(u))&&(!lineaSel||info.get(u).linea===lineaSel)&&(!liderSel||info.get(u).lider===liderSel));
+ const turnosByUser=new Map();
+ turnosV.forEach(t=>{if(!t.userEmail)return;if(!turnosByUser.has(t.userEmail))turnosByUser.set(t.userEmail,[]);turnosByUser.get(t.userEmail).push(t);});
+ const models=[];
+ users.forEach(email=>{
+ const strikes=computeAgentStrikes({email,malla:mallaByUser.get(email)||[],turnos:turnosByUser.get(email)||[],waiverMap,appealMap,cfg:cfgI,now:nowI});
+ const pol=applyStrikePolicy(strikes,nowI);
+ const wInWin=pol.waived.filter(s=>s.date>=vigI.start);
+ if(pol.totalActive||pol.totalLlamados||wInWin.length)models.push([email,{nombre:info.get(email).nombre||email.split('@')[0],pol,wInWin,email}]);
+ });
+ models.sort((a,b)=>b[1].pol.totalLlamados-a[1].pol.totalLlamados||b[1].pol.totalActive-a[1].pol.totalActive);
+ models.forEach(([email,v])=>{v.pol.active.forEach(s=>{if(s.wid)window._strikeCtx[s.wid]={email,nombre:v.nombre,fecha:s.fecha,cat:STRIKE_CATS[s.cat].waiver,detalle:`${STRIKE_CATS[s.cat].tipo} — ${s.detalle}`};});});
  const btnStyle='margin-left:8px;background:none;border:1px solid var(--border);color:var(--text-muted);padding:1px 7px;border-radius:6px;font-size:10px;font-family:var(--mono);cursor:pointer;';
  const apelacionHTML=wid=>{
  const a=wid&&appealMap.get(wid);if(!a)return'';
- if(a.status==='pending')return`<div style="margin-top:4px;padding:6px 8px;border:1px solid rgba(251,191,36,.4);border-radius:8px;background:rgba(251,191,36,.06);">📨 <b>Apelación pendiente:</b> ${esc(a.motivo)}</div>`;
- if(a.status==='rejected')return`<div style="margin-top:4px;color:var(--text-dim);">❌ Apelación rechazada${a.decidedByName?' por '+esc(a.decidedByName):''}${a.respuesta?': '+esc(a.respuesta):''} <i>(motivo del agente: ${esc(a.motivo)})</i></div>`;
+ if(a.status==='pending')return`<div style="margin-top:4px;padding:6px 8px;border:1px solid rgba(251,191,36,.4);border-radius:8px;background:rgba(251,191,36,.06);font-size:10.5px;">📨 <b>Apelación pendiente:</b> ${esc(a.motivo)}</div>`;
+ if(a.status==='rejected')return`<div style="margin-top:4px;color:var(--text-dim);font-size:10.5px;">❌ Apelación rechazada${a.decidedByName?' por '+esc(a.decidedByName):''}${a.respuesta?': '+esc(a.respuesta):''} <i>(motivo del agente: ${esc(a.motivo)})</i></div>`;
  return'';
  };
  const retirarBtn=wid=>canWaive&&wid?`<button onclick="retirarStrike('${wid}')" style="${btnStyle}">✂️ Retirar</button>`:'';
  const restaurarBtn=wid=>canWaive&&wid?`<button onclick="restaurarStrike('${wid}')" style="${btnStyle}">↩ Restaurar</button>`:'';
- const strikesHTML=insightCard('strikes','⚖️ Strikes del período','#fbbf24',strikeEntries,'Sin strikes en este período',
- v=>{const color=v.llamados>=3?'#f87171':v.llamados===2?'#fb923c':v.llamados===1?'#fbbf24':'#9ca3af';
- return`${v.strikeLeve>0?`<span style="font-size:10px;background:rgba(251,191,36,0.1);color:#fbbf24;border:1px solid rgba(251,191,36,0.3);padding:1px 7px;border-radius:10px;font-family:var(--mono);">🟡 ${v.strikeLeve}</span>`:''}${v.strikeModerado>0?`<span style="font-size:10px;background:rgba(251,146,60,0.1);color:#fb923c;border:1px solid rgba(251,146,60,0.3);padding:1px 7px;border-radius:10px;font-family:var(--mono);">🟠 ${v.strikeModerado}</span>`:''}${v.strikeGrave>0?`<span style="font-size:10px;background:rgba(248,113,113,0.1);color:#f87171;border:1px solid rgba(248,113,113,0.3);padding:1px 7px;border-radius:10px;font-family:var(--mono);">🔴 ${v.strikeGrave}</span>`:''}${v.strikeNoDesconex>0?`<span style="font-size:10px;background:rgba(96,165,250,0.1);color:#60a5fa;border:1px solid rgba(96,165,250,0.3);padding:1px 7px;border-radius:10px;font-family:var(--mono);">🔵 ${v.strikeNoDesconex}</span>`:''}<span style="font-size:11px;font-weight:800;color:${color};background:${color}22;border:1px solid ${color}44;padding:2px 8px;border-radius:10px;font-family:var(--mono);">${v.totalStrikes} strike${v.totalStrikes!==1?'s':''}</span>${v.llamados>0?`<span style="font-size:10px;color:${color};font-family:var(--mono);">· ${v.llamados} llamado${v.llamados!==1?'s':''}</span>`:''}${v.llamados>=3?`<span style="font-size:11px;">⚖️</span>`:''}${v.strikeDetalle.some(d=>appealMap.get(d.wid)?.status==='pending')?`<span style="font-size:10px;color:#fbbf24;font-family:var(--mono);">📨 apelación</span>`:''}${v.strikeRetirados.length?`<span style="font-size:10px;color:#4ade80;font-family:var(--mono);">✅ ${v.strikeRetirados.length} retirado${v.strikeRetirados.length!==1?'s':''}</span>`:''}`;},
- v=>v.strikeDetalle.map(d=>detailRow(d.fecha,`<span style="background:${d.tipo.includes('Grave')?'rgba(248,113,113,0.1)':d.tipo.includes('Modera')?'rgba(251,146,60,0.1)':d.tipo.includes('Leve')?'rgba(251,191,36,0.1)':'rgba(96,165,250,0.1)'};color:${d.tipo.includes('Grave')?'#f87171':d.tipo.includes('Modera')?'#fb923c':d.tipo.includes('Leve')?'#fbbf24':'#60a5fa'};padding:1px 6px;border-radius:10px;margin-right:6px;">${d.tipo}</span>${d.detalle}${retirarBtn(d.wid)}${apelacionHTML(d.wid)}`)).join('')+v.strikeRetirados.map(d=>detailRow(d.fecha,`<span style="background:rgba(74,222,128,0.1);color:#4ade80;padding:1px 6px;border-radius:10px;margin-right:6px;">✅ Retirado</span><s style="opacity:.6;">${d.tipo} ${d.detalle}</s><br/>Motivo: ${esc(d.motivo)}${d.por?' · por '+esc(d.por):''}${restaurarBtn(d.wid)}`)).join(''));
+ const chip=(n,c,ic)=>n>0?`<span style="font-size:10px;background:${c}1a;color:${c};border:1px solid ${c}4d;padding:1px 7px;border-radius:10px;font-family:var(--mono);">${ic} ${n}</span>`:'';
+ strikesHTML=insightCard('strikes',`⚖️ Strikes vigentes · ${vigI.label}`,'#fbbf24',models,'Sin strikes vigentes en esta ventana',
+ v=>{const p=v.pol,n=p.totalLlamados,color=n>=3?'#f87171':n===2?'#fb923c':n===1?'#fbbf24':'#9ca3af';
+ return Object.keys(STRIKE_CATS).map(k=>chip(p.counts[k],STRIKE_CATS[k].color,STRIKE_CATS[k].icon)).join('')
+ +`<span style="font-size:11px;font-weight:800;color:${color};background:${color}22;border:1px solid ${color}44;padding:2px 8px;border-radius:10px;font-family:var(--mono);">${p.totalActive} strike${p.totalActive!==1?'s':''}</span>`
+ +(n>0?`<span style="font-size:10px;color:${color};font-family:var(--mono);">· ${n} llamado${n!==1?'s':''} vigente${n!==1?'s':''}</span>`:'')
+ +(n>=3?'<span style="font-size:11px;">⚖️</span>':'')
+ +(v.wInWin.length?`<span style="font-size:10px;color:#4ade80;font-family:var(--mono);">✅ ${v.wInWin.length} retirado${v.wInWin.length!==1?'s':''}</span>`:'')
+ +(p.active.some(s=>appealMap.get(s.wid)?.status==='pending')?'<span style="font-size:10px;color:#fbbf24;font-family:var(--mono);">📨 apelación</span>':'');},
+ v=>{
+ const meses=strikeMonthsHTML(v.pol,{admin:s=>`<div style="margin-top:2px;">${apelacionHTML(s.wid)}${retirarBtn(s.wid)}</div>`});
+ const ret=v.wInWin.length?`<div style="padding:8px 16px 4px;border-top:1px solid var(--border);"><div style="font-size:10px;font-weight:700;color:#4ade80;margin-bottom:4px;">✅ Retirados / apelación aprobada en la ventana (no cuentan)</div>${v.wInWin.map(s=>{const i=strikeWaivedInfo(s);return`<div style="font-size:10.5px;color:var(--text-muted);padding:3px 0;">${STRIKE_CATS[s.cat].icon} ${esc(s.fecha)} — ${esc(s.detalle)} · <b>${i.motivo}</b> por ${esc(i.quien)} el ${fmtDMYs(i.cuando)}${restaurarBtn(s.wid)}</div>`;}).join('')}</div>`:'';
+ return`<div style="margin:-10px -14px;">${meses}${ret}<div style="padding:8px 16px 10px;"><button onclick="showStrikeHistorial('${v.email}')" style="${btnStyle}margin-left:0;">📜 Ver historial completo (vencidos y apelaciones)</button></div></div>`;
+ });
+ }catch(e){
+ console.error('[Insights] strikes vigentes falló:',e);
+ strikesHTML=`<div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:14px;"><div style="font-size:11px;font-weight:700;color:#fbbf24;margin-bottom:8px;">⚖️ Strikes vigentes · ${vigI.label}</div><div style="font-size:11px;color:var(--text-dim);">No se pudieron calcular los strikes (falló la lectura de turnos de Firestore). Pulsa ↻ para reintentar.</div></div>`;
+ }
 
  // Historial de apelaciones del período (strikes cuya fecha cae en el rango y agentes visibles con los filtros
  // activos): estado, quién respondió y qué respondió. Las pendientes se responden en ⚖️ Apelaciones de strikes.
