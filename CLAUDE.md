@@ -118,6 +118,14 @@ Commit messages use the `feat:` / `fix:` / `chore:` prefix and a Spanish subject
 - **Malla en el inicio**: `fetchMallaCSV(tag,null,{attempts:2,timeoutMs:12000,hedgeMs:5000,maxAgeMs:15*60000})`. MALLA_SCRIPT se cuelga o da 404 en ~1 de cada 8 pedidos, por eso `fetchMallaOnce` lanza un segundo pedido «de cobertura» a los `hedgeMs`. Si todo falla se usa la caché local; una caché de más de 6 h no bloquea el inicio.
 - Prueba: `node test/pigops_inicio_turno_test.js` (extrae el código real de `index.html` y simula geolocalización, fetch, Firestore y reloj).
 
+### Botón ↻ del Panel de Control (v18.3)
+- **`refreshPanel()` refresca todo el panel**: tarjetas «En turno ahora», Balance hoy, tabla/estados, Extras e Insights, y los badges y modales abiertos de Horas extras, Salidas anticipadas, Semanas excedidas, Apelaciones, Historial de strikes y Nómina. Ignora la caché en memoria y la deja actualizada; botón deshabilitado y girando mientras carga; texto «Actualizado h:mm» (`#panel-last-update`) con ⚠ y el nombre de lo que falló.
+- **Ciclo de lectura** (`panelCycleStart`, `panelRead`, `panelGet`, `panelMalla`): cada fuente se lee UNA vez por carga/refresco y la comparten todos los módulos. Dentro de un ciclo los wrappers de Firestore van en modo `strict` (último parámetro): lanzan el error en vez de devolver `[]`, así un módulo caído conserva lo que ya se ve y se avisa, sin arrastrar a los demás. Al agregar una lectura nueva al Panel, regístrala en `PANEL_READERS`, no con `window.get*()` suelto.
+- **Lecturas de un refresh completo (8 consultas Firestore + 1 pedido de malla)**: turnos recientes, ausencias, eventos de horas extras, apelaciones, retiros de strikes, turnos del período, extras aprobadas del período y turnos para strikes. Con modales abiertos comparten esas lecturas; solo suman 1 el Historial (turnos del agente) y 1 la Nómina (extras aprobadas de la semana pasada).
+- **Strikes**: con la caché de 5 meses vigente (<15 min) el refresh es **incremental** (relee solo el mes en curso o los últimos 7 días); vencida, relee los 5 meses.
+- **Nómina abierta**: si hay ediciones sin enviar (`window._payrollDirty`, se activa en `savePayrollDraft`) o una celda en edición, el refresh NO la toca.
+- Prueba: `node test/pigops_panel_refresh_test.js` (corre el `loadPanel2`/`refreshPanel` reales con Firestore y DOM simulados y cuenta cada consulta).
+
 ### Nómina
 - **Pre-revisión** (`openPayrollPreview`):
   - Edición en línea con recálculo en tiempo real. Las horas se muestran en formato colombiano "hh:mm a. m./p. m.".
