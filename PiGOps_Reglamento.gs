@@ -200,7 +200,7 @@ function reg_clasificar(tardanzas, ctx) {
 
 function reg_descripcionFalta(t, rechazada) {
   return 'El día ' + reg_fechaLarga(t.iso) + ', su turno estaba programado para iniciar a las ' + t.progTexto +
-    ' y el inicio se registró en Pi GOps a las ' + t.inicioTexto + ', con ' + t.minutos + ' minutos de retardo, ' +
+    ' y registró su inicio a las ' + t.inicioTexto + ', con ' + t.minutos + ' minutos de retardo, ' +
     (rechazada ? 'sin que la justificación presentada fuera aprobada.' :
       'sin justificación aprobada dentro del plazo de ' + REG.PLAZO_DIAS_HABILES + ' días hábiles.');
 }
@@ -589,33 +589,122 @@ function reg_compartir(file, emails) {
 function reg_reemplazar(body, marcador, valor) {
   body.replaceText('\\{\\{' + marcador + '\\}\\}', String(valor == null ? '' : valor).replace(/\$/g, '\\$'));
 }
-// Plantilla → copia → marcadores → PDF. Cada falta en su propio párrafo; se elimina la nota para quien diligencia.
+// ── Formato de párrafos de Google Docs ──
+function reg_tryGet(fn) { try { return fn(); } catch (e) { return null; } }
+// Formato visible de un párrafo (texto y párrafo): fuente y tamaño a nivel de texto (null si es mixto o vacío) más alineación, interlineado, sangrías y espaciado.
+function reg_formatoParrafo(p) {
+  var tx = reg_tryGet(function () { return p.editAsText(); });
+  var tieneTexto = p.getText().replace(/\s+/g, '') !== '';
+  return {
+    fuente: tieneTexto && tx ? reg_tryGet(function () { return tx.getFontFamily(); }) : null,
+    tam: tieneTexto && tx ? reg_tryGet(function () { return tx.getFontSize(); }) : null,
+    alineacion: String(reg_tryGet(function () { return p.getAlignment(); })),
+    interlineado: reg_tryGet(function () { return p.getLineSpacing(); }),
+    sangriaPrimera: reg_tryGet(function () { return p.getIndentFirstLine(); }),
+    sangriaIzq: reg_tryGet(function () { return p.getIndentStart(); }),
+    antes: reg_tryGet(function () { return p.getSpacingBefore(); }),
+    despues: reg_tryGet(function () { return p.getSpacingAfter(); })
+  };
+}
+function reg_parrafoVacio(el) {
+  if (el.getType() !== DocumentApp.ElementType.PARAGRAPH) return false;
+  var p = el.asParagraph();
+  if (p.getText().replace(/\s+/g, '') !== '') return false;
+  for (var j = 0; j < p.getNumChildren(); j++) {
+    var tp = p.getChild(j).getType();
+    if (tp === DocumentApp.ElementType.INLINE_IMAGE || tp === DocumentApp.ElementType.INLINE_DRAWING || tp === DocumentApp.ElementType.HORIZONTAL_RULE) return false;
+  }
+  return true;
+}
+// Evita la hoja en blanco: quita saltos de página y párrafos vacíos del FINAL. Google Docs no deja borrar el último párrafo
+// del documento: si está vacío se conserva pero se reduce al mínimo (1 pt, sin espaciado) para que no empuje una página nueva.
+function reg_limpiarFinal(body) {
+  var n = body.getNumChildren();
+  if (n < 1) return;
+  var ult = body.getChild(n - 1);
+  if (ult.getType() === DocumentApp.ElementType.PARAGRAPH) {
+    var p = ult.asParagraph();
+    for (var j = p.getNumChildren() - 1; j >= 0; j--) if (p.getChild(j).getType() === DocumentApp.ElementType.PAGE_BREAK) p.getChild(j).removeFromParent();
+  }
+  if (!reg_parrafoVacio(ult)) return; // el contenido termina en el último párrafo: nada que limpiar
+  var atr = {}; atr[DocumentApp.Attribute.FONT_SIZE] = 1; atr[DocumentApp.Attribute.SPACING_BEFORE] = 0; atr[DocumentApp.Attribute.SPACING_AFTER] = 0; atr[DocumentApp.Attribute.LINE_SPACING] = 1;
+  try { ult.asParagraph().setAttributes(atr); } catch (e) { Logger.log('No se pudo reducir el último párrafo: ' + e.message); }
+  for (var i = n - 2; i >= 0; i--) {
+    var el = body.getChild(i);
+    if (el.getType() === DocumentApp.ElementType.PARAGRAPH) {
+      var q = el.asParagraph();
+      for (var k = q.getNumChildren() - 1; k >= 0; k--) if (q.getChild(k).getType() === DocumentApp.ElementType.PAGE_BREAK) q.getChild(k).removeFromParent();
+    }
+    if (!reg_parrafoVacio(el)) break;
+    body.removeChild(el);
+  }
+}
+// Nº de páginas de un PDF (cuenta los objetos /Type /Page y el /Count del árbol de páginas). 0 = no se pudo determinar.
+function reg_paginasPdf(blob) {
+  var txt = blob.getDataAsString('ISO-8859-1');
+  var paginas = (txt.match(/\/Type\s*\/Page(?![A-Za-z])/g) || []).length;
+  var cuentas = (txt.match(/\/Count\s+(\d+)/g) || []).map(function (c) { return parseInt(c.replace(/\D+/g, ''), 10); });
+  return Math.max(paginas, cuentas.length ? Math.max.apply(null, cuentas) : 0);
+}
+// Plantilla → copia → marcadores → PDF. Cada falta en su propio párrafo, con EL MISMO formato que el párrafo del marcador
+// {{DESCRIPCION_FALTAS}} (se copian los párrafos completos, no solo sus atributos: los párrafos nuevos de Docs no heredan fuente,
+// tamaño, alineación, interlineado ni sangría) y separadas como el resto del documento. Se elimina la nota para quien diligencia
+// y el final vacío (hoja en blanco) antes de exportar.
 function reg_pdfLlamado(cfg, d) {
   var copia = DriveApp.getFileById(cfg.templateId).makeCopy('Llamado de atención — ' + d.nombre + ' — ' + d.fecha);
   try {
     var doc = DocumentApp.openById(copia.getId()), body = doc.getBody();
-    // (solo pruebaEnvioReglamento) qué marcadores traía la plantilla, antes de tocarla
-    var tenia = cfg.verificarCuerpo ? { nota: !!(body.findText('\\{\\{INICIO_NOTA\\}\\}') && body.findText('\\{\\{FIN_NOTA\\}\\}')), causal: !!body.findText('\\{\\{CAUSAL\\}\\}'), descripcion: !!body.findText('\\{\\{DESCRIPCION_FALTAS\\}\\}') } : null;
+    // (solo pruebaEnvioReglamento) qué marcadores traía la plantilla y cómo se ve el párrafo anterior al marcador, antes de tocarla
+    var tenia = null, refFormato = null;
+    if (cfg.verificarCuerpo) {
+      tenia = { nota: !!(body.findText('\\{\\{INICIO_NOTA\\}\\}') && body.findText('\\{\\{FIN_NOTA\\}\\}')), causal: !!body.findText('\\{\\{CAUSAL\\}\\}'), descripcion: !!body.findText('\\{\\{DESCRIPCION_FALTAS\\}\\}') };
+      var h0 = body.findText('\\{\\{DESCRIPCION_FALTAS\\}\\}');
+      if (h0) {
+        var p0 = h0.getElement().getParent(), c0 = p0.getParent();
+        for (var q = c0.getChildIndex(p0) - 1; q >= 0; q--) {
+          var e0 = c0.getChild(q);
+          if (e0.getType() === DocumentApp.ElementType.PARAGRAPH && !reg_parrafoVacio(e0)) { refFormato = reg_formatoParrafo(e0.asParagraph()); break; }
+        }
+      }
+    }
     reg_reemplazar(body, 'FECHA', d.fecha); reg_reemplazar(body, 'NOMBRE', d.nombre); reg_reemplazar(body, 'CARGO', d.cargo);
     reg_reemplazar(body, 'CEDULA', d.cedula); reg_reemplazar(body, 'CAUSAL', d.causal); reg_reemplazar(body, 'FIRMANTE', d.firmante); reg_reemplazar(body, 'CARGO_FIRMANTE', d.cargoFirmante);
     var hit = body.findText('\\{\\{DESCRIPCION_FALTAS\\}\\}');
     if (hit) {
-      var par = hit.getElement().getParent(); // el párrafo que contiene el marcador
+      var par = hit.getElement().getParent().asParagraph(); // el párrafo que contiene el marcador
       var cont = par.getParent(), idx = cont.getChildIndex(par);
       var contenedor = cont.getType() === DocumentApp.ElementType.BODY_SECTION ? cont.asBody() : cont.asTableCell();
-      par.asParagraph().setText(d.faltas[0]);
-      for (var i = 1; i < d.faltas.length; i++) contenedor.insertParagraph(idx + i, d.faltas[i]).setAttributes(par.asParagraph().getAttributes());
+      // Si el párrafo del marcador no tiene espaciado posterior, las faltas se separan con una línea vacía de igual formato
+      var conLineaVacia = !(reg_tryGet(function () { return par.getSpacingAfter(); }) > 0);
+      var moldes = [];
+      for (var i = 1; i < d.faltas.length; i++) moldes.push(par.copy()); // ANTES de reemplazar el texto: conservan todo el formato
+      par.setText(d.faltas[0]);
+      var pos = idx + 1;
+      for (var k = 1; k < d.faltas.length; k++) {
+        if (conLineaVacia) { var vacio = contenedor.insertParagraph(pos++, par.copy()); vacio.setText(''); }
+        var np = contenedor.insertParagraph(pos++, moldes[k - 1]);
+        np.setText(d.faltas[k]);
+      }
     }
     // Nota para quien diligencia: borrar desde {{INICIO_NOTA}} hasta {{FIN_NOTA}} (inclusive)
     var a = body.findText('\\{\\{INICIO_NOTA\\}\\}'), b = body.findText('\\{\\{FIN_NOTA\\}\\}');
     if (a && b) {
       var ia = body.getChildIndex(a.getElement().getParent()), ib = body.getChildIndex(b.getElement().getParent());
-      for (var k = ib; k >= ia; k--) {
-        try { body.removeChild(body.getChild(k)); }
-        catch (e) { body.getChild(k).asParagraph().clear(); } // el último párrafo del documento no se puede quitar: se vacía
+      for (var kk = ib; kk >= ia; kk--) {
+        try { body.removeChild(body.getChild(kk)); }
+        catch (e) { body.getChild(kk).asParagraph().clear(); } // el último párrafo del documento no se puede quitar: se vacía
       }
     }
-    if (cfg.verificarCuerpo) cfg.verificarCuerpo(body.getText(), body.getParagraphs().map(function (p) { return p.getText(); }), tenia);
+    reg_limpiarFinal(body);
+    if (cfg.verificarCuerpo) {
+      var parrafos = body.getParagraphs(), formatos = { referencia: refFormato, faltas: [], lineaVaciaEntre: null };
+      var posiciones = d.faltas.map(function (f) { for (var z = 0; z < parrafos.length; z++) if (parrafos[z].getText() === f) return z; return -1; });
+      posiciones.forEach(function (z) { if (z >= 0) formatos.faltas.push(reg_formatoParrafo(parrafos[z])); });
+      if (posiciones.length > 1 && posiciones.every(function (z) { return z >= 0; })) {
+        formatos.lineaVaciaEntre = posiciones.every(function (z, m) { return m === 0 || (z - posiciones[m - 1] === 2 && parrafos[z - 1].getText().replace(/\s+/g, '') === ''); });
+      }
+      cfg.verificarCuerpo(body.getText(), parrafos.map(function (p) { return p.getText(); }), tenia, formatos);
+    }
     doc.saveAndClose();
     var pdf = reg_carpeta(cfg).createFile(copia.getAs('application/pdf').setName('Llamado de atención — ' + d.nombre + ' — ' + d.fecha + '.pdf'));
     if (!cfg.sinCompartir) reg_compartir(pdf, d.emails);
@@ -772,8 +861,12 @@ function pruebaEnvioReglamento() {
         log.push('OK     correo enviado solo a ' + REG_PRUEBA_DESTINO + ' → «PRUEBA DE ENVÍO — ' + String(m.subject).replace(/^PRUEBA — /, '') + '»' + (m.attachments && m.attachments.length ? ' (adjunto: ' + m.attachments.length + ')' : ''));
       },
       generarPdfLlamado: function (d) {
-        var c = Object.assign({}, cfg, { verificarCuerpo: function (texto, parrafos, tenia) { reg_verificarPdfPrueba(texto, parrafos, tenia, d, log); } });
-        var r = reg_pdfLlamado(c, d); enlaces.push('PDF del llamado: ' + r.url); log.push('OK     PDF generado y guardado en Drive → ' + r.url); return r;
+        var c = Object.assign({}, cfg, { verificarCuerpo: function (texto, parrafos, tenia, formatos) { reg_verificarPdfPrueba(texto, parrafos, tenia, d, log, formatos); } });
+        var r = reg_pdfLlamado(c, d); enlaces.push('PDF del llamado: ' + r.url); log.push('OK     PDF generado y guardado en Drive → ' + r.url);
+        var pag = reg_tryGet(function () { return reg_paginasPdf(r.blob); });
+        if (pag === null || pag === 0) log.push('AVISO  PDF: no se pudo contar las páginas (revísalo a mano: debe tener una sola)');
+        else log.push((pag === 1 ? 'OK     ' : 'FALLA  ') + 'PDF: una sola página con ' + d.faltas.length + ' faltas → tiene ' + pag + ' página' + (pag !== 1 ? 's' : ''));
+        return r;
       },
       generarSoporte: function (d) { var r = reg_xlsxSoporte(cfg, d); enlaces.push('Excel de soporte' + (d.reincidencia ? ' (reincidencia)' : '') + ': ' + r.url); log.push('OK     Excel de soporte generado y guardado en Drive → ' + r.url); return r; }
     };
@@ -794,17 +887,28 @@ function pruebaEnvioReglamento() {
   return texto;
 }
 // Revisión automática del cuerpo del documento ANTES de convertirlo a PDF (lo que verás en el PDF).
-function reg_verificarPdfPrueba(texto, parrafos, tenia, d, log) {
+function reg_verificarPdfPrueba(texto, parrafos, tenia, d, log, formatos) {
   function chk(nombre, cond, detalle) { log.push((cond ? 'OK     ' : 'FALLA  ') + 'PDF: ' + nombre + (detalle ? ' → ' + detalle : '')); }
   var sinMarcador = texto.match(/\{\{[A-Z_]+\}\}/g);
   chk('marcadores reemplazados (no queda ningún {{...}})', !sinMarcador, sinMarcador ? 'quedan: ' + sinMarcador.join(', ') : '');
   chk('nombre, cargo y fecha del documento', texto.indexOf(d.nombre) >= 0 && texto.indexOf(d.cargo) >= 0 && texto.indexOf(d.fecha) >= 0);
   if (!tenia.descripcion) log.push('FALLA  PDF: la plantilla no tiene {{DESCRIPCION_FALTAS}}: las faltas no aparecen');
   var idx = d.faltas.map(function (f) { return parrafos.indexOf(f); });
-  chk('un párrafo por falta (' + d.faltas.length + ' faltas, cada una en su propio párrafo, seguidas)', idx.every(function (i) { return i >= 0; }) && idx.every(function (i, k) { return k === 0 || i === idx[k - 1] + 1; }), 'posiciones ' + idx.join(','));
+  chk('un párrafo por falta (' + d.faltas.length + ' faltas, cada una en su propio párrafo, seguidas o separadas por una línea vacía)', idx.every(function (i) { return i >= 0; }) && idx.every(function (i, k) { return k === 0 || i === idx[k - 1] + 1 || (i === idx[k - 1] + 2 && parrafos[i - 1].replace(/\s+/g, '') === ''); }), 'posiciones ' + idx.join(','));
   if (tenia.nota) chk('nota para quien diligencia eliminada (marcadores {{INICIO_NOTA}}/{{FIN_NOTA}} y todo lo que había entre ellos)', texto.indexOf('INICIO_NOTA') < 0 && texto.indexOf('FIN_NOTA') < 0);
   else log.push('AVISO  PDF: la plantilla NO tiene {{INICIO_NOTA}} / {{FIN_NOTA}}: la nota amarilla NO se elimina sola. Agrega esos dos marcadores (cada uno en su párrafo) rodeándola.');
   if (tenia.causal) chk('causal literal (art. 59 num. 1)', texto.indexOf(d.causal) >= 0, d.causal);
   else log.push('AVISO  PDF: la plantilla no tiene {{CAUSAL}}: la causal «' + d.causal + '» solo va en el correo, no en el PDF. Agrega el marcador si quieres que aparezca.');
   chk('firma: ' + d.firmante + ' — ' + d.cargoFirmante, texto.indexOf(d.firmante) >= 0 && texto.indexOf(d.cargoFirmante) >= 0);
+  if (formatos) {
+    var fs = formatos.faltas, ref = formatos.referencia;
+    function igualesA(a, b) { return a.fuente === b.fuente && a.tam === b.tam; }
+    function nom(f) { return (f.fuente || '¿?') + ' ' + (f.tam || '¿?'); }
+    if (!ref) log.push('AVISO  PDF: no hay un párrafo con texto antes del marcador {{DESCRIPCION_FALTAS}} para comparar la fuente y el tamaño');
+    else chk('todos los párrafos de faltas tienen la misma fuente y tamaño que el párrafo anterior al marcador (' + nom(ref) + ')', fs.length === d.faltas.length && fs.every(function (f) { return igualesA(f, ref); }), fs.map(nom).join(' | '));
+    chk('los párrafos de faltas son idénticos entre sí en fuente, tamaño, alineación, interlineado y sangría', fs.length > 0 && fs.every(function (f) { return igualesA(f, fs[0]) && f.alineacion === fs[0].alineacion && f.interlineado === fs[0].interlineado && f.sangriaPrimera === fs[0].sangriaPrimera && f.sangriaIzq === fs[0].sangriaIzq; }), fs.map(function (f) { return nom(f) + ' ' + f.alineacion + ' ' + f.interlineado; }).join(' | '));
+    if (d.faltas.length > 1) chk('separación entre faltas igual a la del documento (línea vacía con el mismo formato o espaciado posterior)', formatos.lineaVaciaEntre === true || (fs.length > 1 && fs.every(function (f) { return f.despues > 0; })), formatos.lineaVaciaEntre ? 'línea vacía' : 'espaciado posterior ' + (fs[0] && fs[0].despues));
+  }
+  var vacios = 0; for (var i = parrafos.length - 1; i >= 0 && parrafos[i].replace(/\s+/g, '') === ''; i--) vacios++;
+  chk('sin párrafos vacíos al final (causa de la hoja en blanco)', vacios <= 1, vacios + ' al final' + (vacios === 1 ? ' (el último de un documento de Docs no se puede borrar: se reduce al mínimo)' : ''));
 }

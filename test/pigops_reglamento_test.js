@@ -7,6 +7,7 @@ const root=path.join(__dirname,'..');
 const GS=fs.readFileSync(path.join(root,'PiGOps_Reglamento.gs'),'utf8');
 const GS0=fs.readFileSync(path.join(root,'PiGOps_Notificaciones_v5.gs'),'utf8');
 const HTML=fs.readFileSync(path.join(root,'index.html'),'utf8');
+const FK=require('./_google_docs_fake.js');
 const out=[];const t=(n,c,x)=>out.push((c?'PASS ':'FAIL ')+n+(c?'':'  '+(x===undefined?'':JSON.stringify(x))));
 
 // ── contexto con las funciones de Apps Script ──
@@ -87,7 +88,7 @@ const to=m=>String(m.to);
  w.diario(BOG('2026-11-10',7,0));
  const m=w.sent[1];
  t('E1e vencido el plazo (martes 10-nov 7:00) sale el llamado: para el agente, copia al líder, a TH y a cromero, con el PDF adjunto',w.sent.length===2&&to(m)==='ana@pibox.app'&&m.cc==='jefe@pibox.app,th@pibox.app,cromero@pibox.app'&&m.attachments.length===1&&m.attachments[0].name==='llamado.pdf',m&&{to:m.to,cc:m.cc});
- t('E1f el párrafo de la falta trae fecha, programada, registrada y minutos (texto del ejemplo)',w.pdfs[0].faltas.length===1&&w.pdfs[0].faltas[0]==='El día 4 de noviembre de 2026, su turno estaba programado para iniciar a las 8:00 a. m. y el inicio se registró en Pi GOps a las 8:14 a. m., con 14 minutos de retardo, sin justificación aprobada dentro del plazo de 3 días hábiles.',w.pdfs[0].faltas);
+ t('E1f el párrafo de la falta trae fecha, programada, registrada y minutos (texto del ejemplo)',w.pdfs[0].faltas.length===1&&w.pdfs[0].faltas[0]==='El día 4 de noviembre de 2026, su turno estaba programado para iniciar a las 8:00 a. m. y registró su inicio a las 8:14 a. m., con 14 minutos de retardo, sin justificación aprobada dentro del plazo de 3 días hábiles.',w.pdfs[0].faltas);
  t('E1g el PDF lleva nombre, cargo, firmante y cargo del firmante de la configuración',w.pdfs[0].nombre==='Ana Uno'&&w.pdfs[0].cargo==='Agente de Operaciones'&&w.pdfs[0].firmante==='Camilo Romero'&&w.pdfs[0].cargoFirmante==='Gerente de Operaciones'&&w.pdfs[0].fecha==='10 de noviembre de 2026',w.pdfs[0]);
  const c=w.casos()[0];
  t('E1h el registro queda «Enviado» con fecha de envío y enlace al PDF, tipo llamado n.º 1',c.estado==='Enviado'&&c.tipo==='llamado'&&c.numeroEnVentana===1&&c.pdfUrl==='https://drive/pdf/1'&&!!c.enviadoAt,c);
@@ -267,24 +268,46 @@ const to=m=>String(m.to);
  t('DG1 el diagnóstico corre sin enviar nada y reporta cada servicio (OK)',/OK     Drive: leer la plantilla → Plantilla/.test(ok)&&/OK     Gmail/.test(ok)&&/OK     Firestore: colección reglamento_casos/.test(ok),ok);
  t('DG2 un permiso faltante aparece como FALLA con el servicio, sin romper el resto; detecta disparadores sin instalar',/FALLA  Drive: leer la plantilla → .*drive/.test(mal)&&/OK     Hojas de cálculo/.test(mal)&&/FALLA  Disparadores instalados → faltan/.test(mal),mal);}
 
-// ═══ Plantilla de Google Doc: marcadores, un párrafo por falta, nota eliminada (Docs simulado) ═══
-{class P{constructor(b,t){this.b=b;this.t=t;}getParent(){return this.b;}asParagraph(){return this;}setText(x){this.t=x;return this;}clear(){this.t='';}setAttributes(){return this;}getAttributes(){return{};}}
- class Body{constructor(l){this.ch=l.map(x=>new P(this,x));}getType(){return'BODY_SECTION';}asBody(){return this;}getChildIndex(p){return this.ch.indexOf(p);}getChild(i){return this.ch[i];}getNumChildren(){return this.ch.length;}
-  removeChild(p){const i=this.ch.indexOf(p);if(this.ch.length===1)throw new Error('último');this.ch.splice(i,1);}insertParagraph(i,x){const p=new P(this,x);this.ch.splice(i,0,p);return p;}
-  replaceText(re,rep){const r=new RegExp(re,'g');this.ch.forEach(p=>{p.t=p.t.replace(r,()=>rep.replace(/\\\$/g,'$'));});}
-  findText(re){const r=new RegExp(re);const p=this.ch.find(x=>r.test(x.t));return p?{getElement:()=>({getParent:()=>p})}:null;}}
- const body=new Body(['{{FECHA}}','Señor(a) {{NOMBRE}} — {{CARGO}} — CC {{CEDULA}}','Causal: {{CAUSAL}}','{{DESCRIPCION_FALTAS}}','{{INICIO_NOTA}}','NOTA: para quien diligencia el documento…','{{FIN_NOTA}}','Atentamente,','{{FIRMANTE}}','{{CARGO_FIRMANTE}}']);
- const files=[];
- const c3={...ctx,ScriptApp:{getOAuthToken:()=>'T'},DocumentApp:{ElementType:{BODY_SECTION:'BODY_SECTION'},openById:()=>({getBody:()=>body,saveAndClose(){}})},
-  DriveApp:{getFileById:()=>({makeCopy:n=>({getId:()=>'COPY',setTrashed:v=>files.push('copia trashed='+v),getAs:()=>({setName(n2){this.n=n2;return this;}})})}),getRootFolder:()=>({createFile:b=>({getBlob:()=>b,getUrl:()=>'https://drive/f/'+b.n,addViewers:e=>files.push('viewers:'+e.join())})}),getFolderById:()=>null}};
- vm.createContext(c3);vm.runInContext(GS0,c3);vm.runInContext(GS,c3);
- const r=c3.reg_pdfLlamado({folderId:'',templateId:'T'},{fecha:'10 de noviembre de 2026',nombre:'Ana Uno',cargo:'Agente',cedula:'123',causal:'Artículo 59, numeral 1: X',faltas:['F1 texto.','F2 texto.'],firmante:'Camilo Romero',cargoFirmante:'Gerente',emails:['ana@pibox.app','th@pibox.app']});
- const txt=body.ch.map(p=>p.t);
- t('PL1 reemplaza fecha, nombre, cargo, cédula y firmante',txt[0]==='10 de noviembre de 2026'&&/Ana Uno — Agente — CC 123/.test(txt[1])&&txt.includes('Camilo Romero')&&txt.includes('Gerente'),txt);
+// ═══ Plantilla de Google Doc: marcadores, formato, separación, nota y hoja en blanco (Docs simulado) ═══
+{const montar=(spec)=>{const body=new FK.Body(spec);const files=[];
+  const c3={...ctx,ScriptApp:{getOAuthToken:()=>'T'},DocumentApp:{ElementType:FK.ET,Attribute:FK.A,openById:()=>({getBody:()=>body,saveAndClose(){}})},
+   DriveApp:{getFileById:()=>({makeCopy:n=>({getId:()=>'COPY',setTrashed:v=>files.push('copia trashed='+v),getAs:()=>({setName(n2){this.n=n2;return this;},getDataAsString:()=>body.pdfTexto()})})}),
+    getRootFolder:()=>({createFile:b=>({getBlob:()=>b,getUrl:()=>'https://drive/f/'+b.n,addViewers:e=>files.push('viewers:'+e.join())})}),getFolderById:()=>null}};
+  vm.createContext(c3);vm.runInContext(GS0,c3);vm.runInContext(GS,c3);return{body,files,c3};};
+ const DATOS={fecha:'10 de noviembre de 2026',nombre:'Ana Uno',cargo:'Agente',cedula:'123',causal:'Artículo 59, numeral 1: X',faltas:['F1 texto.','F2 texto.'],firmante:'Camilo Romero',cargoFirmante:'Gerente',emails:['ana@pibox.app','th@pibox.app']};
+ const M=montar(FK.plantilla());
+ const r=M.c3.reg_pdfLlamado({folderId:'',templateId:'T'},DATOS);
+ const txt=M.body.ch.map(p=>p.t);
+ t('PL1 reemplaza fecha, nombre, cargo, cédula y firmante',txt[0]==='Bogotá, 10 de noviembre de 2026'&&/Ana Uno — Agente — CC 123/.test(txt[1])&&txt.includes('Camilo Romero')&&txt.includes('Gerente'),txt);
  t('PL1b el marcador opcional {{CAUSAL}} se reemplaza por la causal literal',txt.includes('Causal: Artículo 59, numeral 1: X'),txt);
- t('PL2 cada falta va en su propio párrafo',txt.includes('F1 texto.')&&txt.includes('F2 texto.')&&txt.indexOf('F2 texto.')===txt.indexOf('F1 texto.')+1,txt);
+ const i1=txt.indexOf('F1 texto.'),i2=txt.indexOf('F2 texto.');
+ t('PL2 cada falta va en su propio párrafo, con una línea vacía entre ellas',i1>=0&&i2===i1+2&&txt[i1+1]==='',txt);
+ const f1=M.body.ch[i1],f2=M.body.ch[i2],blanco=M.body.ch[i1+1],previo=M.body.ch[i1-1];
+ t('PL2b FORMATO: el segundo párrafo de falta copia EXACTAMENTE el del marcador (Century Gothic 12, justificado, interlineado 1,15, sangrías), no sale en Arial 11',f2.a.fuente==='Century Gothic'&&f2.a.tam===12&&f2.a.alin==='JUSTIFY'&&f2.a.inter===1.15&&JSON.stringify(f2.a)===JSON.stringify(f1.a)&&JSON.stringify(f1.a)===JSON.stringify(FK.CG),[f1.a,f2.a]);
+ t('PL2c …y es el mismo formato del párrafo anterior al marcador; la línea vacía de separación también lo conserva',previo.a.fuente===f2.a.fuente&&previo.a.tam===f2.a.tam&&JSON.stringify(blanco.a)===JSON.stringify(FK.CG),[previo.a,blanco.a]);
  t('PL3 elimina el bloque de nota para quien diligencia (con sus marcadores)',!txt.some(x=>/NOTA|INICIO_NOTA|FIN_NOTA/.test(x))&&txt.includes('Atentamente,'),txt);
- t('PL4 genera el PDF, lo comparte con los destinatarios y manda la copia de la plantilla a la papelera',/Llamado de atención — Ana Uno — 10 de noviembre de 2026\.pdf/.test(r.url)&&files.some(f=>f==='copia trashed=true')&&files.some(f=>/viewers:ana@pibox\.app,th@pibox\.app/.test(f)),[r.url,files]);}
+ const vacios=(()=>{let n=0;for(let i=txt.length-1;i>=0&&txt[i].trim()==='';i--)n++;return n;})();
+ const ult=M.body.ch[M.body.ch.length-1];
+ t('PL5 hoja en blanco: se quitan los párrafos vacíos y el salto de página del final; el último párrafo (que Docs no deja borrar) queda reducido al mínimo',vacios===1&&ult.a.tam===1&&ult.a.antes===0&&ult.a.despues===0&&!M.body.ch.some(p=>p.hijos.length),[vacios,ult.a]);
+ t('PL5b el documento exportado tiene UNA sola página (con dos faltas)',M.c3.reg_paginasPdf({getDataAsString:()=>M.body.pdfTexto()})===1&&M.body.paginas()===1);
+ t('PL4 genera el PDF, lo comparte con los destinatarios y manda la copia de la plantilla a la papelera',/Llamado de atención — Ana Uno — 10 de noviembre de 2026\.pdf/.test(r.url)&&M.files.some(f=>f==='copia trashed=true')&&M.files.some(f=>/viewers:ana@pibox\.app,th@pibox\.app/.test(f)),[r.url,M.files]);
+ // sin limpieza el problema existe (la simulación lo reproduce): control de que la prueba detecta la 2.ª hoja
+ const N=montar(FK.plantilla());N.c3.reg_limpiarFinal=()=>{};N.c3.reg_pdfLlamado({folderId:'',templateId:'T'},DATOS);
+ t('PL5c (control) sin limpiar el final, el PDF saldría con 2 páginas — la prueba lo detecta',N.c3.reg_paginasPdf({getDataAsString:()=>N.body.pdfTexto()})===2);
+ // con espaciado posterior en el párrafo del marcador NO se agregan líneas vacías: las faltas llevan ese espaciado
+ const E=montar(FK.plantilla({aMarcador:{...FK.CG,despues:10}}));E.c3.reg_pdfLlamado({folderId:'',templateId:'T'},DATOS);
+ const te=E.body.ch.map(p=>p.t),j1=te.indexOf('F1 texto.'),j2=te.indexOf('F2 texto.');
+ t('PL6 si el marcador ya tiene espaciado posterior (10 pt) no se meten líneas vacías: las faltas quedan seguidas y ambas con ese espaciado',j2===j1+1&&E.body.ch[j1].a.despues===10&&E.body.ch[j2].a.despues===10&&JSON.stringify(E.body.ch[j1].a)===JSON.stringify(E.body.ch[j2].a),te);
+ // tres faltas
+ const T3=montar(FK.plantilla());T3.c3.reg_pdfLlamado({folderId:'',templateId:'T'},{...DATOS,faltas:['A.','B.','C.']});
+ const t3=T3.body.ch.map(p=>p.t);
+ t('PL7 con tres faltas: tres párrafos del mismo formato con una línea vacía entre cada par',t3.indexOf('B.')===t3.indexOf('A.')+2&&t3.indexOf('C.')===t3.indexOf('B.')+2&&['A.','B.','C.'].every(x=>JSON.stringify(T3.body.ch[t3.indexOf(x)].a)===JSON.stringify(FK.CG)));
+ // documento que ya termina en la firma: no se toca nada
+ const S=montar(FK.plantilla({final:false}));S.c3.reg_pdfLlamado({folderId:'',templateId:'T'},DATOS);
+ t('PL8 si el documento termina en la firma no se borra ni se reduce nada',S.body.ch[S.body.ch.length-1].t==='Gerente'&&S.body.ch[S.body.ch.length-1].a.tam===12,S.body.ch.slice(-2).map(p=>p.t));
+ // contador de páginas del PDF
+ const pdf=x=>({getDataAsString:()=>x});
+ t('PL9 reg_paginasPdf cuenta los objetos /Type /Page y el /Count; 0 si no puede determinarlo',M.c3.reg_paginasPdf(pdf('/Type /Pages /Count 1 /Type /Page'))===1&&M.c3.reg_paginasPdf(pdf('/Type /Page /Type /Page /Type /Pages'))===2&&M.c3.reg_paginasPdf(pdf('/Count 3'))===3&&M.c3.reg_paginasPdf(pdf('sin datos'))===0);}
 
 (async()=>{
 // ═══ Cliente (index.html): plazo, cut-over del modelo de strikes y sección del agente ═══
@@ -355,15 +378,9 @@ const to=m=>String(m.to);
  t('LK2 antes del 1-nov el enlace a los artículos también está debajo de la política',(()=>{const h=els['reg-wrap'].innerHTML;return h.indexOf('Ver artículos que rigen según el reglamento')>h.indexOf('las llegadas tarde se rigen por el Reglamento');})());}
 
 // ═══ pruebaEnvioReglamento(): envío de prueba con Google simulado ═══
-{class P{constructor(b,t){this.b=b;this.t=t;}getParent(){return this.b;}asParagraph(){return this;}setText(x){this.t=x;return this;}clear(){this.t='';}setAttributes(){return this;}getAttributes(){return{};}getText(){return this.t;}}
- class Body{constructor(l){this.ch=l.map(x=>new P(this,x));}getType(){return'BODY_SECTION';}asBody(){return this;}getChildIndex(p){return this.ch.indexOf(p);}getChild(i){return this.ch[i];}getNumChildren(){return this.ch.length;}
-  removeChild(p){const i=this.ch.indexOf(p);if(this.ch.length===1)throw new Error('último');this.ch.splice(i,1);}insertParagraph(i,x){const p=new P(this,x);this.ch.splice(i,0,p);return p;}
-  replaceText(re,rep){const r=new RegExp(re,'g');this.ch.forEach(p=>{p.t=p.t.replace(r,()=>rep.replace(/\\\$/g,'$'));});}
-  findText(re){const r=new RegExp(re);const p=this.ch.find(x=>r.test(x.t));return p?{getElement:()=>({getParent:()=>p})}:null;}
-  getText(){return this.ch.map(p=>p.t).join('\n');}getParagraphs(){return this.ch;}}
- const PLANTILLA_COMPLETA=['Bogotá, {{FECHA}}','Señor(a) {{NOMBRE}} — {{CARGO}} — CC {{CEDULA}}','Asunto: llamado de atención','Causal: {{CAUSAL}}','{{DESCRIPCION_FALTAS}}','{{INICIO_NOTA}}','NOTA AMARILLA: para quien diligencia el documento…','{{FIN_NOTA}}','Atentamente,','{{FIRMANTE}}','{{CARGO_FIRMANTE}}'];
+{const PLANTILLA_COMPLETA=()=>FK.plantilla();
  function google(o={}){
-  const G={mails:[],files:[],viewers:[],fetches:[],logs:[],body:new Body(o.plantilla||PLANTILLA_COMPLETA),creados:0,trashed:[]};
+  const G={mails:[],files:[],viewers:[],fetches:[],logs:[],body:new FK.Body(o.plantilla||PLANTILLA_COMPLETA()),creados:0,trashed:[]};
   const props={reg_template_id:'TPL',reg_firmante_cargo:'Gerente de Operaciones',reg_th_email:'th-real@pibox.app',reg_drive_folder_id:o.carpeta||'',...(o.props||{})};
   const folder={createFile:b=>{const f={getBlob:()=>b,getUrl:()=>'https://drive.google.com/file/d/'+(b.n||'x').replace(/\W+/g,'_')+'/view',addViewers:e=>G.viewers.push(e)};G.files.push(f.getUrl());return f;}};
   const c={...ctx,Logger:{log:m=>G.logs.push(m)},
@@ -372,8 +389,8 @@ const to=m=>String(m.to);
    ScriptApp:{getOAuthToken:()=>'T',newTrigger(){throw new Error('NO debe tocar disparadores');},deleteTrigger(){throw new Error('NO debe tocar disparadores');},getProjectTriggers(){throw new Error('NO debe tocar disparadores');}},
    UrlFetchApp:{fetch:(u)=>{G.fetches.push(u);if(/firestore/.test(u))throw new Error('NO debe tocar Firestore');return{getBlob:()=>({setName(n){this.n=n;return this;}})};}},
    SpreadsheetApp:{openById(){throw new Error('NO debe leer la malla ni agentes');},create:()=>{G.creados++;const sh=()=>({setName(){},getRange:()=>({setValues(){}})});return{getActiveSheet:sh,insertSheet:sh,getId:()=>'SS'+G.creados};},flush(){}},
-   DocumentApp:{ElementType:{BODY_SECTION:'BODY_SECTION'},openById:()=>({getBody:()=>G.body,saveAndClose(){}})},
-   DriveApp:{getFileById:id=>{if(o.sinPlantilla&&id==='TPL')throw new Error('Authorization is required: drive');return{makeCopy:n=>({getId:()=>'COPY',setTrashed:v=>G.trashed.push('copia '+v),getAs:()=>({setName(n2){this.n=n2;return this;}})}),setTrashed:v=>G.trashed.push(id+' '+v)};},getRootFolder:()=>folder,getFolderById:()=>folder},
+   DocumentApp:{ElementType:FK.ET,Attribute:FK.A,openById:()=>({getBody:()=>G.body,saveAndClose(){}})},
+   DriveApp:{getFileById:id=>{if(o.sinPlantilla&&id==='TPL')throw new Error('Authorization is required: drive');return{makeCopy:n=>({getId:()=>'COPY',setTrashed:v=>G.trashed.push('copia '+v),getAs:()=>({setName(n2){this.n=n2;return this;},getDataAsString:()=>G.body.pdfTexto()})}),setTrashed:v=>G.trashed.push(id+' '+v)};},getRootFolder:()=>folder,getFolderById:()=>folder},
    GmailApp:{sendEmail:(to,subject,plain,opts)=>G.mails.push({to,subject,cc:opts.cc,html:opts.htmlBody,attachments:opts.attachments||[]})}};
   vm.createContext(c);vm.runInContext(GS0,c);vm.runInContext(GS,c);
   return{G,c,correr:()=>c.pruebaEnvioReglamento()};}
@@ -390,8 +407,22 @@ const to=m=>String(m.to);
   t('PR8 el log marca cada paso con OK, y lista los enlaces de los PDF/Excel dejados en Drive para revisarlos y borrarlos',/OK     1\/3 llamado de atención con DOS faltas/.test(log)&&/OK     2\/3 notificación de falta grave/.test(log)&&/OK     3\/3 notificación de reincidencia/.test(log)&&/ARCHIVOS GENERADOS EN DRIVE/.test(log)&&/PDF del llamado: https:\/\/drive\.google\.com/.test(log)&&(log.match(/Excel de soporte(?: \(reincidencia\))?: https:\/\/drive\.google\.com/g)||[]).length===2&&/Firestore: no se leyó ni escribió nada/.test(log),log);
   t('PR9 revisión del PDF: marcadores reemplazados, un párrafo por falta, nota amarilla eliminada, causal literal y firma con nombre y cargo',/OK     PDF: marcadores reemplazados/.test(log)&&/OK     PDF: un párrafo por falta \(2 faltas/.test(log)&&/OK     PDF: nota para quien diligencia eliminada/.test(log)&&/OK     PDF: causal literal \(art\. 59 num\. 1\)/.test(log)&&/OK     PDF: firma: Camilo Romero — Gerente de Operaciones/.test(log),log);
   const cuerpo=g.G.body.getText();
-  t('PR10 el documento final: faltas en párrafos separados con fecha, hora programada, hora de inicio y minutos; sin nota; con firma',/El día 3 de noviembre de 2026, su turno estaba programado para iniciar a las 8:00 a\. m\. y el inicio se registró en Pi GOps a las 8:14 a\. m\., con 14 minutos de retardo/.test(cuerpo)&&/El día 4 de noviembre de 2026.*8:22 a\. m\., con 22 minutos de retardo/.test(cuerpo)&&!/NOTA AMARILLA|\{\{/.test(cuerpo)&&/Camilo Romero\nGerente de Operaciones/.test(cuerpo),cuerpo);
+  t('PR10 el documento final: faltas en párrafos separados con fecha, hora programada, hora de inicio y minutos; sin nota; con firma',/El día 3 de noviembre de 2026, su turno estaba programado para iniciar a las 8:00 a\. m\. y registró su inicio a las 8:14 a\. m\., con 14 minutos de retardo/.test(cuerpo)&&/El día 4 de noviembre de 2026.*8:22 a\. m\., con 22 minutos de retardo/.test(cuerpo)&&!/NOTA AMARILLA|\{\{/.test(cuerpo)&&/Camilo Romero\nGerente de Operaciones/.test(cuerpo),cuerpo);
   t('PR11 la copia temporal de la plantilla y la hoja temporal del Excel se mandan a la papelera (quedan solo el PDF y los Excel)',g.G.trashed.filter(x=>x==='copia true').length===1&&g.G.creados===2&&g.G.trashed.filter(x=>/^SS\d true$/.test(x)).length===2,g.G.trashed);}
+ // 1b) formato, separación y hoja en blanco: nuevas verificaciones del log
+ {const g=google();const log=g.correr();
+  t('PR19 el log verifica: faltas con la misma fuente y tamaño que el párrafo anterior al marcador, idénticas entre sí, separadas, sin vacíos al final y PDF de UNA página',/OK     PDF: todos los párrafos de faltas tienen la misma fuente y tamaño que el párrafo anterior al marcador \(Century Gothic 12\)/.test(log)&&/OK     PDF: los párrafos de faltas son idénticos entre sí en fuente, tamaño, alineación, interlineado y sangría/.test(log)&&/OK     PDF: separación entre faltas/.test(log)&&/OK     PDF: sin párrafos vacíos al final/.test(log)&&/OK     PDF: una sola página con 2 faltas/.test(log)&&!/FALLA/.test(log),log);
+  const fs=g.G.body.ch.filter(p=>/^El día/.test(p.t));
+  t('PR19b en el documento real las dos faltas son Century Gothic 12 justificado (no Arial 11)',fs.length===2&&fs.every(p=>p.a.fuente==='Century Gothic'&&p.a.tam===12&&p.a.alin==='JUSTIFY'),fs.map(p=>p.a));}
+ {const g=google({plantilla:FK.plantilla({aPrevio:{fuente:'Arial',tam:11}})});const log=g.correr();
+  t('PR20 si el párrafo anterior al marcador tiene otra fuente que el marcador, lo reporta como FALLA (y aun así envía)',/FALLA  PDF: todos los párrafos de faltas tienen la misma fuente y tamaño que el párrafo anterior al marcador \(Arial 11\)/.test(log)&&g.G.mails.length===3,log);}
+ {const g=google();g.c.reg_limpiarFinal=()=>{};const log=g.correr();
+  t('PR21 (control) si no se limpiara el final, el log reporta la segunda hoja y los vacíos como FALLA',/FALLA  PDF: una sola página con 2 faltas → tiene 2 páginas/.test(log)&&/FALLA  PDF: sin párrafos vacíos al final/.test(log),log);}
+ {const g=google();const ins=g.G.body.insertParagraph.bind(g.G.body);g.G.body.insertParagraph=(i,x)=>ins(i,typeof x==='string'?x:x.getText()); // simula el comportamiento viejo: párrafo nuevo en formato por defecto
+  const log=g.correr();
+  t('PR22 (control) si los párrafos insertados NO conservaran el formato (Arial 11), la prueba lo detecta',/FALLA  PDF: los párrafos de faltas son idénticos entre sí/.test(log)&&/FALLA  PDF: todos los párrafos de faltas tienen la misma fuente/.test(log),log);}
+ {const g=google({plantilla:FK.plantilla({aMarcador:{...FK.CG,despues:10}})});const log=g.correr();
+  t('PR23 plantilla con espaciado posterior en lugar de línea vacía: la separación se verifica por el espaciado',/OK     PDF: separación entre faltas.*espaciado posterior 10/.test(log)&&!/FALLA/.test(log),log);}
  // 2) plantilla sin los marcadores opcionales → avisos claros, pero sigue
  {const g=google({plantilla:['{{FECHA}}','{{NOMBRE}} — {{CARGO}}','{{DESCRIPCION_FALTAS}}','NOTA AMARILLA','{{FIRMANTE}}','{{CARGO_FIRMANTE}}']});const log=g.correr();
   t('PR12 si la plantilla no tiene {{INICIO_NOTA}}/{{FIN_NOTA}} ni {{CAUSAL}}, avisa qué agregar (la nota amarilla no se elimina sola) y aun así envía los 3 correos',/AVISO  PDF: la plantilla NO tiene \{\{INICIO_NOTA\}\} \/ \{\{FIN_NOTA\}\}/.test(log)&&/AVISO  PDF: la plantilla no tiene \{\{CAUSAL\}\}/.test(log)&&g.G.mails.length===3,log);
