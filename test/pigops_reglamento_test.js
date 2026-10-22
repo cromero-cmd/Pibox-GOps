@@ -98,7 +98,14 @@ const to=m=>String(m.to);
  const w=world();w.tardanza('2026-11-04',8,0,14);w.tardanza('2026-11-05',8,0,20);
  w.diario(BOG('2026-11-12',7,0));
  const ll=w.casos().filter(c=>c.tipo==='llamado');
- t('E2 la 1.ª y la 2.ª tardanza de la ventana son llamados n.º 1 y n.º 2 (faltas leves)',ll.length===2&&ll.map(c=>c.numeroEnVentana).sort().join()==='1,2'&&w.pdfs.length===2,ll);}
+ t('E2 la 1.ª y la 2.ª tardanza de la ventana son faltas leves (n.º 1 y 2 en la ventana)',ll.length===2&&ll.map(c=>c.numeroEnVentana).sort().join()==='1,2',ll.map(c=>c.numeroEnVentana));
+ t('E2b dos tardanzas que vencen el mismo día generan UN solo llamado (un PDF, un correo) con DOS párrafos',w.pdfs.length===1&&w.pdfs[0].faltas.length===2&&/día 4 de noviembre/.test(w.pdfs[0].faltas[0])&&/día 5 de noviembre/.test(w.pdfs[0].faltas[1])&&w.sent.filter(m=>/^Llamado de atención/.test(m.subject)).length===1,[w.pdfs.length,w.pdfs[0]&&w.pdfs[0].faltas]);
+ t('E2c …los dos registros comparten llamadoId y enlace, y cuentan como UN llamado (n.º 1)',ll.every(c=>c.llamadoId===ll[0].llamadoId&&c.pdfUrl===ll[0].pdfUrl&&c.llamadoNumero===1)&&R('reg_llamadosVigentes')(Object.fromEntries(ll.map(c=>[c.fechaISO,c])),'ana@pibox.app','2026-11-12',false).length===1);
+ t('E2d el correo del llamado cita la causal literal del art. 59 num. 1 y el PDF recibe la causal',/Artículo 59, numeral 1: El retardo injustificado en la hora de entrada, hasta por segunda vez\./.test(w.sent.find(m=>/^Llamado/.test(m.subject)).html)&&w.pdfs[0].causal===REG.CAUSAL_LEVE);
+ // dos llamados en días distintos (vencen en días distintos) siguen siendo dos llamados
+ const w2=world();w2.tardanza('2026-11-04',8,0,14);w2.tardanza('2026-11-06',8,0,20);
+ w2.diario(BOG('2026-11-10',7,0));w2.diario(BOG('2026-11-12',7,0));
+ t('E2e tardanzas que vencen en días distintos: dos llamados separados (n.º 1 y n.º 2)',w2.pdfs.length===2&&w2.pdfs[0].faltas.length===1&&w2.casos().map(c=>c.llamadoNumero).sort().join()==='1,2',w2.casos().map(c=>c.llamadoNumero));}
 { // justificación aprobada dentro del plazo: no se envía nada
  const w=world();w.tardanza('2026-11-04',8,0,14);w.waive('2026-11-04');
  w.avisos(BOG('2026-11-04',8,20));w.diario(BOG('2026-11-10',7,0));w.diario(BOG('2026-11-12',7,0));
@@ -120,7 +127,7 @@ const to=m=>String(m.to);
 { // 3.ª tardanza justificada dentro del plazo: no se envía nada (las 2 primeras sí son llamados)
  const w=world();w.tardanza('2026-11-03',8,0,10);w.tardanza('2026-11-04',8,0,12);w.tardanza('2026-11-05',8,0,15);w.waive('2026-11-05');
  w.diario(BOG('2026-11-13',7,0));
- t('G1 3.ª tardanza justificada en plazo: no sale notificación a TH y no cuenta (solo los 2 llamados de las dos primeras)',w.soportes.length===0&&w.pdfs.length===2&&!w.sent.some(m=>/Falta grave/.test(m.subject)),w.sent.map(m=>m.subject));}
+ t('G1 3.ª tardanza justificada en plazo: no sale notificación a TH y no cuenta (solo el llamado de las dos primeras)',w.soportes.length===0&&w.pdfs.length===1&&w.pdfs[0].faltas.length===2&&!w.sent.some(m=>/Falta grave/.test(m.subject)),w.sent.map(m=>m.subject));}
 { // 3.ª tardanza sin justificar: notificación a TH con soporte; NO al agente; sin llamado
  const w=world();w.tardanza('2026-11-03',8,0,10);w.tardanza('2026-11-04',8,0,12);w.tardanza('2026-11-05',8,0,15);
  w.diario(BOG('2026-11-13',7,0));
@@ -132,13 +139,14 @@ const to=m=>String(m.to);
  t('G2d trae nombre, cargo, líder, causal (art. 60 num. 2), detalle de las 3 tardanzas, llamados previos con enlace y la línea de cierre del art. 64',
   /Ana Uno/.test(m.html)&&/Agente de Operaciones/.test(m.html)&&/jefe@pibox\.app/.test(m.html)&&/Artículo 60, numeral 2/.test(m.html)&&/03\/11\/2026/.test(m.html)&&/04\/11\/2026/.test(m.html)&&/05\/11\/2026/.test(m.html)&&/https:\/\/drive\/pdf\/1/.test(m.html)&&
   /Solicitamos agendar la diligencia de descargos según el procedimiento del art\. 64 del Reglamento Interno de Trabajo\./.test(m.html));
- t('G2e las dos primeras generan llamados al agente y la 3.ª NO genera llamado de atención (2 PDFs)',w.pdfs.length===2&&w.casos().filter(c=>c.tipo==='llamado'&&c.estado==='Enviado').length===2);
+ t('G2e las dos primeras generan UN llamado al agente (2 párrafos) y la 3.ª NO genera llamado de atención',w.pdfs.length===1&&w.pdfs[0].faltas.length===2&&w.casos().filter(c=>c.tipo==='llamado'&&c.estado==='Enviado').length===2);
  const c3=w.db.reglamento_casos['ana@pibox.app_20261105_reg'];
  t('G2f el caso pasa a «Enviado» (a Talento Humano) con enlace al soporte y tipo falta_grave',c3.estado==='Enviado'&&c3.tipo==='falta_grave'&&c3.causal==='art60_2'&&c3.soporteUrl==='https://drive/xlsx/1',c3);
  const antes=w.sent.length;w.diario(BOG('2026-11-13',7,0));w.diario(BOG('2026-11-16',7,0));w.diario(BOG('2026-11-17',7,0));
  t('G2g el disparador vuelve a correr: no se repite la notificación a Talento Humano',w.sent.length===antes&&w.soportes.length===1);
  const sop=w.soportes[0];
- t('G2h el soporte lleva las 3 tardanzas y los llamados previos',sop.tardanzas.length===3&&sop.llamados.length===2,[sop.tardanzas.length,sop.llamados.length]);}
+ t('G2h el soporte lleva las 3 tardanzas y el llamado previo (con las fechas de sus 2 faltas)',sop.tardanzas.length===3&&sop.llamados.length===1&&sop.llamados[0].fechas.length===2,[sop.tardanzas.length,sop.llamados.length]);
+ t('G2i la notificación cita el texto literal del art. 60 num. 2 y la causal viaja en el soporte',/Artículo 60, numeral 2: El retardo injustificado en la hora de entrada, por tercera vez\./.test(m.html)&&sop.causal===REG.CAUSAL_602);}
 { // la 3.ª espera a que se resuelva una anterior pendiente
  const w=world();w.tardanza('2026-11-03',8,0,10);w.tardanza('2026-11-04',8,0,12);w.tardanza('2026-11-05',8,0,15);
  w.appeal('2026-11-03','pending','2026-11-04T15:00:00.000Z');
@@ -148,11 +156,33 @@ const to=m=>String(m.to);
  w.diario(BOG('2026-11-16',7,0)); // lunes 16 festivo: no es día hábil
  t('G3b en festivo el proceso diario no envía nada',w.pdfs.length===0&&w.soportes.length===0);
  w.diario(BOG('2026-11-17',7,0));
- t('G3c resuelta la anterior (justificada): la 2.ª y la 3.ª ahora son 1.ª y 2.ª → dos llamados, sin falta grave',w.pdfs.length===2&&w.soportes.length===0,[w.pdfs.length,w.soportes.length]);}
+ t('G3c resuelta la anterior (justificada): la 2.ª y la 3.ª ahora son 1.ª y 2.ª → un llamado con dos párrafos, sin falta grave',w.pdfs.length===1&&w.pdfs[0].faltas.length===2&&w.soportes.length===0,[w.pdfs.length,w.soportes.length]);}
 { // 4.ª tardanza en adelante: también falta grave (art. 60.2)
  const w=world();['2026-11-03','2026-11-04','2026-11-05','2026-11-06'].forEach((d,i)=>w.tardanza(d,8,0,10+i));
  w.diario(BOG('2026-11-17',7,0));
- t('G4 la 3.ª y la 4.ª tardanza son faltas graves (una notificación cada una), solo 2 llamados',w.sent.filter(m=>/^Falta grave/.test(m.subject)).length===2&&w.pdfs.length===2);}
+ const gr=w.sent.filter(m=>/Falta grave para descargos/.test(m.subject));
+ t('G4 la 3.ª tardanza notifica «Falta grave para descargos» y la 4.ª «Reincidencia — Falta grave para descargos — Ana Uno»; un solo llamado',gr.length===2&&gr.some(m=>m.subject==='Falta grave para descargos — Ana Uno')&&gr.some(m=>m.subject==='Reincidencia — Falta grave para descargos — Ana Uno')&&w.pdfs.length===1,gr.map(m=>m.subject));
+ const rei=gr.find(m=>/^Reincidencia/.test(m.subject));
+ t('G4b la reincidencia referencia el caso abierto por la 3.ª tardanza (fecha, envío y soporte), va a TH con el Excel y no al agente',/Reincidencia\./.test(rei.html)&&/3\.ª tardanza \(05\/11\/2026\)/.test(rei.html)&&/https:\/\/drive\/xlsx\/1/.test(rei.html)&&to(rei)==='th@pibox.app'&&rei.attachments.length===1&&!/ana@pibox\.app/.test(rei.cc||''),rei&&rei.html.slice(0,0));
+ const c4=w.db.reglamento_casos['ana@pibox.app_20261106_reg'];
+ t('G4c el registro de la 4.ª queda como reincidencia con referencia al caso abierto',c4.reincidencia===true&&c4.casoAbiertoId==='ana@pibox.app_20261105_reg'&&c4.estado==='Enviado',c4);
+ // 4.ª tardanza en otro día: también referencia el caso ya abierto
+ const w5=world();['2026-11-03','2026-11-04','2026-11-05'].forEach((d,i)=>w5.tardanza(d,8,0,10+i));w5.diario(BOG('2026-11-13',7,0));
+ w5.tardanza('2026-11-17',8,0,30);w5.diario(BOG('2026-11-23',7,0));
+ const rei5=w5.sent.filter(m=>/^Reincidencia/.test(m.subject));
+ t('G4d una 4.ª tardanza posterior (17-nov) envía la reincidencia referenciando el caso abierto del 5-nov',rei5.length===1&&/05\/11\/2026/.test(rei5[0].html),w5.sent.map(m=>m.subject));
+ // caso cerrado por un admin: no se pisa ni se reenvía
+ w5.db.reglamento_casos['ana@pibox.app_20261105_reg'].estado='Cerrado';w5.db.reglamento_casos['ana@pibox.app_20261105_reg'].cerradoPor='cromero@pibox.app';
+ const n5=w5.sent.length;w5.diario(BOG('2026-11-24',7,0));
+ t('G4e un caso «Cerrado» por un admin es definitivo: no se reenvía ni se sobrescribe, y sigue contando para el orden',w5.sent.length===n5&&w5.db.reglamento_casos['ana@pibox.app_20261105_reg'].estado==='Cerrado'&&w5.db.reglamento_casos['ana@pibox.app_20261105_reg'].cerradoPor==='cromero@pibox.app');}
+{ // turnos sin cierre no son falta bajo ninguna regla
+ const w=world();
+ w.malla.push({fecha:D('2026-11-04'),usuario:'ana@pibox.app',inicio:'8:00:00',fin:'16:00:00',novedad:'',lider:'jefe@pibox.app'});
+ w.turnos.push({userEmail:'ana@pibox.app',status:'active',startTime:BOG('2026-11-04',8,0),endTime:null}); // puntual y nunca cerrado
+ w.malla.push({fecha:D('2026-11-05'),usuario:'ana@pibox.app',inicio:'8:00:00',fin:'16:00:00',novedad:'',lider:'jefe@pibox.app'});
+ w.turnos.push({userEmail:'ana@pibox.app',status:'interrupted',startTime:BOG('2026-11-05',8,3),endTime:null}); // 3 min (dentro de tolerancia), sin cierre
+ w.avisos(BOG('2026-11-05',9,0));w.diario(BOG('2026-11-13',7,0));w.diario(BOG('2026-11-17',7,0));
+ t('NC1 un turno que quedó sin cerrar (puntual o dentro de la tolerancia) no genera tardanza, falta, registro ni correo',w.sent.length===0&&w.casos().length===0&&w.pdfs.length===0&&w.soportes.length===0,[w.sent.length,w.casos().length]);}
 { // ventana móvil: nov y feb ya no comparten ventana
  const w=world({now:BOG('2027-02-19',7,0)});w.tardanza('2026-11-04',8,0,14);w.tardanza('2027-02-10',8,0,14);
  const f=R('reg_clasificar')(R('reg_detectarTardanzas')(w.malla,w.turnos),{waivers:{},appeals:{},docs:{},now:w.now});
@@ -170,6 +200,10 @@ const to=m=>String(m.to);
  ['2026-11-04','2026-11-20'].forEach((d,i)=>{w2.db.reglamento_casos[`ana@pibox.app_${d.replace(/-/g,'')}_reg`]={tipoRegistro:'tardanza',userEmail:'ana@pibox.app',tipo:'llamado',estado:'Enviado',prueba:false,fechaISO:d,enviadoISO:d};});
  w2.diario(BOG('2026-12-10',7,0));
  t('T3 con 2 llamados vigentes no hay notificación por el 60.13',w2.sent.length===0);
+ const w2b=world({now:BOG('2026-12-10',7,0)});
+ [['2026-11-04','L1'],['2026-11-05','L1'],['2026-12-02','L2']].forEach(([d,g])=>{w2b.db.reglamento_casos[`ana@pibox.app_${d.replace(/-/g,'')}_reg`]={tipoRegistro:'tardanza',userEmail:'ana@pibox.app',tipo:'llamado',estado:'Enviado',prueba:false,fechaISO:d,enviadoISO:d<'2026-12'?'2026-11-12':d,llamadoId:g};});
+ w2b.diario(BOG('2026-12-10',7,0));
+ t('T3b un llamado que cubre 2 faltas cuenta como UN solo llamado para el art. 60.13 (3 faltas en 2 llamados → sin notificación)',w2b.sent.length===0,w2b.sent.map(m=>m.subject));
  const w3=world({now:BOG('2027-02-10',7,0)});
  ['2026-11-04','2026-11-20','2026-12-02'].forEach(d=>{w3.db.reglamento_casos[`ana@pibox.app_${d.replace(/-/g,'')}_reg`]={tipoRegistro:'tardanza',userEmail:'ana@pibox.app',tipo:'llamado',estado:'Enviado',prueba:false,fechaISO:d,enviadoISO:d};});
  w3.diario(BOG('2027-02-10',7,0));
@@ -223,20 +257,31 @@ const to=m=>String(m.to);
  c2.PropertiesService={getScriptProperties:()=>({getProperty:()=>null})};let e2='';try{c2.reg_config();}catch(e){e2=e.message;}
  t('M6 sin propiedades del script (correo de TH, plantilla, cargo) falla con mensaje claro y no envía',/Faltan propiedades/.test(e2));}
 
+// ═══ Diagnóstico de permisos (solo lectura) ═══
+{const props={reg_th_email:'th@pibox.app',reg_template_id:'TPL',reg_firmante_cargo:'Gerente'};
+ const mk=(fallaDrive)=>{const c={...ctx,PropertiesService:{getScriptProperties:()=>({getProperty:k=>props[k]||null})},Session:{getEffectiveUser:()=>({getEmail:()=>'cromero@pibox.app'})},
+  DriveApp:{getFileById:()=>{if(fallaDrive)throw new Error('Authorization is required to perform that action: drive');return{getName:()=>'Plantilla'};}},DocumentApp:{openById:()=>({getName:()=>'Plantilla'})},
+  SpreadsheetApp:{openById:()=>({getName:()=>'Malla'})},GmailApp:{getInboxUnreadCount:()=>0},ScriptApp:{getOAuthToken:()=>'T',getProjectTriggers:()=>[{getHandlerFunction:()=>'reglamentoAvisos'}]},UrlFetchApp:{fetch:()=>({getResponseCode:()=>200,getContentText:()=>'{}'})}};
+  vm.createContext(c);vm.runInContext(GS0,c);vm.runInContext(GS,c);c.getMallaSheetId=()=>'SHEET';c.firestoreGetDocRaw=()=>null;return c;};
+ const ok=mk(false).diagnosticoReglamento(),mal=mk(true).diagnosticoReglamento();
+ t('DG1 el diagnóstico corre sin enviar nada y reporta cada servicio (OK)',/OK     Drive: leer la plantilla → Plantilla/.test(ok)&&/OK     Gmail/.test(ok)&&/OK     Firestore: colección reglamento_casos/.test(ok),ok);
+ t('DG2 un permiso faltante aparece como FALLA con el servicio, sin romper el resto; detecta disparadores sin instalar',/FALLA  Drive: leer la plantilla → .*drive/.test(mal)&&/OK     Hojas de cálculo/.test(mal)&&/FALLA  Disparadores instalados → faltan/.test(mal),mal);}
+
 // ═══ Plantilla de Google Doc: marcadores, un párrafo por falta, nota eliminada (Docs simulado) ═══
 {class P{constructor(b,t){this.b=b;this.t=t;}getParent(){return this.b;}asParagraph(){return this;}setText(x){this.t=x;return this;}clear(){this.t='';}setAttributes(){return this;}getAttributes(){return{};}}
  class Body{constructor(l){this.ch=l.map(x=>new P(this,x));}getType(){return'BODY_SECTION';}asBody(){return this;}getChildIndex(p){return this.ch.indexOf(p);}getChild(i){return this.ch[i];}getNumChildren(){return this.ch.length;}
   removeChild(p){const i=this.ch.indexOf(p);if(this.ch.length===1)throw new Error('último');this.ch.splice(i,1);}insertParagraph(i,x){const p=new P(this,x);this.ch.splice(i,0,p);return p;}
   replaceText(re,rep){const r=new RegExp(re,'g');this.ch.forEach(p=>{p.t=p.t.replace(r,()=>rep.replace(/\\\$/g,'$'));});}
   findText(re){const r=new RegExp(re);const p=this.ch.find(x=>r.test(x.t));return p?{getElement:()=>({getParent:()=>p})}:null;}}
- const body=new Body(['{{FECHA}}','Señor(a) {{NOMBRE}} — {{CARGO}} — CC {{CEDULA}}','{{DESCRIPCION_FALTAS}}','{{INICIO_NOTA}}','NOTA: para quien diligencia el documento…','{{FIN_NOTA}}','Atentamente,','{{FIRMANTE}}','{{CARGO_FIRMANTE}}']);
+ const body=new Body(['{{FECHA}}','Señor(a) {{NOMBRE}} — {{CARGO}} — CC {{CEDULA}}','Causal: {{CAUSAL}}','{{DESCRIPCION_FALTAS}}','{{INICIO_NOTA}}','NOTA: para quien diligencia el documento…','{{FIN_NOTA}}','Atentamente,','{{FIRMANTE}}','{{CARGO_FIRMANTE}}']);
  const files=[];
  const c3={...ctx,ScriptApp:{getOAuthToken:()=>'T'},DocumentApp:{ElementType:{BODY_SECTION:'BODY_SECTION'},openById:()=>({getBody:()=>body,saveAndClose(){}})},
   DriveApp:{getFileById:()=>({makeCopy:n=>({getId:()=>'COPY',setTrashed:v=>files.push('copia trashed='+v),getAs:()=>({setName(n2){this.n=n2;return this;}})})}),getRootFolder:()=>({createFile:b=>({getBlob:()=>b,getUrl:()=>'https://drive/f/'+b.n,addViewers:e=>files.push('viewers:'+e.join())})}),getFolderById:()=>null}};
  vm.createContext(c3);vm.runInContext(GS0,c3);vm.runInContext(GS,c3);
- const r=c3.reg_pdfLlamado({folderId:'',templateId:'T'},{fecha:'10 de noviembre de 2026',nombre:'Ana Uno',cargo:'Agente',cedula:'123',faltas:['F1 texto.','F2 texto.'],firmante:'Camilo Romero',cargoFirmante:'Gerente',emails:['ana@pibox.app','th@pibox.app']});
+ const r=c3.reg_pdfLlamado({folderId:'',templateId:'T'},{fecha:'10 de noviembre de 2026',nombre:'Ana Uno',cargo:'Agente',cedula:'123',causal:'Artículo 59, numeral 1: X',faltas:['F1 texto.','F2 texto.'],firmante:'Camilo Romero',cargoFirmante:'Gerente',emails:['ana@pibox.app','th@pibox.app']});
  const txt=body.ch.map(p=>p.t);
  t('PL1 reemplaza fecha, nombre, cargo, cédula y firmante',txt[0]==='10 de noviembre de 2026'&&/Ana Uno — Agente — CC 123/.test(txt[1])&&txt.includes('Camilo Romero')&&txt.includes('Gerente'),txt);
+ t('PL1b el marcador opcional {{CAUSAL}} se reemplaza por la causal literal',txt.includes('Causal: Artículo 59, numeral 1: X'),txt);
  t('PL2 cada falta va en su propio párrafo',txt.includes('F1 texto.')&&txt.includes('F2 texto.')&&txt.indexOf('F2 texto.')===txt.indexOf('F1 texto.')+1,txt);
  t('PL3 elimina el bloque de nota para quien diligencia (con sus marcadores)',!txt.some(x=>/NOTA|INICIO_NOTA|FIN_NOTA/.test(x))&&txt.includes('Atentamente,'),txt);
  t('PL4 genera el PDF, lo comparte con los destinatarios y manda la copia de la plantilla a la papelera',/Llamado de atención — Ana Uno — 10 de noviembre de 2026\.pdf/.test(r.url)&&files.some(f=>f==='copia trashed=true')&&files.some(f=>/viewers:ana@pibox\.app,th@pibox\.app/.test(f)),[r.url,files]);}
@@ -250,10 +295,14 @@ const to=m=>String(m.to);
   fn("async function loadReglamentoAgente(model,userEmail){")].join('\n');
  const FIXED=new Date(2026,10,10,9,0,0).getTime(); // martes 10-nov-2026
  class FD extends Date{static now(){return FIXED;}}
+ const PRE=new Date(2026,9,22,9,0,0).getTime(); // jueves 22-oct-2026 (antes de la vigencia)
+ class FDpre extends Date{static now(){return PRE;}}
  const els={'reg-wrap':{style:{},innerHTML:''}};
  let casos=[];
  const env={window:{getReglamentoCasos:async()=>casos},document:{getElementById:id=>els[id]||null},esc:x=>String(x==null?'':x).replace(/</g,'&lt;'),REG_FIX:null};
- const C=new Function('window','document','esc','Date',CODE+'\nreturn{regFechaLimite,regEsHabil,computeAgentStrikes,applyStrikePolicy,loadReglamentoAgente,REGLAMENTO_DESDE};')(env.window,env.document,env.esc,FD);
+ const mkC=D=>new Function('window','document','esc','Date',CODE+'\nreturn{regFechaLimite,regEsHabil,computeAgentStrikes,applyStrikePolicy,loadReglamentoAgente,REGLAMENTO_DESDE,REG_POLITICA_TEXTO,regColorContador};')(env.window,env.document,env.esc,D);
+ const FEB=new Date(2027,1,19,9,0,0).getTime();class FDfeb extends Date{static now(){return FEB;}}
+ const C=mkC(FD),Cpre=mkC(FDpre),Cfeb=mkC(FDfeb);
  // CL1: el plazo del cliente coincide con el del .gs para todos los días de nov-2026 a dic-2027
  let difs=[];for(let ms=Date.UTC(2026,10,1);ms<Date.UTC(2027,11,31);ms+=86400000){const iso=new Date(ms).toISOString().slice(0,10);if(C.regFechaLimite(iso)!==R('reg_fechaLimite')(iso))difs.push(iso);}
  t('CL1 el plazo de 3 días hábiles del cliente es idéntico al del script para cada día de nov-2026 a dic-2027',difs.length===0,difs.slice(0,5));
@@ -279,10 +328,29 @@ const to=m=>String(m.to);
  t('CL8 apelación rechazada: falta confirmada con la respuesta del admin',/apelación rechazada\) — sin soporte/.test(h));
  h=await run([reg('4/11/2026',14,{waived:{motivo:'cita'}})]);
  t('CL9 justificada: «no cuenta»',/Justificada — no cuenta/.test(h));
- h=await run([],[{userEmail:EM,tipo:'llamado',estado:'Enviado',prueba:false,numeroEnVentana:1,fecha:'04/11/2026',minutos:14,enviadoISO:'2026-11-10',pdfUrl:'https://drive/pdf/1'},{userEmail:EM,tipo:'llamado',estado:'Enviado',prueba:true,numeroEnVentana:2,fecha:'05/11/2026',minutos:9,enviadoISO:'2026-11-11',pdfUrl:'https://drive/pdf/prueba'},{userEmail:EM,tipo:'falta_grave',estado:'Enviado',prueba:false,fecha:'06/11/2026',enviadoISO:'2026-11-12',soporteUrl:'https://drive/x'}]);
- t('CL10 el Historial del agente lista SUS llamados enviados con el PDF; no muestra los de prueba ni las notificaciones de falta grave a TH',/Llamado n\.º 1/.test(h)&&/https:\/\/drive\/pdf\/1/.test(els['reg-wrap'].innerHTML)&&(()=>{const hist=els['reg-wrap'].innerHTML.split('Historial de llamados de atención')[1]||'';return !/prueba/.test(hist)&&!/drive\/x|soporte/i.test(hist)&&(hist.match(/Llamado n/g)||[]).length===1;})(),h.slice(0,300));
+ h=await run([],[{userEmail:EM,tipo:'llamado',estado:'Enviado',prueba:false,numeroEnVentana:1,llamadoNumero:1,llamadoId:'G1',fecha:'04/11/2026',minutos:14,enviadoISO:'2026-11-10',pdfUrl:'https://drive/pdf/1'},{userEmail:EM,tipo:'llamado',estado:'Enviado',prueba:false,numeroEnVentana:2,llamadoNumero:1,llamadoId:'G1',fecha:'05/11/2026',minutos:9,enviadoISO:'2026-11-10',pdfUrl:'https://drive/pdf/1'},{userEmail:EM,tipo:'llamado',estado:'Enviado',prueba:true,numeroEnVentana:2,llamadoNumero:2,fecha:'05/11/2026',minutos:9,enviadoISO:'2026-11-11',pdfUrl:'https://drive/pdf/prueba'},{userEmail:EM,tipo:'falta_grave',estado:'Enviado',prueba:false,fecha:'06/11/2026',enviadoISO:'2026-11-12',soporteUrl:'https://drive/x'}]);
+ t('CL10 el Historial del agente agrupa por llamado (2 faltas en un solo llamado, con el PDF); no muestra los de prueba ni las notificaciones de falta grave a TH',(()=>{const hist=els['reg-wrap'].innerHTML.split('Historial de llamados de atención')[1]||'';return !/prueba/.test(hist)&&!/drive\/x|soporte/i.test(hist)&&(hist.match(/Llamado n/g)||[]).length===1&&/04\/11\/2026 y 05\/11\/2026/.test(hist)&&/https:\/\/drive\/pdf\/1/.test(hist);})(),h.slice(0,300));
+ // Indicador «Tardanzas desde el 1 de noviembre: X de 3» con color verde → amarillo → rojo
+ const ind=async(n)=>{const regs=[];for(let i=0;i<n;i++)regs.push(reg(`${4+i}/11/2026`,10+i,{appeal:null}));const hh=await run(regs);return{h:hh,html:els['reg-wrap'].innerHTML};};
+ let r0=await ind(0),r1=await ind(1),r2=await ind(2),r3=await ind(3);
+ t('IN1 el indicador dice «Tardanzas desde el 1 de noviembre: X de 3» (0, 1, 2 y 3)',/Tardanzas desde el 1 de noviembre: 0 de 3/.test(r0.h)&&/: 1 de 3/.test(r1.h)&&/: 2 de 3/.test(r2.h)&&/: 3 de 3/.test(r3.h));
+ const colorDe=html=>(html.match(/id="reg-indicador" style="margin:12px 16px 0;border:2px solid (#[0-9a-f]{6})/)||[])[1];
+ t('IN2 color: verde (0), verde-amarillo (1), amarillo (2), rojo (3)',colorDe(r0.html)==='#4ade80'&&colorDe(r1.html)==='#a3e635'&&colorDe(r2.html)==='#fbbf24'&&colorDe(r3.html)==='#f87171',[colorDe(r0.html),colorDe(r1.html),colorDe(r2.html),colorDe(r3.html)]);
+ t('IN3 con 2 avisa que está a una tardanza de la falta grave; con 3, que se remite a Talento Humano',/a una tardanza de la falta grave/.test(r2.h)&&/se remite a Talento Humano/.test(r3.h)&&!/a una tardanza/.test(r1.h));
+ h=await run([reg('4/11/2026',10,{waived:{motivo:'x'}}),reg('5/11/2026',12),reg('6/11/2026',15)],[{userEmail:EM,estado:'Cancelado',fechaISO:'2026-11-06'}]);
+ t('IN4 las justificadas y las canceladas no cuentan en el indicador (3 tardanzas: 1 justificada, 1 cancelada → 1 de 3)',/: 1 de 3/.test(h),h.slice(0,260));
+ casos=[];els['reg-wrap'].innerHTML='';
+ await Cfeb.loadReglamentoAgente({reglamento:[reg('4/11/2026',14),reg('10/2/2027',14)]},EM);
+ const hf=els['reg-wrap'].innerHTML.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ');
+ t('IN5 ventana móvil de 3 meses: en febrero-2027 la tardanza del 4-nov-2026 ya no cuenta (solo la de febrero → 1 de 3)',/: 1 de 3/.test(hf)&&/ventana desde 01\/12\/2026/.test(hf),hf.slice(0,260));
+ t('IN6 la política literal es visible para el agente',els['reg-wrap'].innerHTML.includes(C.REG_POLITICA_TEXTO)&&C.REG_POLITICA_TEXTO==='Desde el 1 de noviembre de 2026, las llegadas tarde se rigen por el Reglamento Interno de Trabajo: la primera y segunda en los últimos 3 meses son falta leve con llamado de atención escrito; la tercera es falta grave y se remite a Talento Humano. Tienes 3 días hábiles para justificar cada tardanza. Las tardanzas justificadas o con apelación aprobada no cuentan.');
  await run([],[]);
- t('CL11 sin tardanzas del Reglamento ni llamados la sección no aparece',els['reg-wrap'].style.display==='none');}
+ t('CL11 sin tardanzas ni llamados la sección sigue visible con el indicador en 0 de 3',els['reg-wrap'].style.display==='block'&&/: 0 de 3/.test(els['reg-wrap'].innerHTML.replace(/<[^>]+>/g,' ')));
+ // Antes del 1 de noviembre: aviso de la fecha de inicio, sin indicador
+ casos=[];els['reg-wrap'].innerHTML='';await Cpre.loadReglamentoAgente({reglamento:[]},EM);
+ const pre=els['reg-wrap'].innerHTML.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ');
+ t('PRE1 antes del 1 de noviembre el indicador muestra el aviso de la fecha de inicio (y no «X de 3»)',/rige para las llegadas tarde desde el 1 de noviembre de 2026/.test(pre)&&!/de 3/.test(pre)&&!/reg-indicador/.test(els['reg-wrap'].innerHTML),pre.slice(0,300));
+ t('PRE2 …y también muestra la política',pre.includes('las llegadas tarde se rigen por el Reglamento Interno de Trabajo'));}
 
 const fails=out.filter(l=>l.startsWith('FAIL'));
 console.log(out.join('\n'));

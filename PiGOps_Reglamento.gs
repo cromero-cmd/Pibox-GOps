@@ -32,6 +32,7 @@
 //   {{CARGO}}            cargo del colaborador (BASE 3.0, col. F)
 //   {{CEDULA}}           (opcional) cédula (BASE 3.0, col. D)
 //   {{DESCRIPCION_FALTAS}}  en un párrafo propio: se reemplaza por UN PÁRRAFO POR FALTA (fecha y evidencia)
+//   {{CAUSAL}}           (opcional) causal literal: «Artículo 59, numeral 1: El retardo injustificado en la hora de entrada, hasta por segunda vez.»
 //   {{FIRMANTE}}         nombre del firmante
 //   {{CARGO_FIRMANTE}}   cargo del firmante
 //   {{INICIO_NOTA}} y {{FIN_NOTA}}  cada uno en su propio párrafo, rodeando el bloque «nota para quien diligencia el
@@ -53,8 +54,11 @@ var REG = {
   ESTADO_JUSTIFICADO: 'Justificado',
   ESTADO_ENVIADO: 'Enviado',
   ESTADO_CANCELADO: 'Cancelado',
-  CAUSAL_602: 'Artículo 60, numeral 2 del Reglamento Interno de Trabajo (tercera o posterior llegada tarde injustificada dentro de la ventana de tres meses)',
-  CAUSAL_6013: 'Artículo 60, numeral 13 del Reglamento Interno de Trabajo (acumulación de tres llamados de atención vigentes)'
+  ESTADO_CERRADO: 'Cerrado',    // caso de Talento Humano cerrado por un admin (cerradoPor / cerradoAt)
+  // Texto literal del Reglamento Interno de Trabajo de Digital Platforms Colombia S.A.S.
+  CAUSAL_LEVE: 'Artículo 59, numeral 1: El retardo injustificado en la hora de entrada, hasta por segunda vez.',
+  CAUSAL_602: 'Artículo 60, numeral 2: El retardo injustificado en la hora de entrada, por tercera vez.',
+  CAUSAL_6013: 'Artículo 60, numeral 13: Acumular tres (3) llamados de atención realizados por su jefe inmediato.'
 };
 
 // Festivos de Colombia 2026 y 2027 (Ley 51 de 1983 / Emiliani). ÚNICO lugar donde se mantiene esta lista en este archivo;
@@ -201,13 +205,19 @@ function reg_descripcionFalta(t, rechazada) {
       'sin justificación aprobada dentro del plazo de ' + REG.PLAZO_DIAS_HABILES + ' días hábiles.');
 }
 
-// Llamados de atención ENVIADOS y vigentes (mes actual + 2 anteriores) — «prueba» solo cuenta en modo prueba.
+// Llamados de atención ENVIADOS y vigentes (mes actual + 2 anteriores), uno por LLAMADO (no por falta): si varias tardanzas
+// vencieron el mismo día se envió un solo llamado con un párrafo por falta y todas comparten llamadoId.
+// Devuelve [{llamadoId, enviadoISO, pdfUrl, fechas:[ISO de cada falta]}] por fecha de envío. «prueba» solo cuenta en modo prueba.
 function reg_llamadosVigentes(docs, email, hoyISO, modoPrueba) {
-  var ini = reg_inicioVentanaSinDesde(hoyISO);
-  return Object.keys(docs).map(function (k) { return docs[k]; }).filter(function (d) {
-    return d.userEmail === email && d.tipoRegistro === 'tardanza' && d.tipo === 'llamado' && d.estado === REG.ESTADO_ENVIADO &&
-      (modoPrueba || !d.prueba) && d.enviadoISO && d.enviadoISO >= ini;
-  }).sort(function (a, b) { return a.enviadoISO < b.enviadoISO ? -1 : 1; });
+  var ini = reg_inicioVentanaSinDesde(hoyISO), grupos = {}, orden = [];
+  Object.keys(docs).forEach(function (k) {
+    var d = docs[k];
+    if (!(d.userEmail === email && d.tipoRegistro === 'tardanza' && d.tipo === 'llamado' && d.estado === REG.ESTADO_ENVIADO && (modoPrueba || !d.prueba) && d.enviadoISO && d.enviadoISO >= ini)) return;
+    var gid = d.llamadoId || ('solo_' + d.fechaISO);
+    if (!grupos[gid]) { grupos[gid] = { llamadoId: gid, enviadoISO: d.enviadoISO, pdfUrl: d.pdfUrl || '', fechas: [] }; orden.push(gid); }
+    grupos[gid].fechas.push(d.fechaISO);
+  });
+  return orden.map(function (g) { grupos[g].fechas.sort(); return grupos[g]; }).sort(function (a, b) { return a.enviadoISO < b.enviadoISO ? -1 : a.enviadoISO > b.enviadoISO ? 1 : 0; });
 }
 function reg_inicioVentanaSinDesde(iso) {
   var p = reg_isoParts(iso), m = p.m - (REG.VENTANA_MESES - 1), y = p.y;
@@ -247,12 +257,13 @@ function reg_correr(deps, opts) {
 }
 
 function reg_procesarAgente(deps, cfg, opts, email, tardanzas, ag, ctx, res, hoy) {
-  var filas = reg_clasificar(tardanzas, ctx);
+  var filas = reg_clasificar(tardanzas, ctx), llamadosPend = [], gravesPend = [];
   filas.forEach(function (f) {
     var t = f.t, id = reg_idCaso(email, t.iso), doc = ctx.docs[id];
     var estado = f.estadoCalc === 'justificada' ? REG.ESTADO_JUSTIFICADO : f.estadoCalc === 'cancelada' ? REG.ESTADO_CANCELADO : REG.ESTADO_PLAZO;
     var limiteISO = reg_fechaLimite(t.iso);
-    var sticky = doc && (doc.estado === REG.ESTADO_ENVIADO && (cfg.modoPrueba || !doc.prueba) || doc.estado === REG.ESTADO_CANCELADO);
+    // Definitivos: Enviado/Cerrado (en modo prueba, o si no son de prueba) y Cancelado
+    var sticky = !!doc && ((doc.estado === REG.ESTADO_ENVIADO || doc.estado === REG.ESTADO_CERRADO) && (cfg.modoPrueba || !doc.prueba) || doc.estado === REG.ESTADO_CANCELADO);
     var datos = {
       tipoRegistro: 'tardanza', userEmail: email, userName: ag.nombre || email.split('@')[0], cargo: ag.cargo || '',
       liderEmail: ag.liderEmail || '', fecha: reg_aDDMMYYYY(t.iso), fechaISO: t.iso, programada: t.progTexto, inicioReal: t.inicioTexto,
@@ -278,14 +289,19 @@ function reg_procesarAgente(deps, cfg, opts, email, tardanzas, ag, ctx, res, hoy
     if (opts.avisos && f.estadoCalc === 'en_plazo' && (!doc.avisoEnviadoAt || (doc.avisoPrueba && !cfg.modoPrueba))) {
       reg_enviarAviso(deps, cfg, ag, email, t, limiteISO);
       var marca = { avisoEnviadoAt: deps.now().toISOString(), avisoPrueba: !!cfg.modoPrueba };
-      deps.actualizar(REG.COL, id, marca); doc.avisoEnviadoAt = marca.avisoEnviadoAt; res.avisos++;
+      deps.actualizar(REG.COL, id, marca); doc.avisoEnviadoAt = marca.avisoEnviadoAt; doc.avisoPrueba = marca.avisoPrueba; res.avisos++;
     }
-    // Confirmación y envíos (solo en el proceso diario, en día hábil)
+    // Confirmación (solo en el proceso diario, en día hábil). Se juntan para enviar UN llamado por agente y día.
     if (opts.plazos && reg_esHabil(hoy) && f.accionable) {
-      var rechazada = !!(ctx.appeals[reg_idWaiver(email, t.iso)] && ctx.appeals[reg_idWaiver(email, t.iso)].status === 'rejected');
-      if (f.tipo === 'llamado') { reg_enviarLlamado(deps, cfg, ag, email, t, f.n, rechazada, id, doc, ctx); res.llamados++; }
-      else { reg_enviarFaltaGrave(deps, cfg, ag, email, filas, t, id, doc, ctx, 'art60_2', hoy); res.faltasGraves++; }
+      var ap = ctx.appeals[reg_idWaiver(email, t.iso)];
+      if (f.tipo === 'llamado') llamadosPend.push({ t: t, id: id, doc: doc, n: f.n, rechazada: !!(ap && ap.status === 'rejected') });
+      else gravesPend.push({ t: t, id: id, doc: doc, n: f.n });
     }
+  });
+  if (llamadosPend.length) { reg_enviarLlamado(deps, cfg, ag, email, llamadosPend, ctx, hoy); res.llamados++; }
+  gravesPend.forEach(function (g) {
+    reg_enviarFaltaGrave(deps, cfg, ag, email, filas, g.t, g.id, g.doc, ctx, 'art60_2', hoy, g.n >= 4);
+    res.faltasGraves++;
   });
   if (opts.plazos && reg_esHabil(hoy)) reg_revisar6013(deps, cfg, email, ag, ctx, res, hoy);
 }
@@ -334,30 +350,39 @@ function reg_enviarAviso(deps, cfg, ag, email, t, limiteISO) {
   reg_enviar(deps, cfg, { to: [email], subject: 'Tardanza del ' + reg_fechaLarga(t.iso) + ' — plazo para justificar hasta el ' + reg_fechaLarga(limiteISO), html: html });
 }
 
-// 2) Llamado de atención (falta leve confirmada)
-function reg_enviarLlamado(deps, cfg, ag, email, t, n, rechazada, id, doc, ctx) {
-  var hoy = reg_isoBogota(deps.now());
+// 2) Llamado de atención (falta leve confirmada). items: todas las tardanzas leves que se confirman HOY para este agente →
+// UN solo llamado (un PDF, un correo) con un párrafo por falta. Cuenta como UN llamado para el art. 60.13.
+function reg_enviarLlamado(deps, cfg, ag, email, items, ctx, hoy) {
+  items.sort(function (a, b) { return a.t.iso < b.t.iso ? -1 : 1; });
+  var numero = reg_llamadosVigentes(ctx.docs, email, hoy, cfg.modoPrueba).length + 1;
+  var faltas = items.map(function (it) { return reg_descripcionFalta(it.t, it.rechazada); });
   var pdf = deps.generarPdfLlamado({
-    fecha: reg_fechaLarga(hoy), nombre: ag.nombre || email, cargo: ag.cargo || '', cedula: ag.cedula || '',
-    faltas: [reg_descripcionFalta(t, rechazada)], firmante: cfg.firmanteNombre, cargoFirmante: cfg.firmanteCargo,
+    fecha: reg_fechaLarga(hoy), nombre: ag.nombre || email, cargo: ag.cargo || '', cedula: ag.cedula || '', causal: REG.CAUSAL_LEVE,
+    faltas: faltas, firmante: cfg.firmanteNombre, cargoFirmante: cfg.firmanteCargo,
     email: email, emails: reg_listaCorreos([email, ag.liderEmail, cfg.thEmail, cfg.testEmail])
   });
+  var fechas = items.map(function (it) { return '<strong>' + reg_fechaLarga(it.t.iso) + '</strong> (' + it.t.minutos + ' minutos de retardo)'; });
   var html = reg_caja('Llamado de atención por llegada tarde', '#fb923c',
-    '<p>Hola ' + (ag.nombre || '') + ',</p><p>Se adjunta el llamado de atención correspondiente a tu llegada tarde del <strong>' + reg_fechaLarga(t.iso) +
-    '</strong> (' + t.minutos + ' minutos de retardo), confirmada por no haberse aprobado una justificación dentro del plazo.</p>' +
-    '<p>Es tu llamado de atención n.º <strong>' + n + '</strong> en la ventana de tres meses vigente. Una tercera llegada tarde injustificada en la ventana, o acumular tres llamados de atención vigentes, es falta grave según el Reglamento Interno de Trabajo.</p>');
+    '<p>Hola ' + (ag.nombre || '') + ',</p><p>Se adjunta el llamado de atención correspondiente a ' + (items.length > 1 ? 'tus llegadas tarde del ' : 'tu llegada tarde del ') + fechas.join(', ') +
+    ', confirmada' + (items.length > 1 ? 's' : '') + ' por no haberse aprobado una justificación dentro del plazo.</p>' +
+    '<p><strong>Causal:</strong> ' + REG.CAUSAL_LEVE + '</p>' +
+    '<p>Es tu llamado de atención n.º <strong>' + numero + '</strong> en la ventana de tres meses vigente. Una tercera llegada tarde injustificada en la ventana, o acumular tres llamados de atención vigentes, es falta grave según el Reglamento Interno de Trabajo.</p>');
   reg_enviar(deps, cfg, {
-    to: [email], cc: [ag.liderEmail, cfg.thEmail, cfg.testEmail], subject: 'Llamado de atención — ' + (ag.nombre || email) + ' — ' + reg_aDDMMYYYY(t.iso),
+    to: [email], cc: [ag.liderEmail, cfg.thEmail, cfg.testEmail], subject: 'Llamado de atención — ' + (ag.nombre || email) + ' — ' + reg_aDDMMYYYY(hoy),
     html: html, attachments: pdf.blob ? [pdf.blob] : []
   });
-  var upd = { estado: REG.ESTADO_ENVIADO, enviadoAt: deps.now().toISOString(), enviadoISO: hoy, pdfUrl: pdf.url || '', prueba: !!cfg.modoPrueba, tipo: 'llamado', numeroEnVentana: n, espera: '' };
-  deps.actualizar(REG.COL, id, upd);
-  for (var k in upd) doc[k] = upd[k];
+  var gid = items[0].id;
+  items.forEach(function (it) {
+    var upd = { estado: REG.ESTADO_ENVIADO, enviadoAt: deps.now().toISOString(), enviadoISO: hoy, pdfUrl: pdf.url || '', prueba: !!cfg.modoPrueba, tipo: 'llamado', numeroEnVentana: it.n, llamadoId: gid, llamadoNumero: numero, espera: '' };
+    deps.actualizar(REG.COL, it.id, upd);
+    for (var k in upd) it.doc[k] = upd[k];
+  });
 }
 
 // 3) Falta grave → Talento Humano (3.ª tardanza o 3 llamados), con soporte Excel. NO se envía al agente.
-// filas: resultado de reg_clasificar del agente (detalle de la ventana). causal: 'art60_2' | 'art60_13'
-function reg_enviarFaltaGrave(deps, cfg, ag, email, filas, t, id, doc, ctx, causal, hoy) {
+// filas: resultado de reg_clasificar del agente (detalle de la ventana). causal: 'art60_2' | 'art60_13'.
+// reincidencia (4.ª tardanza en adelante): mismo envío, con asunto «Reincidencia — …» y referencia al caso abierto.
+function reg_enviarFaltaGrave(deps, cfg, ag, email, filas, t, id, doc, ctx, causal, hoy, reincidencia) {
   var ini = reg_inicioVentana(hoy), nombre = ag.nombre || email;
   var visibles = filas.filter(function (f) { return f.t.iso >= ini; }).map(function (f) {
     var estadoTexto = { justificada: 'Justificada (no cuenta)', cancelada: 'Cancelada (no cuenta)', apelacion_pendiente: 'Apelación pendiente', en_plazo: 'En plazo de justificación', confirmada: 'Confirmada' }[f.estadoCalc];
@@ -365,22 +390,37 @@ function reg_enviarFaltaGrave(deps, cfg, ag, email, filas, t, id, doc, ctx, caus
   });
   var previos = reg_llamadosVigentes(ctx.docs, email, hoy, cfg.modoPrueba);
   var causalTxt = causal === 'art60_13' ? REG.CAUSAL_6013 : REG.CAUSAL_602;
-  var soporte = deps.generarSoporte({ nombre: nombre, cargo: ag.cargo || '', liderEmail: ag.liderEmail || '', email: email, causal: causalTxt, fecha: reg_fechaLarga(hoy), tardanzas: visibles, llamados: previos, emails: reg_listaCorreos([cfg.thEmail, ag.liderEmail, cfg.testEmail]) });
+  // Caso abierto al que se refiere una reincidencia: la falta grave de la 3.ª tardanza de la ventana
+  var abierto = null;
+  if (reincidencia) {
+    Object.keys(ctx.docs).map(function (k) { return ctx.docs[k]; }).filter(function (d) {
+      return d.userEmail === email && d.tipoRegistro === 'tardanza' && d.tipo === 'falta_grave' && d.numeroEnVentana === 3 &&
+        (d.estado === REG.ESTADO_ENVIADO || d.estado === REG.ESTADO_CERRADO) && d.fechaISO >= ini && d.fechaISO < t.iso;
+    }).forEach(function (d) { if (!abierto || d.fechaISO > abierto.fechaISO) abierto = d; });
+  }
+  var soporte = deps.generarSoporte({ nombre: nombre, cargo: ag.cargo || '', liderEmail: ag.liderEmail || '', email: email, causal: causalTxt, fecha: reg_fechaLarga(hoy), tardanzas: visibles, llamados: previos, reincidencia: !!reincidencia, emails: reg_listaCorreos([cfg.thEmail, ag.liderEmail, cfg.testEmail]) });
   var llamadosHtml = previos.length
-    ? '<ul>' + previos.map(function (l) { return '<li>' + reg_aDDMMYYYY(l.fechaISO) + ' — llamado enviado el ' + reg_aDDMMYYYY(l.enviadoISO) + (l.pdfUrl ? ' · <a href="' + l.pdfUrl + '">PDF</a>' : '') + '</li>'; }).join('') + '</ul>'
+    ? '<ul>' + previos.map(function (l) { return '<li>Llamado enviado el ' + reg_aDDMMYYYY(l.enviadoISO) + ' por la(s) tardanza(s) del ' + l.fechas.map(reg_aDDMMYYYY).join(' y ') + (l.pdfUrl ? ' · <a href="' + l.pdfUrl + '">PDF</a>' : '') + '</li>'; }).join('') + '</ul>'
     : '<p>Sin llamados de atención previos vigentes.</p>';
-  var html = reg_caja('Falta grave para descargos — ' + nombre, '#dc2626',
+  var refHtml = !reincidencia ? '' :
+    '<p style="background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;padding:10px 14px;"><strong>Reincidencia.</strong> ' +
+    (abierto ? 'Se refiere al caso ya abierto por la 3.ª tardanza (' + reg_aDDMMYYYY(abierto.fechaISO) + '), notificado el ' + reg_aDDMMYYYY(abierto.enviadoISO) + (abierto.soporteUrl ? ' · <a href="' + abierto.soporteUrl + '">soporte del caso abierto</a>' : '') + (abierto.estado === REG.ESTADO_CERRADO ? ' (caso marcado como cerrado)' : '') + '.'
+      : 'No se encontró en Pi GOps el caso previo de la ventana.') +
+    ' La tardanza que motiva este aviso es la del ' + reg_aDDMMYYYY(t.iso) + '.</p>';
+  var asunto = (reincidencia ? 'Reincidencia — ' : '') + 'Falta grave para descargos — ' + nombre;
+  var html = reg_caja(asunto, '#dc2626',
     '<p>Se informa la siguiente falta grave:</p>' +
     '<table style="font-size:14px;margin-bottom:10px;"><tr><td style="padding:2px 10px 2px 0;color:#6b7280;">Colaborador</td><td><strong>' + nombre + '</strong> (' + email + ')</td></tr>' +
     '<tr><td style="padding:2px 10px 2px 0;color:#6b7280;">Cargo</td><td>' + (ag.cargo || '—') + '</td></tr>' +
     '<tr><td style="padding:2px 10px 2px 0;color:#6b7280;">Líder directo</td><td>' + (ag.liderEmail || '—') + '</td></tr></table>' +
-    '<p><strong>Causal:</strong> ' + causalTxt + '.</p>' +
+    '<p><strong>Causal:</strong> ' + causalTxt + '</p>' + refHtml +
     '<p><strong>Tardanzas de la ventana vigente</strong> (desde ' + reg_aDDMMYYYY(ini) + '):</p>' + reg_tablaTardanzas(visibles) +
     '<p><strong>Llamados de atención enviados antes:</strong></p>' + llamadosHtml +
     '<p>Se adjunta el Excel de soporte del caso.</p>' +
     '<p><strong>Solicitamos agendar la diligencia de descargos según el procedimiento del art. 64 del Reglamento Interno de Trabajo.</strong></p>');
-  reg_enviar(deps, cfg, { to: [cfg.thEmail], cc: [ag.liderEmail, cfg.testEmail], subject: 'Falta grave para descargos — ' + nombre, html: html, attachments: soporte.blob ? [soporte.blob] : [] });
-  var upd = { estado: REG.ESTADO_ENVIADO, enviadoAt: deps.now().toISOString(), enviadoISO: hoy, soporteUrl: soporte.url || '', prueba: !!cfg.modoPrueba, tipo: 'falta_grave', causal: causal, espera: '' };
+  reg_enviar(deps, cfg, { to: [cfg.thEmail], cc: [ag.liderEmail, cfg.testEmail], subject: asunto, html: html, attachments: soporte.blob ? [soporte.blob] : [] });
+  var upd = { estado: REG.ESTADO_ENVIADO, enviadoAt: deps.now().toISOString(), enviadoISO: hoy, soporteUrl: soporte.url || '', prueba: !!cfg.modoPrueba, tipo: 'falta_grave', causal: causal, espera: '', reincidencia: !!reincidencia };
+  if (abierto) upd.casoAbiertoId = abierto._id || reg_idCaso(email, abierto.fechaISO);
   if (causal === 'art60_13') {
     upd.tipoRegistro = 'art60_13'; upd.userEmail = email; upd.userName = nombre; upd.cargo = ag.cargo || ''; upd.liderEmail = ag.liderEmail || '';
     upd.fecha = reg_aDDMMYYYY(hoy); upd.fechaISO = hoy; upd.creadoAt = deps.now().toISOString();
@@ -407,7 +447,7 @@ function reg_revisar6013(deps, cfg, email, ag, ctx, res, hoy) {
     return d.userEmail === email && d.tipoRegistro === 'tardanza' && d.fechaISO >= reg_inicioVentana(hoy);
   }).sort(function (a, b) { return a.fechaISO < b.fechaISO ? -1 : 1; }).map(function (d) {
     return { t: { iso: d.fechaISO, progTexto: d.programada, inicioTexto: d.inicioReal, minutos: d.minutos, email: email },
-      estadoCalc: d.estado === REG.ESTADO_JUSTIFICADO ? 'justificada' : d.estado === REG.ESTADO_CANCELADO ? 'cancelada' : d.estado === REG.ESTADO_ENVIADO ? 'confirmada' : 'en_plazo', tipo: d.tipo, n: d.numeroEnVentana };
+      estadoCalc: d.estado === REG.ESTADO_JUSTIFICADO ? 'justificada' : d.estado === REG.ESTADO_CANCELADO ? 'cancelada' : (d.estado === REG.ESTADO_ENVIADO || d.estado === REG.ESTADO_CERRADO) ? 'confirmada' : 'en_plazo', tipo: d.tipo, n: d.numeroEnVentana };
   });
   reg_enviarFaltaGrave(deps, cfg, ag, email, filas, null, id, ya, ctx, 'art60_13', hoy);
   res.art6013++;
@@ -555,7 +595,7 @@ function reg_pdfLlamado(cfg, d) {
   try {
     var doc = DocumentApp.openById(copia.getId()), body = doc.getBody();
     reg_reemplazar(body, 'FECHA', d.fecha); reg_reemplazar(body, 'NOMBRE', d.nombre); reg_reemplazar(body, 'CARGO', d.cargo);
-    reg_reemplazar(body, 'CEDULA', d.cedula); reg_reemplazar(body, 'FIRMANTE', d.firmante); reg_reemplazar(body, 'CARGO_FIRMANTE', d.cargoFirmante);
+    reg_reemplazar(body, 'CEDULA', d.cedula); reg_reemplazar(body, 'CAUSAL', d.causal); reg_reemplazar(body, 'FIRMANTE', d.firmante); reg_reemplazar(body, 'CARGO_FIRMANTE', d.cargoFirmante);
     var hit = body.findText('\\{\\{DESCRIPCION_FALTAS\\}\\}');
     if (hit) {
       var par = hit.getElement().getParent(); // el párrafo que contiene el marcador
@@ -584,12 +624,12 @@ function reg_xlsxSoporte(cfg, d) {
   var ss = SpreadsheetApp.create('Soporte falta grave — ' + d.nombre);
   try {
     var h1 = ss.getActiveSheet(); h1.setName('Caso');
-    h1.getRange(1, 1, 7, 2).setValues([['Colaborador', d.nombre], ['Correo', d.email], ['Cargo', d.cargo], ['Líder directo', d.liderEmail], ['Causal', d.causal], ['Fecha del reporte', d.fecha], ['Modo', cfg.modoPrueba ? 'PRUEBA' : 'Producción']]);
+    h1.getRange(1, 1, 8, 2).setValues([['Colaborador', d.nombre], ['Correo', d.email], ['Cargo', d.cargo], ['Líder directo', d.liderEmail], ['Causal', d.causal], ['Fecha del reporte', d.fecha], ['Reincidencia', d.reincidencia ? 'Sí' : 'No'], ['Modo', cfg.modoPrueba ? 'PRUEBA' : 'Producción']]);
     var h2 = ss.insertSheet('Tardanzas');
     var f2 = [['Fecha', 'Hora programada', 'Hora de inicio', 'Minutos de retardo', 'Estado']].concat(d.tardanzas.map(function (f) { return [reg_aDDMMYYYY(f.t.iso), f.t.progTexto, f.t.inicioTexto, f.t.minutos, f.estadoTexto]; }));
     h2.getRange(1, 1, f2.length, 5).setValues(f2);
     var h3 = ss.insertSheet('Llamados de atención');
-    var f3 = [['Fecha de la falta', 'Fecha de envío', 'PDF']].concat(d.llamados.map(function (l) { return [reg_aDDMMYYYY(l.fechaISO), reg_aDDMMYYYY(l.enviadoISO), l.pdfUrl || '']; }));
+    var f3 = [['Fecha(s) de la falta', 'Fecha de envío', 'PDF']].concat(d.llamados.map(function (l) { return [l.fechas.map(reg_aDDMMYYYY).join(' y '), reg_aDDMMYYYY(l.enviadoISO), l.pdfUrl || '']; }));
     h3.getRange(1, 1, f3.length, 3).setValues(f3);
     SpreadsheetApp.flush();
     var resp = UrlFetchApp.fetch('https://docs.google.com/spreadsheets/d/' + ss.getId() + '/export?format=xlsx', { headers: { Authorization: 'Bearer ' + reg_token() } });
@@ -642,4 +682,31 @@ function instalarDisparadoresReglamento() {
   ScriptApp.newTrigger('reglamentoAvisos').timeBased().everyMinutes(15).create();
   ScriptApp.newTrigger('reglamentoProcesarPlazos').timeBased().atHour(7).nearMinute(0).everyDays(1).inTimezone('America/Bogota').create();
   Logger.log('Disparadores del Reglamento instalados (cada 15 min + diario 7:00 America/Bogota).');
+}
+
+// ── DIAGNÓSTICO (ejecutar desde el editor; NO envía correos ni escribe nada: solo lee) ──
+// Comprueba propiedades, permisos (Drive, Docs, Hojas, Gmail, UrlFetch/Firestore) y disparadores. Útil tras editar el
+// manifiesto (appsscript.json): si falta un permiso, aquí aparece como FALLA con el nombre del servicio.
+function diagnosticoReglamento() {
+  var out = [];
+  function prueba(nombre, fn) {
+    try { out.push('OK     ' + nombre + (function () { var r = fn(); return r ? ' → ' + r : ''; })()); }
+    catch (e) { out.push('FALLA  ' + nombre + ' → ' + e.message); }
+  }
+  var p = PropertiesService.getScriptProperties();
+  ['reg_th_email', 'reg_template_id', 'reg_firmante_cargo'].forEach(function (k) { prueba('propiedad ' + k, function () { if (!p.getProperty(k)) throw new Error('vacía'); return 'definida'; }); });
+  prueba('cuenta que ejecuta (debe ser cromero@pibox.app)', function () { return Session.getEffectiveUser().getEmail(); });
+  prueba('Drive: leer la plantilla', function () { return DriveApp.getFileById(p.getProperty('reg_template_id')).getName(); });
+  prueba('Documentos: abrir la plantilla', function () { return DocumentApp.openById(p.getProperty('reg_template_id')).getName(); });
+  prueba('Hojas de cálculo: abrir la malla', function () { return SpreadsheetApp.openById(getMallaSheetId()).getName(); });
+  prueba('Gmail', function () { return 'bandeja accesible (' + GmailApp.getInboxUnreadCount() + ' sin leer)'; });
+  prueba('UrlFetch + Firestore (lectura de configs/global)', function () { var g = firestoreGetDocRaw('configs/global'); return g ? 'leído; modo prueba = ' + !(g.fields && g.fields.reglamentoModoPrueba && g.fields.reglamentoModoPrueba.booleanValue === false) : 'sin documento (modo prueba por defecto)'; });
+  prueba('Firestore: colección ' + REG.COL, function () { return Object.keys(reg_listarColeccion(REG.COL)).length + ' registros'; });
+  prueba('Disparadores instalados', function () {
+    var f = ScriptApp.getProjectTriggers().map(function (t) { return t.getHandlerFunction(); });
+    if (f.indexOf('reglamentoAvisos') < 0 || f.indexOf('reglamentoProcesarPlazos') < 0) throw new Error('faltan; ejecuta instalarDisparadoresReglamento()');
+    return f.join(', ');
+  });
+  Logger.log(out.join('\n'));
+  return out.join('\n');
 }

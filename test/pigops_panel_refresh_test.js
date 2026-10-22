@@ -209,15 +209,29 @@ const txt=s=>s.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ');
   A.ctrl.fail.extras=true;A.reset();await A.ctx.refreshPanel();
   t('M7 falla de «Horas extras» con el modal abierto: conserva el listado y agrega aviso puntual',/No se pudieron actualizar/.test(H(A,'overtime-list'))&&/Carla Tres/.test(H(A,'overtime-list')),H(A,'overtime-list').slice(0,200));
  }
- // ═══ 6b. Módulo «Llamados de atención» ═══
+ // ═══ 6b. Módulos «Llamados de atención» y «Casos para Talento Humano» ═══
  {const A=build();await A.ctx.loadPanel2();
-  A.present.add('reg-casos-list');
-  A.F.reglamento_casos.push({id:'ana_20261105_reg',tipoRegistro:'tardanza',userEmail:'a3@pibox.app',userName:'Carla Tres',tipo:'falta_grave',estado:'Enviado',prueba:false,fecha:'05/11/2026',fechaISO:'2026-11-05',enviadoISO:'2026-11-13',soporteUrl:'https://drive/xlsx/1',minutos:15,programada:'8:00 a. m.',inicioReal:'8:15 a. m.'});
+  t('LL0 tras la carga los badges muestran 1 llamado en plazo y 0 casos para TH',A.getEl('reg-casos-badge').textContent==='1'&&A.getEl('th-casos-badge').style.display==='none');
+  ['reg-casos-list','th-casos-list'].forEach(id=>A.present.add(id));
+  const nuevos=[
+   {id:'c_gr1',tipoRegistro:'tardanza',userEmail:'a3@pibox.app',userName:'Carla Tres',tipo:'falta_grave',estado:'Enviado',prueba:false,fecha:'05/11/2026',fechaISO:'2026-11-05',enviadoISO:'2026-11-13',soporteUrl:'https://drive.google.com/file/d/ABC123/view',minutos:15,programada:'8:00 a. m.',inicioReal:'8:15 a. m.',numeroEnVentana:3,causal:'art60_2'},
+   {id:'c_gr2',tipoRegistro:'tardanza',userEmail:'a3@pibox.app',userName:'Carla Tres',tipo:'falta_grave',estado:'Enviado',prueba:false,reincidencia:true,fecha:'17/11/2026',fechaISO:'2026-11-17',enviadoISO:'2026-11-23',soporteUrl:'https://drive.google.com/file/d/DEF456/view',minutos:30,programada:'8:00 a. m.',inicioReal:'8:30 a. m.',numeroEnVentana:4},
+   {id:'c_gr3',tipoRegistro:'tardanza',userEmail:'a4@pibox.app',userName:'Dario Cuatro',tipo:'falta_grave',estado:'En plazo de justificación',limiteISO:'2026-11-20',fecha:'16/11/2026',fechaISO:'2026-11-16',minutos:12,programada:'8:00 a. m.',inicioReal:'8:12 a. m.',numeroEnVentana:3},
+   {id:'c_gr4',tipoRegistro:'art60_13',userEmail:'a2@pibox.app',userName:'Beto Dos',tipo:'falta_grave',estado:'Cerrado',prueba:false,enviadoISO:'2026-11-10',cerradoPor:'cromero@pibox.app',cerradoAt:'2026-11-12T15:30:00.000Z',notaCierre:'Descargos realizados',soporteUrl:'https://drive.google.com/file/d/GHI789/view'},
+   {id:'c_l2',tipoRegistro:'tardanza',userEmail:'a3@pibox.app',userName:'Carla Tres',tipo:'llamado',estado:'Enviado',prueba:false,llamadoNumero:1,fecha:'03/11/2026',fechaISO:'2026-11-03',enviadoISO:'2026-11-12',pdfUrl:'https://drive/pdf/1',minutos:9}];
+  nuevos.forEach(c=>A.F.reglamento_casos.push(c));
   A.reset();await A.ctx.refreshPanel();
-  t('LL1 el módulo «Llamados de atención» se refresca con el ↻ (modal abierto, sin lecturas extra): en plazo y enviados',/En plazo de justificación \(1\)/.test(txt(H(A,'reg-casos-list')))&&/Enviado a Talento Humano/.test(txt(H(A,'reg-casos-list')))&&/Soporte Excel/.test(H(A,'reg-casos-list'))&&sum(A.reads())===9,[txt(H(A,'reg-casos-list')).slice(0,300),A.reads()]);
+  const L=txt(H(A,'reg-casos-list')),T=txt(H(A,'th-casos-list'));
+  t('LL1 «Llamados de atención» se refresca con el ↻ (modal abierto, sin lecturas extra): en plazo y enviados, solo llamados (no faltas graves)',/Llamados en plazo de justificación \(1\)/.test(L)&&/Llamados enviados \(1\)/.test(L)&&!/Falta grave/.test(L)&&sum(A.reads())===9,[L.slice(0,200),A.reads()]);
   t('LL2 tiene botón para cancelar un registro en plazo (con motivo)',/Cancelar \(con motivo\)/.test(H(A,'reg-casos-list')));
+  t('LL3 indicador por agente de faltas leves vigentes: Ana 1 de 3, y quien está a una de la falta grave se destaca',/Faltas leves vigentes por agente/.test(L)&&/Ana Uno a1@pibox\.app 1 de 3/.test(L)&&/Carla Tres a3@pibox\.app 3 de 3 · falta grave/.test(L),L.slice(0,400));
+  t('TH1 «Casos para Talento Humano» con los 3 estados: Pendiente de enviar (1), Enviado a Talento Humano (2) y Cerrado (1)',/Pendiente de enviar \(1\)/.test(T)&&/Enviado a Talento Humano \(2\)/.test(T)&&/Cerrado \(1\)/.test(T),T.slice(0,300));
+  t('TH2 el caso cerrado registra quién y cuándo (y la nota)',/Cerrado por cromero@pibox\.app el 12\/11\/2026/.test(T)&&/Descargos realizados/.test(T),T.slice(-300));
+  t('TH3 botón de descarga del Excel de soporte (enlace directo de Drive) en enviados y cerrados',(H(A,'th-casos-list').match(/⬇ Excel de soporte/g)||[]).length===3&&/uc\?export=download&amp;id=ABC123|uc\?export=download&id=ABC123/.test(H(A,'th-casos-list')),H(A,'th-casos-list').slice(0,0));
+  t('TH4 la reincidencia se marca, cada caso muestra la causal literal del Reglamento y hay botones de cerrar y de cancelar',/REINCIDENCIA/.test(T)&&/Artículo 60, numeral 2: El retardo injustificado en la hora de entrada, por tercera vez\./.test(T)&&/Artículo 60, numeral 13: Acumular tres \(3\) llamados de atención realizados por su jefe inmediato\./.test(T)&&/Marcar como cerrado/.test(H(A,'th-casos-list'))&&/Cancelar \(con motivo\)/.test(H(A,'th-casos-list')));
+  t('TH5 badge de Casos para TH = pendientes + enviados sin cerrar (3); el de llamados sigue en 1',A.getEl('th-casos-badge').textContent==='3'&&A.getEl('reg-casos-badge').textContent==='1',[A.getEl('th-casos-badge').textContent,A.getEl('reg-casos-badge').textContent]);
   A.ctrl.fail.reglamento_casos=true;A.reset();await A.ctx.refreshPanel();
-  t('LL3 si falla la lectura de llamados: el resto del panel se actualiza, el módulo conserva lo anterior y avisa',/Llamados de atención/.test(A.getEl('panel-last-update').textContent)&&/Carla Tres/.test(H(A,'reg-casos-list'))&&A.getEl('btn-reg-casos').classList.contains('p2-stale'),A.getEl('panel-last-update').textContent);
+  t('LL4 si falla la lectura: el resto del panel se actualiza, ambos módulos conservan lo anterior y avisan, y los dos botones se marcan',/Llamados de atención/.test(A.getEl('panel-last-update').textContent)&&/Carla Tres/.test(H(A,'th-casos-list'))&&/No se pudieron actualizar/.test(H(A,'th-casos-list'))&&A.getEl('btn-reg-casos').classList.contains('p2-stale')&&A.getEl('btn-th-casos').classList.contains('p2-stale'),A.getEl('panel-last-update').textContent);
  }
  // ═══ 7. Historial de strikes y Nómina abiertos ═══
  {const A=build();await A.ctx.loadPanel2();

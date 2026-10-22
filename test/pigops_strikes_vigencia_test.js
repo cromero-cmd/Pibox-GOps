@@ -85,6 +85,6 @@ function calc(dias,now,w,a){const wm=new Map();(w||[]).forEach(x=>wm.set(typeof 
  t('E12 turno «active» huérfano de hace días NO inventa un strike de no desconexión',a.length===0,JSON.stringify(a.map(x=>x.cat)));
  const hoy=dia('17/10/2026',0);hoy.turno.status='active';hoy.turno.endTime=null;
  const b=E.computeAgentStrikes({email:EM,malla:[hoy.row],turnos:[hoy.turno],waiverMap:new Map(),appealMap:new Map(),cfg,now:D(2026,10,17,21,30)});
- t('E13 …pero un turno activo de HOY sí se evalúa en vivo (5 h 30 min tras la salida programada → no desconexión)',b.length===1&&b[0].cat==='nodesc',JSON.stringify(b.map(x=>x.cat)));}
+ t('E13 un turno activo de HOY (aún sin cierre) tampoco genera no desconexión: sin salida real no hay falta (regla: los turnos sin cierre no cuentan)',b.length===0,JSON.stringify(b.map(x=>x.cat)));}
 out.forEach(l=>console.log(l));
 const fails=out.filter(l=>l.startsWith('FAIL')).length;console.log(`\n${out.length-fails}/${out.length} pasan`);process.exit(fails?1:0);

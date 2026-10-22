@@ -127,17 +127,58 @@ Commit messages use the `feat:` / `fix:` / `chore:` prefix and a Spanish subject
 - **Nómina abierta**: si hay ediciones sin enviar (`window._payrollDirty`, se activa en `savePayrollDraft`) o una celda en edición, el refresh NO la toca.
 - Prueba: `node test/pigops_panel_refresh_test.js` (corre el `loadPanel2`/`refreshPanel` reales con Firestore y DOM simulados y cuenta cada consulta).
 
-### Reglamento Interno de Trabajo: tardanzas, llamados de atención y faltas graves (v18.5)
+### Reglamento Interno de Trabajo: tardanzas, llamados de atención y faltas graves (v18.5 / v18.6)
 - **Vigencia**: tardanzas desde el **1-nov-2026** (`REGLAMENTO_DESDE` en `index.html`, `REG.DESDE` en el `.gs`). Más de 5 min de retraso (tolerancia fija, no la configurable de strikes). Desde esa fecha las tardanzas **salen del modelo de strikes** (`computeAgentStrikes` las marca `reg:true` y `applyStrikePolicy` las devuelve aparte en `reglamento`): ya no suman strikes ni llamados del modelo viejo, ni disparan sus correos al líder. La no desconexión sigue en el modelo de strikes.
-- **Plazo**: cada tardanza abre 3 días hábiles (sin sábados, domingos ni festivos; el día de la tardanza no cuenta; el último día vale completo). **Festivos**: una sola lista por runtime, `FESTIVOS_CO` (2026–2027) en `index.html` y en `PiGOps_Reglamento.gs`; `test/pigops_reglamento_test.js` verifica que sean idénticas y correctas (Pascua + Ley Emiliani). Para 2028: agregar fechas en los dos. Esto corrigió además la lista vieja `FESTIVOS_2026` que usaba «Semanas excedidas» (tenía fechas equivocadas, p. ej. 6-ene, 25-may, 22-jun, 13-jul y 18-ago).
-- **Clasificación** (por agente, orden cronológico, ventana = 3 meses calendario y nunca antes del 1-nov): 1.ª y 2.ª tardanza no justificadas = falta leve → **llamado de atención** (PDF de la plantilla de Google Doc); 3.ª en adelante = **falta grave art. 60 num. 2** → notificación a Talento Humano (SIN llamado y SIN correo al agente); 3 llamados vigentes enviados = **art. 60 num. 13** → notificación a TH. Una tardanza solo se actúa si está confirmada Y no queda antes otra sin resolver en plazo o con apelación pendiente (si no, su número de orden podría cambiar). Justificada (retiro/apelación aprobada) o cancelada por un admin = no cuenta.
-- **Estados** (`reglamento_casos/{email}_{AAAAMMDD}_reg`, y `..._6013` para el art. 60.13): «En plazo de justificación» → «Justificado» | «Enviado» | «Cancelado». Solo «Enviado» y «Cancelado» son definitivos. Apelación presentada a tiempo (≤ fin del día límite) y sin resolver = la falta espera; presentada tarde no frena la confirmación; rechazada = confirmada.
-- **Quién envía qué, y cuándo**: SOLO disparadores de Apps Script (instalar con `instalarDisparadoresReglamento()`): `reglamentoAvisos` cada 15 min (crea el registro y manda el aviso informativo al agente) y `reglamentoProcesarPlazos` a las 7:00 (solo corre en día hábil: confirma vencidas y envía). No hay endpoint público nuevo. Firestore se accede con `ScriptApp.getOAuthToken()` (la cuenta dueña del script, como el resto del `.gs`): no hay llaves guardadas. Idempotencia: documento único por tardanza + creación con `currentDocument.exists=false` + `LockService`; un envío cae en «Enviado» justo después de salir (si Apps Script muere entre el envío y esa escritura, podría repetirse: ventana de milisegundos).
-- **Modo prueba**: `configs/global.reglamentoModoPrueba` (interruptor en ⚙ Configurar, solo Super Admin). Solo un `false` booleano explícito pasa a producción; sin dato o error de lectura = prueba. En prueba todo va solo a cromero con «PRUEBA» en el asunto y un banner con los destinatarios reales; los registros se marcan `prueba:true` y al pasar a producción NO cuentan (se envían los reales).
-- **Propiedades del script** (nada de esto va en el repo): `reg_th_email`, `reg_template_id`, `reg_firmante_cargo` (obligatorias); `reg_firmante_nombre` (def. «Camilo Romero»), `reg_drive_folder_id`, `reg_test_email` (def. cromero@pibox.app). **Marcadores de la plantilla**: `{{FECHA}} {{NOMBRE}} {{CARGO}} {{CEDULA}}(opc.) {{DESCRIPCION_FALTAS}} {{FIRMANTE}} {{CARGO_FIRMANTE}}`, y `{{INICIO_NOTA}}`/`{{FIN_NOTA}}` (cada uno en su párrafo) rodeando la nota para quien diligencia (se borra con sus marcadores).
-- **Reglas de Firestore a publicar a mano** (sin ellas el módulo se ve vacío con un aviso, no se rompe nada): `reglamento_casos` lectura para el propio agente (`resource.data.userEmail == request.auth.token.email`) y para admins; actualización solo de admins y solo `estado`→«Cancelado» + `motivoCancelacion`/`canceladoPor`/`canceladoAt` desde «En plazo de justificación»; sin create/delete desde el cliente (escribe el script con su OAuth).
-- **UI**: Mi turno → sección «Reglamento» (tardanzas con plazo/botón de justificar o apelar —reusa `apelarStrike`/`strike_appeals`— e Historial de llamados enviados con el PDF); Panel de Control → «📣 Llamados de atención» (badge = en plazo; cancelar con motivo antes del envío; integrado al refresh ↻, `pmCasos`/`PANEL_READERS.casos`).
-- Pruebas: `node test/pigops_reglamento_test.js` (carga el `.gs` real con IO simulado, Google Docs simulado y el cliente real).
+- **Turnos sin cierre (sin `endTime`) no son falta bajo ninguna regla** (v18.6): la tardanza solo mira la hora de inicio; la no desconexión exige hora de salida real (un turno activo ya no usa «ahora»; antes, v16.8, podía mostrar un strike en vivo).
+- **Causales (texto literal del Reglamento de Digital Platforms Colombia S.A.S.)**: falta leve «Artículo 59, numeral 1: El retardo injustificado en la hora de entrada, hasta por segunda vez.»; falta grave «Artículo 60, numeral 2: El retardo injustificado en la hora de entrada, por tercera vez.»; «Artículo 60, numeral 13: Acumular tres (3) llamados de atención realizados por su jefe inmediato.» (`REG.CAUSAL_*` en el `.gs`, `REG_CAUSAL_*` en `index.html`).
+- **Plazo**: cada tardanza abre 3 días hábiles (sin sábados, domingos ni festivos; el día de la tardanza no cuenta; el último día vale completo). **Festivos**: una sola lista por runtime, `FESTIVOS_CO` (2026–2027) en `index.html` y en `PiGOps_Reglamento.gs`; `test/pigops_reglamento_test.js` verifica que sean idénticas y correctas (Pascua + Ley Emiliani). Para 2028: agregar fechas en los dos. Esto corrigió además la lista vieja `FESTIVOS_2026` de «Semanas excedidas».
+- **Clasificación** (por agente, orden cronológico, ventana = 3 meses calendario y nunca antes del 1-nov): 1.ª y 2.ª tardanza no justificadas = falta leve → **llamado de atención** (PDF de la plantilla de Google Doc); si varias vencen el MISMO día para el mismo agente se envía **UN solo llamado con un párrafo por falta** (comparten `llamadoId`, cuenta como UN llamado para el 60.13). 3.ª = **falta grave art. 60 num. 2** → notificación a Talento Humano (sin llamado y sin correo al agente). **4.ª en adelante = reincidencia**: cada una notifica a TH con asunto «Reincidencia — Falta grave para descargos — [Nombre]» referenciando el caso abierto (la 3.ª tardanza). 3 llamados vigentes enviados = **art. 60 num. 13** → notificación a TH. Una tardanza solo se actúa si está confirmada Y no queda antes otra sin resolver (en plazo o con apelación pendiente). Justificada (retiro/apelación aprobada) o cancelada por un admin = no cuenta. El 60.13 cuenta solo llamados del flujo nuevo.
+- **Estados** (`reglamento_casos/{email}_{AAAAMMDD}_reg`, y `..._6013` para el 60.13): «En plazo de justificación» → «Justificado» | «Enviado» | «Cancelado»; un caso de TH «Enviado» pasa a «Cerrado» (`cerradoPor`, `cerradoAt`, `notaCierre`) cuando un admin lo cierra. «Enviado», «Cerrado» y «Cancelado» son definitivos para el script. Apelación presentada a tiempo y sin resolver = la falta espera; tardía no frena; rechazada = confirmada.
+- **Quién envía qué, y cuándo**: SOLO disparadores de Apps Script (`instalarDisparadoresReglamento()`): `reglamentoAvisos` cada 15 min y `reglamentoProcesarPlazos` a las 7:00 (solo corre en día hábil). Sin endpoint público nuevo. Firestore con `ScriptApp.getOAuthToken()` (cuenta dueña del script): no hay llaves guardadas. Idempotencia: documento único por tardanza + creación con `currentDocument.exists=false` + `LockService`.
+- **Modo prueba**: `configs/global.reglamentoModoPrueba` (interruptor en ⚙ Configurar, solo cromero). Solo un `false` booleano explícito pasa a producción. En prueba todo va solo a cromero con «PRUEBA» en el asunto; los registros se marcan `prueba:true` y al pasar a producción NO cuentan.
+- **Propiedades del script**: `reg_th_email`, `reg_template_id`, `reg_firmante_cargo` (obligatorias); `reg_firmante_nombre`, `reg_drive_folder_id`, `reg_test_email` (opcionales). **Marcadores de la plantilla**: `{{FECHA}} {{NOMBRE}} {{CARGO}} {{CEDULA}}(opc.) {{CAUSAL}}(opc.) {{DESCRIPCION_FALTAS}} {{FIRMANTE}} {{CARGO_FIRMANTE}}`, y `{{INICIO_NOTA}}`/`{{FIN_NOTA}}` rodeando la nota para quien diligencia (se borra). `diagnosticoReglamento()` (solo lectura) comprueba propiedades, permisos y disparadores.
+- **Manifiesto de Apps Script (`appsscript.json`, vive en el proyecto, no en este repo)**: si lista `oauthScopes` explícitos deben estar al menos `drive` (copiar la plantilla, crear PDF/Excel, compartir), `documents`, `spreadsheets`, `script.scriptapp`, `script.send_mail`/Gmail, `script.external_request`, `userinfo.email` y el de Firestore/Datastore (`datastore` o `cloud-platform`). `America/Bogota` como zona horaria del proyecto. Si cambia `PiGOps_Reglamento.gs` hay que volver a pegarlo (los disparadores siguen instalados).
+- **Reglas de Firestore (publicar a mano, en el bloque `match /databases/{database}/documents`)**: ver abajo. Ojo: las reglas se combinan con OR; si ya existe un `match /{document=**}` permisivo, hay que quitarlo o estas restricciones no sirven.
+- **UI**: Mi turno → sección «Reglamento» (indicador «Tardanzas desde el 1 de noviembre: X de 3» verde→amarillo→rojo, política literal, aviso de inicio antes del 1-nov, tardanzas con plazo/botón de justificar o apelar —reusa `apelarStrike`/`strike_appeals`— e Historial de llamados con el PDF); Panel de Control → «📣 Llamados de atención» (indicador por agente de faltas leves vigentes: quién está a una de la falta grave; en plazo/enviados; cancelar con motivo) y «🏛️ Casos para Talento Humano» («Pendiente de enviar» / «Enviado a Talento Humano» / «Cerrado» con quién y cuándo, descarga del Excel de soporte). Los dos comparten UNA lectura (`PANEL_READERS.casos`) y el refresh ↻ (`pmCasos`).
+- Pruebas: `node test/pigops_reglamento_test.js` (carga el `.gs` real con IO simulado, Google Docs simulado y el cliente real) y `node test/pigops_panel_refresh_test.js` (módulos del Panel).
+
+```
+// ── Firestore rules (agregar/reemplazar dentro de `match /databases/{database}/documents { ... }`) ──
+function isCromero() {
+  return request.auth != null && request.auth.token.email == 'cromero@pibox.app';
+}
+function isAdmin() {
+  return request.auth != null && (isCromero() ||
+    exists(/databases/$(database)/documents/admins/$(request.auth.token.email)));
+}
+
+// configs: cada usuario escribe SU doc (configs/{uid}); configs/global (incluye reglamentoModoPrueba) SOLO cromero.
+match /configs/{docId} {
+  allow read: if request.auth != null;
+  allow write: if request.auth != null && (
+    (docId != 'global' && request.auth.uid == docId) ||
+    (docId == 'global' && isCromero()));
+}
+
+// reglamento_casos: lo escribe el script de Apps Script (OAuth del dueño, no pasa por reglas).
+match /reglamento_casos/{casoId} {
+  allow read: if request.auth != null && (isAdmin() || resource.data.userEmail == request.auth.token.email);
+  allow create, delete: if false;
+  allow update: if isAdmin() && (
+    // cancelar un registro ANTES de su envío
+    (resource.data.estado == 'En plazo de justificación'
+      && request.resource.data.estado == 'Cancelado'
+      && request.resource.data.diff(resource.data).affectedKeys()
+           .hasOnly(['estado', 'motivoCancelacion', 'canceladoPor', 'canceladoAt']))
+    ||
+    // cerrar un caso de Talento Humano ya enviado
+    (resource.data.estado == 'Enviado' && resource.data.tipo == 'falta_grave'
+      && request.resource.data.estado == 'Cerrado'
+      && request.resource.data.diff(resource.data).affectedKeys()
+           .hasOnly(['estado', 'cerradoPor', 'cerradoAt', 'notaCierre']))
+  );
+}
+```
 
 ### Nómina
 - **Pre-revisión** (`openPayrollPreview`):
