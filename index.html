@@ -430,6 +430,31 @@ window.getApprovedOvertimeEvents = async (fromDate, toDate, strict) => {
  return snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(e => e.type==='overtime' && e.status==='approved');
  } catch(e) { console.error('[getApprovedOvertimeEvents]', e); if (strict) throw e; return []; }
 };
+window.getReglamentoCasos = async (userEmail, strict) => {
+ // Llamados de atención y notificaciones de falta grave del Reglamento (colección reglamento_casos, los escribe
+ // PiGOps_Reglamento.gs). Con userEmail trae solo los del agente (su Historial); sin él, todos (Panel de Control).
+ try {
+ const col = collection(db, 'reglamento_casos');
+ const snap = await getDocs(userEmail ? query(col, where('userEmail', '==', userEmail)) : query(col, limit(500)));
+ return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+ } catch(e) {
+ // Sin la regla de Firestore para reglamento_casos aún (hay que publicarla a mano) no es una «falla del módulo»: se muestra
+ // vacío con un aviso en el modal, en vez de marcar ⚠ en cada refresh.
+ if (e && e.code === 'permission-denied') { console.warn('[getReglamentoCasos] sin regla de Firestore para reglamento_casos'); window._regCasosSinReglas = true; return []; }
+ console.error('[getReglamentoCasos]', e); if (strict) throw e; return [];
+ }
+};
+window.cancelarReglamentoCaso = async (id, motivo, por) => {
+ // Un admin cancela un registro ANTES de su envío; el script nunca envía uno «Cancelado».
+ try { await setDoc(doc(db, 'reglamento_casos', id), { estado: 'Cancelado', motivoCancelacion: motivo, canceladoPor: por, canceladoAt: new Date().toISOString() }, { merge: true }); return { ok: true }; }
+ catch(e) { console.error('[cancelarReglamentoCaso]', e); return { ok: false, error: e.message || String(e) }; }
+};
+window.setReglamentoModoPrueba = async (valor) => {
+ // Interruptor de modo prueba (configs/global.reglamentoModoPrueba). PiGOps_Reglamento.gs lo lee en cada ejecución;
+ // solo un false explícito pasa a producción. Lo cambia el Super Admin desde ⚙ Configurar.
+ try { await setDoc(doc(db, 'configs', 'global'), { reglamentoModoPrueba: !!valor }, { merge: true }); return { ok: true }; }
+ catch(e) { console.error('[setReglamentoModoPrueba]', e); return { ok: false, error: e.message || String(e) }; }
+};
 window.loadAnalytics = async () => {
  try {
  const snap = await getDocs(query(collection(db, 'events'), orderBy('timestamp', 'desc'), limit(200)));
@@ -996,6 +1021,12 @@ body.agent-preview-mode header{margin-top:34px;}
  <div style="font-size:10px;color:var(--text-dim);margin-top:4px;font-family:var(--mono);">Si el agente no se desconecta X horas después de su salida programada, genera un strike.</div>
  </div>
  <hr/>
+ <div class="msec" id="reg-config-sec" style="display:none;">⚖️ Reglamento — llamados de atención y faltas graves</div>
+ <div class="field" id="reg-config-field" style="display:none;">
+ <label style="display:flex;align-items:center;gap:8px;cursor:pointer;"><input type="checkbox" id="chk-reglamento-prueba" onchange="toggleReglamentoModoPrueba(this)" checked/> Modo prueba</label>
+ <div style="font-size:10px;color:var(--text-dim);margin-top:4px;font-family:var(--mono);">Activo: TODOS los correos del Reglamento (llamados y notificaciones de falta grave) llegan solo a cromero@pibox.app con «PRUEBA» en el asunto. Desactívalo para enviar a los destinatarios reales. Correo de Talento Humano, plantilla y cargo del firmante van en las propiedades del script de Apps Script.</div>
+ </div>
+ <hr/>
  <div class="msec">🔔 Notificaciones de cambios en malla</div>
  <div class="field">
  <label>Delay antes de notificar cambios (minutos)</label>
@@ -1118,6 +1149,7 @@ body.agent-preview-mode header{margin-top:34px;}
  <div class="strike-meter"><div class="strike-meter-fill" id="strike-meter-fill" style="width:0%;background:#4ade80;"></div></div>
  <div id="strikes-list"></div>
  </div>
+ <div class="strikes-wrap" id="reg-wrap" style="display:none;"></div>
  </div>
  <div id="subview-mimalla" style="display:none;">
  <div class="tolerance-note">⏱ Tolerancia de llegada: <strong>5 minutos</strong> — llegadas dentro de este margen se consideran cumplidas</div>
@@ -1192,6 +1224,7 @@ body.agent-preview-mode header{margin-top:34px;}
  <button class="turno-filter-btn" onclick="showEarlyLeaveRequests()" style="border-color:rgba(96,165,250,0.4);color:#60a5fa;" id="btn-earlyleave-requests">🏁 Salidas anticipadas <span id="earlyleave-badge" style="display:none;background:#60a5fa;color:white;border-radius:100px;padding:1px 6px;font-size:10px;margin-left:4px;"></span></button>
  <button class="turno-filter-btn" onclick="showExceededWeeksModal()" style="border-color:rgba(167,139,250,0.4);color:#a78bfa;" id="btn-exceeded-weeks">📅 Semanas excedidas <span id="exceeded-weeks-badge" style="display:none;background:#a78bfa;color:white;border-radius:100px;padding:1px 6px;font-size:10px;margin-left:4px;"></span></button>
  <button class="turno-filter-btn" onclick="showStrikeAppeals()" style="border-color:rgba(251,191,36,0.4);color:#fbbf24;" id="btn-strike-appeals">⚖️ Apelaciones de strikes <span id="strike-appeals-badge" style="display:none;background:#fbbf24;color:#1a1a1a;border-radius:100px;padding:1px 6px;font-size:10px;margin-left:4px;"></span></button>
+ <button class="turno-filter-btn" onclick="showReglamentoCasos()" style="border-color:rgba(244,114,182,0.4);color:#f472b6;" id="btn-reg-casos">📣 Llamados de atención <span id="reg-casos-badge" style="display:none;background:#f472b6;color:#1a1a1a;border-radius:100px;padding:1px 6px;font-size:10px;margin-left:4px;"></span></button>
  <button class="turno-filter-btn" onclick="showStrikeHistorial()" style="border-color:rgba(156,163,175,0.4);color:#9ca3af;" id="btn-strike-historial">📜 Historial de strikes</button>
  <button class="turno-filter-btn" onclick="openPayrollPreview()" style="border-color:rgba(74,222,128,0.3);color:#4ade80;">📋 Nómina</button>
  <button class="turno-filter-btn" onclick="exportPanel2XLSX()" style="border-color:rgba(74,222,128,0.3);color:#4ade80;">⬇ Excel</button>
@@ -1461,7 +1494,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
-const APP_VERSION='18.4';
+const APP_VERSION='18.5';
 // Promesas rechazadas sin manejar y errores de script: antes desaparecían sin rastro en consola del agente.
 window.addEventListener('unhandledrejection',e=>console.error('[unhandledrejection]',e.reason&&(e.reason.stack||e.reason.message||e.reason)));
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
@@ -1485,16 +1518,28 @@ const SCRIPT_URL='https://script.google.com/macros/s/AKfycbyam6j2MG1NH11120KjvAf
 const MALLA_SCRIPT='https://script.google.com/macros/s/AKfycbyxBZWba6M1eXcwQUdBBUTqTrgGd8zwHiM6wwecXI3mUYOUP-RT9LnxSwqeXRy9prCm/exec';
 const NOTIF_SCRIPT='https://script.google.com/macros/s/AKfycbxAbTLIFiavJUN6LMsglw9vhlacUq4DN25jfH4_w2NW-stZ9Xuwb67l1LFpQ5gaKY8bfA/exec';
 const TOLERANCE_MINS=5;
-// Festivos colombianos 2026 — usados por el validador "Semanas excedidas" para ajustar el máximo
-// legal semanal cuando un agente tiene un festivo marcado como DESCANSO en la malla (ver
-// computeExceededWeeks).
-const FESTIVOS_2026=[
- '2026-01-01','2026-01-06','2026-03-23','2026-04-02',
- '2026-04-03','2026-05-01','2026-05-25','2026-06-15',
- '2026-06-22','2026-06-29','2026-07-13','2026-07-20',
- '2026-08-07','2026-08-18','2026-10-12','2026-11-02',
- '2026-11-16','2026-12-08','2026-12-25'
+// Festivos de Colombia 2026 y 2027 (Ley 51 de 1983 / Emiliani) — ÚNICO lugar de esta lista en index.html. Los usan el
+// validador «Semanas excedidas» (día compensatorio) y el plazo de 3 días hábiles del Reglamento. PiGOps_Reglamento.gs
+// tiene su copia (FESTIVOS_CO) y test/pigops_reglamento_test.js comprueba que sean idénticas y correctas (Pascua + Emiliani).
+// Para 2028 en adelante: agregar las fechas aquí y en el .gs.
+const FESTIVOS_CO=[
+ '2026-01-01','2026-01-12','2026-03-23','2026-04-02','2026-04-03','2026-05-01','2026-05-18','2026-06-08',
+ '2026-06-15','2026-06-29','2026-07-20','2026-08-07','2026-08-17','2026-10-12','2026-11-02','2026-11-16',
+ '2026-12-08','2026-12-25',
+ '2027-01-01','2027-01-11','2027-03-22','2027-03-25','2027-03-26','2027-05-01','2027-05-10','2027-05-31',
+ '2027-06-07','2027-07-05','2027-07-20','2027-08-07','2027-08-16','2027-10-18','2027-11-01','2027-11-15',
+ '2027-12-08','2027-12-25'
 ];
+// ── REGLAMENTO INTERNO DE TRABAJO (v18.5): tardanzas desde el 1-nov-2026 ──
+// Más de 5 min de retraso = tardanza del Reglamento (sin strikes). Cada una abre un plazo de 3 días hábiles para
+// justificarla o apelarla; PiGOps_Reglamento.gs (disparadores) confirma las vencidas y envía llamados de atención / faltas graves.
+const REGLAMENTO_DESDE='2026-11-01';
+const REGLAMENTO_DESDE_DATE=new Date(2026,10,1);
+const REG_TOLERANCIA_MIN=5,REG_PLAZO_DIAS_HABILES=3;
+const regIsoLocal=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+function regEsHabil(iso){const [y,m,d]=iso.split('-').map(Number);const w=new Date(y,m-1,d).getDay();return w!==0&&w!==6&&!FESTIVOS_CO.includes(iso);}
+function regFechaLimite(iso){let [y,m,d]=iso.split('-').map(Number);const c=new Date(y,m-1,d);let k=0;while(k<REG_PLAZO_DIAS_HABILES){c.setDate(c.getDate()+1);if(regEsHabil(regIsoLocal(c)))k++;}return regIsoLocal(c);}
+const regDDMMYYYY=iso=>{const [y,m,d]=iso.split('-');return `${d}/${m}/${y}`;};
 // Detecta la novedad de "medio día de votaciones" en cualquiera de sus variantes en la malla
 // (ej. "1/2 DIA DE VOTACIONES", "1/2 DE VOTACION", "1/2  DIA DE VOTACION" con doble espacio,
 // "1/2 VOTACIONES", "MEDIO DIA VOTACION"). En vez de comparar contra una lista fija de strings
@@ -1842,8 +1887,9 @@ function askText(title,sub,placeholder,required){
 }
 async function apelarStrike(wid){
  const ctx=window._myStrikeCtx?.[wid];if(!ctx)return;
+ if(ctx.regLimite&&Date.now()>ctx.regLimite){toast('⏱ El plazo de 3 días hábiles para justificar esta tardanza ya venció');return;}
  const userEmail=document.getElementById('user-email').textContent;
- const motivo=await askText('Apelar strike',`${ctx.fecha} — ${ctx.detalle}\n\nExplica por qué fue justificado (ej. cita médica, calamidad, falla técnica comprobable).`,'Escribe tu explicación…',true);
+ const motivo=await askText(ctx.regLimite?'Justificar o apelar tardanza':'Apelar strike',`${ctx.fecha} — ${ctx.detalle}\n\nExplica por qué fue justificado (ej. cita médica, calamidad, falla técnica comprobable).`,'Escribe tu explicación…',true);
  if(!motivo)return;
  const r=await window.saveStrikeAppeal(wid,{userEmail,userName:document.getElementById('user-name')?.textContent||userEmail.split('@')[0],fecha:ctx.fecha,cat:ctx.cat,detalle:ctx.detalle,motivo,status:'pending',createdAt:new Date().toISOString()});
  if(!r.ok){toast('❌ No se pudo enviar la apelación: '+r.error);return;}
@@ -1910,18 +1956,23 @@ function computeAgentStrikes(o){
  // strike distinto cada día (Felipe Casallas, turnos del 25 y 26-sep sin cerrar).
  const re=turno.endTime?.toDate?.()||(turno.status==='active'&&(now-rs)/3600000<=20?now:undefined);
  const hhmm=x=>x.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'});
- const mk=(cat,detalle)=>{
+ const mk=(cat,detalle,extra)=>{
  const wid=strikeWaiverId(email,m.fecha,STRIKE_CATS[cat].waiver);
  const w=wid&&waiverMap?waiverMap.get(wid):null;
  const ap=wid&&appealMap?appealMap.get(wid):null;
- out.push({date:d,fecha:m.fecha,cat,detalle,wid,waived:w?{motivo:w.motivo||'',por:w.waivedBy||'',porNombre:w.waivedByName||'',at:w.waivedAt?new Date(w.waivedAt):null,appealId:w.appealId||null,appeal:ap||null}:null,appeal:ap||null});
+ out.push({date:d,fecha:m.fecha,cat,detalle,wid,waived:w?{motivo:w.motivo||'',por:w.waivedBy||'',porNombre:w.waivedByName||'',at:w.waivedAt?new Date(w.waivedAt):null,appealId:w.appealId||null,appeal:ap||null}:null,appeal:ap||null,...(extra||{})});
  };
  if(rs&&ss){
  const diff=Math.round((rs-ss)/60000);
  const det=`Llegó ${diff} min tarde (${hhmm(rs)}, programado ${m.inicio})`;
- if(diff>=60)mk('grave',det);
- else if(diff>=20)mk('moderada',det);
- else if(diff>cfg.tardanzaMins)mk('leve',det);
+ // Desde el 1-nov-2026 rige el Reglamento: tolerancia fija de 5 min y SIN strikes (reg:true los separa del modelo de strikes;
+ // los muestran «Reglamento» del agente y el módulo «Llamados de atención»).
+ const regla=d>=REGLAMENTO_DESDE_DATE;
+ const extra=regla?{reg:true,min:diff,prog:m.inicio,real:hhmm(rs)}:null;
+ const umbral=regla?REG_TOLERANCIA_MIN:cfg.tardanzaMins;
+ if(diff>=60)mk('grave',det,extra);
+ else if(diff>=20)mk('moderada',det,extra);
+ else if(diff>umbral)mk('leve',det,extra);
  }
  if(se&&re){
  // turno nocturno: parseTime da el fin con la fecha de inicio; si se<ss sumar 24 h
@@ -1939,6 +1990,9 @@ function computeAgentStrikes(o){
 // strikes con apelación aprobada se excluyen por completo (si habían generado un llamado, ese llamado desaparece).
 function applyStrikePolicy(strikes,now){
  now=now||new Date();
+ // Las tardanzas del Reglamento (reg:true, desde el 1-nov-2026) no son strikes: no suman contadores ni llamados del modelo.
+ const reglamento=strikes.filter(s=>s.reg);
+ strikes=strikes.filter(s=>!s.reg);
  const vig=strikeVigencia(now);
  const waived=strikes.filter(s=>s.waived);
  const valid=strikes.filter(s=>!s.waived).sort((a,b)=>a.date-b.date);
@@ -1964,7 +2018,7 @@ function applyStrikePolicy(strikes,now){
  const byMonth={};
  vig.months.forEach(mo=>{byMonth[mo.key]=[];});
  active.forEach(s=>{const k=strikeMonthKey(s.date);if(byMonth[k])byMonth[k].push(s);});
- return{vig,active,vencidos,waived,llamados,llamadosActive,llamadosArchived,counts,llamadosByCat,pending,byMonth,
+ return{reglamento,vig,active,vencidos,waived,llamados,llamadosActive,llamadosArchived,counts,llamadosByCat,pending,byMonth,
  totalActive:active.length,totalLlamados:llamadosActive.length};
 }
 // Historial para el correo de proceso disciplinario: los primeros 3 llamados VIGENTES con sus strikes.
@@ -2101,7 +2155,7 @@ async function notifyStrikeLevels(model,userEmail,agentName){
 async function loadStrikes(){
  const userEmail=document.getElementById('user-email').textContent;
  const isAdmin=(window.ADMINS||ADMINS).includes(userEmail)||isSuperAdminUser(userEmail);
- if(isAdmin&&!window._agentPreviewMode){document.getElementById('strikes-wrap').style.display='none';return;}
+ if(isAdmin&&!window._agentPreviewMode){document.getElementById('strikes-wrap').style.display='none';const rw=document.getElementById('reg-wrap');if(rw)rw.style.display='none';return;}
  const wrap=document.getElementById('strikes-wrap');
  const list=document.getElementById('strikes-list');
  const summary=document.getElementById('strikes-summary');
@@ -2119,6 +2173,7 @@ async function loadStrikes(){
  return;
  }
  notifyStrikeLevels(model,userEmail,document.getElementById('user-name').textContent).catch(e=>console.warn('[strikes] notificaciones:',e));
+ loadReglamentoAgente(model,userEmail).catch(e=>console.warn('[reglamento] sección del agente:',e));
  const totalLlamados=model.totalLlamados,totalStrikes=model.totalActive,enDescargos=totalLlamados>=3;
  wrap.style.display='block';
  const pct=Math.min(100,Math.round((totalLlamados/3)*100));
@@ -2199,6 +2254,97 @@ async function loadStrikes(){
  const detalleHTML=totalStrikes===0?`<div style="padding:24px 16px;text-align:center;"><div style="font-size:40px;margin-bottom:10px;">🏆</div><div style="font-size:15px;font-weight:700;color:#4ade80;margin-bottom:4px;">¡Sin strikes vigentes en ${vig.label}!</div><div style="font-size:12px;color:var(--text-dim);">Tu puntualidad y responsabilidad son excelentes. ¡Sigue así!</div></div>`
  :`<div style="padding:8px 16px 0;font-size:10px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:.06em;font-family:var(--mono);">📨 ¿Un strike fue justificado? Puedes apelarlo</div>`+strikeMonthsHTML(model,{apelar});
  list.innerHTML=politicaHTML+llamadosHTML+avisoHTML+tipoRows+detalleHTML+strikeHistorialHTML(model,'agente')+reglamHTML;
+}
+// ── REGLAMENTO: sección «Mi turno» del agente (v18.5) ──
+// Tardanzas desde el 1-nov-2026 con su plazo de 3 días hábiles, y el historial de llamados de atención ENVIADOS.
+async function loadReglamentoAgente(model,userEmail){
+ const wrap=document.getElementById('reg-wrap');if(!wrap)return;
+ const regs=(model.reglamento||[]).slice().sort((a,b)=>a.date-b.date);
+ let casos=[];
+ try{casos=window.getReglamentoCasos?await window.getReglamentoCasos(userEmail):[];}catch(e){casos=[];}
+ const llamados=casos.filter(c=>c.userEmail===userEmail&&c.tipo==='llamado'&&c.estado==='Enviado'&&!c.prueba).sort((a,b)=>(b.enviadoISO||'').localeCompare(a.enviadoISO||''));
+ if(!regs.length&&!llamados.length){wrap.style.display='none';return;}
+ const now=Date.now();
+ window._myStrikeCtx=window._myStrikeCtx||{};
+ const filas=regs.map(s=>{
+ const iso=regIsoLocal(s.date),lim=regFechaLimite(iso),fin=new Date(lim+'T23:59:59.999').getTime();
+ const a=s.appeal;let est,color,boton='';
+ if(s.waived){est='✅ Justificada — no cuenta';color='#4ade80';}
+ else if(a&&a.status==='pending'&&new Date(a.createdAt).getTime()<=fin){est='⏳ Apelación en revisión';color='#fbbf24';}
+ else if(a&&a.status==='rejected'){est='Falta confirmada (apelación rechazada)'+(a.respuesta?' — '+a.respuesta:'');color='#f87171';}
+ else if(now>fin){est='Falta confirmada (venció el plazo)';color='#f87171';}
+ else{
+ est='⏳ En plazo: puedes justificarla o apelarla hasta el '+regDDMMYYYY(lim);color='#fbbf24';
+ if(s.wid){window._myStrikeCtx[s.wid]={fecha:s.fecha,cat:'tardanza',detalle:`Tardanza ${s.min} min — ${s.detalle}`,regLimite:fin};
+ boton=`<button onclick="apelarStrike('${s.wid}')" style="margin-left:8px;background:none;border:1px solid var(--border);color:var(--text-muted);padding:2px 9px;border-radius:6px;font-size:10px;font-family:var(--mono);cursor:pointer;">Justificar / apelar</button>`;}
+ }
+ return `<div style="padding:8px 16px;border-bottom:1px solid var(--border);font-size:12px;"><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;"><span><strong>${esc(s.fecha)}</strong> · programada ${esc(s.prog||'')} · iniciaste ${esc(s.real||'')} · <strong>${s.min} min</strong> de retardo</span></div><div style="color:${color};font-size:11px;margin-top:3px;">${esc(est)}${boton}</div></div>`;
+ }).join('');
+ const enPlazo=regs.filter(s=>{if(s.waived)return false;const a=s.appeal;const fin=new Date(regFechaLimite(regIsoLocal(s.date))+'T23:59:59.999').getTime();return now<=fin&&!(a&&a.status==='rejected');});
+ const aviso=enPlazo.length?`<div style="margin:10px 16px;background:rgba(251,191,36,0.1);border:1px solid rgba(251,191,36,0.4);border-radius:8px;padding:10px 12px;font-size:12px;color:#fbbf24;">⏳ Tienes ${enPlazo.length} tardanza${enPlazo.length!==1?'s':''} en plazo de justificación. La fecha límite más próxima es el <strong>${regDDMMYYYY(enPlazo.map(s=>regFechaLimite(regIsoLocal(s.date))).sort()[0])}</strong> (3 días hábiles). Si no la justificas a tiempo, la falta queda confirmada.</div>`:'';
+ const hist=llamados.length?`<div style="padding:10px 16px 4px;font-size:10px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:.06em;font-family:var(--mono);">📄 Historial de llamados de atención</div>`+llamados.map(c=>`<div style="padding:6px 16px;border-bottom:1px solid var(--border);font-size:12px;">Llamado n.º ${c.numeroEnVentana||''} por la tardanza del ${esc(c.fecha||'')} (${c.minutos||''} min) · enviado el ${esc(regDDMMYYYY(c.enviadoISO||''))}${c.pdfUrl?` · <a href="${esc(c.pdfUrl)}" target="_blank" rel="noopener" style="color:var(--p2);">Ver PDF</a>`:''}</div>`).join(''):'';
+ wrap.style.display='block';
+ wrap.innerHTML=`<div class="strikes-header"><div class="strikes-title">⚖️ Reglamento Interno — tardanzas desde el 1 de noviembre de 2026</div></div>
+ <div style="margin:10px 16px 0;font-size:11px;color:var(--text-dim);line-height:1.6;">Una llegada con más de ${REG_TOLERANCIA_MIN} minutos de retraso abre un plazo de ${REG_PLAZO_DIAS_HABILES} días hábiles (sin sábados, domingos ni festivos) para justificarla o apelarla. La 1.ª y 2.ª tardanza de la ventana de 3 meses confirmadas dan un llamado de atención; desde la 3.ª es falta grave.</div>${aviso}${filas||'<div style="padding:14px 16px;font-size:12px;color:var(--text-dim);">Sin tardanzas registradas bajo el Reglamento.</div>'}${hist}`;
+}
+// ── REGLAMENTO: módulo «Llamados de atención» del Panel de Control (admins) ──
+function regEtiquetaCaso(c){
+ if(c.tipoRegistro==='art60_13')return{t:'Falta grave (art. 60 num. 13) — 3 llamados vigentes',c:'#f87171'};
+ if(c.tipo==='falta_grave')return{t:'Falta grave (art. 60 num. 2) — 3.ª tardanza'+(c.estado==='Enviado'?' · Enviado a Talento Humano':''),c:'#f87171'};
+ return{t:'Llamado de atención'+(c.numeroEnVentana?' n.º '+c.numeroEnVentana:''),c:'#fb923c'};
+}
+function renderRegCasosList(el,casos){
+ const me=document.getElementById('user-email')?.textContent||'';
+ const puede=isAdminEmail(me);
+ const ord=(a,b)=>(b.fechaISO||'').localeCompare(a.fechaISO||'');
+ const plazo=casos.filter(c=>c.estado==='En plazo de justificación').sort((a,b)=>(a.limiteISO||'').localeCompare(b.limiteISO||''));
+ const enviados=casos.filter(c=>c.estado==='Enviado').sort((a,b)=>(b.enviadoISO||'').localeCompare(a.enviadoISO||''));
+ const otros=casos.filter(c=>c.estado==='Justificado'||c.estado==='Cancelado').sort(ord);
+ const tag=c=>c.prueba?'<span style="font-size:9px;background:#fef3c7;color:#92400e;border-radius:4px;padding:1px 5px;margin-left:6px;">PRUEBA</span>':'';
+ const quien=c=>`<div style="font-size:13px;font-weight:700;color:var(--text);">${esc(c.userName||c.userEmail)}${tag(c)}</div><div style="font-size:11px;color:var(--text-dim);font-family:var(--mono);">${esc(c.userEmail||'')}${c.cargo?' · '+esc(c.cargo):''}</div>`;
+ const fila=(c,extra)=>{const e=regEtiquetaCaso(c);return `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:8px;"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;"><div>${quien(c)}<div style="font-size:12px;color:${e.c};margin-top:3px;">${esc(e.t)}</div><div style="font-size:11px;color:var(--text-muted);margin-top:2px;">${c.tipoRegistro==='art60_13'?'':`Tardanza del ${esc(c.fecha||'')} · ${c.minutos||''} min (prog. ${esc(c.programada||'')}, inicio ${esc(c.inicioReal||'')})`}</div>${extra||''}</div></div></div>`;};
+ const seccion=(tit,items,vacio)=>`<div style="font-size:11px;font-weight:800;color:var(--text-dim);text-transform:uppercase;letter-spacing:.06em;font-family:var(--mono);margin:14px 0 8px;">${tit} (${items.length})</div>${items.length?'':`<div style="font-size:12px;color:var(--text-dim);padding:8px 2px;">${vacio}</div>`}`;
+ const btnCancel=c=>puede?`<button onclick="cancelarRegCaso('${esc(c.id)}')" style="margin-top:8px;background:none;border:1px solid rgba(248,113,113,0.4);color:#f87171;padding:3px 10px;border-radius:6px;font-size:11px;cursor:pointer;">✕ Cancelar (con motivo)</button>`:'';
+ const sinReglas=window._regCasosSinReglas?'<div style="background:rgba(251,191,36,0.1);border:1px solid rgba(251,191,36,0.4);border-radius:8px;padding:8px 12px;font-size:11px;color:#fbbf24;margin-bottom:8px;">⚠ Firestore no deja leer <code>reglamento_casos</code>: falta publicar la regla (ver CLAUDE.md, «Reglamento»). Mientras tanto el módulo se ve vacío.</div>':'';
+ el.innerHTML=sinReglas+seccion('⏳ En plazo de justificación',plazo,'Ninguno en plazo.')+plazo.map(c=>fila(c,`<div style="font-size:11px;color:#fbbf24;margin-top:3px;">Fecha límite: ${esc(regDDMMYYYY(c.limiteISO||''))}${c.espera?' · '+esc(c.espera):''}</div>${btnCancel(c)}`)).join('')
+ +seccion('📨 Enviados',enviados,'Aún no se ha enviado ninguno.')+enviados.map(c=>fila(c,`<div style="font-size:11px;color:var(--text-muted);margin-top:3px;">Enviado el ${esc(regDDMMYYYY(c.enviadoISO||''))}${c.pdfUrl?` · <a href="${esc(c.pdfUrl)}" target="_blank" rel="noopener" style="color:var(--p2);">PDF</a>`:''}${c.soporteUrl?` · <a href="${esc(c.soporteUrl)}" target="_blank" rel="noopener" style="color:var(--p2);">Soporte Excel</a>`:''}</div>`)).join('')
+ +(otros.length?seccion('Justificados / cancelados',otros,'')+otros.map(c=>fila(c,`<div style="font-size:11px;color:var(--text-dim);margin-top:3px;">${esc(c.estado)}${c.motivoCancelacion?': '+esc(c.motivoCancelacion):''}${c.canceladoPor?' · por '+esc(c.canceladoPor):''}</div>`)).join(''):'');
+}
+async function pmCasos(cyc,modals){
+ const casos=await panelGet(cyc,'casos');
+ if(cyc&&cyc.fails.casos){if(modals)panelModalNote('reg-casos-list','No se pudieron actualizar los llamados de atención.');throw new Error('Llamados de atención');}
+ window._regCasos=casos;
+ const n=casos.filter(c=>c.estado==='En plazo de justificación').length;
+ const badge=document.getElementById('reg-casos-badge');
+ if(badge){badge.style.display=n>0?'inline':'none';badge.textContent=n;}
+ if(modals){const el=document.getElementById('reg-casos-list');if(el)renderRegCasosList(el,casos);}
+ return casos;
+}
+async function showReglamentoCasos(){
+ const me=document.getElementById('user-email').textContent;
+ if(!isAdminEmail(me))return;
+ document.getElementById('reg-casos-modal')?.remove();
+ const modal=document.createElement('div');
+ modal.id='reg-casos-modal';modal.className='abs-overlay';
+ modal.style.cssText='position:fixed;inset:0;background:rgba(13,11,20,0.88);backdrop-filter:blur(8px);z-index:700;display:flex;align-items:center;justify-content:center;';
+ modal.innerHTML=`<div style="background:var(--surface);border:1px solid rgba(244,114,182,0.3);border-radius:20px;padding:24px;width:min(720px,94vw);max-height:84vh;overflow-y:auto;position:relative;">
+ <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;"><div style="font-size:17px;font-weight:800;">📣 Llamados de atención y faltas graves</div><button onclick="document.getElementById('reg-casos-modal').remove()" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:20px;">×</button></div>
+ <div style="font-size:11px;color:var(--text-dim);margin-bottom:10px;">Reglamento Interno desde el 1-nov-2026. Los envíos los hace el script de Apps Script a los plazos vencidos (cada día hábil a las 7:00). Puedes cancelar un registro antes de su envío, dejando el motivo.</div>
+ <div id="reg-casos-list" style="font-size:12px;color:var(--text-dim);">Cargando…</div></div>`;
+ document.body.appendChild(modal);
+ try{renderRegCasosList(document.getElementById('reg-casos-list'),await pmCasos());}
+ catch(e){const el=document.getElementById('reg-casos-list');if(el)el.innerHTML='❌ No se pudo cargar (¿reglas de Firestore para reglamento_casos?).';}
+}
+async function cancelarRegCaso(id){
+ const me=document.getElementById('user-email').textContent;
+ const c=(window._regCasos||[]).find(x=>x.id===id);
+ if(!c||!isAdminEmail(me)||c.estado!=='En plazo de justificación')return;
+ const motivo=await askText('Cancelar registro',`${c.userName||c.userEmail} · tardanza del ${c.fecha}\n\nNo se enviará el llamado/notificación y la tardanza dejará de contar.`,'Motivo de la cancelación (obligatorio)',true);
+ if(!motivo)return;
+ const r=await window.cancelarReglamentoCaso(id,motivo,me);
+ if(!r.ok){toast('❌ No se pudo cancelar: '+r.error);return;}
+ toast('✅ Registro cancelado');
+ try{const el=document.getElementById('reg-casos-list');renderRegCasosList(el,await pmCasos());}catch(e){}
 }
 // ── Historial de strikes por agente (solo consulta) para admins y coordinadores ──
 async function showStrikeHistorial(prefEmail){
@@ -2350,6 +2496,23 @@ function openConfig(){
  const inpMD=document.getElementById('inp-malla-notif-delay');if(inpMD)inpMD.value=md;
  const inpST=document.getElementById('inp-strike-tardanza');if(inpST)inpST.value=localStorage.getItem('pg_strike_tardanza')||'5';
  const inpSN=document.getElementById('inp-strike-nodesconexion');if(inpSN)inpSN.value=localStorage.getItem('pg_strike_nodesconexion')||'4';
+ loadReglamentoConfig();
+}
+// Interruptor de modo prueba del Reglamento: visible solo para el Super Admin; el estado real vive en Firestore.
+async function loadReglamentoConfig(){
+ const me=document.getElementById('user-email')?.textContent||'';
+ const ver=isSuperAdminUser(me);
+ ['reg-config-sec','reg-config-field'].forEach(id=>{const el=document.getElementById(id);if(el)el.style.display=ver?'':'none';});
+ if(!ver)return;
+ const chk=document.getElementById('chk-reglamento-prueba');if(!chk)return;
+ try{const g=await window.getGlobalConfig();chk.checked=!(g&&g.reglamentoModoPrueba===false);}catch(e){chk.checked=true;}
+}
+async function toggleReglamentoModoPrueba(chk){
+ const valor=chk.checked;
+ if(!valor&&!confirm('¿Desactivar el modo prueba? Desde la próxima ejecución del script, los llamados de atención y las notificaciones de falta grave se enviarán a los destinatarios REALES (agente, líder y Talento Humano).')){chk.checked=true;return;}
+ const r=await window.setReglamentoModoPrueba(valor);
+ if(!r.ok){chk.checked=!valor;toast('❌ No se pudo cambiar el modo prueba: '+r.error);return;}
+ toast(valor?'🧪 Modo prueba ACTIVO: los correos del Reglamento solo te llegan a ti':'📨 Modo prueba DESACTIVADO: los correos del Reglamento van a los destinatarios reales');
 }
 function closeConfig(){document.getElementById('overlay').classList.remove('open');}
 function showDelegatedSuperAdminBanner(untilDate){
@@ -4622,9 +4785,10 @@ const PANEL_READERS={
  apelaciones:(f,s)=>window.getStrikeAppeals?window.getStrikeAppeals(undefined,s):[],
  waivers:(f,s)=>window.getStrikeWaivers?window.getStrikeWaivers(undefined,s):[],
  periodo:(f,s,a)=>window.getRecentTurnos(a.fromDate,f,a.toDate,s),
- aprobadas:(f,s,a)=>window.getApprovedOvertimeEvents?window.getApprovedOvertimeEvents(a.fromDate,a.toDate,s):[]
+ aprobadas:(f,s,a)=>window.getApprovedOvertimeEvents?window.getApprovedOvertimeEvents(a.fromDate,a.toDate,s):[],
+ casos:(f,s)=>window.getReglamentoCasos?window.getReglamentoCasos(undefined,s):[]
 };
-const PANEL_FAIL_LABEL={turnos:'Turnos en curso y balance',ausencias:'Ausencias',extras:'Horas extras',apelaciones:'Apelaciones de strikes',waivers:'Strikes retirados',aprobadas:'Extras aprobadas',aprobadasNomina:'Nómina',periodo:'Turnos del período',strikeTurnos:'Strikes vigentes',historialTurnos:'Historial de strikes',malla:'Malla',extrasTabla:'Tabla de horas extras',insights:'Insights'};
+const PANEL_FAIL_LABEL={turnos:'Turnos en curso y balance',ausencias:'Ausencias',extras:'Horas extras',apelaciones:'Apelaciones de strikes',waivers:'Strikes retirados',aprobadas:'Extras aprobadas',aprobadasNomina:'Nómina',periodo:'Turnos del período',strikeTurnos:'Strikes vigentes',historialTurnos:'Historial de strikes',casos:'Llamados de atención',malla:'Malla',extrasTabla:'Tabla de horas extras',insights:'Insights'};
 function panelCycleStart(force){return{force:!!force,memo:new Map(),reads:{},fails:{},notes:[]};}
 function panelRead(cyc,key,fn,fallback){
  if(!cyc)return Promise.resolve().then(()=>fn(false,false));
@@ -4687,7 +4851,7 @@ function panelModalNote(containerId,msg){
  el.querySelectorAll(':scope > .p2-note').forEach(n=>n.remove());
  el.insertAdjacentHTML('afterbegin',`<div class="p2-note" style="font-size:11px;color:#fbbf24;background:rgba(251,191,36,0.08);border:1px solid rgba(251,191,36,0.3);border-radius:8px;padding:6px 10px;margin-bottom:10px;">⚠ ${esc(msg)} Se muestran los datos anteriores.</div>`);
 }
-const PANEL_MODULE_BTNS={'btn-overtime-requests':['extras'],'btn-earlyleave-requests':['turnos'],'btn-exceeded-weeks':['malla'],'btn-strike-appeals':['apelaciones'],'btn-strike-historial':['m:Historial de strikes','historialTurnos']};
+const PANEL_MODULE_BTNS={'btn-overtime-requests':['extras'],'btn-earlyleave-requests':['turnos'],'btn-exceeded-weeks':['malla'],'btn-strike-appeals':['apelaciones'],'btn-strike-historial':['m:Historial de strikes','historialTurnos'],'btn-reg-casos':['casos']};
 function panelMarkStale(cyc){
  Object.entries(PANEL_MODULE_BTNS).forEach(([id,keys])=>{
  const b=document.getElementById(id);if(!b)return;
@@ -4734,6 +4898,7 @@ async function refreshPanel(){
  ['Horas extras',()=>pmOvertime(cyc,true)],
  ['Salidas anticipadas',()=>loadEarlyLeaveBadge(cyc,true)],
  ['Apelaciones de strikes',()=>loadStrikeAppealsBadge(cyc,true)],
+ ['Llamados de atención',()=>pmCasos(cyc,true)],
  ['Historial de strikes',()=>pmHistorial(cyc)],
  ['Nómina',()=>pmPayroll(cyc)]
  ];
@@ -4829,6 +4994,7 @@ async function loadPanel2(opts){
  // refreshPanel() junto con sus modales abiertos (modules:'none'); aquí comparten las mismas lecturas del ciclo.
  if(opts.modules!=='none'){
  pmOvertime(cyc).catch(()=>{});
+ pmCasos(cyc).catch(()=>{});
  loadEarlyLeaveBadge(cyc).catch(()=>{});
  loadStrikeAppealsBadge(cyc).catch(()=>{});
  }
@@ -6756,7 +6922,7 @@ function isFestivo2026(fecha){
  const d=parseDate(fecha);
  if(!d)return false;
  const iso=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
- return FESTIVOS_2026.includes(iso);
+ return FESTIVOS_CO.includes(iso);
 }
 function computeExceededWeeks(){
  // Validador de "Semanas excedidas": recorre TODA la malla cargada (no solo el período

@@ -36,6 +36,7 @@ function build(){
    {id:'E2',type:'overtime',status:'approved',agentEmail:'a2@pibox.app',agentName:'Beto Dos',extraMins:20,timestamp:ts(new Date(sod.getTime()+2000)),mallaEntry:{fecha:`${today.getDate()}/${today.getMonth()+1}/${today.getFullYear()}`}}
   ],
   strike_waivers:[{id:'a1@pibox.app_20260101_tardanza',userEmail:'a1@pibox.app',cat:'tardanza',fecha:'1/1/2026'}],
+  reglamento_casos:[{id:'ana_20261104_reg',tipoRegistro:'tardanza',userEmail:'a1@pibox.app',userName:'Ana Uno',tipo:'llamado',estado:'En plazo de justificación',fecha:'04/11/2026',fechaISO:'2026-11-04',limiteISO:'2026-11-09',minutos:14,programada:'8:00 a. m.',inicioReal:'8:14 a. m.'}],
   strike_appeals:[{id:'AP1',userEmail:'a2@pibox.app',userName:'Beto Dos',status:'pending',fecha:'2/10/2026',detalle:'llegó tarde',motivo:'trancón',createdAt:new Date().toISOString()}]
  };
  const log=[];const toasts=[];const errors=[];
@@ -115,12 +116,12 @@ const txt=s=>s.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ');
   t('N1 carga normal: turnos recientes se leen 1 vez (badge de salidas anticipadas comparte la lectura)',r.turnos300===1,r);
   t('N2 carga normal: eventos de horas extras 1 vez (badge + tabla Extras comparten)',r.extras===1,r);
   t('N3 carga normal: apelaciones 1 vez (badge + Insights comparten)',r.apelaciones===1,r);
-  t('N4 carga normal: ausencias, retiros, período, extras aprobadas y strikes: 1 lectura cada una',r.ausencias===1&&r.waivers===1&&r.periodo===1&&r.aprobadas===1&&r.strike===1,r);
-  t('N5 carga normal: 8 consultas en total',sum(r)===8,r);
+  t('N4 carga normal: ausencias, retiros, período, extras aprobadas, strikes y llamados de atención: 1 lectura cada una',r.ausencias===1&&r.waivers===1&&r.periodo===1&&r.aprobadas===1&&r.strike===1&&r.reglamento_casos===1,r);
+  t('N5 carga normal: 9 consultas en total',sum(r)===9,r);
   t('N6 carga normal pinta las tarjetas «En turno ahora» (Ana y Carla)',/Ana Uno/.test(H(A,'panel2-active'))&&/Carla Tres/.test(H(A,'panel2-active'))&&!/Beto Dos/.test(H(A,'panel2-active')));
   const bal=txt(H(A,'panel2-balance-card'));
   t('N7 balance hoy: 5 programados, 4 registraron, 1 pendiente',/Programados 5 .*Registraron turno 4 .*Pendientes 1/.test(bal),bal);
-  t('N8 badges: horas extras 1, salidas anticipadas 1, apelaciones 1',A.getEl('overtime-badge').textContent==='1'&&A.getEl('earlyleave-badge').textContent==='1'&&A.getEl('strike-appeals-badge').textContent==='1',[A.getEl('overtime-badge').textContent,A.getEl('earlyleave-badge').textContent,A.getEl('strike-appeals-badge').textContent]);
+  t('N8 badges: horas extras 1, salidas anticipadas 1, apelaciones 1, llamados en plazo 1',A.getEl('overtime-badge').textContent==='1'&&A.getEl('earlyleave-badge').textContent==='1'&&A.getEl('strike-appeals-badge').textContent==='1'&&A.getEl('reg-casos-badge').textContent==='1',[A.getEl('overtime-badge').textContent,A.getEl('earlyleave-badge').textContent,A.getEl('strike-appeals-badge').textContent]);
   t('N9 la carga normal deja el texto «Actualizado …» junto al ↻',/^Actualizado \d/.test(A.getEl('panel-last-update').textContent),A.getEl('panel-last-update').textContent);
   t('N10 sin errores en consola en la carga normal',A.errors.length===0,A.errors);
   A.reset();await A.ctx.loadPanel2();const r2=A.reads();
@@ -138,8 +139,8 @@ const txt=s=>s.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ');
   t('R1 mientras carga el botón queda deshabilitado y girando',btn.disabled===true&&btn.classList.contains('spinning'));
   await p;
   const r=A.reads();
-  t('R2 un refresh completo = 8 consultas (1 por módulo), con los modales cerrados',sum(r)===8,r);
-  t('R3 cada módulo se lee exactamente una vez',r.turnos300===1&&r.ausencias===1&&r.extras===1&&r.apelaciones===1&&r.waivers===1&&r.periodo===1&&r.aprobadas===1&&r.strike===1,r);
+  t('R2 un refresh completo = 9 consultas (1 por módulo), con los modales cerrados',sum(r)===9,r);
+  t('R3 cada módulo se lee exactamente una vez',r.turnos300===1&&r.ausencias===1&&r.extras===1&&r.apelaciones===1&&r.waivers===1&&r.periodo===1&&r.aprobadas===1&&r.strike===1&&r.reglamento_casos===1,r);
   t('R4 el refresh ignoró la caché de 60 s: vio el turno nuevo de Dario en «En turno ahora»',/Dario Cuatro/.test(H(A,'panel2-active')));
   t('R5 balance hoy actualizado (5 registraron, 0 pendientes)',/Registraron turno 5 .*Pendientes 0/.test(txt(H(A,'panel2-balance-card'))),txt(H(A,'panel2-balance-card')));
   t('R6 badges actualizados: horas extras 2, apelaciones 2',A.getEl('overtime-badge').textContent==='2'&&A.getEl('strike-appeals-badge').textContent==='2',[A.getEl('overtime-badge').textContent,A.getEl('strike-appeals-badge').textContent]);
@@ -156,7 +157,7 @@ const txt=s=>s.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ');
   t('R14 …y la caché de strikes conserva los meses anteriores y suma lo nuevo',sc.some(x=>x.id==='OLD1')&&sc.some(x=>x.id==='OLD2')&&sc.some(x=>x.id==='T4'));
   A.reset();A.ctrl.delay=30;
   const p1=A.ctx.refreshPanel();const p2=A.ctx.refreshPanel();await Promise.all([p1,p2]);A.ctrl.delay=0;
-  t('R15 un segundo clic mientras carga se ignora (sigue siendo 1 sola ronda de 8 lecturas)',sum(A.reads())===8,A.reads());
+  t('R15 un segundo clic mientras carga se ignora (sigue siendo 1 sola ronda de 9 lecturas)',sum(A.reads())===9,A.reads());
   A.run('window._strikeTurnosCache.ts=Date.now()-16*60000');A.reset();await A.ctx.refreshPanel();
   const sr=A.log.find(x=>x.kind==='strike');const s5=new Date(new Date().getFullYear(),new Date().getMonth()-4,1);
   t('R16 con la caché de strikes vencida (>15 min) el refresh hace la lectura completa de 5 meses',sr&&sr.from.getTime()===s5.getTime(),sr&&String(sr.from));
@@ -185,7 +186,7 @@ const txt=s=>s.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ');
  }
  // ═══ 5. Falla TODO Firestore: el panel no se rompe ni se vacía ═══
  {const A=build();await A.ctx.loadPanel2();const activosAntes=H(A,'panel2-active');
-  ['turnos300','periodo','ausencias','extras','apelaciones','waivers','aprobadas','strike'].forEach(k=>A.ctrl.fail[k]=true);
+  ['turnos300','periodo','ausencias','extras','apelaciones','waivers','aprobadas','strike','reglamento_casos'].forEach(k=>A.ctrl.fail[k]=true);
   A.reset();await A.ctx.refreshPanel();
   t('X1 con Firestore caído el panel conserva lo que mostraba (usa los últimos datos válidos)',H(A,'panel2-active')===activosAntes&&A.getEl('btn-panel-refresh').disabled===false);
   t('X2 el aviso lista los módulos afectados',/⚠/.test(A.getEl('panel-last-update').textContent)&&/Horas extras/.test(A.getEl('panel-last-update').textContent),A.getEl('panel-last-update').textContent);
@@ -199,7 +200,7 @@ const txt=s=>s.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ');
   A.F.turnos.unshift({id:'T6',userEmail:'a4@pibox.app',userName:'Dario Cuatro',status:'ended',startTime:A.ts(new Date(A.sod.getTime()+9000)),endTime:A.ts(new Date(A.sod.getTime()+9500)),earlyLeave:true,earlyLeaveStatus:'pending_review',earlyLeaveMins:10,earlyLeaveReason:'x'});
   A.reset();await A.ctx.refreshPanel();
   const r=A.reads();
-  t('M1 modales abiertos: el refresh sigue haciendo solo 8 consultas (comparten las lecturas del ciclo)',sum(r)===8,r);
+  t('M1 modales abiertos: el refresh sigue haciendo solo 9 consultas (comparten las lecturas del ciclo)',sum(r)===9,r);
   t('M2 modal de horas extras repintado con la solicitud nueva',/Carla Tres/.test(H(A,'overtime-list'))&&/Ana Uno/.test(H(A,'overtime-list')));
   t('M3 modal de salidas anticipadas repintado con la nueva',/Dario Cuatro/.test(H(A,'earlyleave-list'))&&/Elsa Cinco/.test(H(A,'earlyleave-list')));
   t('M4 modal de apelaciones repintado con la nueva',/Carla Tres/.test(H(A,'strike-appeals-list')));
@@ -208,13 +209,23 @@ const txt=s=>s.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ');
   A.ctrl.fail.extras=true;A.reset();await A.ctx.refreshPanel();
   t('M7 falla de «Horas extras» con el modal abierto: conserva el listado y agrega aviso puntual',/No se pudieron actualizar/.test(H(A,'overtime-list'))&&/Carla Tres/.test(H(A,'overtime-list')),H(A,'overtime-list').slice(0,200));
  }
+ // ═══ 6b. Módulo «Llamados de atención» ═══
+ {const A=build();await A.ctx.loadPanel2();
+  A.present.add('reg-casos-list');
+  A.F.reglamento_casos.push({id:'ana_20261105_reg',tipoRegistro:'tardanza',userEmail:'a3@pibox.app',userName:'Carla Tres',tipo:'falta_grave',estado:'Enviado',prueba:false,fecha:'05/11/2026',fechaISO:'2026-11-05',enviadoISO:'2026-11-13',soporteUrl:'https://drive/xlsx/1',minutos:15,programada:'8:00 a. m.',inicioReal:'8:15 a. m.'});
+  A.reset();await A.ctx.refreshPanel();
+  t('LL1 el módulo «Llamados de atención» se refresca con el ↻ (modal abierto, sin lecturas extra): en plazo y enviados',/En plazo de justificación \(1\)/.test(txt(H(A,'reg-casos-list')))&&/Enviado a Talento Humano/.test(txt(H(A,'reg-casos-list')))&&/Soporte Excel/.test(H(A,'reg-casos-list'))&&sum(A.reads())===9,[txt(H(A,'reg-casos-list')).slice(0,300),A.reads()]);
+  t('LL2 tiene botón para cancelar un registro en plazo (con motivo)',/Cancelar \(con motivo\)/.test(H(A,'reg-casos-list')));
+  A.ctrl.fail.reglamento_casos=true;A.reset();await A.ctx.refreshPanel();
+  t('LL3 si falla la lectura de llamados: el resto del panel se actualiza, el módulo conserva lo anterior y avisa',/Llamados de atención/.test(A.getEl('panel-last-update').textContent)&&/Carla Tres/.test(H(A,'reg-casos-list'))&&A.getEl('btn-reg-casos').classList.contains('p2-stale'),A.getEl('panel-last-update').textContent);
+ }
  // ═══ 7. Historial de strikes y Nómina abiertos ═══
  {const A=build();await A.ctx.loadPanel2();
   let llamado=null;A.present.add('strike-hist-modal');A.present.add('strike-hist-body');
   A.ctx._strikeHistRefresh=async cyc=>{llamado=cyc;return A.ctx.buildAgentStrikeModel('a1@pibox.app',new Date(),cyc);};
   A.reset();await A.ctx.refreshPanel();
   const r=A.reads();
-  t('H1 historial abierto: reutiliza retiros/apelaciones del ciclo y lee solo los turnos del agente (1 consulta extra)',r.turnosAgente===1&&!r.waiversAgente&&!r.apelacionesAgente&&sum(r)===9,r);
+  t('H1 historial abierto: reutiliza retiros/apelaciones del ciclo y lee solo los turnos del agente (1 consulta extra)',r.turnosAgente===1&&!r.waiversAgente&&!r.apelacionesAgente&&sum(r)===10,r);
   t('H2 el historial recibió el ciclo del refresh',llamado&&llamado.force===true);
   A.ctx._strikeHistRefresh=undefined;A.present.delete('strike-hist-modal');
   A.present.add('payroll-preview-body');A.present.add('payroll-preview-table');A.present.add('payroll-send-btn');
@@ -224,7 +235,7 @@ const txt=s=>s.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ');
   t('H3 nómina con ediciones sin enviar: NO se sobrescribe y se avisa',A.run('window._payrollPreviewRecords[0].name')==='EDITADO'&&A.toasts.some(m=>/ediciones sin enviar/.test(m)),A.toasts);
   A.run('window._payrollDirty=false;');A.reset();await A.ctx.refreshPanel();
   const r2=A.reads();
-  t('H4 nómina abierta sin ediciones: se recalcula con las lecturas del ciclo (+1 consulta: extras aprobadas de la semana pasada)',r2.aprobadas===2&&r2.turnos300===1&&r2.waivers===1&&sum(r2)===9,r2);
+  t('H4 nómina abierta sin ediciones: se recalcula con las lecturas del ciclo (+1 consulta: extras aprobadas de la semana pasada)',r2.aprobadas===2&&r2.turnos300===1&&r2.waivers===1&&sum(r2)===10,r2);
   t('H5 …y la tabla de nómina se repinta con datos de la malla',A.run('window._payrollPreviewRecords').every(x=>x.name!=='EDITADO'));
  }
  // ═══ 8. Filtros activos de línea y líder ═══

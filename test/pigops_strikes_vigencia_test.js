@@ -6,7 +6,8 @@ const html=fs.readFileSync(path.join(__dirname,'..','index.html'),'utf8');
 const slice=(a,b)=>{const i=html.indexOf(a);if(i<0)throw new Error('no encontrado: '+a);const j=html.indexOf(b,i);if(j<0)throw new Error('no encontrado: '+b);return html.slice(i,j);};
 const fn=(sig)=>{const i=html.indexOf(sig);if(i<0)throw new Error('no encontrado: '+sig);const j=html.indexOf('\n}\n',i);return html.slice(i,j+3);};
 const ENGINE=slice("const STRIKE_CATS=","// Registro de «ya se notificó este llamado».");
-const code=[fn("function parseDate(s){"),fn("function parseTime(dateStr,timeStr){"),fn("function strikeWaiverId(email,fecha,cat){"),ENGINE,
+const REG=slice("const REGLAMENTO_DESDE=","const regIsoLocal"); // el motor de strikes separa las tardanzas del Reglamento (desde 1-nov-2026)
+const code=[REG,fn("function parseDate(s){"),fn("function parseTime(dateStr,timeStr){"),fn("function strikeWaiverId(email,fecha,cat){"),ENGINE,
  'return{STRIKE_CATS,strikeVigencia,strikeExpiryDate,computeAgentStrikes,applyStrikePolicy,buildLlamadoHistorialVigente};'].join('\n');
 const E=new Function(code)();
 const out=[];const t=(n,c,x)=>out.push((c?'PASS ':'FAIL ')+n+(c?'':'  '+(x||'')));
