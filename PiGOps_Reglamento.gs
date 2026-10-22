@@ -586,9 +586,25 @@ function reg_carpeta(cfg) { return cfg.folderId ? DriveApp.getFolderById(cfg.fol
 function reg_compartir(file, emails) {
   try { file.addViewers(emails.filter(function (e) { return e && e.indexOf('@') !== -1; })); } catch (e) { Logger.log('No se pudo compartir ' + file.getName() + ': ' + e.message); }
 }
+// Google Docs lanza «No es posible insertar un elemento de texto vacío» con setText(''), insertText(i,'') y appendText(''): en todo el
+// archivo se evitan (reg_vaciarParrafo / reg_ponerTexto). replaceText con '' sí es válido y es lo normal para borrar un marcador;
+// si aun así fallara, se borra el marcador con deleteText.
 function reg_reemplazar(body, marcador, valor) {
-  body.replaceText('\\{\\{' + marcador + '\\}\\}', String(valor == null ? '' : valor).replace(/\$/g, '\\$'));
+  var patron = '\\{\\{' + marcador + '\\}\\}', v = String(valor == null ? '' : valor);
+  if (v !== '') { body.replaceText(patron, v.replace(/\$/g, '\\$')); return; }
+  try { body.replaceText(patron, ''); }
+  catch (e) {
+    var r = body.findText(patron);
+    while (r) { r.getElement().asText().deleteText(r.getStartOffset(), r.getEndOffsetInclusive()); r = body.findText(patron); }
+  }
 }
+// Vacía un párrafo conservando su formato de párrafo, SIN setText(''): clear(), o deleteText si clear() no está disponible.
+function reg_vaciarParrafo(p) {
+  try { p.clear(); return; } catch (e) { /* sigue con deleteText */ }
+  var tx = p.editAsText(), len = tx.getText().length;
+  if (len > 0) tx.deleteText(0, len - 1);
+}
+function reg_ponerTexto(p, txt) { if (txt === '' || txt == null) reg_vaciarParrafo(p); else p.setText(txt); }
 // ── Formato de párrafos de Google Docs ──
 function reg_tryGet(fn) { try { return fn(); } catch (e) { return null; } }
 // Formato visible de un párrafo (texto y párrafo): fuente y tamaño a nivel de texto (null si es mixto o vacío) más alineación, interlineado, sangrías y espaciado.
@@ -676,14 +692,22 @@ function reg_pdfLlamado(cfg, d) {
       var contenedor = cont.getType() === DocumentApp.ElementType.BODY_SECTION ? cont.asBody() : cont.asTableCell();
       // Si el párrafo del marcador no tiene espaciado posterior, las faltas se separan con una línea vacía de igual formato
       var conLineaVacia = !(reg_tryGet(function () { return par.getSpacingAfter(); }) > 0);
-      var moldes = [];
-      for (var i = 1; i < d.faltas.length; i++) moldes.push(par.copy()); // ANTES de reemplazar el texto: conservan todo el formato
-      par.setText(d.faltas[0]);
+      // Moldes ANTES de reemplazar el texto del marcador: conservan todo el formato. Fuente y tamaño del texto del marcador, para
+      // devolvérselos explícitamente a la línea vacía (un párrafo sin texto no los hereda y alteraría el interlineado).
+      var moldes = [], moldesVacios = [], fmtMarcador = reg_formatoParrafo(par), atrTexto = {};
+      if (fmtMarcador.fuente) atrTexto[DocumentApp.Attribute.FONT_FAMILY] = fmtMarcador.fuente;
+      if (fmtMarcador.tam) atrTexto[DocumentApp.Attribute.FONT_SIZE] = fmtMarcador.tam;
+      for (var i = 1; i < d.faltas.length; i++) { moldes.push(par.copy()); if (conLineaVacia) moldesVacios.push(par.copy()); }
+      reg_ponerTexto(par, d.faltas[0]);
       var pos = idx + 1;
       for (var k = 1; k < d.faltas.length; k++) {
-        if (conLineaVacia) { var vacio = contenedor.insertParagraph(pos++, par.copy()); vacio.setText(''); }
+        if (conLineaVacia) {
+          var vacio = contenedor.insertParagraph(pos++, moldesVacios[k - 1]);
+          reg_vaciarParrafo(vacio); // sin setText('')
+          try { vacio.setAttributes(atrTexto); } catch (e) { Logger.log('No se pudo fijar fuente/tamaño de la línea vacía: ' + e.message); }
+        }
         var np = contenedor.insertParagraph(pos++, moldes[k - 1]);
-        np.setText(d.faltas[k]);
+        reg_ponerTexto(np, d.faltas[k]);
       }
     }
     // Nota para quien diligencia: borrar desde {{INICIO_NOTA}} hasta {{FIN_NOTA}} (inclusive)

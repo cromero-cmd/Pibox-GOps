@@ -305,6 +305,37 @@ const to=m=>String(m.to);
  // documento que ya termina en la firma: no se toca nada
  const S=montar(FK.plantilla({final:false}));S.c3.reg_pdfLlamado({folderId:'',templateId:'T'},DATOS);
  t('PL8 si el documento termina en la firma no se borra ni se reduce nada',S.body.ch[S.body.ch.length-1].t==='Gerente'&&S.body.ch[S.body.ch.length-1].a.tam===12,S.body.ch.slice(-2).map(p=>p.t));
+ // ── Restricciones de Google Docs real: texto vacío ──
+ {let e1='',e2='',e3='';const pp=new FK.P(null,'abc');
+  try{pp.setText('');}catch(e){e1=e.message;}try{pp.insertText(0,'');}catch(e){e2=e.message;}try{pp.appendText('');}catch(e){e3=e.message;}
+  t('VX1 el simulador de Docs lanza «No es posible insertar un elemento de texto vacío» ante setText(\'\'), insertText(i,\'\') y appendText(\'\') (como Google real)',e1===FK.ERR_VACIO&&e2===FK.ERR_VACIO&&e3===FK.ERR_VACIO&&FK.ERR_VACIO==='No es posible insertar un elemento de texto vacío',[e1,e2,e3]);
+  const src=GS.replace(/\/\/.*$/gm,'');
+  t('VX2 el .gs no contiene setText(\'\'), insertText(…, \'\') ni appendText(\'\') (revisión estática de todo el archivo)',!/setText\(\s*(''|"")\s*\)/.test(src)&&!/insertText\([^)]*,\s*(''|"")\s*\)/.test(src)&&!/appendText\(\s*(''|"")\s*\)/.test(src));
+  const pv=new FK.P(null,'texto',FK.CG);M.c3.reg_vaciarParrafo(pv);
+  t('VX3 reg_vaciarParrafo vacía el párrafo sin setText(\'\') (clear)',pv.t==='');
+  const pw=new FK.P(null,'texto',FK.CG);pw.clear=()=>{throw new Error('clear no disponible');};M.c3.reg_vaciarParrafo(pw);
+  t('VX4 …y si clear() fallara, usa deleteText(0, largo-1)',pw.t==='');
+  const pz=new FK.P(null,'',FK.CG);let ok=true;try{M.c3.reg_vaciarParrafo(pz);}catch(e){ok=false;}
+  t('VX5 un párrafo que ya está vacío no se toca (no lanza)',ok&&pz.t==='');
+  const px=new FK.P(null,'x',FK.CG);M.c3.reg_ponerTexto(px,'');
+  t('VX6 reg_ponerTexto con cadena vacía nunca llama a setText(\'\')',px.t==='');
+  // la línea vacía entre faltas conserva fuente y tamaño aunque el párrafo vacío «pierda» el formato del texto (clear() de Docs)
+  const bl=M.body.ch[i1+1];
+  t('VX7 la línea vacía entre faltas conserva la fuente y el tamaño del texto (Century Gothic 12) y el interlineado, para no alterar el espaciado',bl.t===''&&bl.a.fuente==='Century Gothic'&&bl.a.tam===12&&bl.a.inter===1.15&&bl.a.alin==='JUSTIFY',bl.a);
+  // {{CEDULA}} vacío (la cédula no siempre está en BASE 3.0): replaceText con '' y, si fallara, deleteText
+  const C1=montar(FK.plantilla());C1.c3.reg_pdfLlamado({folderId:'',templateId:'T'},{...DATOS,cedula:''});
+  const tc=C1.body.ch.map(p=>p.t);
+  t('VX8 cédula vacía: el marcador {{CEDULA}} se borra con replaceText(\'\') y el documento se genera',tc[1]==='Señor(a) Ana Uno — Agente — CC '&&!tc.some(x=>/\{\{/.test(x)),tc);
+  const C2=montar(FK.plantilla());C2.body.replaceVacioFalla=true;C2.c3.reg_pdfLlamado({folderId:'',templateId:'T'},{...DATOS,cedula:''});
+  t('VX9 …y si replaceText con cadena vacía no estuviera disponible, el marcador se borra con deleteText',C2.body.ch[1].t==='Señor(a) Ana Uno — Agente — CC '&&!C2.body.ch.some(x=>/\{\{/.test(x.t)),C2.body.ch[1].t);
+  // flujo real de producción: dos faltas el mismo día → UN llamado con la plantilla (Docs simulado estricto) sin errores
+  const R2=montar(FK.plantilla());
+  const w=world();w.tardanza('2026-11-04',8,0,14);w.tardanza('2026-11-05',8,0,20);
+  const deps=w.deps();deps.generarPdfLlamado=d=>R2.c3.reg_pdfLlamado({folderId:'',templateId:'T'},d);
+  w.now=BOG('2026-11-12',7,0);const res=R2.c3.reg_correr(deps,{avisos:true,plazos:true});
+  const tx=R2.body.ch.map(p=>p.t);
+  t('VX10 producción: dos tardanzas que vencen el mismo día generan UN llamado con la plantilla real-estricta: sin errores, dos párrafos de falta con una línea vacía entre ellos y el correo con el PDF',res.errores.length===0&&res.llamados===1&&w.sent.filter(m=>/^Llamado de atención/.test(m.subject)).length===1&&tx.includes('')&&tx.filter(x=>/^El día/.test(x)).length===2,[res,tx]);
+  t('VX11 …y esas dos faltas salen con el formato del marcador (Century Gothic 12 justificado)',R2.body.ch.filter(p=>/^El día/.test(p.t)).every(p=>p.a.fuente==='Century Gothic'&&p.a.tam===12&&p.a.alin==='JUSTIFY'));}
  // contador de páginas del PDF
  const pdf=x=>({getDataAsString:()=>x});
  t('PL9 reg_paginasPdf cuenta los objetos /Type /Page y el /Count; 0 si no puede determinarlo',M.c3.reg_paginasPdf(pdf('/Type /Pages /Count 1 /Type /Page'))===1&&M.c3.reg_paginasPdf(pdf('/Type /Page /Type /Page /Type /Pages'))===2&&M.c3.reg_paginasPdf(pdf('/Count 3'))===3&&M.c3.reg_paginasPdf(pdf('sin datos'))===0);}
