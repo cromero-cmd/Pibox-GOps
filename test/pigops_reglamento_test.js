@@ -299,7 +299,7 @@ const to=m=>String(m.to);
  class FDpre extends Date{static now(){return PRE;}}
  const els={'reg-wrap':{style:{},innerHTML:''}};
  let casos=[];
- const env={window:{getReglamentoCasos:async()=>casos},document:{getElementById:id=>els[id]||null},esc:x=>String(x==null?'':x).replace(/</g,'&lt;'),REG_FIX:null};
+ const env={window:{getReglamentoCasos:async()=>casos},document:{getElementById:id=>els[id]||null,addEventListener(){}},esc:x=>String(x==null?'':x).replace(/</g,'&lt;'),REG_FIX:null};
  const mkC=D=>new Function('window','document','esc','Date',CODE+'\nreturn{regFechaLimite,regEsHabil,computeAgentStrikes,applyStrikePolicy,loadReglamentoAgente,REGLAMENTO_DESDE,REG_POLITICA_TEXTO,regColorContador};')(env.window,env.document,env.esc,D);
  const FEB=new Date(2027,1,19,9,0,0).getTime();class FDfeb extends Date{static now(){return FEB;}}
  const C=mkC(FD),Cpre=mkC(FDpre),Cfeb=mkC(FDfeb);
@@ -343,6 +343,7 @@ const to=m=>String(m.to);
  await Cfeb.loadReglamentoAgente({reglamento:[reg('4/11/2026',14),reg('10/2/2027',14)]},EM);
  const hf=els['reg-wrap'].innerHTML.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ');
  t('IN5 ventana móvil de 3 meses: en febrero-2027 la tardanza del 4-nov-2026 ya no cuenta (solo la de febrero → 1 de 3)',/: 1 de 3/.test(hf)&&/ventana desde 01\/12\/2026/.test(hf),hf.slice(0,260));
+ t('LK1 debajo del texto de la política hay un enlace «Ver artículos que rigen según el reglamento» que abre el modal',(()=>{const h=els['reg-wrap'].innerHTML;const i=h.indexOf(C.REG_POLITICA_TEXTO),j=h.indexOf('Ver artículos que rigen según el reglamento');return i>0&&j>i&&/onclick="verArticulosReglamento\(\);return false;"/.test(h);})());
  t('IN6 la política literal es visible para el agente',els['reg-wrap'].innerHTML.includes(C.REG_POLITICA_TEXTO)&&C.REG_POLITICA_TEXTO==='Desde el 1 de noviembre de 2026, las llegadas tarde se rigen por el Reglamento Interno de Trabajo: la primera y segunda en los últimos 3 meses son falta leve con llamado de atención escrito; la tercera es falta grave y se remite a Talento Humano. Tienes 3 días hábiles para justificar cada tardanza. Las tardanzas justificadas o con apelación aprobada no cuentan.');
  await run([],[]);
  t('CL11 sin tardanzas ni llamados la sección sigue visible con el indicador en 0 de 3',els['reg-wrap'].style.display==='block'&&/: 0 de 3/.test(els['reg-wrap'].innerHTML.replace(/<[^>]+>/g,' ')));
@@ -350,7 +351,8 @@ const to=m=>String(m.to);
  casos=[];els['reg-wrap'].innerHTML='';await Cpre.loadReglamentoAgente({reglamento:[]},EM);
  const pre=els['reg-wrap'].innerHTML.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ');
  t('PRE1 antes del 1 de noviembre el indicador muestra el aviso de la fecha de inicio (y no «X de 3»)',/rige para las llegadas tarde desde el 1 de noviembre de 2026/.test(pre)&&!/de 3/.test(pre)&&!/reg-indicador/.test(els['reg-wrap'].innerHTML),pre.slice(0,300));
- t('PRE2 …y también muestra la política',pre.includes('las llegadas tarde se rigen por el Reglamento Interno de Trabajo'));}
+ t('PRE2 …y también muestra la política',pre.includes('las llegadas tarde se rigen por el Reglamento Interno de Trabajo'));
+ t('LK2 antes del 1-nov el enlace a los artículos también está debajo de la política',(()=>{const h=els['reg-wrap'].innerHTML;return h.indexOf('Ver artículos que rigen según el reglamento')>h.indexOf('las llegadas tarde se rigen por el Reglamento');})());}
 
 const fails=out.filter(l=>l.startsWith('FAIL'));
 console.log(out.join('\n'));

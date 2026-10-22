@@ -996,8 +996,16 @@ body.agent-preview-mode header{margin-top:34px;}
  <div id="delegated-superadmin-banner" style="display:none;background:rgba(123,47,255,0.1);border-bottom:1px solid rgba(123,47,255,0.3);padding:7px 20px;text-align:center;font-size:12px;color:var(--p2);font-family:var(--mono);font-weight:600;"></div>
  <div id="comunicado-modal" style="display:none;position:fixed;top:72px;left:50%;transform:translateX(-50%);width:min(580px,94vw);max-height:78vh;overflow-y:auto;z-index:600;background:var(--surface);border:1px solid rgba(123,47,255,0.5);border-radius:16px;box-shadow:0 18px 60px rgba(0,0,0,0.45);padding:20px 22px;">
  <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;"><div id="comunicado-modal-titulo" style="font-size:17px;font-weight:800;line-height:1.3;"></div><button onclick="cerrarComunicadoModal()" title="Cerrar" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:22px;line-height:1;">×</button></div>
- <div id="comunicado-modal-cuerpo" style="font-size:13.5px;line-height:1.7;color:var(--text-muted);margin:12px 0 16px;white-space:pre-wrap;"></div>
+ <div id="comunicado-modal-cuerpo" style="font-size:13.5px;line-height:1.7;color:var(--text-muted);margin:12px 0 10px;white-space:pre-wrap;"></div>
+ <div id="comunicado-modal-enlace" style="display:none;margin:0 0 16px;"></div>
  <div id="comunicado-modal-acciones" style="display:flex;gap:10px;justify-content:flex-end;"></div>
+ </div>
+ <div id="reg-articulos-modal" style="display:none;position:fixed;inset:0;z-index:800;background:rgba(13,11,20,0.82);align-items:center;justify-content:center;padding:12px;" onclick="if(event.target===this)cerrarArticulosReglamento()">
+ <div role="dialog" aria-modal="true" aria-labelledby="reg-articulos-titulo" style="background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:16px;width:min(720px,100%);max-height:calc(100vh - 24px);max-height:calc(100dvh - 24px);display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 70px rgba(0,0,0,0.5);">
+ <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding:14px 16px;border-bottom:1px solid var(--border);flex-shrink:0;"><div id="reg-articulos-titulo" style="font-size:16px;font-weight:800;line-height:1.35;"></div><button onclick="cerrarArticulosReglamento()" title="Cerrar" aria-label="Cerrar" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:24px;line-height:1;padding:0 4px;">×</button></div>
+ <div id="reg-articulos-body" style="overflow-y:auto;-webkit-overflow-scrolling:touch;padding:14px 14px 4px;flex:1;min-height:0;"></div>
+ <div id="reg-articulos-fuente" style="font-size:11px;color:var(--text-dim);line-height:1.5;padding:10px 16px 14px;border-top:1px solid var(--border);flex-shrink:0;"></div>
+ </div>
  </div>
  <div class="overlay" id="overlay">
  <div class="modal">
@@ -1081,6 +1089,7 @@ body.agent-preview-mode header{margin-top:34px;}
  <div class="field"><label>Resumen del banner (una línea)</label><input type="text" id="inp-com-resumen" style="width:100%;"/></div>
  <div class="field"><label>Fecha y hora de fin (hora de Bogotá)</label><input type="datetime-local" id="inp-com-fin" style="width:100%;"/></div>
  <div class="field"><label style="display:flex;align-items:center;gap:8px;cursor:pointer;"><input type="checkbox" id="chk-com-activo" checked/> Activo (visible para los agentes)</label></div>
+ <div class="field"><label style="display:flex;align-items:center;gap:8px;cursor:pointer;"><input type="checkbox" id="chk-com-enlace" checked/> Incluir el enlace «Ver artículos que rigen según el reglamento»</label></div>
  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px;">
  <button type="button" onclick="guardarComunicadoConfig(false)" style="background:rgba(74,222,128,0.12);border:1px solid rgba(74,222,128,0.4);color:#4ade80;padding:7px 12px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;">💾 Guardar cambios (mismo comunicado)</button>
  <button type="button" onclick="guardarComunicadoConfig(true)" style="background:rgba(123,47,255,0.12);border:1px solid rgba(123,47,255,0.5);color:#a78bfa;padding:7px 12px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;">📣 Publicar como comunicado NUEVO</button>
@@ -1558,7 +1567,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
-const APP_VERSION='18.7';
+const APP_VERSION='18.8';
 // Promesas rechazadas sin manejar y errores de script: antes desaparecían sin rastro en consola del agente.
 window.addEventListener('unhandledrejection',e=>console.error('[unhandledrejection]',e.reason&&(e.reason.stack||e.reason.message||e.reason)));
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
@@ -1611,6 +1620,41 @@ const REG_CAUSAL_LEVE='Artículo 59, numeral 1: El retardo injustificado en la h
 const REG_CAUSAL_602='Artículo 60, numeral 2: El retardo injustificado en la hora de entrada, por tercera vez.';
 const REG_CAUSAL_6013='Artículo 60, numeral 13: Acumular tres (3) llamados de atención realizados por su jefe inmediato.';
 const REG_POLITICA_TEXTO='Desde el 1 de noviembre de 2026, las llegadas tarde se rigen por el Reglamento Interno de Trabajo: la primera y segunda en los últimos 3 meses son falta leve con llamado de atención escrito; la tercera es falta grave y se remite a Talento Humano. Tienes 3 días hábiles para justificar cada tardanza. Las tardanzas justificadas o con apelación aprobada no cuentan.';
+// TEXTO LITERAL de los artículos del Reglamento Interno de Trabajo que rigen las llegadas tarde (modal «Ver artículos que rigen según el
+// reglamento»). ÚNICO lugar donde se mantiene: si el reglamento cambia, se edita aquí (no resumir ni reformular). Contenido estático:
+// no lee Firestore.
+const REGLAMENTO_ARTICULOS={
+ titulo:'Reglamento Interno de Trabajo — Digital Platforms Colombia S.A.S.',
+ fuente:'Fuente: Reglamento Interno de Trabajo 2026 de Digital Platforms Colombia S.A.S. Ante cualquier duda, consulta con tu líder inmediato o con Talento Humano.',
+ grupos:[
+ {titulo:'1. Obligación y prohibición',items:[
+ {ref:'Artículo 53, numeral 20',texto:'Cumplir estrictamente el horario de trabajo.'},
+ {ref:'Artículo 55, numeral 18',texto:'Suspender sus labores antes de la hora indicada o iniciar sus labores después de la hora señalada para el inicio sin justa causa y sin previa autorización de la Empresa.'}]},
+ {titulo:'2. Clasificación de las faltas',items:[
+ {ref:'Artículo 58',texto:'Se establecen las siguientes clases de faltas disciplinarias de los trabajadores, así: 1. Leves. 2. Graves. Parágrafo Único: La levedad o gravedad de las faltas la determinará el Área de Talento Humano, atendiendo los siguientes criterios: a) El grado de culpabilidad. b) La afectación del servicio. c) El nivel jerárquico del infractor. d) La trascendencia de la falta. e) El perjuicio ocasionado a la Empresa. f) La reiteración de la conducta. g) Los motivos determinantes de la conducta. h) Las modalidades y circunstancias en que se cometió la falta.'}]},
+ {titulo:'3. Faltas por llegadas tarde',abierto:true,items:[
+ {ref:'Artículo 59, numeral 1',tag:'falta leve',texto:'El retardo injustificado en la hora de entrada, hasta por segunda vez.'},
+ {ref:'Artículo 60, numeral 2',tag:'falta grave',texto:'El retardo injustificado en la hora de entrada, por tercera vez.'},
+ {ref:'Artículo 60, numeral 13',tag:'falta grave',texto:'Acumular tres (3) llamados de atención realizados por su jefe inmediato.'}]},
+ {titulo:'4. Sanciones',items:[
+ {ref:'Artículo 61',texto:'Clases de sanciones. El trabajador está sometido a las siguientes sanciones: 1. Para las faltas leves: a. Amonestación escrita. b. Multa, por retrasos al trabajo sin excusa suficiente, la cual no excederá de la quinta parte del salario de un día de trabajo, y su importe se consignará en cuenta especial para dedicarse exclusivamente a premios o regalos para los trabajadores de la Empresa. c. Suspensión, la cual no será inferior a un (1) día ni superior a ocho (8) días. 2. Para las faltas graves: a. Multa, por faltas al trabajo sin excusa suficiente, la cual no excederá de la quinta parte del salario de un día de trabajo, y su importe se consignará en cuenta especial para dedicarse exclusivamente a premios o regalos para los trabajadores de la Empresa. b. Suspensión, la cual no será inferior a ocho (8) días hábiles ni superior a dos (2) meses. c. Despido con justa causa.'}]},
+ {titulo:'5. Debido proceso',items:[
+ {ref:'Artículo 63, segundo párrafo',texto:'En todas las actuaciones para aplicar sanciones disciplinarias, la Empresa aplicará las garantías del debido proceso, esto es, como mínimo los siguientes principios: dignidad, presunción de inocencia, in dubio pro disciplinado, proporcionalidad, derecho a la defensa, contradicción y controversia de las pruebas, intimidad, lealtad y buena fe, imparcialidad, respeto al buen nombre y a la honra, y non bis in idem.'},
+ {ref:'Artículo 64, numerales 2 y 3',texto:'2. Si existen méritos, el Área de Talento Humano le comunicará formalmente y por escrito al trabajador de la apertura del proceso, dicho escrito contendrá: a. La indicación de los hechos, conductas u omisiones que motivan el proceso; b. El traslado al trabajador de todas y cada una de las pruebas que fundamentan los hechos, conductas u omisiones del proceso y; c. La indicación del término de cinco (5) días hábiles para que el trabajador asista, presencial o virtualmente, a diligencia de descargos y pueda manifestarse frente a los motivos del proceso, controvertir las pruebas y allegar las que considere necesarias para sustentar su defensa. 3. Finalizada la diligencia de descargos y dentro de los cinco (5) días hábiles siguientes, contados a partir del día siguiente, la Empresa le notificará al trabajador la decisión debidamente motivada identificando específicamente la(s) causa(s) o motivo(s) de esta, la cual podrá consistir en imponer una sanción proporcional a los hechos u omisiones o absolver de los cargos acusados al trabajador.'}]}
+ ]
+};
+const REG_ENLACE_ARTICULOS_HTML='<a href="#" onclick="verArticulosReglamento();return false;" style="color:var(--p2);font-weight:700;font-size:12.5px;text-decoration:underline;">Ver artículos que rigen según el reglamento</a>';
+// Modal de solo lectura (contenido estático, sin Firestore). Grupos plegables; el de las llegadas tarde abre desplegado.
+function verArticulosReglamento(){
+ const m=document.getElementById('reg-articulos-modal');if(!m)return;
+ document.getElementById('reg-articulos-titulo').textContent=REGLAMENTO_ARTICULOS.titulo;
+ document.getElementById('reg-articulos-fuente').textContent=REGLAMENTO_ARTICULOS.fuente;
+ document.getElementById('reg-articulos-body').innerHTML=REGLAMENTO_ARTICULOS.grupos.map(g=>`<details${g.abierto?' open':''} style="border:1px solid var(--border);border-radius:12px;margin-bottom:10px;background:var(--surface2);overflow:hidden;"><summary style="cursor:pointer;padding:11px 14px;font-size:14px;font-weight:800;color:var(--text);">${esc(g.titulo)}</summary><div style="padding:2px 14px 12px;">${g.items.map(i=>`<div style="margin-top:10px;"><div style="font-size:13px;color:var(--text);"><strong>${esc(i.ref)}</strong>${i.tag?` <span style="font-size:11px;font-weight:700;color:${i.tag==='falta grave'?'#f87171':'#fbbf24'};">(${esc(i.tag)})</span>`:''}</div><div style="font-size:13px;line-height:1.65;color:var(--text-muted);margin-top:3px;overflow-wrap:anywhere;">${esc(i.texto)}</div></div>`).join('')}</div></details>`).join('');
+ m.style.display='flex';
+ document.getElementById('reg-articulos-body').scrollTop=0;
+}
+function cerrarArticulosReglamento(){const m=document.getElementById('reg-articulos-modal');if(m)m.style.display='none';}
+document.addEventListener('keydown',e=>{if(e.key==='Escape')cerrarArticulosReglamento();});
 // Verde → amarillo → rojo según las tardanzas vigentes (0, 1, 2, 3 o más)
 const regColorContador=n=>n>=3?'#f87171':n===2?'#fbbf24':n===1?'#a3e635':'#4ade80';
 // Detecta la novedad de "medio día de votaciones" en cualquiera de sus variantes en la malla
@@ -2337,7 +2381,8 @@ const COMUNICADO_DEFAULT={
  cuerpo:'La puntualidad al iniciar turno es clave para que la operación funcione. A partir del 1 de noviembre de 2026 aplicaremos el Reglamento Interno de Trabajo:\n• Llegada tarde: iniciar turno en Pi GOps más de 5 minutos después de la hora programada en tu malla.\n• 1.ª y 2.ª llegada tarde injustificada en los últimos 3 meses: falta leve (art. 59, num. 1), con llamado de atención escrito.\n• 3.ª llegada tarde injustificada en los últimos 3 meses: falta grave (art. 60, num. 2), remitida a Talento Humano.\n• Acumular tres llamados de atención también es falta grave (art. 60, num. 13).\nTienes 3 días hábiles para justificar cada llegada tarde desde Mi turno → Reglamento. Si la justificación es aprobada, no cuenta.\nNo es retroactivo: todos empezamos en cero el 1 de noviembre. Recuerda iniciar turno en Pi GOps apenas empieces a trabajar.',
  resumen:'📢 Desde el 1 de noviembre aplica el Reglamento Interno para llegadas tarde.',
  fin:'2026-11-01T23:59:00-05:00',
- activo:true
+ activo:true,
+ enlaceReglamento:true // muestra «Ver artículos que rigen según el reglamento» en el texto completo
 };
 const comunicadoActual=()=>({...COMUNICADO_DEFAULT,...((window._globalCfg&&window._globalCfg.comunicado)||{})});
 // Vigente = activo, ya publicado y antes de la fecha de fin; si no, no aparece NADA (ni modal ni banner).
@@ -2364,6 +2409,8 @@ function mostrarComunicadoModal(modo){
  const m=document.getElementById('comunicado-modal');if(!m)return;
  document.getElementById('comunicado-modal-titulo').textContent=st.cfg.titulo;
  document.getElementById('comunicado-modal-cuerpo').textContent=st.cfg.cuerpo;
+ const enl=document.getElementById('comunicado-modal-enlace');
+ if(enl){enl.innerHTML=st.cfg.enlaceReglamento!==false?REG_ENLACE_ARTICULOS_HTML:'';enl.style.display=st.cfg.enlaceReglamento!==false?'block':'none';}
  document.getElementById('comunicado-modal-acciones').innerHTML=modo==='leer'
  ?`<button onclick="cerrarComunicadoModal()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text-muted);padding:8px 16px;border-radius:9px;font-size:13px;cursor:pointer;">Cerrar</button>`
  :`<button id="btn-comunicado-ok" onclick="confirmarComunicado()" style="background:linear-gradient(135deg,#7B2FFF,#C83FE8);border:none;color:#fff;padding:9px 20px;border-radius:9px;font-size:13px;font-weight:700;cursor:pointer;">Leí y entendí</button>`;
@@ -2417,6 +2464,7 @@ function loadComunicadoConfig(){
  const set=(id,v)=>{const el=document.getElementById(id);if(el)el.value=v;};
  set('inp-com-titulo',c.titulo);set('inp-com-cuerpo',c.cuerpo);set('inp-com-resumen',c.resumen);set('inp-com-fin',comunicadoFinAInput(c.fin));
  const chk=document.getElementById('chk-com-activo');if(chk)chk.checked=c.activo!==false;
+ const chkE=document.getElementById('chk-com-enlace');if(chkE)chkE.checked=c.enlaceReglamento!==false;
  const idEl=document.getElementById('com-id-actual');if(idEl)idEl.textContent=c.id;
 }
 async function guardarComunicadoConfig(nuevo){
@@ -2424,7 +2472,7 @@ async function guardarComunicadoConfig(nuevo){
  if(me!==SUPER_ADMIN){toast('Solo cromero@pibox.app puede editar el comunicado');return;}
  const val=id=>(document.getElementById(id)?.value||'').trim();
  const actual=comunicadoActual();
- const c={id:nuevo?'com_'+Date.now().toString(36):actual.id,titulo:val('inp-com-titulo'),cuerpo:(document.getElementById('inp-com-cuerpo')?.value||'').trim(),resumen:val('inp-com-resumen'),fin:comunicadoInputAFin(val('inp-com-fin')),activo:!!document.getElementById('chk-com-activo')?.checked,
+ const c={id:nuevo?'com_'+Date.now().toString(36):actual.id,titulo:val('inp-com-titulo'),cuerpo:(document.getElementById('inp-com-cuerpo')?.value||'').trim(),resumen:val('inp-com-resumen'),fin:comunicadoInputAFin(val('inp-com-fin')),activo:!!document.getElementById('chk-com-activo')?.checked,enlaceReglamento:!!document.getElementById('chk-com-enlace')?.checked,
   publicadoAt:nuevo?new Date().toISOString():(actual.publicadoAt||new Date().toISOString()),publicadoPor:me};
  if(!c.titulo||!c.cuerpo||!c.resumen){toast('Completa título, cuerpo y resumen');return;}
  if(isNaN(new Date(c.fin).getTime())){toast('La fecha de fin no es válida');return;}
@@ -2497,7 +2545,7 @@ async function loadReglamentoAgente(model,userEmail){
  let casos=[];
  try{casos=window.getReglamentoCasos?await window.getReglamentoCasos(userEmail):[];}catch(e){casos=[];}
  const now=Date.now();
- const politica=`<div style="margin:10px 16px;background:rgba(96,165,250,0.08);border:1px solid rgba(96,165,250,0.3);border-radius:10px;padding:10px 12px;font-size:11.5px;line-height:1.6;color:var(--text-muted);">⚖️ ${REG_POLITICA_TEXTO}</div>`;
+ const politica=`<div style="margin:10px 16px;background:rgba(96,165,250,0.08);border:1px solid rgba(96,165,250,0.3);border-radius:10px;padding:10px 12px;font-size:11.5px;line-height:1.6;color:var(--text-muted);">⚖️ ${REG_POLITICA_TEXTO}<div style="margin-top:8px;">${REG_ENLACE_ARTICULOS_HTML}</div></div>`;
  wrap.style.display='block';
  // Antes del 1 de noviembre: solo el aviso de la fecha de inicio (y la política)
  if(now<REGLAMENTO_DESDE_DATE.getTime()){
@@ -3779,6 +3827,7 @@ async function startTurno(){
  btnStart.textContent='Iniciando...';
  // Si el comunicado anclado está abierto, se oculta: nunca debe quedar sobre el flujo de inicio (ver comunicadoPausado).
  try{window.ocultarComunicadoModal&&window.ocultarComunicadoModal();}catch(e){}
+ try{window.cerrarArticulosReglamento&&window.cerrarArticulosReglamento();}catch(e){}
  // La hora de inicio es la del CLIC: se fija antes de cualquier espera (ubicación, malla, avisos). Así ninguna
  // falla técnica ni modal le suma tardanza al agente.
  const clickTime=new Date();
