@@ -594,6 +594,8 @@ function reg_pdfLlamado(cfg, d) {
   var copia = DriveApp.getFileById(cfg.templateId).makeCopy('Llamado de atención — ' + d.nombre + ' — ' + d.fecha);
   try {
     var doc = DocumentApp.openById(copia.getId()), body = doc.getBody();
+    // (solo pruebaEnvioReglamento) qué marcadores traía la plantilla, antes de tocarla
+    var tenia = cfg.verificarCuerpo ? { nota: !!(body.findText('\\{\\{INICIO_NOTA\\}\\}') && body.findText('\\{\\{FIN_NOTA\\}\\}')), causal: !!body.findText('\\{\\{CAUSAL\\}\\}'), descripcion: !!body.findText('\\{\\{DESCRIPCION_FALTAS\\}\\}') } : null;
     reg_reemplazar(body, 'FECHA', d.fecha); reg_reemplazar(body, 'NOMBRE', d.nombre); reg_reemplazar(body, 'CARGO', d.cargo);
     reg_reemplazar(body, 'CEDULA', d.cedula); reg_reemplazar(body, 'CAUSAL', d.causal); reg_reemplazar(body, 'FIRMANTE', d.firmante); reg_reemplazar(body, 'CARGO_FIRMANTE', d.cargoFirmante);
     var hit = body.findText('\\{\\{DESCRIPCION_FALTAS\\}\\}');
@@ -613,9 +615,10 @@ function reg_pdfLlamado(cfg, d) {
         catch (e) { body.getChild(k).asParagraph().clear(); } // el último párrafo del documento no se puede quitar: se vacía
       }
     }
+    if (cfg.verificarCuerpo) cfg.verificarCuerpo(body.getText(), body.getParagraphs().map(function (p) { return p.getText(); }), tenia);
     doc.saveAndClose();
     var pdf = reg_carpeta(cfg).createFile(copia.getAs('application/pdf').setName('Llamado de atención — ' + d.nombre + ' — ' + d.fecha + '.pdf'));
-    reg_compartir(pdf, d.emails);
+    if (!cfg.sinCompartir) reg_compartir(pdf, d.emails);
     return { blob: pdf.getBlob(), url: pdf.getUrl() };
   } finally { copia.setTrashed(true); }
 }
@@ -635,7 +638,7 @@ function reg_xlsxSoporte(cfg, d) {
     var resp = UrlFetchApp.fetch('https://docs.google.com/spreadsheets/d/' + ss.getId() + '/export?format=xlsx', { headers: { Authorization: 'Bearer ' + reg_token() } });
     var blob = resp.getBlob().setName('Soporte falta grave — ' + d.nombre + '.xlsx');
     var file = reg_carpeta(cfg).createFile(blob);
-    reg_compartir(file, d.emails);
+    if (!cfg.sinCompartir) reg_compartir(file, d.emails);
     return { blob: file.getBlob(), url: file.getUrl() };
   } finally { DriveApp.getFileById(ss.getId()).setTrashed(true); }
 }
@@ -709,4 +712,99 @@ function diagnosticoReglamento() {
   });
   Logger.log(out.join('\n'));
   return out.join('\n');
+}
+
+// ── PRUEBA DE ENVÍO (ejecutar a mano desde el editor; NO es un disparador y NO lo llama nadie) ──
+// Genera con datos FICTICIOS lo mismo que se enviará en producción —un llamado de atención con DOS faltas (PDF de la
+// plantilla real), una notificación de falta grave con el Excel de soporte y una de reincidencia— usando las MISMAS
+// funciones de producción, y envía los tres correos SOLO a cromero@pibox.app con «PRUEBA DE ENVÍO» en el asunto, sin
+// importar el modo prueba ni los correos de las propiedades. No escribe en Firestore, no lee agentes ni malla, no toca los
+// disparadores ni comparte los archivos con nadie. Deja los PDF/Excel en Drive (reg_drive_folder_id o la raíz): los enlaces
+// quedan en el log para revisarlos y borrarlos. Cada paso se registra como OK / FALLA / AVISO.
+var REG_PRUEBA_DESTINO = 'cromero@pibox.app';
+function pruebaEnvioReglamento() {
+  var log = [], enlaces = [];
+  function paso(nombre, fn) {
+    try { var r = fn(); log.push('OK     ' + nombre + (r ? ' → ' + r : '')); return true; }
+    catch (e) { log.push('FALLA  ' + nombre + ' → ' + e.message); return false; }
+  }
+  function aviso(txt) { log.push('AVISO  ' + txt); }
+  var p = PropertiesService.getScriptProperties();
+  var cfg = {
+    modoPrueba: true, sinCompartir: true, testEmail: REG_PRUEBA_DESTINO,
+    thEmail: 'talento.humano.prueba@example.com', // ficticio: solo aparece en el banner «habría ido a…»
+    templateId: p.getProperty('reg_template_id') || '', folderId: p.getProperty('reg_drive_folder_id') || '',
+    firmanteNombre: p.getProperty('reg_firmante_nombre') || 'Camilo Romero', firmanteCargo: p.getProperty('reg_firmante_cargo') || ''
+  };
+  var hoy = '2026-11-17';
+  var ag = { nombre: 'Agente de Prueba', cargo: 'Agente de Operaciones', cedula: '0000000000', liderEmail: 'Líder de Prueba (lider.prueba@example.com)' };
+  var email = 'agente.prueba@example.com';
+  paso('cuenta que ejecuta (debe ser ' + REG_PRUEBA_DESTINO + ')', function () {
+    var u = Session.getEffectiveUser().getEmail();
+    if (u !== REG_PRUEBA_DESTINO) throw new Error('la ejecuta ' + u + ': los correos igual van solo a ' + REG_PRUEBA_DESTINO + ', pero revisa la cuenta');
+    return u;
+  });
+  var ok = paso('propiedades reg_template_id y reg_firmante_cargo', function () {
+    if (!cfg.templateId || !cfg.firmanteCargo) throw new Error('faltan reg_template_id y/o reg_firmante_cargo');
+    return 'definidas; firma: ' + cfg.firmanteNombre + ' — ' + cfg.firmanteCargo;
+  });
+  if (ok) {
+    // Cuatro tardanzas inventadas (noviembre de 2026): 1.ª y 2.ª = falta leve; 3.ª = falta grave; 4.ª = reincidencia
+    var datos = [['2026-11-03', 14], ['2026-11-04', 22], ['2026-11-05', 9], ['2026-11-09', 31]].map(function (x) {
+      var prog = reg_progADate(x[0], { h: 8, mi: 0 }), ini = new Date(prog.getTime() + x[1] * 60000);
+      return { email: email, iso: x[0], fecha: reg_aDDMMYYYY(x[0]), prog: prog, progTexto: reg_horaAmPm(prog), inicio: ini, inicioTexto: reg_horaAmPm(ini), minutos: x[1] };
+    });
+    var docs = {};
+    datos.forEach(function (t, i) {
+      docs[reg_idCaso(email, t.iso)] = { _id: reg_idCaso(email, t.iso), tipoRegistro: 'tardanza', userEmail: email, userName: ag.nombre, cargo: ag.cargo, fecha: t.fecha, fechaISO: t.iso,
+        programada: t.progTexto, inicioReal: t.inicioTexto, minutos: t.minutos, numeroEnVentana: i + 1, tipo: i < 2 ? 'llamado' : 'falta_grave', estado: REG.ESTADO_PLAZO, prueba: true };
+    });
+    var ahora = reg_finDelDia(hoy);
+    var ctx = { waivers: {}, appeals: {}, docs: docs, now: ahora };
+    var filas = reg_clasificar(datos, ctx);
+    var deps = {
+      now: function () { return ahora; },
+      actualizar: function () { /* sin Firestore */ }, crear: function () { return true; },
+      enviarCorreo: function (m) {
+        // Destino y asunto FIJOS: pase lo que pase aguas arriba, el correo va solo a cromero.
+        var base = reg_depsProduccion();
+        base.enviarCorreo({ to: REG_PRUEBA_DESTINO, cc: '', subject: 'PRUEBA DE ENVÍO — ' + String(m.subject).replace(/^PRUEBA — /, ''), html: m.html, attachments: m.attachments });
+        log.push('OK     correo enviado solo a ' + REG_PRUEBA_DESTINO + ' → «PRUEBA DE ENVÍO — ' + String(m.subject).replace(/^PRUEBA — /, '') + '»' + (m.attachments && m.attachments.length ? ' (adjunto: ' + m.attachments.length + ')' : ''));
+      },
+      generarPdfLlamado: function (d) {
+        var c = Object.assign({}, cfg, { verificarCuerpo: function (texto, parrafos, tenia) { reg_verificarPdfPrueba(texto, parrafos, tenia, d, log); } });
+        var r = reg_pdfLlamado(c, d); enlaces.push('PDF del llamado: ' + r.url); log.push('OK     PDF generado y guardado en Drive → ' + r.url); return r;
+      },
+      generarSoporte: function (d) { var r = reg_xlsxSoporte(cfg, d); enlaces.push('Excel de soporte' + (d.reincidencia ? ' (reincidencia)' : '') + ': ' + r.url); log.push('OK     Excel de soporte generado y guardado en Drive → ' + r.url); return r; }
+    };
+    var items = [0, 1].map(function (i) { return { t: datos[i], id: reg_idCaso(email, datos[i].iso), doc: docs[reg_idCaso(email, datos[i].iso)], n: i + 1, rechazada: false }; });
+    var llamadoOk = paso('1/3 llamado de atención con DOS faltas (plantilla real → PDF → correo)', function () { reg_enviarLlamado(deps, cfg, ag, email, items, ctx, hoy); return 'enviado'; });
+    if (!llamadoOk) items.forEach(function (it) { it.doc.estado = REG.ESTADO_ENVIADO; it.doc.enviadoISO = hoy; it.doc.pdfUrl = '(no generado)'; it.doc.llamadoId = items[0].id; });
+    var d3 = docs[reg_idCaso(email, datos[2].iso)], d4 = docs[reg_idCaso(email, datos[3].iso)];
+    paso('2/3 notificación de falta grave para descargos (Excel de soporte adjunto)', function () { reg_enviarFaltaGrave(deps, cfg, ag, email, filas, datos[2], reg_idCaso(email, datos[2].iso), d3, ctx, 'art60_2', hoy, false); return 'enviada'; });
+    paso('3/3 notificación de reincidencia (4.ª tardanza, referencia al caso abierto)', function () { reg_enviarFaltaGrave(deps, cfg, ag, email, filas, datos[3], reg_idCaso(email, datos[3].iso), d4, ctx, 'art60_2', hoy, true); return 'enviada'; });
+  }
+  log.push('');
+  log.push('ARCHIVOS GENERADOS EN DRIVE (revísalos y bórralos; no se compartieron con nadie):');
+  enlaces.forEach(function (e) { log.push('  • ' + e); });
+  if (!enlaces.length) log.push('  (ninguno)');
+  log.push('Firestore: no se leyó ni escribió nada. Disparadores: no se tocaron.');
+  var texto = log.join('\n');
+  Logger.log(texto);
+  return texto;
+}
+// Revisión automática del cuerpo del documento ANTES de convertirlo a PDF (lo que verás en el PDF).
+function reg_verificarPdfPrueba(texto, parrafos, tenia, d, log) {
+  function chk(nombre, cond, detalle) { log.push((cond ? 'OK     ' : 'FALLA  ') + 'PDF: ' + nombre + (detalle ? ' → ' + detalle : '')); }
+  var sinMarcador = texto.match(/\{\{[A-Z_]+\}\}/g);
+  chk('marcadores reemplazados (no queda ningún {{...}})', !sinMarcador, sinMarcador ? 'quedan: ' + sinMarcador.join(', ') : '');
+  chk('nombre, cargo y fecha del documento', texto.indexOf(d.nombre) >= 0 && texto.indexOf(d.cargo) >= 0 && texto.indexOf(d.fecha) >= 0);
+  if (!tenia.descripcion) log.push('FALLA  PDF: la plantilla no tiene {{DESCRIPCION_FALTAS}}: las faltas no aparecen');
+  var idx = d.faltas.map(function (f) { return parrafos.indexOf(f); });
+  chk('un párrafo por falta (' + d.faltas.length + ' faltas, cada una en su propio párrafo, seguidas)', idx.every(function (i) { return i >= 0; }) && idx.every(function (i, k) { return k === 0 || i === idx[k - 1] + 1; }), 'posiciones ' + idx.join(','));
+  if (tenia.nota) chk('nota para quien diligencia eliminada (marcadores {{INICIO_NOTA}}/{{FIN_NOTA}} y todo lo que había entre ellos)', texto.indexOf('INICIO_NOTA') < 0 && texto.indexOf('FIN_NOTA') < 0);
+  else log.push('AVISO  PDF: la plantilla NO tiene {{INICIO_NOTA}} / {{FIN_NOTA}}: la nota amarilla NO se elimina sola. Agrega esos dos marcadores (cada uno en su párrafo) rodeándola.');
+  if (tenia.causal) chk('causal literal (art. 59 num. 1)', texto.indexOf(d.causal) >= 0, d.causal);
+  else log.push('AVISO  PDF: la plantilla no tiene {{CAUSAL}}: la causal «' + d.causal + '» solo va en el correo, no en el PDF. Agrega el marcador si quieres que aparezca.');
+  chk('firma: ' + d.firmante + ' — ' + d.cargoFirmante, texto.indexOf(d.firmante) >= 0 && texto.indexOf(d.cargoFirmante) >= 0);
 }

@@ -354,6 +354,61 @@ const to=m=>String(m.to);
  t('PRE2 …y también muestra la política',pre.includes('las llegadas tarde se rigen por el Reglamento Interno de Trabajo'));
  t('LK2 antes del 1-nov el enlace a los artículos también está debajo de la política',(()=>{const h=els['reg-wrap'].innerHTML;return h.indexOf('Ver artículos que rigen según el reglamento')>h.indexOf('las llegadas tarde se rigen por el Reglamento');})());}
 
+// ═══ pruebaEnvioReglamento(): envío de prueba con Google simulado ═══
+{class P{constructor(b,t){this.b=b;this.t=t;}getParent(){return this.b;}asParagraph(){return this;}setText(x){this.t=x;return this;}clear(){this.t='';}setAttributes(){return this;}getAttributes(){return{};}getText(){return this.t;}}
+ class Body{constructor(l){this.ch=l.map(x=>new P(this,x));}getType(){return'BODY_SECTION';}asBody(){return this;}getChildIndex(p){return this.ch.indexOf(p);}getChild(i){return this.ch[i];}getNumChildren(){return this.ch.length;}
+  removeChild(p){const i=this.ch.indexOf(p);if(this.ch.length===1)throw new Error('último');this.ch.splice(i,1);}insertParagraph(i,x){const p=new P(this,x);this.ch.splice(i,0,p);return p;}
+  replaceText(re,rep){const r=new RegExp(re,'g');this.ch.forEach(p=>{p.t=p.t.replace(r,()=>rep.replace(/\\\$/g,'$'));});}
+  findText(re){const r=new RegExp(re);const p=this.ch.find(x=>r.test(x.t));return p?{getElement:()=>({getParent:()=>p})}:null;}
+  getText(){return this.ch.map(p=>p.t).join('\n');}getParagraphs(){return this.ch;}}
+ const PLANTILLA_COMPLETA=['Bogotá, {{FECHA}}','Señor(a) {{NOMBRE}} — {{CARGO}} — CC {{CEDULA}}','Asunto: llamado de atención','Causal: {{CAUSAL}}','{{DESCRIPCION_FALTAS}}','{{INICIO_NOTA}}','NOTA AMARILLA: para quien diligencia el documento…','{{FIN_NOTA}}','Atentamente,','{{FIRMANTE}}','{{CARGO_FIRMANTE}}'];
+ function google(o={}){
+  const G={mails:[],files:[],viewers:[],fetches:[],logs:[],body:new Body(o.plantilla||PLANTILLA_COMPLETA),creados:0,trashed:[]};
+  const props={reg_template_id:'TPL',reg_firmante_cargo:'Gerente de Operaciones',reg_th_email:'th-real@pibox.app',reg_drive_folder_id:o.carpeta||'',...(o.props||{})};
+  const folder={createFile:b=>{const f={getBlob:()=>b,getUrl:()=>'https://drive.google.com/file/d/'+(b.n||'x').replace(/\W+/g,'_')+'/view',addViewers:e=>G.viewers.push(e)};G.files.push(f.getUrl());return f;}};
+  const c={...ctx,Logger:{log:m=>G.logs.push(m)},
+   PropertiesService:{getScriptProperties:()=>({getProperty:k=>props[k]||null,setProperty(){throw new Error('NO debe escribir propiedades');}})},
+   Session:{getEffectiveUser:()=>({getEmail:()=>o.cuenta||'cromero@pibox.app'})},
+   ScriptApp:{getOAuthToken:()=>'T',newTrigger(){throw new Error('NO debe tocar disparadores');},deleteTrigger(){throw new Error('NO debe tocar disparadores');},getProjectTriggers(){throw new Error('NO debe tocar disparadores');}},
+   UrlFetchApp:{fetch:(u)=>{G.fetches.push(u);if(/firestore/.test(u))throw new Error('NO debe tocar Firestore');return{getBlob:()=>({setName(n){this.n=n;return this;}})};}},
+   SpreadsheetApp:{openById(){throw new Error('NO debe leer la malla ni agentes');},create:()=>{G.creados++;const sh=()=>({setName(){},getRange:()=>({setValues(){}})});return{getActiveSheet:sh,insertSheet:sh,getId:()=>'SS'+G.creados};},flush(){}},
+   DocumentApp:{ElementType:{BODY_SECTION:'BODY_SECTION'},openById:()=>({getBody:()=>G.body,saveAndClose(){}})},
+   DriveApp:{getFileById:id=>{if(o.sinPlantilla&&id==='TPL')throw new Error('Authorization is required: drive');return{makeCopy:n=>({getId:()=>'COPY',setTrashed:v=>G.trashed.push('copia '+v),getAs:()=>({setName(n2){this.n=n2;return this;}})}),setTrashed:v=>G.trashed.push(id+' '+v)};},getRootFolder:()=>folder,getFolderById:()=>folder},
+   GmailApp:{sendEmail:(to,subject,plain,opts)=>G.mails.push({to,subject,cc:opts.cc,html:opts.htmlBody,attachments:opts.attachments||[]})}};
+  vm.createContext(c);vm.runInContext(GS0,c);vm.runInContext(GS,c);
+  return{G,c,correr:()=>c.pruebaEnvioReglamento()};}
+ // 1) camino feliz
+ {const g=google();const log=g.correr();
+  const ms=g.G.mails;
+  t('PR1 envía EXACTAMENTE 3 correos (llamado, falta grave, reincidencia), todos solo a cromero@pibox.app y sin copias',ms.length===3&&ms.every(m=>m.to==='cromero@pibox.app'&&!m.cc),ms.map(m=>[m.to,m.cc]));
+  t('PR2 todos con «PRUEBA DE ENVÍO» en el asunto y los asuntos esperados',ms.every(m=>/^PRUEBA DE ENVÍO — /.test(m.subject))&&ms[0].subject==='PRUEBA DE ENVÍO — Llamado de atención — Agente de Prueba — 17/11/2026'&&ms[1].subject==='PRUEBA DE ENVÍO — Falta grave para descargos — Agente de Prueba'&&ms[2].subject==='PRUEBA DE ENVÍO — Reincidencia — Falta grave para descargos — Agente de Prueba',ms.map(m=>m.subject));
+  t('PR3 adjuntos: PDF en el llamado y el Excel de soporte en las dos notificaciones',ms[0].attachments.length===1&&/\.pdf$/.test(ms[0].attachments[0].n||'')&&ms[1].attachments.length===1&&/\.xlsx$/.test(ms[1].attachments[0].n||'')&&ms[2].attachments.length===1&&/\.xlsx$/.test(ms[2].attachments[0].n||''),ms.map(m=>m.attachments.map(a=>a.n)));
+  t('PR4 el banner dice que es modo prueba y a quién habría ido (agente ficticio, líder, TH ficticio); nada llega a esas direcciones',ms.every(m=>/MODO PRUEBA/.test(m.html))&&/agente\.prueba@example\.com/.test(ms[0].html)&&/talento\.humano\.prueba@example\.com/.test(ms[1].html)&&!ms.some(m=>/th-real@pibox\.app/.test(m.to+(m.cc||''))));
+  t('PR5 datos ficticios: Agente de Prueba, Agente de Operaciones, Líder de Prueba, tardanzas de noviembre de 2026',ms.every(m=>/Agente de Prueba/.test(m.html))&&/Agente de Operaciones/.test(ms[1].html)&&/Líder de Prueba/.test(ms[1].html)&&/03\/11\/2026/.test(ms[1].html)&&/05\/11\/2026/.test(ms[1].html)&&/09\/11\/2026/.test(ms[2].html));
+  t('PR6 el llamado trae las dos faltas y la causal literal del art. 59 num. 1; la falta grave la del art. 60 num. 2; la reincidencia referencia el caso abierto',/3 de noviembre de 2026/.test(ms[0].html)&&/4 de noviembre de 2026/.test(ms[0].html)&&/Artículo 59, numeral 1: El retardo injustificado en la hora de entrada, hasta por segunda vez\./.test(ms[0].html)&&/Artículo 60, numeral 2: El retardo injustificado en la hora de entrada, por tercera vez\./.test(ms[1].html)&&/Reincidencia\./.test(ms[2].html)&&/3\.ª tardanza \(05\/11\/2026\)/.test(ms[2].html));
+  t('PR7 NO toca Firestore ni la malla/agentes ni los disparadores ni las propiedades (cualquier intento lanzaría), y no comparte los archivos con nadie',!g.G.fetches.some(u=>/firestore/.test(u))&&g.G.viewers.length===0&&!/FALLA/.test(log),[g.G.fetches,g.G.viewers]);
+  t('PR8 el log marca cada paso con OK, y lista los enlaces de los PDF/Excel dejados en Drive para revisarlos y borrarlos',/OK     1\/3 llamado de atención con DOS faltas/.test(log)&&/OK     2\/3 notificación de falta grave/.test(log)&&/OK     3\/3 notificación de reincidencia/.test(log)&&/ARCHIVOS GENERADOS EN DRIVE/.test(log)&&/PDF del llamado: https:\/\/drive\.google\.com/.test(log)&&(log.match(/Excel de soporte(?: \(reincidencia\))?: https:\/\/drive\.google\.com/g)||[]).length===2&&/Firestore: no se leyó ni escribió nada/.test(log),log);
+  t('PR9 revisión del PDF: marcadores reemplazados, un párrafo por falta, nota amarilla eliminada, causal literal y firma con nombre y cargo',/OK     PDF: marcadores reemplazados/.test(log)&&/OK     PDF: un párrafo por falta \(2 faltas/.test(log)&&/OK     PDF: nota para quien diligencia eliminada/.test(log)&&/OK     PDF: causal literal \(art\. 59 num\. 1\)/.test(log)&&/OK     PDF: firma: Camilo Romero — Gerente de Operaciones/.test(log),log);
+  const cuerpo=g.G.body.getText();
+  t('PR10 el documento final: faltas en párrafos separados con fecha, hora programada, hora de inicio y minutos; sin nota; con firma',/El día 3 de noviembre de 2026, su turno estaba programado para iniciar a las 8:00 a\. m\. y el inicio se registró en Pi GOps a las 8:14 a\. m\., con 14 minutos de retardo/.test(cuerpo)&&/El día 4 de noviembre de 2026.*8:22 a\. m\., con 22 minutos de retardo/.test(cuerpo)&&!/NOTA AMARILLA|\{\{/.test(cuerpo)&&/Camilo Romero\nGerente de Operaciones/.test(cuerpo),cuerpo);
+  t('PR11 la copia temporal de la plantilla y la hoja temporal del Excel se mandan a la papelera (quedan solo el PDF y los Excel)',g.G.trashed.filter(x=>x==='copia true').length===1&&g.G.creados===2&&g.G.trashed.filter(x=>/^SS\d true$/.test(x)).length===2,g.G.trashed);}
+ // 2) plantilla sin los marcadores opcionales → avisos claros, pero sigue
+ {const g=google({plantilla:['{{FECHA}}','{{NOMBRE}} — {{CARGO}}','{{DESCRIPCION_FALTAS}}','NOTA AMARILLA','{{FIRMANTE}}','{{CARGO_FIRMANTE}}']});const log=g.correr();
+  t('PR12 si la plantilla no tiene {{INICIO_NOTA}}/{{FIN_NOTA}} ni {{CAUSAL}}, avisa qué agregar (la nota amarilla no se elimina sola) y aun así envía los 3 correos',/AVISO  PDF: la plantilla NO tiene \{\{INICIO_NOTA\}\} \/ \{\{FIN_NOTA\}\}/.test(log)&&/AVISO  PDF: la plantilla no tiene \{\{CAUSAL\}\}/.test(log)&&g.G.mails.length===3,log);
+  const h=google({plantilla:['{{FECHA}} {{NOMBRE}} {{CARGO}} {{MARCADOR_DESCONOCIDO}}','{{DESCRIPCION_FALTAS}}','{{FIRMANTE}} {{CARGO_FIRMANTE}}']});const log2=h.correr();
+  t('PR13 un marcador que el código no conoce queda sin reemplazar → FALLA explícita en el log',/FALLA  PDF: marcadores reemplazados.*MARCADOR_DESCONOCIDO/.test(log2),log2);}
+ // 3) fallos
+ {const g=google({props:{reg_firmante_cargo:''}});const log=g.correr();
+  t('PR14 sin reg_firmante_cargo: FALLA clara y no se envía nada',/FALLA  propiedades reg_template_id y reg_firmante_cargo/.test(log)&&g.G.mails.length===0&&g.G.files.length===0,log);
+  const h=google({sinPlantilla:true});const log2=h.correr();
+  t('PR15 si falla el PDF (p. ej. falta el permiso de Drive) el paso 1 queda en FALLA con el motivo y los pasos 2 y 3 siguen (2 correos)',/FALLA  1\/3 llamado de atención.*drive/.test(log2)&&/OK     2\/3/.test(log2)&&/OK     3\/3/.test(log2)&&h.G.mails.length===2,log2);
+  const k=google({carpeta:'FOLDER'});k.correr();
+  t('PR16 con reg_drive_folder_id los archivos se guardan en esa carpeta (si no, en la raíz)',k.G.files.length===3);
+  const m=google({cuenta:'otra@pibox.app'});const log3=m.correr();
+  t('PR17 si la ejecuta otra cuenta lo avisa, pero el destino sigue fijo: solo cromero',/FALLA  cuenta que ejecuta/.test(log3)&&m.G.mails.every(x=>x.to==='cromero@pibox.app'),log3);
+  t('PR18 pruebaEnvioReglamento no la invoca ningún disparador ni otra función',!/pruebaEnvioReglamento\(\)/.test(GS.replace(/function pruebaEnvioReglamento\(\)/,'').replace(/\/\/.*pruebaEnvioReglamento.*/g,''))&&!/newTrigger\('pruebaEnvioReglamento'/.test(GS));}
+}
+
 const fails=out.filter(l=>l.startsWith('FAIL'));
 console.log(out.join('\n'));
 console.log(`\n${out.length-fails.length}/${out.length} pruebas OK`);
