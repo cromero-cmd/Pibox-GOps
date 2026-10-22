@@ -60,6 +60,8 @@ onAuthStateChanged(auth, async user => {
  const globalSnap = await getDoc(doc(db, 'configs', 'global'));
  globalCfg = globalSnap.exists() ? globalSnap.data() : {};
  } catch(e) { console.warn('No se pudo leer configs/global:', e); }
+ // Comunicado anclado (configs/global.comunicado): se reutiliza esta MISMA lectura, no se pide otra.
+ window._globalCfg = globalCfg;
  // Interruptor de emergencia del permiso de ubicación obligatorio (v16.4): en Firestore, configs/global
  // con requireLocation:false lo desactiva sin desplegar. Por defecto (sin campo, o si la lectura falló) está ACTIVO.
  window._requireLocation = globalCfg.requireLocation !== false;
@@ -116,6 +118,8 @@ onAuthStateChanged(auth, async user => {
  if (merged.mallaNotifDelay) localStorage.setItem('pg_malla_notif_delay', merged.mallaNotifDelay.toString());
  window._loadAppConfig && window._loadAppConfig();
  } catch(e) { console.log('Config load:', e); }
+ // Comunicado anclado: sin await — nunca retrasa la carga ni el inicio de turno.
+ try { window.initComunicado && window.initComunicado(user); } catch(e) { console.warn('[comunicado]', e); }
  } else {
  authProcessedUID = null;
  currentUser = null;
@@ -453,6 +457,38 @@ window.cerrarReglamentoCaso = async (id, nota, por) => {
  // Un admin cierra un caso de Talento Humano ya enviado (estado «Cerrado»), registrando quién y cuándo.
  try { await setDoc(doc(db, 'reglamento_casos', id), { estado: 'Cerrado', cerradoPor: por, cerradoAt: new Date().toISOString(), notaCierre: nota || '' }, { merge: true }); return { ok: true }; }
  catch(e) { console.error('[cerrarReglamentoCaso]', e); return { ok: false, error: e.message || String(e) }; }
+};
+// ── Comunicados anclados (v18.7) ──
+window.getComunicadoLectura = async (comunicadoId, email) => {
+ // UNA lectura (documento propio) al entrar; null si el agente aún no confirma. Lanza si la lectura falla.
+ const snap = await getDoc(doc(db, 'comunicados_lectura', comunicadoId + '_' + email));
+ return snap.exists() ? snap.data() : null;
+};
+window.confirmarComunicadoLectura = async (comunicadoId, nombre) => {
+ // El email SIEMPRE sale de la sesión (nunca de un parámetro): nadie puede confirmar a nombre de otro. Las reglas de
+ // Firestore lo exigen también (solo create, email propio, sin update ni delete).
+ const email = auth.currentUser && auth.currentUser.email;
+ if (!email) return { ok: false, error: 'sin sesión' };
+ try {
+ await setDoc(doc(db, 'comunicados_lectura', comunicadoId + '_' + email), { email, nombre: nombre || email.split('@')[0], comunicadoId, confirmadoAt: serverTimestamp() });
+ return { ok: true };
+ } catch(e) {
+ // Ya existía (no se puede sobrescribir): equivale a «ya confirmado»
+ try { const s = await getDoc(doc(db, 'comunicados_lectura', comunicadoId + '_' + email)); if (s.exists()) return { ok: true, yaExistia: true }; } catch(_) {}
+ console.error('[confirmarComunicadoLectura]', e); return { ok: false, error: e.message || String(e) };
+ }
+};
+window.getComunicadoLecturas = async (comunicadoId, strict) => {
+ // Panel de Control (admins): todas las confirmaciones de UN comunicado, en una sola consulta.
+ try {
+ const snap = await getDocs(query(collection(db, 'comunicados_lectura'), where('comunicadoId', '==', comunicadoId), limit(500)));
+ return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+ } catch(e) { console.error('[getComunicadoLecturas]', e); if (strict) throw e; return []; }
+};
+window.guardarComunicado = async (comunicado) => {
+ // Solo cromero@pibox.app puede escribir configs/global (regla publicada).
+ try { await setDoc(doc(db, 'configs', 'global'), { comunicado }, { merge: true }); return { ok: true }; }
+ catch(e) { console.error('[guardarComunicado]', e); return { ok: false, error: e.message || String(e) }; }
 };
 window.setReglamentoModoPrueba = async (valor) => {
  // Interruptor de modo prueba (configs/global.reglamentoModoPrueba). PiGOps_Reglamento.gs lo lee en cada ejecución;
@@ -958,6 +994,11 @@ body.agent-preview-mode header{margin-top:34px;}
  </div>
  </header>
  <div id="delegated-superadmin-banner" style="display:none;background:rgba(123,47,255,0.1);border-bottom:1px solid rgba(123,47,255,0.3);padding:7px 20px;text-align:center;font-size:12px;color:var(--p2);font-family:var(--mono);font-weight:600;"></div>
+ <div id="comunicado-modal" style="display:none;position:fixed;top:72px;left:50%;transform:translateX(-50%);width:min(580px,94vw);max-height:78vh;overflow-y:auto;z-index:600;background:var(--surface);border:1px solid rgba(123,47,255,0.5);border-radius:16px;box-shadow:0 18px 60px rgba(0,0,0,0.45);padding:20px 22px;">
+ <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;"><div id="comunicado-modal-titulo" style="font-size:17px;font-weight:800;line-height:1.3;"></div><button onclick="cerrarComunicadoModal()" title="Cerrar" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:22px;line-height:1;">×</button></div>
+ <div id="comunicado-modal-cuerpo" style="font-size:13.5px;line-height:1.7;color:var(--text-muted);margin:12px 0 16px;white-space:pre-wrap;"></div>
+ <div id="comunicado-modal-acciones" style="display:flex;gap:10px;justify-content:flex-end;"></div>
+ </div>
  <div class="overlay" id="overlay">
  <div class="modal">
  <div class="modal-title">Configurar Pi GOps</div>
@@ -1032,6 +1073,21 @@ body.agent-preview-mode header{margin-top:34px;}
  <div style="font-size:10px;color:var(--text-dim);margin-top:4px;font-family:var(--mono);">Activo: TODOS los correos del Reglamento (llamados y notificaciones de falta grave) llegan solo a cromero@pibox.app con «PRUEBA» en el asunto. Desactívalo para enviar a los destinatarios reales. Correo de Talento Humano, plantilla y cargo del firmante van en las propiedades del script de Apps Script.</div>
  </div>
  <hr/>
+ <div class="msec" id="com-config-sec" style="display:none;">📢 Comunicado anclado</div>
+ <div id="com-config-field" style="display:none;">
+ <div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);margin-bottom:8px;">ID actual: <span id="com-id-actual">—</span> · Solo cromero@pibox.app puede editarlo (configs/global).</div>
+ <div class="field"><label>Título</label><input type="text" id="inp-com-titulo" style="width:100%;"/></div>
+ <div class="field"><label>Cuerpo</label><textarea id="inp-com-cuerpo" rows="9" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 10px;color:var(--text);font-size:12px;font-family:inherit;line-height:1.5;"></textarea></div>
+ <div class="field"><label>Resumen del banner (una línea)</label><input type="text" id="inp-com-resumen" style="width:100%;"/></div>
+ <div class="field"><label>Fecha y hora de fin (hora de Bogotá)</label><input type="datetime-local" id="inp-com-fin" style="width:100%;"/></div>
+ <div class="field"><label style="display:flex;align-items:center;gap:8px;cursor:pointer;"><input type="checkbox" id="chk-com-activo" checked/> Activo (visible para los agentes)</label></div>
+ <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px;">
+ <button type="button" onclick="guardarComunicadoConfig(false)" style="background:rgba(74,222,128,0.12);border:1px solid rgba(74,222,128,0.4);color:#4ade80;padding:7px 12px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;">💾 Guardar cambios (mismo comunicado)</button>
+ <button type="button" onclick="guardarComunicadoConfig(true)" style="background:rgba(123,47,255,0.12);border:1px solid rgba(123,47,255,0.5);color:#a78bfa;padding:7px 12px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;">📣 Publicar como comunicado NUEVO</button>
+ </div>
+ <div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);margin-bottom:6px;">«Nuevo» crea otro ID: todos los agentes deberán confirmar la lectura de nuevo. «Guardar cambios» conserva el ID (las confirmaciones ya hechas siguen valiendo).</div>
+ </div>
+ <hr/>
  <div class="msec">🔔 Notificaciones de cambios en malla</div>
  <div class="field">
  <label>Delay antes de notificar cambios (minutos)</label>
@@ -1095,6 +1151,7 @@ body.agent-preview-mode header{margin-top:34px;}
  <button class="sub-tab" id="subtab-panel" onclick="switchTurnoTab('panel')" style="display:none;">👥 Panel de control</button>
  </div>
  <div id="subview-miturno">
+ <div id="comunicado-banner" style="display:none;position:sticky;top:0;z-index:50;margin:0 0 12px;background:rgba(123,47,255,0.12);border:1px solid rgba(123,47,255,0.45);border-radius:12px;padding:10px 14px;font-size:13px;color:var(--text);backdrop-filter:blur(6px);"></div>
  <div class="resume-banner" id="resume-banner">
  <h4>⚠️ Turno interrumpido detectado</h4>
  <p id="resume-msg">Detectamos que tu turno fue interrumpido. ¿Deseas continuar?</p>
@@ -1230,6 +1287,7 @@ body.agent-preview-mode header{margin-top:34px;}
  <button class="turno-filter-btn" onclick="showExceededWeeksModal()" style="border-color:rgba(167,139,250,0.4);color:#a78bfa;" id="btn-exceeded-weeks">📅 Semanas excedidas <span id="exceeded-weeks-badge" style="display:none;background:#a78bfa;color:white;border-radius:100px;padding:1px 6px;font-size:10px;margin-left:4px;"></span></button>
  <button class="turno-filter-btn" onclick="showStrikeAppeals()" style="border-color:rgba(251,191,36,0.4);color:#fbbf24;" id="btn-strike-appeals">⚖️ Apelaciones de strikes <span id="strike-appeals-badge" style="display:none;background:#fbbf24;color:#1a1a1a;border-radius:100px;padding:1px 6px;font-size:10px;margin-left:4px;"></span></button>
  <button class="turno-filter-btn" onclick="showReglamentoCasos()" style="border-color:rgba(244,114,182,0.4);color:#f472b6;" id="btn-reg-casos">📣 Llamados de atención <span id="reg-casos-badge" style="display:none;background:#f472b6;color:#1a1a1a;border-radius:100px;padding:1px 6px;font-size:10px;margin-left:4px;"></span></button>
+ <button class="turno-filter-btn" onclick="showComunicadosPanel()" style="border-color:rgba(123,47,255,0.5);color:#a78bfa;" id="btn-comunicados">📢 Comunicados <span id="comunicados-badge" style="display:none;background:#a78bfa;color:white;border-radius:100px;padding:1px 6px;font-size:10px;margin-left:4px;"></span></button>
  <button class="turno-filter-btn" onclick="showCasosTH()" style="border-color:rgba(248,113,113,0.4);color:#f87171;" id="btn-th-casos">🏛️ Casos para Talento Humano <span id="th-casos-badge" style="display:none;background:#f87171;color:white;border-radius:100px;padding:1px 6px;font-size:10px;margin-left:4px;"></span></button>
  <button class="turno-filter-btn" onclick="showStrikeHistorial()" style="border-color:rgba(156,163,175,0.4);color:#9ca3af;" id="btn-strike-historial">📜 Historial de strikes</button>
  <button class="turno-filter-btn" onclick="openPayrollPreview()" style="border-color:rgba(74,222,128,0.3);color:#4ade80;">📋 Nómina</button>
@@ -1500,7 +1558,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
-const APP_VERSION='18.6';
+const APP_VERSION='18.7';
 // Promesas rechazadas sin manejar y errores de script: antes desaparecían sin rastro en consola del agente.
 window.addEventListener('unhandledrejection',e=>console.error('[unhandledrejection]',e.reason&&(e.reason.stack||e.reason.message||e.reason)));
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
@@ -2269,6 +2327,168 @@ async function loadStrikes(){
  :`<div style="padding:8px 16px 0;font-size:10px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:.06em;font-family:var(--mono);">📨 ¿Un strike fue justificado? Puedes apelarlo</div>`+strikeMonthsHTML(model,{apelar});
  list.innerHTML=politicaHTML+llamadosHTML+avisoHTML+tipoRows+detalleHTML+strikeHistorialHTML(model,'agente')+reglamHTML;
 }
+// ── COMUNICADO ANCLADO (v18.7): mecanismo reutilizable para anuncios ──
+// configs/global.comunicado = {id,titulo,cuerpo,resumen,fin(ISO con offset),activo,publicadoAt,publicadoPor}. Si no existe se usa
+// COMUNICADO_DEFAULT. Cada confirmación es UN documento comunicados_lectura/{id}_{email}. Publicar con OTRO id obliga a todos a
+// confirmar de nuevo. Cuotas: 1 lectura propia al entrar (la config global ya se leía en el arranque) y 1 consulta en el Panel.
+const COMUNICADO_DEFAULT={
+ id:'reglamento-tardanzas-2026-11',
+ titulo:'Desde el 1 de noviembre: aplicación del Reglamento Interno para llegadas tarde',
+ cuerpo:'La puntualidad al iniciar turno es clave para que la operación funcione. A partir del 1 de noviembre de 2026 aplicaremos el Reglamento Interno de Trabajo:\n• Llegada tarde: iniciar turno en Pi GOps más de 5 minutos después de la hora programada en tu malla.\n• 1.ª y 2.ª llegada tarde injustificada en los últimos 3 meses: falta leve (art. 59, num. 1), con llamado de atención escrito.\n• 3.ª llegada tarde injustificada en los últimos 3 meses: falta grave (art. 60, num. 2), remitida a Talento Humano.\n• Acumular tres llamados de atención también es falta grave (art. 60, num. 13).\nTienes 3 días hábiles para justificar cada llegada tarde desde Mi turno → Reglamento. Si la justificación es aprobada, no cuenta.\nNo es retroactivo: todos empezamos en cero el 1 de noviembre. Recuerda iniciar turno en Pi GOps apenas empieces a trabajar.',
+ resumen:'📢 Desde el 1 de noviembre aplica el Reglamento Interno para llegadas tarde.',
+ fin:'2026-11-01T23:59:00-05:00',
+ activo:true
+};
+const comunicadoActual=()=>({...COMUNICADO_DEFAULT,...((window._globalCfg&&window._globalCfg.comunicado)||{})});
+// Vigente = activo, ya publicado y antes de la fecha de fin; si no, no aparece NADA (ni modal ni banner).
+function comunicadoVigente(now){
+ const c=comunicadoActual();
+ if(c.activo===false)return null;
+ const t=(now instanceof Date?now:new Date(now||Date.now())).getTime();
+ const fin=new Date(c.fin).getTime();
+ if(isNaN(fin)||t>fin)return null;
+ if(c.publicadoAt){const ini=new Date(c.publicadoAt).getTime();if(!isNaN(ini)&&t<ini)return null;}
+ return c;
+}
+// El modal NO puede aparecer durante el inicio de turno ni encima de sus avisos.
+const comunicadoPausado=()=>!!(window._startInFlight||(window._startModalOpen||0)>0||document.getElementById('btn-turno-start')?._processing);
+function renderComunicadoBanner(){
+ const b=document.getElementById('comunicado-banner');if(!b)return;
+ const st=window._comunicado;
+ if(!st||!st.confirmado||!comunicadoVigente()){b.style.display='none';b.innerHTML='';return;}
+ b.innerHTML=`<span>${esc(st.cfg.resumen)}</span> <a href="#" onclick="verComunicado();return false;" style="color:var(--p2);font-weight:700;margin-left:8px;white-space:nowrap;">Ver comunicado</a>`;
+ b.style.display='block';
+}
+function mostrarComunicadoModal(modo){
+ const st=window._comunicado;if(!st)return;
+ const m=document.getElementById('comunicado-modal');if(!m)return;
+ document.getElementById('comunicado-modal-titulo').textContent=st.cfg.titulo;
+ document.getElementById('comunicado-modal-cuerpo').textContent=st.cfg.cuerpo;
+ document.getElementById('comunicado-modal-acciones').innerHTML=modo==='leer'
+ ?`<button onclick="cerrarComunicadoModal()" style="background:var(--surface2);border:1px solid var(--border);color:var(--text-muted);padding:8px 16px;border-radius:9px;font-size:13px;cursor:pointer;">Cerrar</button>`
+ :`<button id="btn-comunicado-ok" onclick="confirmarComunicado()" style="background:linear-gradient(135deg,#7B2FFF,#C83FE8);border:none;color:#fff;padding:9px 20px;border-radius:9px;font-size:13px;font-weight:700;cursor:pointer;">Leí y entendí</button>`;
+ m.style.display='block';
+}
+function ocultarComunicadoModal(){const m=document.getElementById('comunicado-modal');if(m)m.style.display='none';}
+// Cerrar sin confirmar: solo oculta hasta el próximo ingreso (no se vuelve a abrir en esta sesión)
+function cerrarComunicadoModal(){if(window._comunicado)window._comunicado.cerrado=true;ocultarComunicadoModal();}
+function verComunicado(){mostrarComunicadoModal('leer');}
+// Reintenta mientras el agente esté iniciando turno: el modal espera, nunca interrumpe
+function comunicadoIntentarMostrar(intento){
+ const st=window._comunicado;
+ if(!st||st.confirmado||st.cerrado||!comunicadoVigente())return;
+ if(comunicadoPausado()){if(intento<60)setTimeout(()=>comunicadoIntentarMostrar(intento+1),3000);return;}
+ mostrarComunicadoModal('confirmar');
+}
+async function confirmarComunicado(){
+ const st=window._comunicado;if(!st||st.confirmado)return;
+ const btn=document.getElementById('btn-comunicado-ok');if(btn){btn.disabled=true;btn.textContent='Guardando…';}
+ const nombre=document.getElementById('user-name')?.textContent||'';
+ const r=await window.confirmarComunicadoLectura(st.cfg.id,nombre);
+ if(!r.ok){if(btn){btn.disabled=false;btn.textContent='Leí y entendí';}toast('❌ No se pudo registrar tu confirmación: '+r.error);return;}
+ st.confirmado=true;
+ ocultarComunicadoModal();renderComunicadoBanner();
+ toast('✅ Gracias, quedó registrada tu lectura');
+}
+// Arranque (desde onAuthStateChanged, sin await): solo agentes; 1 lectura de su propia confirmación
+async function initComunicado(user){
+ try{
+ window._comunicado=null;renderComunicadoBanner();
+ const email=user&&user.email;if(!email)return;
+ if((window.ADMINS||ADMINS).includes(email)||isSuperAdminUser(email)||window._agentPreviewMode)return;
+ const cfg=comunicadoVigente();if(!cfg)return;
+ let lect;
+ try{lect=await window.getComunicadoLectura(cfg.id,email);}
+ catch(e){console.warn('[comunicado] no se pudo leer tu confirmación (¿reglas de Firestore?):',e&&e.code||e);return;}
+ window._comunicado={cfg,confirmado:!!lect,cerrado:false};
+ if(lect)renderComunicadoBanner();
+ else setTimeout(()=>comunicadoIntentarMostrar(0),1200);
+ }catch(e){console.warn('[comunicado]',e);}
+}
+// ── Edición (solo cromero@pibox.app) en ⚙ Configurar ──
+const comunicadoFinAInput=iso=>{const d=new Date(iso);return isNaN(d)?'':new Date(d.getTime()-5*3600000).toISOString().slice(0,16);};
+const comunicadoInputAFin=v=>v?v+':00-05:00':'';
+function loadComunicadoConfig(){
+ const me=document.getElementById('user-email')?.textContent||'';
+ const ver=me===SUPER_ADMIN;
+ ['com-config-sec','com-config-field'].forEach(id=>{const el=document.getElementById(id);if(el)el.style.display=ver?'':'none';});
+ if(!ver)return;
+ const c=comunicadoActual();
+ const set=(id,v)=>{const el=document.getElementById(id);if(el)el.value=v;};
+ set('inp-com-titulo',c.titulo);set('inp-com-cuerpo',c.cuerpo);set('inp-com-resumen',c.resumen);set('inp-com-fin',comunicadoFinAInput(c.fin));
+ const chk=document.getElementById('chk-com-activo');if(chk)chk.checked=c.activo!==false;
+ const idEl=document.getElementById('com-id-actual');if(idEl)idEl.textContent=c.id;
+}
+async function guardarComunicadoConfig(nuevo){
+ const me=document.getElementById('user-email')?.textContent||'';
+ if(me!==SUPER_ADMIN){toast('Solo cromero@pibox.app puede editar el comunicado');return;}
+ const val=id=>(document.getElementById(id)?.value||'').trim();
+ const actual=comunicadoActual();
+ const c={id:nuevo?'com_'+Date.now().toString(36):actual.id,titulo:val('inp-com-titulo'),cuerpo:(document.getElementById('inp-com-cuerpo')?.value||'').trim(),resumen:val('inp-com-resumen'),fin:comunicadoInputAFin(val('inp-com-fin')),activo:!!document.getElementById('chk-com-activo')?.checked,
+  publicadoAt:nuevo?new Date().toISOString():(actual.publicadoAt||new Date().toISOString()),publicadoPor:me};
+ if(!c.titulo||!c.cuerpo||!c.resumen){toast('Completa título, cuerpo y resumen');return;}
+ if(isNaN(new Date(c.fin).getTime())){toast('La fecha de fin no es válida');return;}
+ if(nuevo&&!confirm('¿Publicar como comunicado NUEVO? Todos los agentes deberán confirmar la lectura de nuevo.'))return;
+ const r=await window.guardarComunicado(c);
+ if(!r.ok){toast('❌ No se pudo guardar el comunicado: '+r.error);return;}
+ window._globalCfg=window._globalCfg||{};window._globalCfg.comunicado=c;
+ const idEl=document.getElementById('com-id-actual');if(idEl)idEl.textContent=c.id;
+ toast(nuevo?'📣 Comunicado nuevo publicado: los agentes deberán confirmarlo':'💾 Comunicado guardado');
+}
+// ── Panel de Control: módulo «Comunicados» (admins) ──
+// Agentes = quienes tienen turnos programados en la malla en los últimos 45 días (sin admins).
+function comunicadoAgentesDeMalla(csv){
+ const adm=new Set([...(window.ADMINS||ADMINS),SUPER_ADMIN]);
+ const desde=Date.now()-45*86400000,m=new Map();
+ csv.trim().split('\n').slice(1).forEach(l=>{const c=parseCSVLine(l);const u=c[2]?.trim(),f=parseDate(c[1]?.trim());if(!u||!f||f.getTime()<desde||!c[5]?.trim()||!c[6]?.trim()||adm.has(u))return;m.set(u,c[3]?.trim()||u.split('@')[0]);});
+ return m;
+}
+function comunicadoResumen(lecturas,agentes){
+ const cuando=l=>{const v=l.confirmadoAt;return v?.toDate?v.toDate():(v?new Date(v):null);};
+ const porEmail=new Map(lecturas.map(l=>[l.email,l]));
+ const lista=agentes?[...agentes.entries()].map(([email,nombre])=>({email,nombre,lectura:porEmail.get(email)||null})):lecturas.map(l=>({email:l.email,nombre:l.nombre||l.email,lectura:l}));
+ const leyeron=lista.filter(x=>x.lectura).map(x=>({...x,cuando:cuando(x.lectura)})).sort((a,b)=>(a.cuando||0)-(b.cuando||0));
+ const faltan=lista.filter(x=>!x.lectura).sort((a,b)=>a.nombre.localeCompare(b.nombre));
+ const otras=agentes?lecturas.filter(l=>!agentes.has(l.email)).length:0;
+ return{leyeron,faltan,total:lista.length,otras,sinMalla:!agentes};
+}
+function renderComunicadosList(el,res,c){
+ const fmt=d=>d?d.toLocaleString('es-CO',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}):'—';
+ const vig=comunicadoVigente();
+ el.innerHTML=`<div style="font-size:11px;color:var(--text-dim);margin-bottom:6px;">${esc(c.titulo)} · id <code>${esc(c.id)}</code> · ${vig?'vigente hasta '+esc(new Date(c.fin).toLocaleString('es-CO')):'<strong>no vigente</strong> (inactivo o vencido)'}</div>
+ ${res.sinMalla?'<div style="font-size:11px;color:#fbbf24;margin-bottom:6px;">⚠ No se pudo leer la malla: solo se listan las confirmaciones; no se sabe quién falta.</div>':''}
+ <div style="font-size:22px;font-weight:800;color:var(--text);margin:6px 0 10px;">${res.leyeron.length} de ${res.total} leyeron</div>
+ ${res.otras?`<div style="font-size:11px;color:var(--text-dim);margin-bottom:6px;">Además hay ${res.otras} confirmación${res.otras!==1?'es':''} de cuentas fuera de la lista de agentes.</div>`:''}
+ <button onclick="descargarComunicadosExcel()" style="background:rgba(74,222,128,0.1);border:1px solid rgba(74,222,128,0.4);color:#4ade80;padding:5px 12px;border-radius:8px;font-size:12px;cursor:pointer;margin-bottom:6px;">⬇ Descargar lista en Excel</button>
+ ${regSeccion('✅ Confirmaron',res.leyeron,'Nadie ha confirmado todavía.')}${res.leyeron.map(x=>`<div style="display:flex;justify-content:space-between;gap:10px;padding:5px 10px;border-bottom:1px solid var(--border);font-size:12px;"><span><strong>${esc(x.nombre)}</strong> <span style="color:var(--text-dim);font-family:var(--mono);">${esc(x.email)}</span></span><span style="color:#4ade80;">${esc(fmt(x.cuando))}</span></div>`).join('')}
+ ${regSeccion('⏳ Faltan por confirmar',res.faltan,res.sinMalla?'—':'¡Todos confirmaron!')}${res.faltan.map(x=>`<div style="padding:5px 10px;border-bottom:1px solid var(--border);font-size:12px;"><strong>${esc(x.nombre)}</strong> <span style="color:var(--text-dim);font-family:var(--mono);">${esc(x.email)}</span></div>`).join('')}`;
+}
+async function pmComunicados(cyc,modals){
+ const lect=await panelGet(cyc,'comunicados');
+ if(cyc&&cyc.fails.comunicados){if(modals)panelModalNote('comunicados-list','No se pudo actualizar el registro de lecturas.');throw new Error('Comunicados');}
+ let agentes=null;
+ try{const csv=await panelMalla(cyc);if(csv)agentes=comunicadoAgentesDeMalla(csv);}catch(e){agentes=null;}
+ const res=comunicadoResumen(lect,agentes);
+ window._comunicadosRes=res;
+ const b=document.getElementById('comunicados-badge');
+ if(b){const n=comunicadoVigente()&&!res.sinMalla?res.faltan.length:0;b.style.display=n>0?'inline':'none';b.textContent=n;}
+ if(modals){const el=document.getElementById('comunicados-list');if(el)renderComunicadosList(el,res,comunicadoActual());}
+ return res;
+}
+async function showComunicadosPanel(){
+ const me=document.getElementById('user-email').textContent;
+ if(!isAdminEmail(me))return;
+ if(!regAbrirModal('comunicados-modal','📢 Comunicados','rgba(123,47,255,0.4)','Lectura del comunicado anclado: quién confirmó con «Leí y entendí» y quién falta. Se actualiza con el ↻ del panel.','comunicados-list'))return;
+ try{const res=await pmComunicados();const el=document.getElementById('comunicados-list');if(el)renderComunicadosList(el,res,comunicadoActual());}
+ catch(e){const el=document.getElementById('comunicados-list');if(el)el.innerHTML='❌ No se pudo cargar (¿reglas de Firestore para comunicados_lectura?).';}
+}
+function descargarComunicadosExcel(){
+ const res=window._comunicadosRes;if(!res){toast('Abre primero el módulo');return;}
+ const c=comunicadoActual();
+ const fmt=d=>d?d.toLocaleString('es-CO',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}):'';
+ const rows=[...res.leyeron.map(x=>[x.nombre,x.email,'Confirmó',fmt(x.cuando)]),...res.faltan.map(x=>[x.nombre,x.email,'Falta','']) ];
+ exportToXLSX(['Nombre','Correo','Estado','Fecha y hora de confirmación'],rows,'comunicado_'+c.id+'_'+new Date().toISOString().split('T')[0]);
+}
 // ── REGLAMENTO: sección «Mi turno» del agente (v18.5/18.6) ──
 // Indicador «Tardanzas desde el 1 de noviembre: X de 3», política, tardanzas con su plazo de 3 días hábiles e Historial de llamados.
 async function loadReglamentoAgente(model,userEmail){
@@ -2581,6 +2801,7 @@ function openConfig(){
  const inpST=document.getElementById('inp-strike-tardanza');if(inpST)inpST.value=localStorage.getItem('pg_strike_tardanza')||'5';
  const inpSN=document.getElementById('inp-strike-nodesconexion');if(inpSN)inpSN.value=localStorage.getItem('pg_strike_nodesconexion')||'4';
  loadReglamentoConfig();
+ loadComunicadoConfig();
 }
 // Interruptor de modo prueba del Reglamento: visible solo para el Super Admin; el estado real vive en Firestore.
 async function loadReglamentoConfig(){
@@ -3556,6 +3777,8 @@ async function startTurno(){
  btnStart._processing=true;
  btnStart.disabled=true;
  btnStart.textContent='Iniciando...';
+ // Si el comunicado anclado está abierto, se oculta: nunca debe quedar sobre el flujo de inicio (ver comunicadoPausado).
+ try{window.ocultarComunicadoModal&&window.ocultarComunicadoModal();}catch(e){}
  // La hora de inicio es la del CLIC: se fija antes de cualquier espera (ubicación, malla, avisos). Así ninguna
  // falla técnica ni modal le suma tardanza al agente.
  const clickTime=new Date();
@@ -4870,9 +5093,10 @@ const PANEL_READERS={
  waivers:(f,s)=>window.getStrikeWaivers?window.getStrikeWaivers(undefined,s):[],
  periodo:(f,s,a)=>window.getRecentTurnos(a.fromDate,f,a.toDate,s),
  aprobadas:(f,s,a)=>window.getApprovedOvertimeEvents?window.getApprovedOvertimeEvents(a.fromDate,a.toDate,s):[],
- casos:(f,s)=>window.getReglamentoCasos?window.getReglamentoCasos(undefined,s):[]
+ casos:(f,s)=>window.getReglamentoCasos?window.getReglamentoCasos(undefined,s):[],
+ comunicados:(f,s)=>window.getComunicadoLecturas?window.getComunicadoLecturas(comunicadoActual().id,s):[]
 };
-const PANEL_FAIL_LABEL={turnos:'Turnos en curso y balance',ausencias:'Ausencias',extras:'Horas extras',apelaciones:'Apelaciones de strikes',waivers:'Strikes retirados',aprobadas:'Extras aprobadas',aprobadasNomina:'Nómina',periodo:'Turnos del período',strikeTurnos:'Strikes vigentes',historialTurnos:'Historial de strikes',casos:'Llamados de atención y Casos para TH',malla:'Malla',extrasTabla:'Tabla de horas extras',insights:'Insights'};
+const PANEL_FAIL_LABEL={turnos:'Turnos en curso y balance',ausencias:'Ausencias',extras:'Horas extras',apelaciones:'Apelaciones de strikes',waivers:'Strikes retirados',aprobadas:'Extras aprobadas',aprobadasNomina:'Nómina',periodo:'Turnos del período',strikeTurnos:'Strikes vigentes',historialTurnos:'Historial de strikes',casos:'Llamados de atención y Casos para TH',comunicados:'Comunicados',malla:'Malla',extrasTabla:'Tabla de horas extras',insights:'Insights'};
 function panelCycleStart(force){return{force:!!force,memo:new Map(),reads:{},fails:{},notes:[]};}
 function panelRead(cyc,key,fn,fallback){
  if(!cyc)return Promise.resolve().then(()=>fn(false,false));
@@ -4935,7 +5159,7 @@ function panelModalNote(containerId,msg){
  el.querySelectorAll(':scope > .p2-note').forEach(n=>n.remove());
  el.insertAdjacentHTML('afterbegin',`<div class="p2-note" style="font-size:11px;color:#fbbf24;background:rgba(251,191,36,0.08);border:1px solid rgba(251,191,36,0.3);border-radius:8px;padding:6px 10px;margin-bottom:10px;">⚠ ${esc(msg)} Se muestran los datos anteriores.</div>`);
 }
-const PANEL_MODULE_BTNS={'btn-overtime-requests':['extras'],'btn-earlyleave-requests':['turnos'],'btn-exceeded-weeks':['malla'],'btn-strike-appeals':['apelaciones'],'btn-strike-historial':['m:Historial de strikes','historialTurnos'],'btn-reg-casos':['casos'],'btn-th-casos':['casos']};
+const PANEL_MODULE_BTNS={'btn-overtime-requests':['extras'],'btn-earlyleave-requests':['turnos'],'btn-exceeded-weeks':['malla'],'btn-strike-appeals':['apelaciones'],'btn-strike-historial':['m:Historial de strikes','historialTurnos'],'btn-reg-casos':['casos'],'btn-th-casos':['casos'],'btn-comunicados':['comunicados']};
 function panelMarkStale(cyc){
  Object.entries(PANEL_MODULE_BTNS).forEach(([id,keys])=>{
  const b=document.getElementById(id);if(!b)return;
@@ -4983,6 +5207,7 @@ async function refreshPanel(){
  ['Salidas anticipadas',()=>loadEarlyLeaveBadge(cyc,true)],
  ['Apelaciones de strikes',()=>loadStrikeAppealsBadge(cyc,true)],
  ['Llamados de atención y Casos para TH',()=>pmCasos(cyc,true)],
+ ['Comunicados',()=>pmComunicados(cyc,true)],
  ['Historial de strikes',()=>pmHistorial(cyc)],
  ['Nómina',()=>pmPayroll(cyc)]
  ];
@@ -5079,6 +5304,7 @@ async function loadPanel2(opts){
  if(opts.modules!=='none'){
  pmOvertime(cyc).catch(()=>{});
  pmCasos(cyc).catch(()=>{});
+ pmComunicados(cyc).catch(()=>{});
  loadEarlyLeaveBadge(cyc).catch(()=>{});
  loadStrikeAppealsBadge(cyc).catch(()=>{});
  }

@@ -122,7 +122,7 @@ Commit messages use the `feat:` / `fix:` / `chore:` prefix and a Spanish subject
 ### Botón ↻ del Panel de Control (v18.3)
 - **`refreshPanel()` refresca todo el panel**: tarjetas «En turno ahora», Balance hoy, tabla/estados, Extras e Insights, y los badges y modales abiertos de Horas extras, Salidas anticipadas, Semanas excedidas, Apelaciones, Historial de strikes y Nómina. Ignora la caché en memoria y la deja actualizada; botón deshabilitado y girando mientras carga; texto «Actualizado h:mm» (`#panel-last-update`) con ⚠ y el nombre de lo que falló.
 - **Ciclo de lectura** (`panelCycleStart`, `panelRead`, `panelGet`, `panelMalla`): cada fuente se lee UNA vez por carga/refresco y la comparten todos los módulos. Dentro de un ciclo los wrappers de Firestore van en modo `strict` (último parámetro): lanzan el error en vez de devolver `[]`, así un módulo caído conserva lo que ya se ve y se avisa, sin arrastrar a los demás. Al agregar una lectura nueva al Panel, regístrala en `PANEL_READERS`, no con `window.get*()` suelto.
-- **Lecturas de un refresh completo (9 consultas Firestore + 1 pedido de malla)**: turnos recientes, ausencias, eventos de horas extras, apelaciones, retiros de strikes, turnos del período, extras aprobadas del período, turnos para strikes y llamados de atención del Reglamento (`reglamento_casos`). Con modales abiertos comparten esas lecturas; solo suman 1 el Historial (turnos del agente) y 1 la Nómina (extras aprobadas de la semana pasada).
+- **Lecturas de un refresh completo (10 consultas Firestore + 1 pedido de malla)**: turnos recientes, ausencias, eventos de horas extras, apelaciones, retiros de strikes, turnos del período, extras aprobadas del período, turnos para strikes, llamados de atención del Reglamento (`reglamento_casos`) y lecturas del comunicado vigente (`comunicados_lectura`). Con modales abiertos comparten esas lecturas; solo suman 1 el Historial (turnos del agente) y 1 la Nómina (extras aprobadas de la semana pasada).
 - **Strikes**: con la caché de 5 meses vigente (<15 min) el refresh es **incremental** (relee solo el mes en curso o los últimos 7 días); vencida, relee los 5 meses.
 - **Nómina abierta**: si hay ediciones sin enviar (`window._payrollDirty`, se activa en `savePayrollDraft`) o una celda en edición, el refresh NO la toca.
 - Prueba: `node test/pigops_panel_refresh_test.js` (corre el `loadPanel2`/`refreshPanel` reales con Firestore y DOM simulados y cuenta cada consulta).
@@ -172,6 +172,35 @@ match /reglamento_casos/{casoId} {
   );
 }
 ```
+
+### Comunicado anclado (v18.7) — mecanismo reutilizable para anuncios
+- **Dónde vive**: `configs/global.comunicado = {id, titulo, cuerpo, resumen, fin (ISO con offset -05:00), activo, publicadoAt, publicadoPor}` (solo cromero puede escribirlo: regla de `configs` ya publicada). Si no existe se usa `COMUNICADO_DEFAULT` en `index.html` (anuncio del Reglamento de tardanzas, id `reglamento-tardanzas-2026-11`, fin 1-nov-2026 23:59 Bogotá).
+- **Agente** (solo no-admins, no en vista previa): al entrar, si no confirmó, aparece una tarjeta flotante «Leí y entendí» (`#comunicado-modal`); puede cerrarla pero vuelve a salir en CADA ingreso hasta que confirme. Confirmado = banner fijo arriba de Mi turno (resumen + «Ver comunicado»). Visible desde `publicadoAt` hasta `fin` y solo si `activo`; después no aparece nada (ni siquiera se lee Firestore).
+- **No estorba el inicio de turno**: la tarjeta no bloquea clics (sin fondo), no se muestra mientras `_startInFlight`, `_startModalOpen` o el botón «Iniciar turno» estén procesando (reintenta cada 3 s), `startTurno` la oculta de forma síncrona antes de cualquier espera, y el arranque (`initComunicado`) es fire-and-forget desde `onAuthStateChanged`.
+- **Confirmación**: documento `comunicados_lectura/{comunicadoId}_{email}` con `email, nombre, comunicadoId, confirmadoAt` (serverTimestamp). El email sale SIEMPRE de la sesión (`confirmarComunicadoLectura` no recibe correo). Un comunicado con OTRO `id` obliga a todos a confirmar de nuevo: en ⚙ Configurar → «Comunicado anclado», «Guardar cambios» conserva el id y «Publicar como NUEVO» genera `com_<timestamp>`.
+- **Cuotas**: la config global ya se lee en el arranque (se reutiliza, `window._globalCfg`); cada agente hace UNA lectura (su propia confirmación) al entrar; el Panel hace UNA consulta (`PANEL_READERS.comunicados`) compartida con el refresh ↻.
+- **Panel de Control → «📢 Comunicados»** (`pmComunicados`): «X de Y leyeron» (Y = agentes con turnos programados en la malla en los últimos 45 días, sin admins), quién confirmó y cuándo, quién falta, botón de descarga en Excel. Badge = pendientes (solo si el comunicado está vigente).
+- **Reglas de Firestore para `comunicados_lectura`** (usa tu `isAdmin()`; agregar dentro de `match /databases/{database}/documents`). No se probó con el emulador de Firebase:
+```
+match /comunicados_lectura/{lecturaId} {
+  // Leer: el propio agente (su documento, exista o no todavía) y los admins; listar solo admins.
+  allow get: if request.auth != null
+    && (isAdmin() || resource == null || resource.data.email == request.auth.token.email);
+  allow list: if isAdmin();
+  // Crear: solo la confirmación propia (email de la sesión, id {comunicadoId}_{email}, fecha del servidor).
+  allow create: if request.auth != null
+    && request.resource.data.keys().hasOnly(['email', 'nombre', 'comunicadoId', 'confirmadoAt'])
+    && request.resource.data.keys().hasAll(['email', 'nombre', 'comunicadoId', 'confirmadoAt'])
+    && request.resource.data.email == request.auth.token.email
+    && request.resource.data.comunicadoId is string
+    && request.resource.data.nombre is string
+    && lecturaId == request.resource.data.comunicadoId + '_' + request.auth.token.email
+    && request.resource.data.confirmadoAt == request.time;
+  // Nunca modificar ni borrar una confirmación.
+  allow update, delete: if false;
+}
+```
+- Pruebas: `node test/pigops_comunicado_test.js` (44 casos: modal, banner, vigencia, comunicado nuevo, confirmación a nombre propio, inicio de turno, edición) y `node test/pigops_panel_refresh_test.js` (módulo del Panel).
 
 ### Nómina
 - **Pre-revisión** (`openPayrollPreview`):

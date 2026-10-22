@@ -37,6 +37,7 @@ function build(){
   ],
   strike_waivers:[{id:'a1@pibox.app_20260101_tardanza',userEmail:'a1@pibox.app',cat:'tardanza',fecha:'1/1/2026'}],
   reglamento_casos:[{id:'ana_20261104_reg',tipoRegistro:'tardanza',userEmail:'a1@pibox.app',userName:'Ana Uno',tipo:'llamado',estado:'En plazo de justificación',fecha:'04/11/2026',fechaISO:'2026-11-04',limiteISO:'2026-11-09',minutos:14,programada:'8:00 a. m.',inicioReal:'8:14 a. m.'}],
+  comunicados_lectura:[{id:'reglamento-tardanzas-2026-11_a1@pibox.app',email:'a1@pibox.app',nombre:'Ana Uno',comunicadoId:'reglamento-tardanzas-2026-11',confirmadoAt:{toDate:()=>new Date(2026,9,22,9,30,0)}},{id:'otro_a2@pibox.app',email:'a2@pibox.app',nombre:'Beto Dos',comunicadoId:'otro',confirmadoAt:{toDate:()=>new Date()}}],
   strike_appeals:[{id:'AP1',userEmail:'a2@pibox.app',userName:'Beto Dos',status:'pending',fecha:'2/10/2026',detalle:'llegó tarde',motivo:'trancón',createdAt:new Date().toISOString()}]
  };
  const log=[];const toasts=[];const errors=[];
@@ -116,8 +117,8 @@ const txt=s=>s.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ');
   t('N1 carga normal: turnos recientes se leen 1 vez (badge de salidas anticipadas comparte la lectura)',r.turnos300===1,r);
   t('N2 carga normal: eventos de horas extras 1 vez (badge + tabla Extras comparten)',r.extras===1,r);
   t('N3 carga normal: apelaciones 1 vez (badge + Insights comparten)',r.apelaciones===1,r);
-  t('N4 carga normal: ausencias, retiros, período, extras aprobadas, strikes y llamados de atención: 1 lectura cada una',r.ausencias===1&&r.waivers===1&&r.periodo===1&&r.aprobadas===1&&r.strike===1&&r.reglamento_casos===1,r);
-  t('N5 carga normal: 9 consultas en total',sum(r)===9,r);
+  t('N4 carga normal: ausencias, retiros, período, extras aprobadas, strikes y llamados de atención: 1 lectura cada una',r.ausencias===1&&r.waivers===1&&r.periodo===1&&r.aprobadas===1&&r.strike===1&&r.reglamento_casos===1&&r.comunicados_lectura===1,r);
+  t('N5 carga normal: 10 consultas en total',sum(r)===10,r);
   t('N6 carga normal pinta las tarjetas «En turno ahora» (Ana y Carla)',/Ana Uno/.test(H(A,'panel2-active'))&&/Carla Tres/.test(H(A,'panel2-active'))&&!/Beto Dos/.test(H(A,'panel2-active')));
   const bal=txt(H(A,'panel2-balance-card'));
   t('N7 balance hoy: 5 programados, 4 registraron, 1 pendiente',/Programados 5 .*Registraron turno 4 .*Pendientes 1/.test(bal),bal);
@@ -139,8 +140,8 @@ const txt=s=>s.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ');
   t('R1 mientras carga el botón queda deshabilitado y girando',btn.disabled===true&&btn.classList.contains('spinning'));
   await p;
   const r=A.reads();
-  t('R2 un refresh completo = 9 consultas (1 por módulo), con los modales cerrados',sum(r)===9,r);
-  t('R3 cada módulo se lee exactamente una vez',r.turnos300===1&&r.ausencias===1&&r.extras===1&&r.apelaciones===1&&r.waivers===1&&r.periodo===1&&r.aprobadas===1&&r.strike===1&&r.reglamento_casos===1,r);
+  t('R2 un refresh completo = 10 consultas (1 por módulo), con los modales cerrados',sum(r)===10,r);
+  t('R3 cada módulo se lee exactamente una vez',r.turnos300===1&&r.ausencias===1&&r.extras===1&&r.apelaciones===1&&r.waivers===1&&r.periodo===1&&r.aprobadas===1&&r.strike===1&&r.reglamento_casos===1&&r.comunicados_lectura===1,r);
   t('R4 el refresh ignoró la caché de 60 s: vio el turno nuevo de Dario en «En turno ahora»',/Dario Cuatro/.test(H(A,'panel2-active')));
   t('R5 balance hoy actualizado (5 registraron, 0 pendientes)',/Registraron turno 5 .*Pendientes 0/.test(txt(H(A,'panel2-balance-card'))),txt(H(A,'panel2-balance-card')));
   t('R6 badges actualizados: horas extras 2, apelaciones 2',A.getEl('overtime-badge').textContent==='2'&&A.getEl('strike-appeals-badge').textContent==='2',[A.getEl('overtime-badge').textContent,A.getEl('strike-appeals-badge').textContent]);
@@ -157,7 +158,7 @@ const txt=s=>s.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ');
   t('R14 …y la caché de strikes conserva los meses anteriores y suma lo nuevo',sc.some(x=>x.id==='OLD1')&&sc.some(x=>x.id==='OLD2')&&sc.some(x=>x.id==='T4'));
   A.reset();A.ctrl.delay=30;
   const p1=A.ctx.refreshPanel();const p2=A.ctx.refreshPanel();await Promise.all([p1,p2]);A.ctrl.delay=0;
-  t('R15 un segundo clic mientras carga se ignora (sigue siendo 1 sola ronda de 9 lecturas)',sum(A.reads())===9,A.reads());
+  t('R15 un segundo clic mientras carga se ignora (sigue siendo 1 sola ronda de 10 lecturas)',sum(A.reads())===10,A.reads());
   A.run('window._strikeTurnosCache.ts=Date.now()-16*60000');A.reset();await A.ctx.refreshPanel();
   const sr=A.log.find(x=>x.kind==='strike');const s5=new Date(new Date().getFullYear(),new Date().getMonth()-4,1);
   t('R16 con la caché de strikes vencida (>15 min) el refresh hace la lectura completa de 5 meses',sr&&sr.from.getTime()===s5.getTime(),sr&&String(sr.from));
@@ -186,7 +187,7 @@ const txt=s=>s.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ');
  }
  // ═══ 5. Falla TODO Firestore: el panel no se rompe ni se vacía ═══
  {const A=build();await A.ctx.loadPanel2();const activosAntes=H(A,'panel2-active');
-  ['turnos300','periodo','ausencias','extras','apelaciones','waivers','aprobadas','strike','reglamento_casos'].forEach(k=>A.ctrl.fail[k]=true);
+  ['turnos300','periodo','ausencias','extras','apelaciones','waivers','aprobadas','strike','reglamento_casos','comunicados_lectura'].forEach(k=>A.ctrl.fail[k]=true);
   A.reset();await A.ctx.refreshPanel();
   t('X1 con Firestore caído el panel conserva lo que mostraba (usa los últimos datos válidos)',H(A,'panel2-active')===activosAntes&&A.getEl('btn-panel-refresh').disabled===false);
   t('X2 el aviso lista los módulos afectados',/⚠/.test(A.getEl('panel-last-update').textContent)&&/Horas extras/.test(A.getEl('panel-last-update').textContent),A.getEl('panel-last-update').textContent);
@@ -200,7 +201,7 @@ const txt=s=>s.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ');
   A.F.turnos.unshift({id:'T6',userEmail:'a4@pibox.app',userName:'Dario Cuatro',status:'ended',startTime:A.ts(new Date(A.sod.getTime()+9000)),endTime:A.ts(new Date(A.sod.getTime()+9500)),earlyLeave:true,earlyLeaveStatus:'pending_review',earlyLeaveMins:10,earlyLeaveReason:'x'});
   A.reset();await A.ctx.refreshPanel();
   const r=A.reads();
-  t('M1 modales abiertos: el refresh sigue haciendo solo 9 consultas (comparten las lecturas del ciclo)',sum(r)===9,r);
+  t('M1 modales abiertos: el refresh sigue haciendo solo 10 consultas (comparten las lecturas del ciclo)',sum(r)===10,r);
   t('M2 modal de horas extras repintado con la solicitud nueva',/Carla Tres/.test(H(A,'overtime-list'))&&/Ana Uno/.test(H(A,'overtime-list')));
   t('M3 modal de salidas anticipadas repintado con la nueva',/Dario Cuatro/.test(H(A,'earlyleave-list'))&&/Elsa Cinco/.test(H(A,'earlyleave-list')));
   t('M4 modal de apelaciones repintado con la nueva',/Carla Tres/.test(H(A,'strike-appeals-list')));
@@ -222,7 +223,7 @@ const txt=s=>s.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ');
   nuevos.forEach(c=>A.F.reglamento_casos.push(c));
   A.reset();await A.ctx.refreshPanel();
   const L=txt(H(A,'reg-casos-list')),T=txt(H(A,'th-casos-list'));
-  t('LL1 «Llamados de atención» se refresca con el ↻ (modal abierto, sin lecturas extra): en plazo y enviados, solo llamados (no faltas graves)',/Llamados en plazo de justificación \(1\)/.test(L)&&/Llamados enviados \(1\)/.test(L)&&!/Falta grave/.test(L)&&sum(A.reads())===9,[L.slice(0,200),A.reads()]);
+  t('LL1 «Llamados de atención» se refresca con el ↻ (modal abierto, sin lecturas extra): en plazo y enviados, solo llamados (no faltas graves)',/Llamados en plazo de justificación \(1\)/.test(L)&&/Llamados enviados \(1\)/.test(L)&&!/Falta grave/.test(L)&&sum(A.reads())===10,[L.slice(0,200),A.reads()]);
   t('LL2 tiene botón para cancelar un registro en plazo (con motivo)',/Cancelar \(con motivo\)/.test(H(A,'reg-casos-list')));
   t('LL3 indicador por agente de faltas leves vigentes: Ana 1 de 3, y quien está a una de la falta grave se destaca',/Faltas leves vigentes por agente/.test(L)&&/Ana Uno a1@pibox\.app 1 de 3/.test(L)&&/Carla Tres a3@pibox\.app 3 de 3 · falta grave/.test(L),L.slice(0,400));
   t('TH1 «Casos para Talento Humano» con los 3 estados: Pendiente de enviar (1), Enviado a Talento Humano (2) y Cerrado (1)',/Pendiente de enviar \(1\)/.test(T)&&/Enviado a Talento Humano \(2\)/.test(T)&&/Cerrado \(1\)/.test(T),T.slice(0,300));
@@ -233,13 +234,31 @@ const txt=s=>s.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ');
   A.ctrl.fail.reglamento_casos=true;A.reset();await A.ctx.refreshPanel();
   t('LL4 si falla la lectura: el resto del panel se actualiza, ambos módulos conservan lo anterior y avisan, y los dos botones se marcan',/Llamados de atención/.test(A.getEl('panel-last-update').textContent)&&/Carla Tres/.test(H(A,'th-casos-list'))&&/No se pudieron actualizar/.test(H(A,'th-casos-list'))&&A.getEl('btn-reg-casos').classList.contains('p2-stale')&&A.getEl('btn-th-casos').classList.contains('p2-stale'),A.getEl('panel-last-update').textContent);
  }
+ // ═══ 6c. Módulo «Comunicados» ═══
+ {const A=build();await A.ctx.loadPanel2();
+  t('CO0 tras la carga el badge del módulo muestra 4 pendientes (5 agentes, 1 confirmó el comunicado vigente; la confirmación de OTRO comunicado no cuenta)',A.getEl('comunicados-badge').textContent==='4'&&A.getEl('comunicados-badge').style.display!=='none',A.getEl('comunicados-badge').textContent);
+  A.present.add('comunicados-list');
+  A.F.comunicados_lectura.push({id:'reglamento-tardanzas-2026-11_a3@pibox.app',email:'a3@pibox.app',nombre:'Carla Tres',comunicadoId:'reglamento-tardanzas-2026-11',confirmadoAt:{toDate:()=>new Date(2026,9,22,10,45,0)}});
+  A.reset();await A.ctx.refreshPanel();
+  const C=txt(H(A,'comunicados-list'));
+  t('CO1 el módulo muestra «2 de 5 leyeron» tras el ↻ (con el modal abierto, 1 sola consulta de lecturas)',/2 de 5 leyeron/.test(C)&&A.reads().comunicados_lectura===1&&sum(A.reads())===10,[C.slice(0,200),A.reads()]);
+  t('CO2 lista quién confirmó (con fecha y hora) y quién falta',/Confirmaron \(2\)/.test(C)&&/Ana Uno/.test(C)&&/Carla Tres/.test(C)&&/Faltan por confirmar \(3\)/.test(C)&&/Beto Dos/.test(C)&&/Dario Cuatro/.test(C)&&/Elsa Cinco/.test(C)&&/22\/10\/2026/.test(C),C.slice(0,500));
+  t('CO3 hay botón para descargar la lista en Excel',/Descargar lista en Excel/.test(H(A,'comunicados-list')));
+  t('CO4 el badge baja a 3 pendientes',A.getEl('comunicados-badge').textContent==='3');
+  // Excel: captura de lo que se exporta
+  let exportado=null;A.ctx.exportToXLSX=(h,r,f)=>{exportado={h,r,f};};
+  A.ctx.descargarComunicadosExcel();
+  t('CO5 el Excel trae nombre, correo, estado y fecha y hora de confirmación (confirmaron primero, luego faltan)',exportado&&exportado.h.join()==='Nombre,Correo,Estado,Fecha y hora de confirmación'&&exportado.r.length===5&&exportado.r.filter(x=>x[2]==='Confirmó').length===2&&exportado.r.filter(x=>x[2]==='Falta').length===3&&/^comunicado_reglamento-tardanzas-2026-11_/.test(exportado.f),exportado);
+  A.ctrl.fail.comunicados_lectura=true;A.reset();await A.ctx.refreshPanel();
+  t('CO6 si falla la lectura de comunicados: el resto del panel se actualiza, el módulo conserva lo anterior y avisa',/Comunicados/.test(A.getEl('panel-last-update').textContent)&&/2 de 5 leyeron/.test(txt(H(A,'comunicados-list')))&&/No se pudo actualizar/.test(H(A,'comunicados-list'))&&A.getEl('btn-comunicados').classList.contains('p2-stale'),A.getEl('panel-last-update').textContent);
+ }
  // ═══ 7. Historial de strikes y Nómina abiertos ═══
  {const A=build();await A.ctx.loadPanel2();
   let llamado=null;A.present.add('strike-hist-modal');A.present.add('strike-hist-body');
   A.ctx._strikeHistRefresh=async cyc=>{llamado=cyc;return A.ctx.buildAgentStrikeModel('a1@pibox.app',new Date(),cyc);};
   A.reset();await A.ctx.refreshPanel();
   const r=A.reads();
-  t('H1 historial abierto: reutiliza retiros/apelaciones del ciclo y lee solo los turnos del agente (1 consulta extra)',r.turnosAgente===1&&!r.waiversAgente&&!r.apelacionesAgente&&sum(r)===10,r);
+  t('H1 historial abierto: reutiliza retiros/apelaciones del ciclo y lee solo los turnos del agente (1 consulta extra)',r.turnosAgente===1&&!r.waiversAgente&&!r.apelacionesAgente&&sum(r)===11,r);
   t('H2 el historial recibió el ciclo del refresh',llamado&&llamado.force===true);
   A.ctx._strikeHistRefresh=undefined;A.present.delete('strike-hist-modal');
   A.present.add('payroll-preview-body');A.present.add('payroll-preview-table');A.present.add('payroll-send-btn');
@@ -249,7 +268,7 @@ const txt=s=>s.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ');
   t('H3 nómina con ediciones sin enviar: NO se sobrescribe y se avisa',A.run('window._payrollPreviewRecords[0].name')==='EDITADO'&&A.toasts.some(m=>/ediciones sin enviar/.test(m)),A.toasts);
   A.run('window._payrollDirty=false;');A.reset();await A.ctx.refreshPanel();
   const r2=A.reads();
-  t('H4 nómina abierta sin ediciones: se recalcula con las lecturas del ciclo (+1 consulta: extras aprobadas de la semana pasada)',r2.aprobadas===2&&r2.turnos300===1&&r2.waivers===1&&sum(r2)===10,r2);
+  t('H4 nómina abierta sin ediciones: se recalcula con las lecturas del ciclo (+1 consulta: extras aprobadas de la semana pasada)',r2.aprobadas===2&&r2.turnos300===1&&r2.waivers===1&&sum(r2)===11,r2);
   t('H5 …y la tabla de nómina se repinta con datos de la malla',A.run('window._payrollPreviewRecords').every(x=>x.name!=='EDITADO'));
  }
  // ═══ 8. Filtros activos de línea y líder ═══
