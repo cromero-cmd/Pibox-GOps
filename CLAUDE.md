@@ -139,26 +139,18 @@ Commit messages use the `feat:` / `fix:` / `chore:` prefix and a Spanish subject
 - **Propiedades del script**: `reg_th_email`, `reg_template_id`, `reg_firmante_cargo` (obligatorias); `reg_firmante_nombre`, `reg_drive_folder_id`, `reg_test_email` (opcionales). **Marcadores de la plantilla**: `{{FECHA}} {{NOMBRE}} {{CARGO}} {{CEDULA}}(opc.) {{CAUSAL}}(opc.) {{DESCRIPCION_FALTAS}} {{FIRMANTE}} {{CARGO_FIRMANTE}}`, y `{{INICIO_NOTA}}`/`{{FIN_NOTA}}` rodeando la nota para quien diligencia (se borra). `diagnosticoReglamento()` (solo lectura) comprueba propiedades, permisos y disparadores.
 - **Estado de la configuración (22-oct-2026, hecha a mano por Camilo)**: `PiGOps_Reglamento.gs` (v18.6) pegado en Apps Script; propiedades `reg_template_id`, `reg_th_email` y `reg_firmante_cargo` configuradas; `instalarDisparadoresReglamento()` ejecutado; manifiesto actualizado; `diagnosticoReglamento()` en OK. Excepción esperada: la prueba «Gmail» (`GmailApp.getInboxUnreadCount()`, lectura de bandeja) no aplica, porque el script solo ENVÍA correo; si falla, se ignora. Reglas de `reglamento_casos` publicadas. Lo único que queda sin ejercitar es el flujo real de envío, que no puede ocurrir antes del 1-nov-2026 (el motor no hace nada antes de `REG.DESDE`) y arranca en modo prueba.
 - **Manifiesto de Apps Script (`appsscript.json`, vive en el proyecto, no en este repo)**: si lista `oauthScopes` explícitos deben estar al menos `drive` (copiar la plantilla, crear PDF/Excel, compartir), `documents`, `spreadsheets`, `script.scriptapp`, `script.send_mail`/Gmail, `script.external_request`, `userinfo.email` y el de Firestore/Datastore (`datastore` o `cloud-platform`). `America/Bogota` como zona horaria del proyecto. Si cambia `PiGOps_Reglamento.gs` hay que volver a pegarlo (los disparadores siguen instalados).
-- **Reglas de Firestore (se publican a mano, en el bloque `match /databases/{database}/documents`; las de `reglamento_casos` ya están publicadas)**: abajo está el bloque de referencia, que incluye también la restricción de `configs/global` (solo cromero). Ojo: las reglas se combinan con OR; si ya existe un `match /{document=**}` permisivo, hay que quitarlo o estas restricciones no sirven.
+- **Reglas de Firestore (se publican a mano, en el bloque `match /databases/{database}/documents`; las de `reglamento_casos` ya están publicadas)**: abajo está el bloque de referencia de `reglamento_casos`. `configs` ya estaba protegido con la regla que Camilo tiene publicada: cada usuario solo escribe su propio doc (`request.auth.uid == docId`) y `configs/global` (incluido `reglamentoModoPrueba`) solo lo escribe `cromero@pibox.app`; no requiere cambios. Ojo: las reglas se combinan con OR; si ya existe un `match /{document=**}` permisivo, hay que quitarlo o estas restricciones no sirven.
 - **UI**: Mi turno → sección «Reglamento» (indicador «Tardanzas desde el 1 de noviembre: X de 3» verde→amarillo→rojo, política literal, aviso de inicio antes del 1-nov, tardanzas con plazo/botón de justificar o apelar —reusa `apelarStrike`/`strike_appeals`— e Historial de llamados con el PDF); Panel de Control → «📣 Llamados de atención» (indicador por agente de faltas leves vigentes: quién está a una de la falta grave; en plazo/enviados; cancelar con motivo) y «🏛️ Casos para Talento Humano» («Pendiente de enviar» / «Enviado a Talento Humano» / «Cerrado» con quién y cuándo, descarga del Excel de soporte). Los dos comparten UNA lectura (`PANEL_READERS.casos`) y el refresh ↻ (`pmCasos`).
 - Pruebas: `node test/pigops_reglamento_test.js` (carga el `.gs` real con IO simulado, Google Docs simulado y el cliente real) y `node test/pigops_panel_refresh_test.js` (módulos del Panel).
 
 ```
-// ── Firestore rules (agregar/reemplazar dentro de `match /databases/{database}/documents { ... }`) ──
+// ── Firestore rules de reglamento_casos (dentro de `match /databases/{database}/documents { ... }`) ──
 function isCromero() {
   return request.auth != null && request.auth.token.email == 'cromero@pibox.app';
 }
 function isAdmin() {
   return request.auth != null && (isCromero() ||
     exists(/databases/$(database)/documents/admins/$(request.auth.token.email)));
-}
-
-// configs: cada usuario escribe SU doc (configs/{uid}); configs/global (incluye reglamentoModoPrueba) SOLO cromero.
-match /configs/{docId} {
-  allow read: if request.auth != null;
-  allow write: if request.auth != null && (
-    (docId != 'global' && request.auth.uid == docId) ||
-    (docId == 'global' && isCromero()));
 }
 
 // reglamento_casos: lo escribe el script de Apps Script (OAuth del dueño, no pasa por reglas).
