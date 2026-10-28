@@ -1567,7 +1567,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
-const APP_VERSION='18.8';
+const APP_VERSION='18.9';
 // Promesas rechazadas sin manejar y errores de script: antes desaparecían sin rastro en consola del agente.
 window.addEventListener('unhandledrejection',e=>console.error('[unhandledrejection]',e.reason&&(e.reason.stack||e.reason.message||e.reason)));
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
@@ -1850,6 +1850,7 @@ function initHomeView(){
  {id:'ext-trump-new',icon:'🚀',title:'Nuevo Trump',desc:'Nueva versión del TMS al que se está migrando Pibox.',color:'#7c3aed',grad:'linear-gradient(135deg,#7c3aed,#a78bfa)',roles:['user','admin','super'],url:'https://admin.picap.io/sessions/new'},
  {id:'ext-pibox-web',icon:'🌐',title:'Pibox Web',desc:'Centro de creación de servicios — Web Service del cliente corporativo.',color:'#0891b2',grad:'linear-gradient(135deg,#0891b2,#06b6d4)',roles:['user','admin','super'],url:'https://www.pibox.app/app'},
  {id:'ext-manychat',icon:'🤖',title:'ManyChat',desc:'Automatización de conversaciones y chatbots con clientes y pilotos.',color:'#65a30d',grad:'linear-gradient(135deg,#65a30d,#84cc16)',roles:['user','admin','super'],url:'https://app.manychat.com/fb3205784/dashboard',keywords:'manychat chatbot bot whatsapp mensajes conversaciones automatización'},
+ {id:'ext-crm',icon:'💼',title:'CRM Comercial',desc:'Gestión comercial de clientes, oportunidades y seguimiento de ventas.',color:'#0d9488',grad:'linear-gradient(135deg,#0d9488,#2dd4bf)',roles:['user','admin','super'],url:'https://zeus.codi.com.co/6a0ba95373c9954b1f06821c/dashboard',keywords:'crm comercial zeus ventas clientes oportunidades seguimiento'},
  ];
  const role=window._agentPreviewMode?'user':isSuperAdmin?'super':isAdmin?'admin':'user';
  const filtered=cards.filter(c=>c.roles.includes(role));
