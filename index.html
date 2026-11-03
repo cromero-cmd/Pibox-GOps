@@ -1567,7 +1567,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
-const APP_VERSION='18.9';
+const APP_VERSION='19.0';
 // Promesas rechazadas sin manejar y errores de script: antes desaparecían sin rastro en consola del agente.
 window.addEventListener('unhandledrejection',e=>console.error('[unhandledrejection]',e.reason&&(e.reason.stack||e.reason.message||e.reason)));
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
@@ -1613,6 +1613,9 @@ const regIsoLocal=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0'
 function regEsHabil(iso){const [y,m,d]=iso.split('-').map(Number);const w=new Date(y,m-1,d).getDay();return w!==0&&w!==6&&!FESTIVOS_CO.includes(iso);}
 function regFechaLimite(iso){let [y,m,d]=iso.split('-').map(Number);const c=new Date(y,m-1,d);let k=0;while(k<REG_PLAZO_DIAS_HABILES){c.setDate(c.getDate()+1);if(regEsHabil(regIsoLocal(c)))k++;}return regIsoLocal(c);}
 const regDDMMYYYY=iso=>{const [y,m,d]=iso.split('-');return `${d}/${m}/${y}`;};
+// Fecha límite de una tardanza: la del registro si el plazo se recalculó al promoverlo de prueba a producción (3 días hábiles desde el aviso
+// REAL, ver promoverRegistrosDePrueba en el .gs); si no, 3 días hábiles desde la tardanza.
+const regLimiteDe=(iso,casos)=>{const c=(casos||[]).find(x=>x.tipoRegistro==='tardanza'&&x.fechaISO===iso&&x.plazoRecalculado&&x.limiteISO);return c?c.limiteISO:regFechaLimite(iso);};
 // Primer día de la ventana de 3 meses calendario (mes actual + 2 anteriores), nunca antes del 1-nov-2026.
 function regInicioVentana(iso){let [y,m]=iso.split('-').map(Number);m-=2;while(m<1){m+=12;y--;}const ini=`${y}-${String(m).padStart(2,'0')}-01`;return ini<REGLAMENTO_DESDE?REGLAMENTO_DESDE:ini;}
 // Texto literal de las causales del Reglamento Interno de Trabajo de Digital Platforms Colombia S.A.S.
@@ -2565,7 +2568,7 @@ async function loadReglamentoAgente(model,userEmail){
  <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">Cuentan las tardanzas injustificadas de los últimos 3 meses (ventana desde ${regDDMMYYYY(ini)}). ${mensaje}</div></div>`;
  window._myStrikeCtx=window._myStrikeCtx||{};
  const filas=regs.map(s=>{
- const iso=regIsoLocal(s.date),lim=regFechaLimite(iso),fin=new Date(lim+'T23:59:59.999').getTime();
+ const iso=regIsoLocal(s.date),lim=regLimiteDe(iso,casos),fin=new Date(lim+'T23:59:59.999').getTime();
  const a=s.appeal;let est,color,boton='';
  if(s.waived){est='✅ Justificada — no cuenta';color='#4ade80';}
  else if(cancelados.has(iso)){est='Registro cancelado — no cuenta';color='#9ca3af';}
@@ -2579,8 +2582,8 @@ async function loadReglamentoAgente(model,userEmail){
  }
  return `<div style="padding:8px 16px;border-bottom:1px solid var(--border);font-size:12px;"><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;"><span><strong>${esc(s.fecha)}</strong> · programada ${esc(s.prog||'')} · iniciaste ${esc(s.real||'')} · <strong>${s.min} min</strong> de retardo</span></div><div style="color:${color};font-size:11px;margin-top:3px;">${esc(est)}${boton}</div></div>`;
  }).join('');
- const enPlazo=regs.filter(s=>{if(s.waived||cancelados.has(regIsoLocal(s.date)))return false;const a=s.appeal;const fin=new Date(regFechaLimite(regIsoLocal(s.date))+'T23:59:59.999').getTime();return now<=fin&&!(a&&a.status==='rejected');});
- const aviso=enPlazo.length?`<div style="margin:10px 16px;background:rgba(251,191,36,0.1);border:1px solid rgba(251,191,36,0.4);border-radius:8px;padding:10px 12px;font-size:12px;color:#fbbf24;">⏳ Tienes ${enPlazo.length} tardanza${enPlazo.length!==1?'s':''} en plazo de justificación. La fecha límite más próxima es el <strong>${regDDMMYYYY(enPlazo.map(s=>regFechaLimite(regIsoLocal(s.date))).sort()[0])}</strong> (3 días hábiles). Si no la justificas a tiempo, la falta queda confirmada.</div>`:'';
+ const enPlazo=regs.filter(s=>{if(s.waived||cancelados.has(regIsoLocal(s.date)))return false;const a=s.appeal;const fin=new Date(regLimiteDe(regIsoLocal(s.date),casos)+'T23:59:59.999').getTime();return now<=fin&&!(a&&a.status==='rejected');});
+ const aviso=enPlazo.length?`<div style="margin:10px 16px;background:rgba(251,191,36,0.1);border:1px solid rgba(251,191,36,0.4);border-radius:8px;padding:10px 12px;font-size:12px;color:#fbbf24;">⏳ Tienes ${enPlazo.length} tardanza${enPlazo.length!==1?'s':''} en plazo de justificación. La fecha límite más próxima es el <strong>${regDDMMYYYY(enPlazo.map(s=>regLimiteDe(regIsoLocal(s.date),casos)).sort()[0])}</strong> (3 días hábiles). Si no la justificas a tiempo, la falta queda confirmada.</div>`:'';
  // Historial: un llamado puede cubrir varias faltas (mismo llamadoId)
  const grupos={};
  casos.filter(c=>c.userEmail===userEmail&&c.tipo==='llamado'&&c.estado==='Enviado'&&!c.prueba).forEach(c=>{const k=c.llamadoId||c.id;(grupos[k]=grupos[k]||{c,fechas:[]}).fechas.push(c.fecha||'');});

@@ -10,6 +10,9 @@ const WRAP=mod.slice(mod.indexOf('// ── Comunicados anclados (v18.7) ──'
 const STATIC_IDS=new Set([...html.replace(/<script[\s\S]*?<\/script>/g,'').matchAll(/\sid="([^"]+)"/g)].map(m=>m[1]));
 const out=[];const t=(n,c,x)=>out.push((c?'PASS ':'FAIL ')+n+(c?'':'  '+(x===undefined?'':JSON.stringify(x))));
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+// Reloj fijo (jueves 22-oct-2026, antes de la fecha de fin del comunicado por defecto): las pruebas no dependen del día en que se corran.
+const FIJO=new Date('2026-10-22T14:00:00-05:00').getTime();
+class FechaFija extends Date{constructor(...a){if(a.length===0)super(FIJO);else super(...a);}static now(){return FIJO;}}
 
 function build(o={}){
  const email=o.email||'ana@pibox.app';
@@ -31,7 +34,7 @@ function build(o={}){
  const getEl=id=>present.has(id)?(els[id]||(els[id]=mkEl(id))):null;
  const document={getElementById:getEl,querySelector:()=>null,querySelectorAll:()=>[],createElement:()=>mkEl('__n'),body:mkEl('body'),addEventListener(){},documentElement:mkEl('html'),head:mkEl('head')};
  const ctx={document,navigator:{userAgent:'x',maxTouchPoints:0},localStorage:{getItem:()=>null,setItem(){},removeItem(){}},console:{log(){},warn(){},info(){},error(){}},
-  setTimeout,clearTimeout,setInterval:()=>0,clearInterval(){},fetch:async()=>({ok:false}),URL,Date,Math,JSON,Promise,Map,Set,AbortController,
+  setTimeout,clearTimeout,setInterval:()=>0,clearInterval(){},fetch:async()=>({ok:false}),URL,Date:FechaFija,Math,JSON,Promise,Map,Set,AbortController,
   doc,getDoc,setDoc,getDocs,query:()=>({}),collection:()=>({}),where:()=>({}),limit:()=>({}),serverTimestamp:()=>({__serverTimestamp:true}),db:{},
   auth:{currentUser:email==='NINGUNO'?null:{email}}};
  ctx.addEventListener=()=>{};ctx.removeEventListener=()=>{};ctx.matchMedia=()=>({matches:false,addEventListener(){}});

@@ -153,7 +153,7 @@ const txt=s=>s.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ');
   t('R12 la malla se pidió 1 vez (Apps Script) ignorando la caché caliente de 1 min',A.ctrl.mallaCalls===1,A.ctrl.mallaCalls);
   const strikeRead=A.log.find(x=>x.kind==='strike');
   const m0=new Date(Math.min(new Date(new Date().getFullYear(),new Date().getMonth(),1).getTime(),Date.now()-7*86400000));
-  t('R13 strikes: refresco INCREMENTAL (desde el inicio del mes, no 5 meses atrás)',strikeRead&&strikeRead.from.getTime()===m0.getTime(),strikeRead&&String(strikeRead.from));
+  t('R13 strikes: refresco INCREMENTAL (desde el inicio del mes o los últimos 7 días, no 5 meses atrás)',strikeRead&&Math.abs(strikeRead.from.getTime()-m0.getTime())<10000,strikeRead&&String(strikeRead.from));
   const sc=A.run('window._strikeTurnosCache.data');
   t('R14 …y la caché de strikes conserva los meses anteriores y suma lo nuevo',sc.some(x=>x.id==='OLD1')&&sc.some(x=>x.id==='OLD2')&&sc.some(x=>x.id==='T4'));
   A.reset();A.ctrl.delay=30;
@@ -235,7 +235,8 @@ const txt=s=>s.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ');
   t('LL4 si falla la lectura: el resto del panel se actualiza, ambos módulos conservan lo anterior y avisan, y los dos botones se marcan',/Llamados de atención/.test(A.getEl('panel-last-update').textContent)&&/Carla Tres/.test(H(A,'th-casos-list'))&&/No se pudieron actualizar/.test(H(A,'th-casos-list'))&&A.getEl('btn-reg-casos').classList.contains('p2-stale')&&A.getEl('btn-th-casos').classList.contains('p2-stale'),A.getEl('panel-last-update').textContent);
  }
  // ═══ 6c. Módulo «Comunicados» ═══
- {const A=build();await A.ctx.loadPanel2();
+ {const A=build();A.run("window._globalCfg={comunicado:{fin:'2099-01-01T00:00:00-05:00'}}"); // vigente sin depender de la fecha en que se corra la prueba
+  await A.ctx.loadPanel2();
   t('CO0 tras la carga el badge del módulo muestra 4 pendientes (5 agentes, 1 confirmó el comunicado vigente; la confirmación de OTRO comunicado no cuenta)',A.getEl('comunicados-badge').textContent==='4'&&A.getEl('comunicados-badge').style.display!=='none',A.getEl('comunicados-badge').textContent);
   A.present.add('comunicados-list');
   A.F.comunicados_lectura.push({id:'reglamento-tardanzas-2026-11_a3@pibox.app',email:'a3@pibox.app',nombre:'Carla Tres',comunicadoId:'reglamento-tardanzas-2026-11',confirmadoAt:{toDate:()=>new Date(2026,9,22,10,45,0)}});

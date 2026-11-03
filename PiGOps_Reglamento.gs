@@ -162,13 +162,23 @@ function reg_detectarTardanzas(malla, turnos) {
 // ── Estado de UNA tardanza según justificaciones/apelaciones y plazo ──
 // ctx: {waivers:{id→doc}, appeals:{id→doc}, docs:{id→doc}, now:Date}
 //   'cancelada' | 'justificada' | 'apelacion_pendiente' | 'en_plazo' | 'confirmada'
+// Fecha límite de un registro: la guardada si se recalculó al promoverlo de prueba a producción (3 días hábiles desde el aviso REAL),
+// y si no, 3 días hábiles desde la tardanza.
+function reg_limiteDoc(doc, iso) { return doc && doc.plazoRecalculado && doc.limiteISO ? doc.limiteISO : reg_fechaLimite(iso); }
+// Registro creado en MODO PRUEBA que sigue «En plazo» una vez apagado el modo prueba: el agente nunca recibió el aviso real. Queda
+// RETENIDO (sin avisos ni envíos) hasta que se ejecute promoverRegistrosDePrueba(), que recalcula su plazo desde el aviso real.
+// Solo aplica con modoPrueba === false explícito (ctx.modoPrueba la llena reg_correr).
+function reg_esRetenido(doc, ctx) {
+  return !!doc && doc.prueba === true && !doc.promovidoAt && ctx.modoPrueba === false && doc.estado === REG.ESTADO_PLAZO;
+}
 function reg_estadoTardanza(t, ctx) {
   var doc = ctx.docs[reg_idCaso(t.email, t.iso)];
   if (doc && doc.estado === REG.ESTADO_CANCELADO) return 'cancelada';
   var wid = reg_idWaiver(t.email, t.iso);
   var ap = ctx.appeals[wid];
   if (ctx.waivers[wid] || (ap && ap.status === 'approved')) return 'justificada';
-  var limite = reg_finDelDia(reg_fechaLimite(t.iso));
+  if (reg_esRetenido(doc, ctx)) return 'retenido';
+  var limite = reg_finDelDia(reg_limiteDoc(doc, t.iso));
   if (ap && ap.status === 'rejected') return 'confirmada';
   if (ap && ap.status === 'pending') {
     var creada = ap.createdAt ? new Date(ap.createdAt) : null;
@@ -193,7 +203,8 @@ function reg_clasificar(tardanzas, ctx) {
     if (e === 'confirmada' && !bloqueado) r.accionable = true;
     else if (e === 'confirmada' && bloqueado) r.espera = 'Espera a que se resuelva una tardanza anterior';
     if (e === 'apelacion_pendiente') r.espera = 'Apelación pendiente de resolver';
-    if (e === 'en_plazo' || e === 'apelacion_pendiente') bloqueado = true;
+    if (e === 'retenido') r.espera = 'Registro de prueba: espera la promoción a producción (promoverRegistrosDePrueba)';
+    if (e === 'en_plazo' || e === 'apelacion_pendiente' || e === 'retenido') bloqueado = true;
     return r;
   });
 }
@@ -236,10 +247,10 @@ function reg_correr(deps, opts) {
   var ventIni = reg_inicioVentana(hoy);
   var malla = deps.leerMalla(ventIni), turnos = deps.leerTurnos(ventIni, now);
   var agentes = deps.agentes();
-  var ctx = { waivers: deps.listar('strike_waivers'), appeals: deps.listar('strike_appeals'), docs: deps.listar(REG.COL), now: now };
+  var ctx = { waivers: deps.listar('strike_waivers'), appeals: deps.listar('strike_appeals'), docs: deps.listar(REG.COL), now: now, modoPrueba: cfg.modoPrueba };
   var porAgente = {};
   reg_detectarTardanzas(malla, turnos).forEach(function (t) { (porAgente[t.email] = porAgente[t.email] || []).push(t); });
-  var res = { avisos: 0, llamados: 0, faltasGraves: 0, art6013: 0, errores: [] };
+  var res = { avisos: 0, llamados: 0, faltasGraves: 0, art6013: 0, retenidos: 0, errores: [] };
   Object.keys(porAgente).forEach(function (email) {
     try { reg_procesarAgente(deps, cfg, opts, email, porAgente[email], agentes[email] || {}, ctx, res, hoy); }
     catch (e) { res.errores.push(email + ': ' + e.message); }
@@ -261,7 +272,9 @@ function reg_procesarAgente(deps, cfg, opts, email, tardanzas, ag, ctx, res, hoy
   filas.forEach(function (f) {
     var t = f.t, id = reg_idCaso(email, t.iso), doc = ctx.docs[id];
     var estado = f.estadoCalc === 'justificada' ? REG.ESTADO_JUSTIFICADO : f.estadoCalc === 'cancelada' ? REG.ESTADO_CANCELADO : REG.ESTADO_PLAZO;
-    var limiteISO = reg_fechaLimite(t.iso);
+    var limiteISO = reg_limiteDoc(doc, t.iso);
+    // Registro de prueba retenido (modo prueba apagado, sin promover): no se avisa, no se actúa y no se modifica
+    if (f.estadoCalc === 'retenido') { res.retenidos++; return; }
     // Definitivos: Enviado/Cerrado (en modo prueba, o si no son de prueba) y Cancelado
     var sticky = !!doc && ((doc.estado === REG.ESTADO_ENVIADO || doc.estado === REG.ESTADO_CERRADO) && (cfg.modoPrueba || !doc.prueba) || doc.estado === REG.ESTADO_CANCELADO);
     var datos = {
@@ -339,13 +352,14 @@ function reg_tablaTardanzas(filas) {
 }
 
 // 1) Aviso informativo al agente
-function reg_enviarAviso(deps, cfg, ag, email, t, limiteISO) {
+function reg_enviarAviso(deps, cfg, ag, email, t, limiteISO, nota) {
   var html = reg_caja('Tardanza registrada — puedes justificarla', '#7B2FFF',
     '<p>Hola ' + (ag.nombre || '') + ',</p>' +
     '<p>Pi GOps registró una <strong>llegada tarde</strong>: el día <strong>' + reg_fechaLarga(t.iso) + '</strong> tu turno estaba programado a las <strong>' + t.progTexto +
     '</strong> y el inicio se registró a las <strong>' + t.inicioTexto + '</strong> (' + t.minutos + ' minutos de retardo).</p>' +
     '<p>Tienes hasta el <strong>' + reg_fechaLarga(limiteISO) + '</strong> (' + REG.PLAZO_DIAS_HABILES + ' días hábiles) para justificarla o apelarla desde Pi GOps: ' +
     '<a href="' + REG.APP_URL + '">' + REG.APP_URL + '</a> → Mi turno → «Reglamento».</p>' +
+    (nota ? '<p style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px 14px;font-size:13px;">' + nota + '</p>' : '') +
     '<p style="color:#6b7280;font-size:13px;">Si la justificación es aprobada, la tardanza no cuenta. Si el plazo vence sin justificación, la falta queda confirmada según el Reglamento Interno de Trabajo.</p>');
   reg_enviar(deps, cfg, { to: [email], subject: 'Tardanza del ' + reg_fechaLarga(t.iso) + ' — plazo para justificar hasta el ' + reg_fechaLarga(limiteISO), html: html });
 }
@@ -385,7 +399,7 @@ function reg_enviarLlamado(deps, cfg, ag, email, items, ctx, hoy) {
 function reg_enviarFaltaGrave(deps, cfg, ag, email, filas, t, id, doc, ctx, causal, hoy, reincidencia) {
   var ini = reg_inicioVentana(hoy), nombre = ag.nombre || email;
   var visibles = filas.filter(function (f) { return f.t.iso >= ini; }).map(function (f) {
-    var estadoTexto = { justificada: 'Justificada (no cuenta)', cancelada: 'Cancelada (no cuenta)', apelacion_pendiente: 'Apelación pendiente', en_plazo: 'En plazo de justificación', confirmada: 'Confirmada' }[f.estadoCalc];
+    var estadoTexto = { justificada: 'Justificada (no cuenta)', cancelada: 'Cancelada (no cuenta)', apelacion_pendiente: 'Apelación pendiente', en_plazo: 'En plazo de justificación', retenido: 'En plazo de justificación', confirmada: 'Confirmada' }[f.estadoCalc];
     return { t: f.t, estadoTexto: estadoTexto, tipo: f.tipo, n: f.n };
   });
   var previos = reg_llamadosVigentes(ctx.docs, email, hoy, cfg.modoPrueba);
@@ -935,4 +949,69 @@ function reg_verificarPdfPrueba(texto, parrafos, tenia, d, log, formatos) {
   }
   var vacios = 0; for (var i = parrafos.length - 1; i >= 0 && parrafos[i].replace(/\s+/g, '') === ''; i--) vacios++;
   chk('sin párrafos vacíos al final (causa de la hoja en blanco)', vacios <= 1, vacios + ' al final' + (vacios === 1 ? ' (el último de un documento de Docs no se puede borrar: se reduce al mínimo)' : ''));
+}
+
+// ── PROMOCIÓN DE REGISTROS DE PRUEBA A PRODUCCIÓN (ejecutar a mano desde el editor, una vez apagado el modo prueba) ──
+// Los registros creados en modo prueba (prueba:true) que siguen «En plazo de justificación» son tardanzas REALES (el Reglamento rige
+// desde el 1-nov y el comunicado se publicó antes) cuyo aviso al agente solo llegó a cromero. Esta función:
+//   • solo corre si el modo prueba está APAGADO; si no, se detiene y lo dice en el log;
+//   • los marca como de producción (prueba:false, promovidoAt);
+//   • recalcula el plazo: 3 días hábiles contados desde el día del aviso REAL (no desde la tardanza, porque el agente no fue notificado);
+//   • envía al agente el aviso real de tardanza con el nuevo plazo (con una nota que explica por qué el plazo corre desde hoy);
+//   • NO genera ningún llamado de atención ni ninguna notificación a Talento Humano;
+//   • es idempotente: un registro ya promovido (promovidoAt) no se toca, no se reenvía ni cambia de plazo;
+//   • no toca los registros de prueba que ya no estén «En plazo» (Enviado, Justificado, Cancelado, Cerrado): los lista como NO TOCADO.
+// Mientras no se promuevan, con el modo prueba apagado esos registros quedan RETENIDOS (el proceso normal no los avisa ni actúa).
+// Si el aviso real ya había salido por el disparador (avisoPrueba:false), no se reenvía: el plazo se cuenta desde ese día.
+function reg_promover(deps, cfg) {
+  var res = { detenido: '', promovidos: [], noTocados: [], omitidos: [], errores: [] };
+  if (cfg.modoPrueba) { res.detenido = 'el MODO PRUEBA está ACTIVO: apágalo en ⚙ Configurar y vuelve a ejecutar. No se hizo nada.'; return res; }
+  var now = deps.now(), hoy = reg_isoBogota(now);
+  var docs = deps.listar(REG.COL), waivers = deps.listar('strike_waivers'), appeals = deps.listar('strike_appeals');
+  Object.keys(docs).sort().forEach(function (id) {
+    var d = docs[id];
+    if (d.prueba !== true || d.promovidoAt) return; // no es de prueba, o ya fue promovido
+    var et = { id: id, agente: d.userName || d.userEmail, email: d.userEmail, fecha: d.fecha, minutos: d.minutos, estado: d.estado, limiteActual: d.limiteISO };
+    if (d.tipoRegistro !== 'tardanza' || d.estado !== REG.ESTADO_PLAZO) { res.noTocados.push(et); return; }
+    var wid = reg_idWaiver(d.userEmail, d.fechaISO), ap = appeals[wid];
+    if (waivers[wid] || (ap && ap.status === 'approved')) { et.motivo = 'ya está justificada: el proceso normal la marcará «Justificado»; no se avisa'; res.omitidos.push(et); return; }
+    try {
+      var avisoRealYa = !!(d.avisoEnviadoAt && d.avisoPrueba === false);
+      var baseISO = avisoRealYa ? reg_isoBogota(new Date(d.avisoEnviadoAt)) : hoy;
+      var limite = reg_sumarHabiles(baseISO, REG.PLAZO_DIAS_HABILES);
+      et.limiteNuevo = limite;
+      if (avisoRealYa) { et.correo = 'NO enviado: el aviso real ya había salido el ' + reg_aDDMMYYYY(baseISO); }
+      else {
+        var t = { email: d.userEmail, iso: d.fechaISO, progTexto: d.programada, inicioTexto: d.inicioReal, minutos: d.minutos };
+        var nota = 'Este aviso no pudo enviarse el día de la tardanza. Por eso tu plazo de ' + REG.PLAZO_DIAS_HABILES + ' días hábiles para justificarla o apelarla se cuenta desde hoy, ' + reg_fechaLarga(baseISO) + '.';
+        reg_enviarAviso(deps, cfg, { nombre: d.userName, cargo: d.cargo, liderEmail: d.liderEmail }, d.userEmail, t, limite, nota);
+        et.correo = 'ENVIADO a ' + d.userEmail;
+      }
+      deps.actualizar(REG.COL, id, { prueba: false, promovidoAt: now.toISOString(), promovidoDesdePrueba: true, plazoRecalculado: true, limiteISO: limite,
+        avisoEnviadoAt: avisoRealYa ? d.avisoEnviadoAt : now.toISOString(), avisoPrueba: false, espera: '' });
+      res.promovidos.push(et);
+    } catch (e) { et.error = e.message; res.errores.push(et); }
+  });
+  return res;
+}
+function promoverRegistrosDePrueba() {
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(30000)) { Logger.log('Promoción: otra ejecución en curso — se omite'); return 'otra ejecución en curso'; }
+  var out = [];
+  try {
+    var deps = reg_depsProduccion(), cfg = deps.config();
+    var res = reg_promover(deps, cfg);
+    out.push('PROMOCIÓN DE REGISTROS DE PRUEBA — modo prueba: ' + (cfg.modoPrueba ? 'ACTIVO' : 'apagado'));
+    if (res.detenido) out.push('DETENIDO  ' + res.detenido);
+    res.promovidos.forEach(function (r) { out.push('PROMOVIDO  agente=' + r.agente + ' (' + r.email + ') · tardanza del ' + r.fecha + ' (' + r.minutos + ' min) · plazo anterior ' + reg_aDDMMYYYY(r.limiteActual) + ' → plazo NUEVO ' + reg_aDDMMYYYY(r.limiteNuevo) + ' · correo: ' + r.correo); });
+    res.omitidos.forEach(function (r) { out.push('OMITIDO    agente=' + r.agente + ' · ' + r.fecha + ' · ' + r.motivo); });
+    res.noTocados.forEach(function (r) { out.push('NO TOCADO  agente=' + r.agente + ' · ' + r.fecha + ' · estado «' + r.estado + '» (registro de prueba que ya no está en plazo: decide tú qué hacer con él) · id=' + r.id); });
+    res.errores.forEach(function (r) { out.push('FALLA      agente=' + r.agente + ' · ' + r.fecha + ' · ' + r.error + ' (no se modificó el registro: se puede reintentar)'); });
+    if (!res.detenido && !res.promovidos.length && !res.omitidos.length && !res.noTocados.length && !res.errores.length) out.push('Nada que promover: no hay registros de prueba pendientes.');
+    out.push('Llamados de atención generados: 0 · notificaciones a Talento Humano: 0');
+  } catch (e) { out.push('FALLA  ' + e.message); }
+  finally { lock.releaseLock(); }
+  var texto = out.join('\n');
+  Logger.log(texto);
+  return texto;
 }
