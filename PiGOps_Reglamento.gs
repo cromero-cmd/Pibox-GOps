@@ -361,8 +361,17 @@ function reg_enviarAviso(deps, cfg, ag, email, t, limiteISO, nota) {
     '<a href="' + REG.APP_URL + '">' + REG.APP_URL + '</a> → Mi turno → «Reglamento».</p>' +
     (nota ? '<p style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px 14px;font-size:13px;">' + nota + '</p>' : '') +
     '<p style="color:#6b7280;font-size:13px;">Si la justificación es aprobada, la tardanza no cuenta. Si el plazo vence sin justificación, la falta queda confirmada según el Reglamento Interno de Trabajo.</p>');
-  reg_enviar(deps, cfg, { to: [email], subject: 'Tardanza del ' + reg_fechaLarga(t.iso) + ' — plazo para justificar hasta el ' + reg_fechaLarga(limiteISO), html: html });
+  // Copia al líder directo (BASE 3.0, igual que en los llamados). Sin líder registrado o con un correo inválido el aviso sale igual,
+  // solo al agente, y queda anotado en el log. NO se copia a cromero (recibe los llamados y las faltas graves).
+  var lider = String(ag.liderEmail || '').trim(), sinCopia = '';
+  if (!lider) sinCopia = 'el agente no tiene líder registrado';
+  else if (!reg_emailValido(lider)) sinCopia = 'el correo del líder no es válido («' + lider + '»)';
+  else if (lider.toLowerCase() === String(email).toLowerCase()) sinCopia = 'el líder registrado es el mismo agente';
+  if (sinCopia) Logger.log('Aviso de tardanza de ' + email + ' (' + reg_aDDMMYYYY(t.iso) + '): se envía SOLO al agente, sin copia al líder — ' + sinCopia + '.');
+  reg_enviar(deps, cfg, { to: [email], cc: sinCopia ? [] : [lider], subject: 'Tardanza del ' + reg_fechaLarga(t.iso) + ' — plazo para justificar hasta el ' + reg_fechaLarga(limiteISO), html: html });
+  return { copia: sinCopia ? '' : lider, sinCopia: sinCopia };
 }
+function reg_emailValido(e) { return /^[^\s@,;<>()]+@[^\s@,;<>()]+\.[^\s@,;<>()]+$/.test(String(e || '').trim()); }
 
 // 2) Llamado de atención (falta leve confirmada). items: todas las tardanzas leves que se confirman HOY para este agente →
 // UN solo llamado (un PDF, un correo) con un párrafo por falta. Cuenta como UN llamado para el art. 60.13.
@@ -984,8 +993,8 @@ function reg_promover(deps, cfg) {
       else {
         var t = { email: d.userEmail, iso: d.fechaISO, progTexto: d.programada, inicioTexto: d.inicioReal, minutos: d.minutos };
         var nota = 'Este aviso no pudo enviarse el día de la tardanza. Por eso tu plazo de ' + REG.PLAZO_DIAS_HABILES + ' días hábiles para justificarla o apelarla se cuenta desde hoy, ' + reg_fechaLarga(baseISO) + '.';
-        reg_enviarAviso(deps, cfg, { nombre: d.userName, cargo: d.cargo, liderEmail: d.liderEmail }, d.userEmail, t, limite, nota);
-        et.correo = 'ENVIADO a ' + d.userEmail;
+        var av = reg_enviarAviso(deps, cfg, { nombre: d.userName, cargo: d.cargo, liderEmail: d.liderEmail }, d.userEmail, t, limite, nota);
+        et.correo = 'ENVIADO a ' + d.userEmail + (av.copia ? ' (con copia al líder: ' + av.copia + ')' : ' (SIN copia al líder: ' + av.sinCopia + ')');
       }
       deps.actualizar(REG.COL, id, { prueba: false, promovidoAt: now.toISOString(), promovidoDesdePrueba: true, plazoRecalculado: true, limiteISO: limite,
         avisoEnviadoAt: avisoRealYa ? d.avisoEnviadoAt : now.toISOString(), avisoPrueba: false, espera: '' });

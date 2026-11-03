@@ -283,7 +283,7 @@ const to=m=>String(m.to);
  // PM2: el caso real
  {const w=mundo(docPrueba());const r=prom(w);const d=w.db.reglamento_casos[IDL];
   t('PM2 promueve el registro de Lizeth: prueba→producción, marca promovidoAt y recalcula el plazo (hoy 2-nov es festivo → 3 días hábiles: 3, 4 y 5 de noviembre)',r.promovidos.length===1&&d.prueba===false&&!!d.promovidoAt&&d.plazoRecalculado===true&&d.limiteISO==='2026-11-05'&&d.promovidoDesdePrueba===true&&d.estado==='En plazo de justificación',d);
-  t('PM3 el aviso REAL sale SOLO a la agente (sin copias, sin PRUEBA), con la fecha límite nueva y una nota que explica que el plazo corre desde hoy',w.sent.length===1&&w.sent[0].to===LIZETH&&!w.sent[0].cc&&!/PRUEBA/.test(w.sent[0].subject+w.sent[0].html)&&/5 de noviembre de 2026/.test(w.sent[0].html)&&/se cuenta desde hoy, 2 de noviembre de 2026/.test(w.sent[0].html)&&/1 de noviembre de 2026/.test(w.sent[0].html)&&/7:42 a\. m\./.test(w.sent[0].html),w.sent.map(m=>[m.to,m.subject]));
+  t('PM3 el aviso REAL sale a la agente CON COPIA a su líder (y no a cromero), sin PRUEBA, con la fecha límite nueva y una nota que explica que el plazo corre desde hoy',w.sent.length===1&&w.sent[0].to===LIZETH&&w.sent[0].cc==='lider@pibox.app'&&!/cromero/.test(w.sent[0].cc||'')&&!/PRUEBA/.test(w.sent[0].subject+w.sent[0].html)&&/5 de noviembre de 2026/.test(w.sent[0].html)&&/se cuenta desde hoy, 2 de noviembre de 2026/.test(w.sent[0].html)&&/1 de noviembre de 2026/.test(w.sent[0].html)&&/7:42 a\. m\./.test(w.sent[0].html),w.sent.map(m=>[m.to,m.subject]));
   t('PM4 NO genera llamado de atención ni notificación a Talento Humano (ni PDF ni Excel)',w.pdfs.length===0&&w.soportes.length===0&&!w.sent.some(m=>/Llamado|Falta grave|Reincidencia/.test(m.subject)));
   t('PM5 el registro guarda que el aviso real salió (avisoEnviadoAt, avisoPrueba:false) y queda con el id y los demás campos intactos',d.avisoPrueba===false&&d.avisoEnviadoAt>'2026-11-02'&&d.minutos===12&&d.programada==='7:30 a. m.'&&d.userEmail===LIZETH);
   t('PM6 el log trae agente, fecha, plazo anterior y nuevo, y si el correo salió',r.promovidos[0].agente==='AMAYA SOLANO LIZETH PAOLA'&&r.promovidos[0].limiteActual==='2026-11-05'&&r.promovidos[0].limiteNuevo==='2026-11-05'&&/ENVIADO a lamaya@pibox\.app/.test(r.promovidos[0].correo));
@@ -347,6 +347,46 @@ const to=m=>String(m.to);
   t('PM23 con el modo prueba activo el log dice DETENIDO y no hace nada',/DETENIDO/.test(s2)&&/ACTIVO/.test(s2)&&w2.sent.length===0);
   const w3=mundo([]);const c6={...ctx,Logger:{log(){}},LockService:{getScriptLock:()=>({tryLock:()=>true,releaseLock(){}})}};vm.createContext(c6);vm.runInContext(GS0,c6);vm.runInContext(GS,c6);c6.reg_depsProduccion=()=>w3.deps();
   t('PM24 sin registros de prueba pendientes lo dice',/Nada que promover/.test(c6.promoverRegistrosDePrueba()));}
+}
+
+// ═══ Aviso de tardanza: copia al líder directo ═══
+{const logs=[];const cL={...ctx,Logger:{log:m=>logs.push(m)}};vm.createContext(cL);vm.runInContext(GS0,cL);vm.runInContext(GS,cL);
+ const avisoMundo=(liderEmail,o={})=>{const w=world({modoPrueba:!!o.modoPrueba});w.agentes['ana@pibox.app']={nombre:'Ana Uno',cargo:'Agente de Operaciones',cedula:'1',liderEmail};w.tardanza('2026-11-04',8,0,14);return w;};
+ const correr=(w,now)=>{w.now=now;return cL.reg_correr(w.deps(),{avisos:true,plazos:false});};
+ // AV1: con líder válido
+ {logs.length=0;const w=avisoMundo('jefe@pibox.app');correr(w,BOG('2026-11-04',8,20));const m=w.sent[0];
+  t('AV1 el aviso de tardanza sale al agente CON COPIA a su líder directo',w.sent.length===1&&m.to==='ana@pibox.app'&&m.cc==='jefe@pibox.app'&&/^Tardanza del 4 de noviembre/.test(m.subject),[m.to,m.cc]);
+  t('AV2 NO se copia a cromero (ni en el correo ni en ningún campo de destinatarios)',!/cromero/.test((m.to||'')+(m.cc||'')));
+  t('AV3 con líder no se anota nada en el log',!logs.some(x=>/sin copia/i.test(x)));}
+ // AV4: sin líder registrado
+ {logs.length=0;const w=avisoMundo('');correr(w,BOG('2026-11-04',8,20));const m=w.sent[0];
+  t('AV4 agente sin líder: el aviso sale igual, solo al agente (sin copia), y queda anotado en el log',w.sent.length===1&&m.to==='ana@pibox.app'&&!m.cc&&logs.some(x=>/ana@pibox\.app/.test(x)&&/SOLO al agente/.test(x)&&/no tiene líder registrado/.test(x)),logs);}
+ // AV5: correo del líder inválido (p. ej. un nombre que BASE 3.0 no pudo resolver)
+ for(const malo of ['PEREZ RODRIGUEZ ANDERSON YESID','jefe@','jefe@pibox','a b@pibox.app','jefe@pibox.app,otro@pibox.app','Juan <juan@pibox.app>']){
+  logs.length=0;const w=avisoMundo(malo);correr(w,BOG('2026-11-04',8,20));const m=w.sent[0];
+  t('AV5 líder con correo inválido («'+malo+'»): el aviso sale solo al agente y se anota en el log',w.sent.length===1&&m.to==='ana@pibox.app'&&!m.cc&&logs.some(x=>/correo del líder no es válido/.test(x)),[m&&m.cc,logs]);}
+ // AV6: el líder es el mismo agente
+ {logs.length=0;const w=avisoMundo('ana@pibox.app');correr(w,BOG('2026-11-04',8,20));
+  t('AV6 si el líder registrado es el propio agente no se duplica el destinatario: solo al agente y se anota',w.sent[0].to==='ana@pibox.app'&&!w.sent[0].cc&&logs.some(x=>/mismo agente/.test(x)));}
+ // AV7: modo prueba → todo a cromero; el banner muestra agente Y líder
+ {logs.length=0;const w=avisoMundo('jefe@pibox.app',{modoPrueba:true});correr(w,BOG('2026-11-04',8,20));const m=w.sent[0];
+  t('AV7 modo prueba: el aviso llega SOLO a cromero (sin copias), con «PRUEBA» en el asunto',w.sent.length===1&&m.to==='cromero@pibox.app'&&!m.cc&&/^PRUEBA — Tardanza del/.test(m.subject),[m.to,m.cc,m.subject]);
+  t('AV8 …y el banner muestra al agente como destinatario y al líder como copia',/MODO PRUEBA/.test(m.html)&&/Habría ido a: <strong>ana@pibox\.app<\/strong>/.test(m.html)&&/Con copia a: jefe@pibox\.app/.test(m.html),m.html.slice(0,400));}
+ {logs.length=0;const w=avisoMundo('',{modoPrueba:true});correr(w,BOG('2026-11-04',8,20));const m=w.sent[0];
+  t('AV9 modo prueba con agente sin líder: el banner solo muestra al agente (sin «Con copia a») y queda anotado en el log',m.to==='cromero@pibox.app'&&/Habría ido a: <strong>ana@pibox\.app/.test(m.html)&&!/Con copia a/.test(m.html)&&logs.some(x=>/no tiene líder registrado/.test(x)));}
+ // AV10: el aviso no se repite por el cambio (idempotente) y no cambia el resto del flujo
+ {const w=avisoMundo('jefe@pibox.app');correr(w,BOG('2026-11-04',8,20));correr(w,BOG('2026-11-04',8,35));correr(w,BOG('2026-11-04',8,50));
+  t('AV10 el aviso sigue siendo uno solo por tardanza (idempotente)',w.sent.length===1);
+  w.now=BOG('2026-11-10',7,0);cL.reg_correr(w.deps(),{avisos:true,plazos:true});
+  const ll=w.sent.find(m=>/^Llamado de atención/.test(m.subject));
+  t('AV11 el resto del flujo no cambia: al vencer el plazo el llamado sigue saliendo con sus copias (líder, TH y cromero)',!!ll&&ll.to==='ana@pibox.app'&&ll.cc==='jefe@pibox.app,th@pibox.app,cromero@pibox.app',ll&&ll.cc);}
+ // AV12: el aviso que envía promoverRegistrosDePrueba() también copia al líder
+ {const LIZ='lamaya@pibox.app',doc=(lid)=>({_id:LIZ+'_20261101_reg',tipoRegistro:'tardanza',userEmail:LIZ,userName:'AMAYA SOLANO LIZETH PAOLA',cargo:'Agente',liderEmail:lid,fecha:'01/11/2026',fechaISO:'2026-11-01',programada:'7:30 a. m.',inicioReal:'7:42 a. m.',minutos:12,estado:'En plazo de justificación',tipo:'llamado',limiteISO:'2026-11-05',prueba:true,avisoEnviadoAt:'2026-11-01T12:51:52.852Z',avisoPrueba:true});
+  const mk=lid=>{const w=world({now:BOG('2026-11-02',17,57),modoPrueba:false});w.db.reglamento_casos[LIZ+'_20261101_reg']=doc(lid);return w;};
+  logs.length=0;const w=mk('lider@pibox.app');const r=cL.reg_promover(w.deps(),w.deps().config());
+  t('AV12 promoverRegistrosDePrueba: el aviso real sale a la agente con copia al líder (y no a cromero), y el log lo dice',w.sent.length===1&&w.sent[0].to===LIZ&&w.sent[0].cc==='lider@pibox.app'&&/con copia al líder: lider@pibox\.app/.test(r.promovidos[0].correo),[w.sent[0].cc,r.promovidos[0].correo]);
+  logs.length=0;const w2=mk('');const r2=cL.reg_promover(w2.deps(),w2.deps().config());
+  t('AV13 promoverRegistrosDePrueba con agente sin líder: sale solo a la agente, se promueve igual y el log anota «SIN copia al líder»',w2.sent.length===1&&w2.sent[0].to===LIZ&&!w2.sent[0].cc&&r2.promovidos.length===1&&/SIN copia al líder: el agente no tiene líder registrado/.test(r2.promovidos[0].correo)&&logs.some(x=>/SOLO al agente/.test(x)),[r2.promovidos[0].correo,logs]);}
 }
 
 // ═══ Plantilla de Google Doc: marcadores, formato, separación, nota y hoja en blanco (Docs simulado) ═══
