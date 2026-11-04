@@ -150,11 +150,11 @@ Commit messages use the `feat:` / `fix:` / `chore:` prefix and a Spanish subject
 
 ```
 // ── Firestore rules de reglamento_casos (dentro de `match /databases/{database}/documents { ... }`) ──
-function isCromero() {
+function isSuperAdminCuenta() {
   return request.auth != null && request.auth.token.email == '<CORREO_SUPER_ADMIN>';
 }
 function isAdmin() {
-  return request.auth != null && (isCromero() ||
+  return request.auth != null && (isSuperAdminCuenta() ||
     exists(/databases/$(database)/documents/admins/$(request.auth.token.email)));
 }
 
