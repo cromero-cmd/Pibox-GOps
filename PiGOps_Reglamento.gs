@@ -541,9 +541,14 @@ function reg_leerTurnos(desdeISO, hasta) {
       { fieldFilter: { field: { fieldPath: 'startTime' }, op: 'GREATER_THAN_OR_EQUAL', value: { timestampValue: cur.toISOString() } } },
       { fieldFilter: { field: { fieldPath: 'startTime' }, op: 'LESS_THAN', value: { timestampValue: fin.toISOString() } } }] } }, limit: 1000 } };
     var resp = UrlFetchApp.fetch(FIREBASE_REST + ':runQuery', { method: 'post', contentType: 'application/json', headers: { Authorization: 'Bearer ' + reg_token() }, payload: JSON.stringify(body), muteHttpExceptions: true });
-    if (resp.getResponseCode() !== 200) throw new Error('Firestore turnos → HTTP ' + resp.getResponseCode());
-    JSON.parse(resp.getContentText()).forEach(function (r) {
-      if (!r.document) return;
+    if (resp.getResponseCode() !== 200) throw new Error('Firestore turnos → HTTP ' + resp.getResponseCode() + ' ' + String(resp.getContentText()).slice(0, 300));
+    // Falla segura: una respuesta que no es un arreglo, o con un error DENTRO del arreglo (runQuery lo hace, a veces con HTTP 200), aborta
+    // la ejecución en vez de leerse como «sin turnos» (faltarían tardanzas y se clasificarían mal las siguientes).
+    var cuerpo = JSON.parse(resp.getContentText());
+    if (!Array.isArray(cuerpo)) throw new Error('Firestore turnos → la respuesta no es un arreglo: ' + resp.getContentText().slice(0, 300));
+    cuerpo.forEach(function (r) {
+      if (r && r.error) throw new Error('Firestore turnos → error en la respuesta: ' + JSON.stringify(r.error).slice(0, 300));
+      if (!r || !r.document) return;
       var o = reg_fsDoc(r.document);
       if (o.userEmail && o.startTime) out.push({ userEmail: o.userEmail, status: o.status || '', startTime: new Date(o.startTime), endTime: o.endTime ? new Date(o.endTime) : null });
     });

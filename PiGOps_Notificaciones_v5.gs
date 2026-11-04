@@ -808,8 +808,16 @@ function checkAttendance() {
   }
   const notified = notifiedData;
 
-  // Get active turnos from Firebase
-  const activeTurnos = getTodayTurnosFromFirebase();
+  // Get active turnos from Firebase. FALLA SEGURA: si la lectura falla (HTTP != 200, cuerpo inválido, error dentro del arreglo,
+  // excepción) NO se envía ninguna alerta de ausencia y NO se toca el estado de «ya notificados»: una lectura fallida nunca
+  // significa «nadie inició turno». Se avisa a cromero (un solo correo técnico por hora).
+  const lectura = leerTurnosHoyRest_(now);
+  if (!lectura.ok) {
+    Logger.log('checkAttendance ABORTADA: no se pudo verificar la asistencia — ' + lectura.motivo + '. No se envió ninguna alerta de ausencia.');
+    avisoTecnicoAsistencia_(lectura.motivo, now);
+    return;
+  }
+  const activeTurnos = lectura.emails;
   Logger.log('Active turnos found: ' + activeTurnos.length);
 
   // Mark already-connected agents in cache to avoid re-sending alerts
@@ -878,17 +886,69 @@ function checkAttendance() {
   }
 }
 
+// Aviso técnico a cromero cuando checkAttendance no puede verificar la asistencia: como máximo UNO por hora (propiedad
+// attendance_fail_notified_at). Si el correo mismo falla, solo queda en el log.
+function avisoTecnicoAsistencia_(motivo, now) {
+  var props = PropertiesService.getScriptProperties();
+  var ultimo = parseInt(props.getProperty('attendance_fail_notified_at') || '0', 10);
+  if (ultimo && now.getTime() - ultimo < 3600000) {
+    Logger.log('Aviso técnico omitido: ya se envió uno hace ' + Math.round((now.getTime() - ultimo) / 60000) + ' min (máximo uno por hora).');
+    return false;
+  }
+  try {
+    var html = '<div style="font-family:Arial,sans-serif;color:#333;max-width:600px;">' +
+      '<div style="background:#dc2626;padding:16px;border-radius:8px 8px 0 0;"><h2 style="color:white;margin:0;font-size:18px;">⚠️ No se pudo verificar la asistencia</h2></div>' +
+      '<div style="padding:20px;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px;">' +
+      '<p><strong>No se pudo verificar la asistencia:</strong> ' + escHtml_(motivo) + '</p>' +
+      '<p>En esta ejecución <strong>no se envió ninguna alerta de ausencia</strong> (una lectura fallida nunca se interpreta como «nadie inició turno»). ' +
+      'Se reintentará en la próxima ejecución; este aviso técnico se envía como máximo una vez por hora.</p>' +
+      '<p style="color:#6b7280;font-size:13px;">Detalle (código y cuerpo de la respuesta) en Apps Script → Ejecuciones → checkAttendance.</p>' +
+      FOOTER_HTML + '</div></div>';
+    GmailApp.sendEmail('cromero@pibox.app', 'No se pudo verificar la asistencia: ' + String(motivo).slice(0, 120), '', { htmlBody: html, name: 'Pi GOps' });
+    props.setProperty('attendance_fail_notified_at', String(now.getTime()));
+    Logger.log('Aviso técnico enviado a cromero@pibox.app: ' + motivo);
+    return true;
+  } catch (e) {
+    Logger.log('No se pudo enviar el aviso técnico: ' + e.message);
+    return false;
+  }
+}
+function escHtml_(t) { return String(t == null ? '' : t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+// «9:00:00» / «14:30» / «9:00 AM» → «9:00 a. m.» / «2:30 p. m.» (formato colombiano, sin segundos). Si no se entiende, se devuelve tal cual.
+function horaColombiana_(texto) {
+  var s = String(texto || '').trim();
+  var low = s.toLowerCase().replace(/\./g, '').replace(/\s+/g, ' ');
+  var m = low.match(/(\d{1,2}):(\d{2})/);
+  if (!m) return s;
+  var h = parseInt(m[1], 10), mi = m[2];
+  if (/\bp ?m\b/.test(low) && h !== 12) h += 12;
+  if (/\ba ?m\b/.test(low) && h === 12) h = 0;
+  return (h % 12 === 0 ? 12 : h % 12) + ':' + mi + (h < 12 ? ' a. m.' : ' p. m.');
+}
+function filaAlerta_(etiqueta, valor) {
+  return '<tr><td style="padding:8px 12px;border:1px solid #ddd;background:#f9fafb;font-weight:bold;width:38%;">' + etiqueta + '</td><td style="padding:8px 12px;border:1px solid #ddd;">' + valor + '</td></tr>';
+}
 function sendAttendanceAlert(entry, minsLate, adminEmails, level) {
   const levelLabel = level === 1 ? 'Primer aviso (+10 min)' : level === 2 ? 'Segundo aviso (+20 min)' : 'Aviso final (+60 min)';
+  // Encabezado según el nivel: amarillo (+10), naranja (+20), rojo (+60)
+  const color = level === 1 ? { bg: '#eab308', fg: '#1f2937' } : level === 2 ? { bg: '#fb923c', fg: '#ffffff' } : { bg: '#dc2626', fg: '#ffffff' };
   const subject = 'Ausencia en turno: ' + entry.nombre + ' — ' + levelLabel;
+  const inicioTxt = horaColombiana_(entry.inicio);
+  const nombre = escHtml_(entry.nombre), correo = escHtml_(entry.usuario);
   const htmlBody = '<div style="font-family:Arial,sans-serif;color:#333;max-width:600px;">' +
+    '<div style="background:' + color.bg + ';padding:16px;border-radius:8px 8px 0 0;"><h2 style="color:' + color.fg + ';margin:0;font-size:18px;">Ausencia en turno — ' + levelLabel + '</h2></div>' +
+    '<div style="padding:20px;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px;">' +
     '<p>Hola,</p>' +
-    '<p>El colaborador <strong>' + entry.nombre + '</strong> (<a href="mailto:' + entry.usuario + '">' + entry.usuario + '</a>) ' +
-    'aun no ha iniciado su turno programado para las <strong>' + entry.inicio + '</strong>.</p>' +
-    '<p>Lleva <strong>' + minsLate + ' minutos</strong> de retraso. Este es el <strong>' + levelLabel + '</strong>.</p>' +
-    '<p>Por favor verifica la situacion del colaborador.</p>' +
-    '<br/><p>Saludos,<br/><strong>Pi GOps · Pibox Operaciones</strong></p>' +
-    '</div>';
+    '<p>El colaborador <strong>' + nombre + '</strong> aún no ha iniciado su turno programado.</p>' +
+    '<table style="width:100%;border-collapse:collapse;margin:16px 0;font-size:14px;">' +
+    filaAlerta_('Colaborador', nombre) +
+    filaAlerta_('Correo', '<a href="mailto:' + correo + '">' + correo + '</a>') +
+    filaAlerta_('Turno programado', inicioTxt) +
+    filaAlerta_('Minutos de retraso', minsLate + ' minutos') +
+    filaAlerta_('Nivel del aviso', levelLabel) +
+    '</table>' +
+    '<p>Por favor verifica la situación del colaborador.</p>' +
+    FOOTER_HTML + '</div></div>';
 
   // Notify only the agent's direct leader, fallback to all admins
   var liderEmail = entry.liderEmail ? entry.liderEmail.trim() : (entry.lider && entry.lider.includes('@') ? entry.lider.trim() : '');
@@ -896,25 +956,26 @@ function sendAttendanceAlert(entry, minsLate, adminEmails, level) {
   if (liderEmail) {
     // cc Super Admin unless lider IS Super Admin
     const cc = liderEmail !== SUPER_ADMIN_EMAIL ? SUPER_ADMIN_EMAIL : '';
-    GmailApp.sendEmail(liderEmail, subject, '', { htmlBody: htmlBody, cc: cc || undefined });
+    GmailApp.sendEmail(liderEmail, subject, '', { htmlBody: htmlBody, cc: cc || undefined, name: 'Pi GOps' });
     Logger.log('Alert sent to leader: ' + liderEmail + (cc ? ' (cc: ' + cc + ')' : ''));
   } else if (adminEmails.length > 0) {
     const to = adminEmails[0];
     const others = adminEmails.slice(1).concat([SUPER_ADMIN_EMAIL]).filter(function(e){return e!==to;});
-    GmailApp.sendEmail(to, subject, '', { htmlBody: htmlBody, cc: others.join(',') || undefined });
+    GmailApp.sendEmail(to, subject, '', { htmlBody: htmlBody, cc: others.join(',') || undefined, name: 'Pi GOps' });
     Logger.log('No leader found, alert sent to all admins');
   }
 
-  // Always notify the agent directly
+  // Always notify the agent directly (mismo destinatario y mismo asunto; solo cambia el formato)
   const agentSubject = 'Recordatorio: Tu turno comenzó hace ' + minsLate + ' minutos';
   const agentBody = '<div style="font-family:Arial,sans-serif;color:#333;max-width:600px;">' +
-    '<p>Hola ' + entry.nombre + ',</p>' +
-    '<p>Tu turno estaba programado para las <strong>' + entry.inicio + '</strong> y aun no has registrado tu ingreso en Pi GOps.</p>' +
+    '<div style="background:' + color.bg + ';padding:16px;border-radius:8px 8px 0 0;"><h2 style="color:' + color.fg + ';margin:0;font-size:18px;">Recordatorio: tu turno ya comenzó</h2></div>' +
+    '<div style="padding:20px;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px;">' +
+    '<p>Hola ' + nombre + ',</p>' +
+    '<p>Tu turno estaba programado para las <strong>' + inicioTxt + '</strong> y aún no has registrado tu ingreso en Pi GOps.</p>' +
     '<p>Por favor ingresa a <strong>Pi GOps</strong> e inicia tu turno a la brevedad.</p>' +
-    '<p>Si tienes alguna novedad, informa a tu lider inmediato.</p>' +
-    '<br/><p>Saludos,<br/><strong>Pi GOps · Pibox Operaciones</strong></p>' +
-    '</div>';
-  GmailApp.sendEmail(entry.usuario, agentSubject, '', { htmlBody: agentBody });
+    '<p>Si tienes alguna novedad, informa a tu líder inmediato.</p>' +
+    FOOTER_HTML + '</div></div>';
+  GmailApp.sendEmail(entry.usuario, agentSubject, '', { htmlBody: agentBody, name: 'Pi GOps' });
 }
 
 // ── SHIFT START REMINDER (runs every 10 min via trigger) ──
@@ -976,8 +1037,10 @@ function sendShiftReminders() {
 
 // ── DIAGNÓSTICO (no envía correos) ──
 function diagnosticoAttendance() {
-  const activeTurnos = getTodayTurnosFromFirebase();
+  const lecturaDiag = leerTurnosHoyRest_();
+  const activeTurnos = lecturaDiag.emails;
   Logger.log('=== DIAGNÓSTICO ===');
+  if (!lecturaDiag.ok) Logger.log('⚠️ LECTURA DE TURNOS FALLIDA (checkAttendance NO enviaría alertas): ' + lecturaDiag.motivo);
   Logger.log('Active turnos found: ' + activeTurnos.length + ' | users: ' + activeTurnos.join(', '));
 
   const ss = SpreadsheetApp.openById(getMallaSheetId());
@@ -1015,59 +1078,90 @@ function runAttendanceCheck() {
 }
 
 // ── FIREBASE REST ──
-function getTodayTurnosFromFirebase() {
+// Lee los turnos de HOY (hora de Bogotá) de Firestore y devuelve {ok, emails, motivo}. NUNCA devuelve «lista vacía» cuando la lectura
+// falló: antes (hasta 4-nov-2026) cualquier error (HTTP 401/403/429/5xx, cuerpo que no es un arreglo, excepción de red) terminaba en [] y
+// checkAttendance concluía que NADIE había iniciado turno → falsas alertas de «Ausencia en turno» a agentes conectados. Se valida el
+// código HTTP, que el cuerpo sea JSON y un ARREGLO, y que ningún elemento sea un error (runQuery devuelve los errores dentro del arreglo,
+// a veces incluso con HTTP 200). Cuando falla se deja en el log el código y el cuerpo.
+function leerTurnosHoyRest_(now) {
+  now = now || new Date();
+  var LIMITE = 1000;
   try {
-    const token = ScriptApp.getOAuthToken();
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
-    const todayStartISO = todayStart.toISOString();
-
-    // Usar structuredQuery para filtrar solo turnos de hoy
-    const queryUrl = 'https://firestore.googleapis.com/v1/projects/' + FIREBASE_PROJECT + '/databases/(default)/documents:runQuery';
-    const queryBody = {
+    var token = ScriptApp.getOAuthToken();
+    // 00:00 de HOY en Bogotá (UTC-5 fijo), sin depender de la zona horaria del proyecto de Apps Script
+    var hoy = Utilities.formatDate(now, 'America/Bogota', 'yyyy-MM-dd');
+    var todayStartISO = new Date(hoy + 'T00:00:00-05:00').toISOString();
+    var queryUrl = 'https://firestore.googleapis.com/v1/projects/' + FIREBASE_PROJECT + '/databases/(default)/documents:runQuery';
+    var queryBody = {
       structuredQuery: {
         from: [{ collectionId: 'turnos' }],
-        where: {
-          fieldFilter: {
-            field: { fieldPath: 'startTime' },
-            op: 'GREATER_THAN_OR_EQUAL',
-            value: { timestampValue: todayStartISO }
-          }
-        },
-        limit: 200
+        where: { fieldFilter: { field: { fieldPath: 'startTime' }, op: 'GREATER_THAN_OR_EQUAL', value: { timestampValue: todayStartISO } } },
+        limit: LIMITE
       }
     };
-
-    const response = UrlFetchApp.fetch(queryUrl, {
+    var response = UrlFetchApp.fetch(queryUrl, {
       method: 'POST',
-      headers: {
-        'Authorization': 'Bearer ' + token,
-        'Content-Type': 'application/json'
-      },
+      headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
       payload: JSON.stringify(queryBody),
       muteHttpExceptions: true
     });
-
-    const results = JSON.parse(response.getContentText());
-    const activeUsers = [];
-
-    results.forEach(function(result) {
-      if (!result.document) return;
-      const fields = result.document.fields || {};
-      const status = fields.status && fields.status.stringValue;
-      const userEmail = fields.userEmail && fields.userEmail.stringValue;
-      if (!userEmail) return;
+    var code = response.getResponseCode();
+    var texto = response.getContentText() || '';
+    if (code !== 200) {
+      Logger.log('Firestore turnos de hoy: HTTP ' + code + ' — cuerpo: ' + texto.slice(0, 1000));
+      return { ok: false, emails: [], motivo: 'Firestore respondió HTTP ' + code + ' (' + resumenErrorFirestore_(texto) + ')' };
+    }
+    var results;
+    try { results = JSON.parse(texto); }
+    catch (e) {
+      Logger.log('Firestore turnos de hoy: HTTP 200 pero el cuerpo no es JSON — cuerpo: ' + texto.slice(0, 1000));
+      return { ok: false, emails: [], motivo: 'la respuesta de Firestore no es JSON válido' };
+    }
+    if (!Array.isArray(results)) {
+      Logger.log('Firestore turnos de hoy: HTTP 200 pero la respuesta no es un arreglo — cuerpo: ' + texto.slice(0, 1000));
+      return { ok: false, emails: [], motivo: 'la respuesta de Firestore no es un arreglo (' + resumenErrorFirestore_(texto) + ')' };
+    }
+    var activeUsers = [], documentos = 0;
+    for (var i = 0; i < results.length; i++) {
+      var result = results[i];
+      if (result && result.error) {
+        Logger.log('Firestore turnos de hoy: HTTP 200 con un error dentro del arreglo — ' + JSON.stringify(result.error).slice(0, 1000));
+        return { ok: false, emails: [], motivo: 'Firestore devolvió un error (' + resumenErrorFirestore_(JSON.stringify(result)) + ')' };
+      }
+      if (!result || !result.document) continue; // elemento sin documento (p. ej. solo readTime cuando no hay resultados)
+      documentos++;
+      var fields = result.document.fields || {};
+      var status = fields.status && fields.status.stringValue;
+      var userEmail = fields.userEmail && fields.userEmail.stringValue;
+      if (!userEmail) continue;
       if (status === 'active' || status === 'ended' || status === 'interrupted') {
         if (activeUsers.indexOf(userEmail) === -1) activeUsers.push(userEmail);
       }
-    });
-
+    }
+    if (documentos >= LIMITE) {
+      Logger.log('Firestore turnos de hoy: el resultado alcanzó el límite de ' + LIMITE + ' turnos; puede estar incompleto.');
+      return { ok: false, emails: [], motivo: 'el resultado alcanzó el límite de ' + LIMITE + ' turnos y puede estar incompleto' };
+    }
     Logger.log('Turnos de hoy encontrados: ' + activeUsers.length);
-    return activeUsers;
-  } catch(e) {
-    Logger.log('Firebase REST error: ' + e.message);
-    return [];
+    return { ok: true, emails: activeUsers, motivo: '' };
+  } catch (e) {
+    Logger.log('Firestore turnos de hoy: excepción — ' + e.message);
+    return { ok: false, emails: [], motivo: 'excepción al consultar Firestore: ' + e.message };
   }
+}
+// Resumen corto y legible de un cuerpo de error de Firestore (para el log y el aviso técnico)
+function resumenErrorFirestore_(texto) {
+  try {
+    var j = JSON.parse(texto);
+    var e = Array.isArray(j) ? (j[0] && j[0].error) : j.error;
+    if (e) return [e.code, e.status, e.message].filter(Boolean).join(' · ').slice(0, 200);
+  } catch (err) { /* no era JSON */ }
+  return String(texto || '').replace(/\s+/g, ' ').slice(0, 120) || 'sin cuerpo';
+}
+// Compatibilidad (diagnosticoAttendance): lista de correos, [] si la lectura falló (ya queda en el log).
+function getTodayTurnosFromFirebase() {
+  var r = leerTurnosHoyRest_();
+  return r.emails;
 }
 
 function getTurnosForMonthFromFirebase(year, month) {
