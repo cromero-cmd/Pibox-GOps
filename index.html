@@ -1567,7 +1567,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
-const APP_VERSION='19.0';
+const APP_VERSION='19.1';
 // Promesas rechazadas sin manejar y errores de script: antes desaparecían sin rastro en consola del agente.
 window.addEventListener('unhandledrejection',e=>console.error('[unhandledrejection]',e.reason&&(e.reason.stack||e.reason.message||e.reason)));
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
@@ -3345,7 +3345,7 @@ async function initTurnoView(){
  // Turno reanudado tras una interrupción: accumulatedSeconds ya contiene lo trabajado ANTES de la
  // interrupción, y el cronómetro (startTimer) suma (ahora − turnoStartTime) + accumulatedSeconds. Si
  // la base sigue siendo el startTime original, ese tramo se cuenta dos veces (más toda la pausa) y el
- // reloj se infla — caso real 02-oct-2026: Sebastian Guarin y Santiago Piñeros veían 08:18 / 08:53 con
+ // reloj se infla — caso real 02-oct-2026: dos agentes veían 08:18 / 08:53 con
  // ~6 h / ~4 h reales, y «Jornada completada» salía de más. La base correcta es la hora de reanudación.
  const resumedAtDt=existing.resumedAt?.toDate?.();
  if(resumedAtDt&&accumulatedSeconds>0&&resumedAtDt>=turnoStartTime&&resumedAtDt<=new Date())turnoStartTime=resumedAtDt;
@@ -3782,7 +3782,7 @@ function showLocationRequiredModal(repeated,grantedSignal,diag,ctl){
  if(grantedSignal)grantedSignal.then(()=>finish('retry'));
  });
 }
-// Regla de negocio (Camilo, 16-oct-2026): NINGUNA falla de ubicación bloquea el inicio del turno. Esta función
+// Regla de negocio (16-oct-2026): NINGUNA falla de ubicación bloquea el inicio del turno. Esta función
 // siempre devuelve {ok:true,pos} — el estado queda en pos.status: ok | denied | os_blocked | unavailable | timeout |
 // unsupported. «denied» = el navegador/agente bloqueó el permiso; «os_blocked» = permiso concedido en el navegador pero
 // el sistema operativo respondió «User denied Geolocation» (error 1; típico de Windows con el servicio de ubicación
@@ -3824,7 +3824,7 @@ async function startTurno(){
  if(btnStart._processing)return;
  // Un solo inicio a la vez, aunque el botón ya se haya liberado (límite duro) o haya otra pestaña en el mismo
  // flujo: sin esto, dos _doStartTurno concurrentes crearon DOS turnos activos con 2 s de diferencia
- // (Lilleyra Romero, 15-oct-2026, 17:19:00 y 17:19:02).
+ // (una agente, 15-oct-2026, 17:19:00 y 17:19:02).
  if(window._startInFlight){toast('⏳ Tu turno ya se está iniciando…');return;}
  btnStart._processing=true;
  btnStart.disabled=true;
@@ -4119,7 +4119,7 @@ async function checkOvertimeAndDiscrepancy(endTime,elapsedSecs,startedAt){
  if(!startedAt)return;
  const userEmail=document.getElementById('user-email').textContent;
  try{
- // fetchMallaCSV() en vez de un fetch propio: caso real confirmado (Tatiana Mosquera, 26-sep-2026,
+ // fetchMallaCSV() en vez de un fetch propio: caso real confirmado (una agente, 26-sep-2026,
  // turno de 06:00:39 a 06:00:50) — este fetch aislado, sin reintentos ni caché de respaldo, falló
  // en silencio (catch de abajo) y ni la salida anticipada le avisó a la agente ni quedó marcada
  // para revisión en el Panel de Control. fetchMallaCSV ya reintenta 3 veces y cae a caché local si
@@ -4715,8 +4715,8 @@ const MALLA_HOT_CACHE_TTL=60*1000; // 1 minuto — igual que TURNOS_CACHE_TTL
 // pocas filas en vez de miles) — resp.ok no detecta esto porque el status HTTP sigue siendo
 // "exitoso". Sin esta validación, una respuesta truncada se parseaba como CSV válido pero vacío
 // para cualquier agente cuyas filas hubieran quedado fuera del fragmento recibido, mostrando "Sin
-// registros en este período" sin ningún error en consola — reportado para srodriguez@pibox.app y
-// smartinez@pibox.app, pero no específico de esos usuarios: cuestión de en qué momento cada quien
+// registros en este período" sin ningún error en consola — reportado para dos usuarios, pero no
+// específico de esos usuarios: cuestión de en qué momento cada quien
 // cargó la vista mientras el endpoint estaba degradado (confirmado con 200 completo, 404, timeout
 // y 200 truncado en la misma sesión). Si los 3 intentos fallan, se usa el último CSV cacheado en
 // localStorage como último recurso en vez de dejar la vista vacía — el usuario ve la malla

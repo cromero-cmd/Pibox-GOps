@@ -8,6 +8,51 @@ const MALLA_SHEET_NAME = 'Malla';
 const MESES_ES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
 const FOOTER_HTML = '<p style="color:#6b7280;font-size:12px;margin-top:24px;">Este mensaje fue generado automáticamente por Pi GOps · Pibox Operaciones</p>';
 
+// ══ SEGURIDAD (v6, Fase 1) ══════════════════════════════════════════════════════════════════════════════════════
+// Este despliegue es público (acceso anónimo): cualquiera con la URL puede llamar a doGet/doPost. Hasta que la app envíe
+// el ID token de Firebase (Fase 4), la defensa es que NINGÚN correo salga hacia fuera del dominio:
+//  • Todo destinatario debe ser un correo @pibox.app. Cualquier otro se RECHAZA (queda en el log como «RECHAZADO»).
+//  • Una cadena con varios correos («a@pibox.app,x@otro.com») o con nombre («Nombre <x@otro.com>») también se rechaza: Gmail
+//    entrega a todas las direcciones de una cadena separada por comas.
+//  • Reporte de nómina: si existe la propiedad de script payroll_allowed_recipients (lista separada por comas), además solo
+//    se envía a esas direcciones. Es lo que impide que un correo interno cualquiera reciba el Excel con cédulas.
+function correoPibox_(valor) {
+  var s = String(valor == null ? '' : valor).trim().toLowerCase();
+  return /^[a-z0-9._%+\-]+@pibox\.app$/.test(s) ? s : '';
+}
+// Acepta un arreglo o una cadena separada por comas/punto y coma (propiedades del script). Devuelve {validos, rechazados}.
+function filtrarDestinatarios_(lista, contexto) {
+  var arr = Array.isArray(lista) ? lista : (typeof lista === 'string' ? lista.split(/[,;]/) : []);
+  var validos = [], rechazados = [];
+  arr.forEach(function (e) {
+    var crudo = String(e == null ? '' : e).trim();
+    if (!crudo) return;
+    var ok = correoPibox_(crudo);
+    if (!ok) { rechazados.push(crudo.slice(0, 80)); return; }
+    if (validos.indexOf(ok) === -1) validos.push(ok);
+  });
+  if (rechazados.length) Logger.log('RECHAZADO (' + contexto + '): destinatarios que no son @pibox.app: ' + rechazados.join(' | '));
+  return { validos: validos, rechazados: rechazados };
+}
+// Un solo correo (líder, coordinador). '' si no es válido.
+function unCorreoPibox_(valor, contexto) {
+  var f = filtrarDestinatarios_(valor ? [valor] : [], contexto);
+  return f.validos[0] || '';
+}
+// Destinatarios del reporte de nómina: dominio + (si está definida) la lista blanca payroll_allowed_recipients.
+function destinatariosNomina_(lista) {
+  var f = filtrarDestinatarios_(lista, 'reporte de nómina');
+  var permitidos = PropertiesService.getScriptProperties().getProperty('payroll_allowed_recipients');
+  if (!permitidos || !permitidos.trim()) {
+    Logger.log('AVISO: la propiedad payroll_allowed_recipients no está definida; el reporte de nómina solo se limita al dominio @pibox.app.');
+    return f.validos;
+  }
+  var lista2 = filtrarDestinatarios_(permitidos, 'payroll_allowed_recipients').validos;
+  var fuera = f.validos.filter(function (e) { return lista2.indexOf(e) === -1; });
+  if (fuera.length) Logger.log('RECHAZADO (reporte de nómina): no están en payroll_allowed_recipients: ' + fuera.join(' | '));
+  return f.validos.filter(function (e) { return lista2.indexOf(e) !== -1; });
+}
+
 // Reemplaza el emoji de color de cada tipo de strike por texto con color HTML — los emojis de
 // color (🔴🔵🟠🟡) no se renderizan de forma confiable en varios clientes de correo. Compartida
 // entre sendStrikeWarning y sendDisciplinaryWarning.
@@ -71,9 +116,10 @@ function doPost(e) {
     Logger.log('doPost type: ' + type + ' body length: ' + body.length);
     if (type === 'payroll_report' && body) {
       const data = JSON.parse(body);
-      if (data.recipients && data.recipients.length > 0) {
-        const props = PropertiesService.getScriptProperties();
-        props.setProperty('payroll_recipients', data.recipients.join(','));
+      // sendPayrollReport valida los destinatarios ANTES de crear el Sheet; aquí solo se guarda (ya filtrado) el último uso.
+      const destinosNomina = destinatariosNomina_(data.recipients);
+      if (destinosNomina.length > 0) {
+        PropertiesService.getScriptProperties().setProperty('payroll_recipients', destinosNomina.join(','));
       }
       sendPayrollReport(data);
       Logger.log('Payroll report sent OK');
@@ -104,22 +150,27 @@ function doGet(e) {
     } else if (type === 'disciplinary_warning') {
       sendDisciplinaryWarning(data);
     } else if (type === 'overtime_rejected') {
-      const data = JSON.parse(decodeURIComponent(payload));
+      // v6: solo avisa al coordinador. Antes llamaba también a sendPayrollReport(data) (resto de una versión vieja): como el aviso
+      // no trae «records», cada rechazo final del Super Admin enviaba al coordinador un Excel de nómina VACÍO y pisaba
+      // payroll_recipients con su correo.
       sendOvertimeRejectedNotification(data);
-      if (data.recipients && data.recipients.length > 0) {
-        const props = PropertiesService.getScriptProperties();
-        props.setProperty('payroll_recipients', data.recipients.join(','));
-      }
-      sendPayrollReport(data);
     } else if (type === 'save_config') {
+      // v6: ninguna lista de correos se guarda si no es @pibox.app (y una lista sin ningún correo válido NO borra la anterior).
       const props = PropertiesService.getScriptProperties();
-      if (data.payrollRecipients) props.setProperty('payroll_recipients', data.payrollRecipients);
-      if (data.reminderRecipients) props.setProperty('reminder_recipients', data.reminderRecipients);
-      if (data.cutDay !== undefined) props.setProperty('payroll_cut_day', data.cutDay.toString());
-      if (data.cutHour !== undefined) props.setProperty('payroll_cut_hour', data.cutHour.toString());
-      if (data.adminEmails) props.setProperty('admin_emails', data.adminEmails);
-      if (data.mallaNotifDelay !== undefined) props.setProperty('malla_notif_delay', data.mallaNotifDelay.toString());
-      Logger.log('Config saved - reminder_recipients: ' + data.reminderRecipients);
+      const guardarLista = function (campo, propiedad) {
+        if (!data[campo]) return;
+        const f = filtrarDestinatarios_(data[campo], 'save_config ' + campo);
+        if (f.validos.length) props.setProperty(propiedad, f.validos.join(','));
+        else Logger.log('save_config: ' + campo + ' no tiene ningún correo @pibox.app; se conserva el valor anterior.');
+      };
+      guardarLista('payrollRecipients', 'payroll_recipients');
+      guardarLista('reminderRecipients', 'reminder_recipients');
+      guardarLista('adminEmails', 'admin_emails');
+      const cutDay = Number(data.cutDay), cutHour = Number(data.cutHour), delay = Number(data.mallaNotifDelay);
+      if (data.cutDay !== undefined && Number.isInteger(cutDay) && cutDay >= 0 && cutDay <= 6) props.setProperty('payroll_cut_day', String(cutDay));
+      if (data.cutHour !== undefined && Number.isInteger(cutHour) && cutHour >= 0 && cutHour <= 23) props.setProperty('payroll_cut_hour', String(cutHour));
+      if (data.mallaNotifDelay !== undefined && Number.isFinite(delay) && delay >= 10 && delay <= 1440) props.setProperty('malla_notif_delay', String(Math.round(delay)));
+      Logger.log('Config saved');
     }
 
     Logger.log('Done OK');
@@ -139,7 +190,7 @@ function sendOvertimeRejectedNotification(data) {
   const date = data.date || '—';
   const extraMins = data.extraMins || 0;
   const reason = data.reason || '(Sin motivo especificado)';
-  const coordinatorEmail = data.coordinatorEmail || '';
+  const coordinatorEmail = unCorreoPibox_(data.coordinatorEmail, 'overtime_rejected coordinador');
   const extraH = Math.floor(extraMins / 60), extraM = extraMins % 60;
   const extraStr = extraH > 0 ? extraH + 'h ' + (extraM > 0 ? extraM + 'm' : '') : extraM + 'm';
 
@@ -172,7 +223,8 @@ function sendOvertimeNotification(data) {
   const scheduledHours = data.scheduledHours || '—';
   const workedHours = data.workedHours || '—';
   const extraHours = data.extraHours || '—';
-  const recipients = data.recipients || [];
+  const recipients = filtrarDestinatarios_(data.recipients, 'overtime_request').validos;
+  if (recipients.length === 0) throw new Error('overtime_request sin destinatarios @pibox.app válidos');
 
   const subject = 'Solicitud de horas extras - ' + agentName + ' - ' + date;
   const body = 'Hola,\n\nSe ha registrado una solicitud de aprobacion de horas extras en Pi GOps.\n\nColaborador: ' + agentName + ' (' + agentEmail + ')\nFecha: ' + date + '\nHoras programadas: ' + scheduledHours + '\nHoras trabajadas: ' + workedHours + '\nHoras extras: ' + extraHours + '\n\nEl colaborador indica que estas horas fueron aprobadas por su lider inmediato.\n\nPor favor ingresa a Pi GOps - Turno - Panel de control - Horas extras para aprobar o rechazar.\n\n---\nPi GOps - Pibox Operaciones';
@@ -186,7 +238,7 @@ function sendOvertimeNotification(data) {
 function sendStrikeWarning(data) {
   const agentName = data.agentName || '—';
   const agentEmail = data.agentEmail || '—';
-  const liderEmail = data.liderEmail || '';
+  const liderEmail = unCorreoPibox_(data.liderEmail, 'strike_warning líder');
   const llamadoNumero = data.llamadoNumero || 1;
   const totalStrikes = data.totalStrikes || 0;
   const esTercerLlamado = !!data.esTercerLlamado;
@@ -246,7 +298,7 @@ function sendStrikeWarning(data) {
 function sendDisciplinaryWarning(data) {
   const agentName = data.agentName || '—';
   const agentEmail = data.agentEmail || '—';
-  const liderEmail = data.liderEmail || '';
+  const liderEmail = unCorreoPibox_(data.liderEmail, 'disciplinary_warning líder');
   const historial = data.historial || [];
 
   // Mismo criterio que sendStrikeWarning: derivar el período de las fechas del historial (puede
@@ -573,7 +625,9 @@ function sendPayrollReport(data) {
   const weekStart = data.weekStart || '—';
   const weekEnd = data.weekEnd || '—';
   const records = data.records || [];
-  const recipients = data.recipients || [];
+  // v6: dominio + lista blanca, ANTES de crear el Sheet o leer las cédulas de BASE 3.0.
+  const recipients = destinatariosNomina_(data.recipients);
+  if (recipients.length === 0) throw new Error('Reporte de nómina sin destinatarios válidos (solo @pibox.app' + (PropertiesService.getScriptProperties().getProperty('payroll_allowed_recipients') ? ' y payroll_allowed_recipients' : '') + ')');
 
   const ss = SpreadsheetApp.create('Reporte_Nomina_Temp');
   const sheet = ss.getActiveSheet();
@@ -722,7 +776,8 @@ function sendPayrollReport(data) {
 function sendWeeklyPayrollAuto() {
   const props = PropertiesService.getScriptProperties();
   const reminderStr = props.getProperty('reminder_recipients') || 'cromero@pibox.app';
-  const recipients = reminderStr.split(',').map(function(e) { return e.trim(); }).filter(Boolean);
+  var recipients = filtrarDestinatarios_(reminderStr, 'reminder_recipients').validos;
+  if (recipients.length === 0) recipients = ['cromero@pibox.app'];
   const cutDay = parseInt(props.getProperty('payroll_cut_day') || '1');
 
   const now = new Date();
@@ -761,7 +816,8 @@ function checkAttendance() {
   const now = new Date();
   const props = PropertiesService.getScriptProperties();
   const adminEmailsStr = props.getProperty('admin_emails') || 'cromero@pibox.app';
-  const adminEmails = adminEmailsStr.split(',').map(function(e) { return e.trim(); }).filter(Boolean);
+  var adminEmails = filtrarDestinatarios_(adminEmailsStr, 'admin_emails').validos;
+  if (adminEmails.length === 0) adminEmails = ['cromero@pibox.app'];
 
   // Get today's malla
   const ss = SpreadsheetApp.openById(getMallaSheetId());
@@ -1279,6 +1335,26 @@ function parseTimeToDate(timeStr, referenceDate) {
   const d = new Date(referenceDate);
   d.setHours(parseInt(parts[0]) || 0, parseInt(parts[1]) || 0, 0, 0);
   return d;
+}
+
+// ── DIAGNÓSTICO DE SEGURIDAD (v6) — SOLO LECTURA ──
+// Ejecútala UNA VEZ antes de dejar activo el parche, desde el editor (Ejecutar → diagnosticoSeguridadNotif → Registro de ejecución).
+// Muestra los destinatarios que hoy tiene guardados el script y marca los que NO son @pibox.app: esos dejarán de recibir correo.
+// No envía nada ni modifica ninguna propiedad.
+function diagnosticoSeguridadNotif() {
+  var props = PropertiesService.getScriptProperties();
+  var hayFuera = false;
+  ['payroll_recipients', 'reminder_recipients', 'admin_emails', 'payroll_allowed_recipients'].forEach(function (k) {
+    var v = props.getProperty(k);
+    if (!v) { Logger.log(k + ': (sin definir)'); return; }
+    var f = filtrarDestinatarios_(v, k);
+    Logger.log(k + ': ' + f.validos.length + ' válido(s) → ' + f.validos.join(', ') + (f.rechazados.length ? '   ⚠ FUERA DE @pibox.app (dejarán de recibir): ' + f.rechazados.join(', ') : ''));
+    if (f.rechazados.length) hayFuera = true;
+  });
+  if (!props.getProperty('payroll_allowed_recipients')) {
+    Logger.log('⚠ payroll_allowed_recipients no está definida. Recomendado: crearla (Configuración del proyecto → Propiedades del script) con los correos que SÍ deben recibir el reporte de nómina, separados por coma.');
+  }
+  Logger.log(hayFuera ? 'RESULTADO: hay destinatarios externos guardados. Confirma con quién corresponda si deben seguir recibiendo antes de continuar.' : 'RESULTADO: todos los destinatarios guardados son @pibox.app.');
 }
 
 // ── TEST FUNCTIONS ──

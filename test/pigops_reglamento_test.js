@@ -269,12 +269,12 @@ const to=m=>String(m.to);
  t('DG2 un permiso faltante aparece como FALLA con el servicio, sin romper el resto; detecta disparadores sin instalar',/FALLA  Drive: leer la plantilla → .*drive/.test(mal)&&/OK     Hojas de cálculo/.test(mal)&&/FALLA  Disparadores instalados → faltan/.test(mal),mal);}
 
 // ═══ Promoción de registros de prueba a producción (promoverRegistrosDePrueba) ═══
-{const LIZETH='lamaya@pibox.app',IDL=LIZETH+'_20261101_reg';
- // El registro REAL de Lizeth Amaya (1-nov, 7:42 vs 7:30 = 12 min), creado en modo prueba, con su aviso enviado solo a cromero
- const docPrueba=(o={})=>Object.assign({_id:IDL,tipoRegistro:'tardanza',userEmail:LIZETH,userName:'AMAYA SOLANO LIZETH PAOLA',cargo:'Agente de Operaciones',liderEmail:'lider@pibox.app',fecha:'01/11/2026',fechaISO:'2026-11-01',programada:'7:30 a. m.',inicioReal:'7:42 a. m.',minutos:12,
+{const AG1='agente.uno@pibox.app',IDL=AG1+'_20261101_reg';
+ // El registro REAL de una agente (1-nov, 7:42 vs 7:30 = 12 min), creado en modo prueba, con su aviso enviado solo a cromero
+ const docPrueba=(o={})=>Object.assign({_id:IDL,tipoRegistro:'tardanza',userEmail:AG1,userName:'AGENTE UNO',cargo:'Agente de Operaciones',liderEmail:'lider@pibox.app',fecha:'01/11/2026',fechaISO:'2026-11-01',programada:'7:30 a. m.',inicioReal:'7:42 a. m.',minutos:12,
    estado:'En plazo de justificación',tipo:'llamado',numeroEnVentana:1,limiteISO:'2026-11-05',prueba:true,avisoEnviadoAt:'2026-11-01T12:51:52.852Z',avisoPrueba:true,creadoAt:'2026-11-01T12:51:52.416Z',espera:''},o);
  const mundo=(docs,o={})=>{const w=world({now:o.now||BOG('2026-11-02',17,57),modoPrueba:o.modoPrueba===undefined?false:o.modoPrueba});
-  w.agentes[LIZETH]={nombre:'AMAYA SOLANO LIZETH PAOLA',cargo:'Agente de Operaciones',cedula:'1',liderEmail:'lider@pibox.app'};
+  w.agentes[AG1]={nombre:'AGENTE UNO',cargo:'Agente de Operaciones',cedula:'1',liderEmail:'lider@pibox.app'};
   (Array.isArray(docs)?docs:[docs]).forEach(d=>{w.db.reglamento_casos[d._id]=JSON.parse(JSON.stringify(d));});return w;};
  const prom=w=>R('reg_promover')(w.deps(),w.deps().config());
  // PM1: con el modo prueba ACTIVO se detiene
@@ -282,11 +282,11 @@ const to=m=>String(m.to);
   t('PM1 con el modo prueba ACTIVO la promoción se detiene, lo dice y no toca nada ni envía correos',/MODO PRUEBA/.test(r.detenido)&&r.promovidos.length===0&&w.sent.length===0&&w.db.reglamento_casos[IDL].prueba===true&&w.updates===0,r.detenido);}
  // PM2: el caso real
  {const w=mundo(docPrueba());const r=prom(w);const d=w.db.reglamento_casos[IDL];
-  t('PM2 promueve el registro de Lizeth: prueba→producción, marca promovidoAt y recalcula el plazo (hoy 2-nov es festivo → 3 días hábiles: 3, 4 y 5 de noviembre)',r.promovidos.length===1&&d.prueba===false&&!!d.promovidoAt&&d.plazoRecalculado===true&&d.limiteISO==='2026-11-05'&&d.promovidoDesdePrueba===true&&d.estado==='En plazo de justificación',d);
-  t('PM3 el aviso REAL sale a la agente CON COPIA a su líder (y no a cromero), sin PRUEBA, con la fecha límite nueva y una nota que explica que el plazo corre desde hoy',w.sent.length===1&&w.sent[0].to===LIZETH&&w.sent[0].cc==='lider@pibox.app'&&!/cromero/.test(w.sent[0].cc||'')&&!/PRUEBA/.test(w.sent[0].subject+w.sent[0].html)&&/5 de noviembre de 2026/.test(w.sent[0].html)&&/se cuenta desde hoy, 2 de noviembre de 2026/.test(w.sent[0].html)&&/1 de noviembre de 2026/.test(w.sent[0].html)&&/7:42 a\. m\./.test(w.sent[0].html),w.sent.map(m=>[m.to,m.subject]));
+  t('PM2 promueve el registro de la agente: prueba→producción, marca promovidoAt y recalcula el plazo (hoy 2-nov es festivo → 3 días hábiles: 3, 4 y 5 de noviembre)',r.promovidos.length===1&&d.prueba===false&&!!d.promovidoAt&&d.plazoRecalculado===true&&d.limiteISO==='2026-11-05'&&d.promovidoDesdePrueba===true&&d.estado==='En plazo de justificación',d);
+  t('PM3 el aviso REAL sale a la agente CON COPIA a su líder (y no a cromero), sin PRUEBA, con la fecha límite nueva y una nota que explica que el plazo corre desde hoy',w.sent.length===1&&w.sent[0].to===AG1&&w.sent[0].cc==='lider@pibox.app'&&!/cromero/.test(w.sent[0].cc||'')&&!/PRUEBA/.test(w.sent[0].subject+w.sent[0].html)&&/5 de noviembre de 2026/.test(w.sent[0].html)&&/se cuenta desde hoy, 2 de noviembre de 2026/.test(w.sent[0].html)&&/1 de noviembre de 2026/.test(w.sent[0].html)&&/7:42 a\. m\./.test(w.sent[0].html),w.sent.map(m=>[m.to,m.subject]));
   t('PM4 NO genera llamado de atención ni notificación a Talento Humano (ni PDF ni Excel)',w.pdfs.length===0&&w.soportes.length===0&&!w.sent.some(m=>/Llamado|Falta grave|Reincidencia/.test(m.subject)));
-  t('PM5 el registro guarda que el aviso real salió (avisoEnviadoAt, avisoPrueba:false) y queda con el id y los demás campos intactos',d.avisoPrueba===false&&d.avisoEnviadoAt>'2026-11-02'&&d.minutos===12&&d.programada==='7:30 a. m.'&&d.userEmail===LIZETH);
-  t('PM6 el log trae agente, fecha, plazo anterior y nuevo, y si el correo salió',r.promovidos[0].agente==='AMAYA SOLANO LIZETH PAOLA'&&r.promovidos[0].limiteActual==='2026-11-05'&&r.promovidos[0].limiteNuevo==='2026-11-05'&&/ENVIADO a lamaya@pibox\.app/.test(r.promovidos[0].correo));
+  t('PM5 el registro guarda que el aviso real salió (avisoEnviadoAt, avisoPrueba:false) y queda con el id y los demás campos intactos',d.avisoPrueba===false&&d.avisoEnviadoAt>'2026-11-02'&&d.minutos===12&&d.programada==='7:30 a. m.'&&d.userEmail===AG1);
+  t('PM6 el log trae agente, fecha, plazo anterior y nuevo, y si el correo salió',r.promovidos[0].agente==='AGENTE UNO'&&r.promovidos[0].limiteActual==='2026-11-05'&&r.promovidos[0].limiteNuevo==='2026-11-05'&&/ENVIADO a agente\.uno@pibox\.app/.test(r.promovidos[0].correo));
   // idempotencia
   const antes=JSON.stringify(w.db.reglamento_casos[IDL]),nSent=w.sent.length,nUpd=w.updates;
   const r2=prom(w);
@@ -302,9 +302,9 @@ const to=m=>String(m.to);
   const real=docPrueba({_id:'z@pibox.app_20261101_reg',userEmail:'z@pibox.app',prueba:false,estado:'En plazo de justificación'}); // creado en producción: no se toca
   const w=mundo([base,...otros,real]);const copia=JSON.stringify(otros.concat([real]));const r=prom(w);
   t('PM10 los registros de prueba que ya NO están «En plazo» (Enviado, Justificado, Cancelado, Cerrado, 60.13) se listan como NO TOCADO y no se modifican; los de producción tampoco',r.promovidos.length===1&&r.noTocados.length===5&&r.noTocados.every(x=>x.estado)&&[...otros,real].every(d=>JSON.stringify(Object.assign({},w.db.reglamento_casos[d._id]))===JSON.stringify(Object.assign({},d))),r.noTocados.map(x=>x.estado));
-  t('PM11 solo se envía UN aviso (el del registro en plazo)',w.sent.length===1&&w.sent[0].to===LIZETH);}
+  t('PM11 solo se envía UN aviso (el del registro en plazo)',w.sent.length===1&&w.sent[0].to===AG1);}
  // PM12: ya justificada
- {const w=mundo(docPrueba());w.waive('2026-11-01',LIZETH);const r=prom(w);
+ {const w=mundo(docPrueba());w.waive('2026-11-01',AG1);const r=prom(w);
   t('PM12 si la tardanza ya fue justificada, no se avisa ni se promueve (el proceso normal la marcará «Justificado»)',r.omitidos.length===1&&r.promovidos.length===0&&w.sent.length===0&&w.db.reglamento_casos[IDL].prueba===true&&/justificada/.test(r.omitidos[0].motivo));}
  // PM13: el disparador ya había enviado el aviso real
  {const w=mundo(docPrueba({avisoPrueba:false,avisoEnviadoAt:'2026-11-02T19:00:00.000Z'}),{now:BOG('2026-11-04',9,0)});const r=prom(w);
@@ -316,7 +316,7 @@ const to=m=>String(m.to);
   falla=false;const r2=R('reg_promover')(dp,dp.config());
   t('PM15 …y al reintentar sale el aviso y se promueve (un solo correo en total)',r2.promovidos.length===1&&w.sent.length===1&&w.db.reglamento_casos[IDL].prueba===false);}
  // PM16-PM19: interacción con el proceso normal (disparadores)
- {const w=mundo(docPrueba());w.malla.push({fecha:D('2026-11-01'),usuario:LIZETH,inicio:'7:30:00',fin:'16:00:00',novedad:'',lider:'lider@pibox.app'});w.turnos.push({userEmail:LIZETH,status:'ended',startTime:new Date(BOG('2026-11-01',7,30).getTime()+12*60000),endTime:BOG('2026-11-01',16,0)});
+ {const w=mundo(docPrueba());w.malla.push({fecha:D('2026-11-01'),usuario:AG1,inicio:'7:30:00',fin:'16:00:00',novedad:'',lider:'lider@pibox.app'});w.turnos.push({userEmail:AG1,status:'ended',startTime:new Date(BOG('2026-11-01',7,30).getTime()+12*60000),endTime:BOG('2026-11-01',16,0)});
   const antes=JSON.stringify(w.db.reglamento_casos[IDL]);
   w.diario(BOG('2026-11-03',7,0));w.avisos(BOG('2026-11-03',7,15));
   t('PM16 con el modo prueba apagado y SIN promover, el registro de prueba queda RETENIDO: los disparadores no le mandan aviso ni lo modifican',w.sent.length===0&&JSON.stringify(w.db.reglamento_casos[IDL])===antes,w.sent.map(m=>m.subject));
@@ -326,14 +326,14 @@ const to=m=>String(m.to);
   w.diario(BOG('2026-11-05',7,0));
   t('PM18 promovida el 3-nov (plazo hasta el 6-nov): el 5-nov el proceso normal respeta el plazo nuevo (sin llamado)',nAviso===1&&w.pdfs.length===0&&w.db.reglamento_casos[IDL].limiteISO==='2026-11-06');
   w.diario(BOG('2026-11-09',7,0)); // lun: ya venció el plazo nuevo
-  t('PM19 vencido el plazo NUEVO sin justificar, el proceso normal confirma la falta y envía el llamado (agente, con copias)',w.pdfs.length===1&&w.sent.some(m=>/^Llamado de atención/.test(m.subject)&&m.to===LIZETH)&&w.db.reglamento_casos[IDL].estado==='Enviado'&&w.db.reglamento_casos[IDL].prueba===false,w.sent.map(m=>m.subject));}
+  t('PM19 vencido el plazo NUEVO sin justificar, el proceso normal confirma la falta y envía el llamado (agente, con copias)',w.pdfs.length===1&&w.sent.some(m=>/^Llamado de atención/.test(m.subject)&&m.to===AG1)&&w.db.reglamento_casos[IDL].estado==='Enviado'&&w.db.reglamento_casos[IDL].prueba===false,w.sent.map(m=>m.subject));}
  // PM20: una tardanza posterior espera a la retenida (no se cuenta antes de que se avise a la agente)
- {const w=mundo(docPrueba());w.malla.push({fecha:D('2026-11-01'),usuario:LIZETH,inicio:'7:30:00',fin:'16:00:00',novedad:'',lider:'lider@pibox.app'});w.turnos.push({userEmail:LIZETH,status:'ended',startTime:new Date(BOG('2026-11-01',7,30).getTime()+12*60000),endTime:BOG('2026-11-01',16,0)});
-  w.tardanza('2026-11-03',7,30,15,LIZETH);
+ {const w=mundo(docPrueba());w.malla.push({fecha:D('2026-11-01'),usuario:AG1,inicio:'7:30:00',fin:'16:00:00',novedad:'',lider:'lider@pibox.app'});w.turnos.push({userEmail:AG1,status:'ended',startTime:new Date(BOG('2026-11-01',7,30).getTime()+12*60000),endTime:BOG('2026-11-01',16,0)});
+  w.tardanza('2026-11-03',7,30,15,AG1);
   w.diario(BOG('2026-11-12',7,0));
   t('PM20 una tardanza posterior de la misma agente no se actúa mientras la anterior siga retenida (su número de orden aún puede cambiar)',w.pdfs.length===0&&!w.sent.some(m=>/Llamado|Falta grave/.test(m.subject)),w.sent.map(m=>m.subject));}
  // PM21: en modo prueba nada cambia (los registros de prueba se siguen procesando como antes)
- {const w=mundo(docPrueba(),{modoPrueba:true});w.malla.push({fecha:D('2026-11-01'),usuario:LIZETH,inicio:'7:30:00',fin:'16:00:00',novedad:'',lider:'lider@pibox.app'});w.turnos.push({userEmail:LIZETH,status:'ended',startTime:new Date(BOG('2026-11-01',7,30).getTime()+12*60000),endTime:BOG('2026-11-01',16,0)});
+ {const w=mundo(docPrueba(),{modoPrueba:true});w.malla.push({fecha:D('2026-11-01'),usuario:AG1,inicio:'7:30:00',fin:'16:00:00',novedad:'',lider:'lider@pibox.app'});w.turnos.push({userEmail:AG1,status:'ended',startTime:new Date(BOG('2026-11-01',7,30).getTime()+12*60000),endTime:BOG('2026-11-01',16,0)});
   w.diario(BOG('2026-11-10',7,0));
   t('PM21 con el modo prueba ACTIVO el registro no queda retenido: se procesa normalmente (llamado de prueba solo a cromero)',w.pdfs.length===1&&w.sent.every(m=>m.to==='cromero@pibox.app'));}
  // PM22: el wrapper manual (log, candado, sin Google real)
@@ -341,7 +341,7 @@ const to=m=>String(m.to);
   const c4={...ctx,Logger:{log:m=>logs.push(m)},LockService:{getScriptLock:()=>({tryLock:()=>true,releaseLock:()=>{candado++;}})}};vm.createContext(c4);vm.runInContext(GS0,c4);vm.runInContext(GS,c4);
   c4.reg_depsProduccion=()=>w.deps();
   const salida=c4.promoverRegistrosDePrueba();
-  t('PM22 promoverRegistrosDePrueba (manual): registra en el log cada registro promovido con agente, fecha, plazo nuevo y correo; 0 llamados; libera el candado',/PROMOVIDO  agente=AMAYA SOLANO LIZETH PAOLA \(lamaya@pibox\.app\) · tardanza del 01\/11\/2026 \(12 min\) · plazo anterior 05\/11\/2026 → plazo NUEVO 05\/11\/2026 · correo: ENVIADO a lamaya@pibox\.app/.test(salida)&&/Llamados de atención generados: 0/.test(salida)&&candado===1&&logs.length===1,salida);
+  t('PM22 promoverRegistrosDePrueba (manual): registra en el log cada registro promovido con agente, fecha, plazo nuevo y correo; 0 llamados; libera el candado',/PROMOVIDO  agente=AGENTE UNO \(agente\.uno@pibox\.app\) · tardanza del 01\/11\/2026 \(12 min\) · plazo anterior 05\/11\/2026 → plazo NUEVO 05\/11\/2026 · correo: ENVIADO a agente\.uno@pibox\.app/.test(salida)&&/Llamados de atención generados: 0/.test(salida)&&candado===1&&logs.length===1,salida);
   const w2=mundo(docPrueba(),{modoPrueba:true});const c5={...ctx,Logger:{log(){}},LockService:{getScriptLock:()=>({tryLock:()=>true,releaseLock(){}})}};vm.createContext(c5);vm.runInContext(GS0,c5);vm.runInContext(GS,c5);c5.reg_depsProduccion=()=>w2.deps();
   const s2=c5.promoverRegistrosDePrueba();
   t('PM23 con el modo prueba activo el log dice DETENIDO y no hace nada',/DETENIDO/.test(s2)&&/ACTIVO/.test(s2)&&w2.sent.length===0);
@@ -381,12 +381,12 @@ const to=m=>String(m.to);
   const ll=w.sent.find(m=>/^Llamado de atención/.test(m.subject));
   t('AV11 el resto del flujo no cambia: al vencer el plazo el llamado sigue saliendo con sus copias (líder, TH y cromero)',!!ll&&ll.to==='ana@pibox.app'&&ll.cc==='jefe@pibox.app,th@pibox.app,cromero@pibox.app',ll&&ll.cc);}
  // AV12: el aviso que envía promoverRegistrosDePrueba() también copia al líder
- {const LIZ='lamaya@pibox.app',doc=(lid)=>({_id:LIZ+'_20261101_reg',tipoRegistro:'tardanza',userEmail:LIZ,userName:'AMAYA SOLANO LIZETH PAOLA',cargo:'Agente',liderEmail:lid,fecha:'01/11/2026',fechaISO:'2026-11-01',programada:'7:30 a. m.',inicioReal:'7:42 a. m.',minutos:12,estado:'En plazo de justificación',tipo:'llamado',limiteISO:'2026-11-05',prueba:true,avisoEnviadoAt:'2026-11-01T12:51:52.852Z',avisoPrueba:true});
-  const mk=lid=>{const w=world({now:BOG('2026-11-02',17,57),modoPrueba:false});w.db.reglamento_casos[LIZ+'_20261101_reg']=doc(lid);return w;};
+ {const AG1='agente.uno@pibox.app',doc=(lid)=>({_id:AG1+'_20261101_reg',tipoRegistro:'tardanza',userEmail:AG1,userName:'AGENTE UNO',cargo:'Agente',liderEmail:lid,fecha:'01/11/2026',fechaISO:'2026-11-01',programada:'7:30 a. m.',inicioReal:'7:42 a. m.',minutos:12,estado:'En plazo de justificación',tipo:'llamado',limiteISO:'2026-11-05',prueba:true,avisoEnviadoAt:'2026-11-01T12:51:52.852Z',avisoPrueba:true});
+  const mk=lid=>{const w=world({now:BOG('2026-11-02',17,57),modoPrueba:false});w.db.reglamento_casos[AG1+'_20261101_reg']=doc(lid);return w;};
   logs.length=0;const w=mk('lider@pibox.app');const r=cL.reg_promover(w.deps(),w.deps().config());
-  t('AV12 promoverRegistrosDePrueba: el aviso real sale a la agente con copia al líder (y no a cromero), y el log lo dice',w.sent.length===1&&w.sent[0].to===LIZ&&w.sent[0].cc==='lider@pibox.app'&&/con copia al líder: lider@pibox\.app/.test(r.promovidos[0].correo),[w.sent[0].cc,r.promovidos[0].correo]);
+  t('AV12 promoverRegistrosDePrueba: el aviso real sale a la agente con copia al líder (y no a cromero), y el log lo dice',w.sent.length===1&&w.sent[0].to===AG1&&w.sent[0].cc==='lider@pibox.app'&&/con copia al líder: lider@pibox\.app/.test(r.promovidos[0].correo),[w.sent[0].cc,r.promovidos[0].correo]);
   logs.length=0;const w2=mk('');const r2=cL.reg_promover(w2.deps(),w2.deps().config());
-  t('AV13 promoverRegistrosDePrueba con agente sin líder: sale solo a la agente, se promueve igual y el log anota «SIN copia al líder»',w2.sent.length===1&&w2.sent[0].to===LIZ&&!w2.sent[0].cc&&r2.promovidos.length===1&&/SIN copia al líder: el agente no tiene líder registrado/.test(r2.promovidos[0].correo)&&logs.some(x=>/SOLO al agente/.test(x)),[r2.promovidos[0].correo,logs]);}
+  t('AV13 promoverRegistrosDePrueba con agente sin líder: sale solo a la agente, se promueve igual y el log anota «SIN copia al líder»',w2.sent.length===1&&w2.sent[0].to===AG1&&!w2.sent[0].cc&&r2.promovidos.length===1&&/SIN copia al líder: el agente no tiene líder registrado/.test(r2.promovidos[0].correo)&&logs.some(x=>/SOLO al agente/.test(x)),[r2.promovidos[0].correo,logs]);}
 }
 
 // ═══ Plantilla de Google Doc: marcadores, formato, separación, nota y hoja en blanco (Docs simulado) ═══

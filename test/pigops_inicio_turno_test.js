@@ -79,7 +79,7 @@ function mkCsv(email,novedad){
  const start=new Date(d.getTime()-2*60000);const hhmm=`${start.getHours()}:${String(start.getMinutes()).padStart(2,'0')}:00`;
  const rows=['"Día","FECHA","Usuario","NOMBRE","Rol","Inicio","Fin","Almuerzo","Línea","Líder","Novedad"'];
  for(let i=0;i<30;i++)rows.push(`x,${f},u${i}@pibox.app,N${i},R,7:00:00,15:00:00,1,L,J,`);
- rows.push(`x,${f},${email},Lilleyra,R,${hhmm},23:59:00,1,L,Jefe,${novedad}`);
+ rows.push(`x,${f},${email},Agente,R,${hhmm},23:59:00,1,L,Jefe,${novedad}`);
  return rows.join('\n');
 }
 const out=[];const t=(n,c,extra)=>out.push((c?'PASS ':'FAIL ')+n+(c?'':'  '+(extra||'')));

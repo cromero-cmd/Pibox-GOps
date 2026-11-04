@@ -1,0 +1,5 @@
+# Configuración local de Claude Code: rutas del equipo y comandos; no debe estar en un repo público
+.claude/settings.local.json
+liquidaciones/.claude/settings.local.json
+# Carpeta temporal del armado de Pages (la crea el workflow)
+_site/

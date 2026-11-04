@@ -23,14 +23,25 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Excluir archivos internos del sitio publicado
-        run: rm -f CLAUDE.md
+      - name: Armar el sitio (solo lo que la app necesita)
+        # LISTA BLANCA: el repo es público y Pages publica lo que se suba. Nada de *.gs, .claude/, test/, CLAUDE.md, server.js ni las
+        # copias viejas js/ y css/ de la raíz. Si la app empieza a cargar un archivo nuevo, agregarlo aquí o dará 404.
+        run: |
+          set -euo pipefail
+          mkdir -p _site/liquidaciones
+          cp index.html pipeline.html .nojekyll _site/
+          cp liquidaciones/index.html liquidaciones/pipeline.html liquidaciones/version.json _site/liquidaciones/
+          cp -r liquidaciones/css liquidaciones/js _site/liquidaciones/
+          echo "Archivos publicados:"; (cd _site && find . -type f | sort)
+          for prohibido in '*.gs' 'CLAUDE.md' '.claude' 'test' 'server.js' 'apps-script'; do
+            if [ -n "$(find _site -name "$prohibido" -print -quit)" ]; then echo "::error::Se coló '$prohibido' en el sitio"; exit 1; fi
+          done
       - name: Setup Pages
         uses: actions/configure-pages@v5
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: '.'
+          path: '_site'
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4

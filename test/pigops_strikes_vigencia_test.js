@@ -73,7 +73,7 @@ function calc(dias,now,w,a){const wm=new Map();(w||[]).forEach(x=>wm.set(typeof 
  t('E9 el historial del correo disciplinario usa solo llamados vigentes (máx. 3) con tipos legibles',h.length===1&&h[0].strikes.length===3&&h[0].strikes[0].tipo==='Leve');
  const k=calc([dia('3/9/2026',10),dia('4/9/2026',10),dia('5/9/2026',10)],D(2026,10,17),[{id:EM+'_20260903_tardanza',motivo:'x',waivedBy:'admin@pibox.app'}]);
  t('E10 un retiro directo (sin apelación) también sale de todos los contadores',k.totalActive===2&&k.totalLlamados===0&&k.waived.length===1&&!k.waived[0].waived.appealId);}
-{// turnos duplicados el mismo día (caso real Lilleyra 16-oct): manda el inicio más temprano, no el orden de lectura
+{// turnos duplicados el mismo día (caso real de un agente, 16-oct): manda el inicio más temprano, no el orden de lectura
  const d=dia('16/10/2026',0);const dup={userEmail:EM,status:'active',startTime:ts(new Date(2026,9,16,8,56,0)),endTime:null};
  d.turno.status='active';d.turno.endTime=null;
  const a=E.computeAgentStrikes({email:EM,malla:[d.row],turnos:[dup,d.turno],waiverMap:new Map(),appealMap:new Map(),cfg,now:D(2026,10,16,23,0)});

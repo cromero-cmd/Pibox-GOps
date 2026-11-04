@@ -41,7 +41,7 @@ const ausencias=w=>w.sent.filter(m=>/^Ausencia en turno/.test(m.subject));
 const recordatorios=w=>w.sent.filter(m=>/^Recordatorio: Tu turno/.test(m.subject));
 
 // Malla del caso real: 5 agentes con turno a las 9:00, todos CONECTADOS (turno iniciado antes de las 9:05), a las 10:32 → 92 min tarde
-const cinco=['penagos','mosquera','martinez','guarin','garcia'].map(n=>n+'@pibox.app');
+const cinco=['agente1','agente2','agente3','agente4','agente5'].map(n=>n+'@pibox.app');
 const mallaCinco=()=>cinco.map(e=>['', '04/11/2026',e,e.split('@')[0].toUpperCase(),'','9:00:00','','','','jefe@pibox.app','']);
 
 // ═══ A. Lectura normal ═══
@@ -74,7 +74,7 @@ const fallos={
  'HTTP 200 con null':{code:200,body:'null'}};
 for(const [nombre,resp] of Object.entries(fallos)){
  const w=mundo({malla:mallaCinco(),resp});
- // estado previo: Garcia ya tenía registro de avisos; no debe tocarse
+ // estado previo: la agente 5 ya tenía registro de avisos; no debe tocarse
  w.props.attendance_notified_today=JSON.stringify({_date:'2026-11-04',['ana@pibox.app']:{n10:true,n20:false,n60:false}});
  const antes=w.props.attendance_notified_today;
  let lanzo=false;try{w.run();}catch(e){lanzo=true;}
