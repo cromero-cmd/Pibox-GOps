@@ -466,7 +466,7 @@ const to=m=>String(m.to);
 {const slice=(a,b)=>{const i=HTML.indexOf(a);if(i<0)throw new Error('no encontrado: '+a);const j=HTML.indexOf(b,i);if(j<0)throw new Error('no encontrado: '+b);return HTML.slice(i,j);};
  const fn=sig=>{const i=HTML.indexOf(sig);if(i<0)throw new Error('no encontrado: '+sig);const j=HTML.indexOf('\n}\n',i);return HTML.slice(i,j+3);};
  const CODE=[slice("const FESTIVOS_CO=[","// Detecta la novedad de"),
-  fn("function parseDate(s){"),fn("function parseTime(dateStr,timeStr){"),fn("function strikeWaiverId(email,fecha,cat){"),slice("const STRIKE_CATS=","// Registro de «ya se notificó este llamado»."),
+  fn("function parseDate(s){"),fn("function parseTime(dateStr,timeStr){"),fn("function strikeWaiverId(email,fecha,cat){"),slice("const STRIKE_CATS=","// Modelo completo de strikes de UN agente"),
   fn("async function loadReglamentoAgente(model,userEmail){")].join('\n');
  const FIXED=new Date(2026,10,10,9,0,0).getTime(); // martes 10-nov-2026
  class FD extends Date{static now(){return FIXED;}}

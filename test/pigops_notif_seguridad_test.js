@@ -35,15 +35,13 @@ const dest=w=>w.sent.map(m=>m.to);
 {const w=mundo();const r=w.get('overtime_request',{recipients:[]});
  t('A7 sin destinatarios válidos la respuesta es ok:false',r.ok===false&&w.sent.length===0,r);}
 
-// ═══ B. strike_warning / disciplinary_warning ═══
-{const w=mundo();w.get('strike_warning',{agentName:'A',agentEmail:'a@pibox.app',liderEmail:'atacante@gmail.com',llamadoNumero:1,detalle:[]});
- t('B1 strike_warning con líder externo: va solo al Super Admin (el comportamiento de «sin líder»)',JSON.stringify(dest(w))==='["cromero@pibox.app"]'&&w.sent[0].cc===undefined,w.sent.map(m=>[m.to,m.cc]));}
-{const w=mundo();w.get('strike_warning',{agentName:'A',agentEmail:'a@pibox.app',liderEmail:'jefe@pibox.app',llamadoNumero:1,detalle:[]});
- t('B2 strike_warning normal (líder @pibox.app): al líder con copia al Super Admin — sin cambios',dest(w)[0]==='jefe@pibox.app'&&w.sent[0].cc==='cromero@pibox.app',w.sent.map(m=>[m.to,m.cc]));}
-{const w=mundo();w.get('disciplinary_warning',{agentName:'A',agentEmail:'a@pibox.app',liderEmail:'x@pibox.app, atacante@gmail.com',historial:[]});
- t('B3 disciplinary_warning con líder «doble»: se rechaza y va solo al Super Admin',JSON.stringify(dest(w))==='["cromero@pibox.app"]',dest(w));}
-{const w=mundo();w.get('disciplinary_warning',{agentName:'A',agentEmail:'a@pibox.app',liderEmail:'jefe@pibox.app',historial:[]});
- t('B4 disciplinary_warning normal sin cambios',dest(w)[0]==='jefe@pibox.app'&&w.sent[0].cc==='cromero@pibox.app');}
+// ═══ B. strike_warning / disciplinary_warning: modelo antiguo de strikes DESACTIVADO desde el 1-nov-2026 ═══
+for(const tipo of ['strike_warning','disciplinary_warning']){
+ for(const [etq,lider] of [['líder normal','jefe@pibox.app'],['líder externo','atacante@gmail.com'],['sin líder','']]){
+  const w=mundo();const r=w.get(tipo,{agentName:'A',agentEmail:'a@pibox.app',liderEmail:lider,llamadoNumero:2,historial:[],detalle:[]});
+  t('B '+tipo+' ('+etq+'): no sale NINGÚN correo, responde ok:false y queda el aviso en el log',w.sent.length===0&&r.ok===false&&w.logs.some(l=>/MODELO ANTIGUO DE STRIKES DESACTIVADO/.test(l)),{sent:w.sent,r});}}
+{const w=mundo();
+ t('B5 las funciones del modelo antiguo ya no envían (sendStrikeWarning, sendDisciplinaryWarning, sendPendingStrikeAlerts, runStrikeAlerts)',(()=>{w.ctx.sendStrikeWarning({});w.ctx.sendDisciplinaryWarning({});w.ctx.sendPendingStrikeAlerts();w.ctx.runStrikeAlerts();return w.sent.length===0&&w.logs.filter(l=>/DESACTIVADO/.test(l)).length===4;})(),w.logs);}
 
 // ═══ C. overtime_rejected: el bug del Excel vacío ═══
 {const w=mundo({payroll_recipients:'nomina@pibox.app'});

@@ -376,22 +376,6 @@ window.loadOvertimeEvents = async (strict) => {
  }).map(e=>({...e,_actionable:e.status==='pending_review'||(isSuperAdmin&&e.status==='pending_super_admin')}));
  } catch(e) { if (strict) throw e; return []; }
 };
-window.getStrikeNotification = async (docId) => {
- // Último llamado de atención ya notificado (colección strike_notifications). docId es
- // "{userEmail}_{yearMonth}" para el llamado regular del mes, o "{userEmail}_disciplinary" para
- // el aviso de proceso disciplinario (evento único, no atado a un mes) — usado por loadStrikes
- // para no reenviar el mismo correo en cada recarga del panel cuando nada cambió.
- try {
- const snap = await getDoc(doc(db, 'strike_notifications', docId));
- return snap.exists() ? snap.data() : null;
- } catch(e) { console.error('[getStrikeNotification]', e); return { _readError: true }; }
-};
-window.saveStrikeNotification = async (docId, data) => {
- try {
- await setDoc(doc(db, 'strike_notifications', docId), data, { merge: true });
- return true;
- } catch(e) { console.error('[saveStrikeNotification]', e); return false; }
-};
 window.getStrikeWaivers = async (userEmail, strict) => {
  // Strikes retirados por justa causa (colección strike_waivers, un doc por agente+día+categoría).
  // Sin userEmail trae todos (Insights); con userEmail solo los del agente (su panel de strikes).
@@ -1217,7 +1201,6 @@ body.agent-preview-mode header{margin-top:34px;}
  <div class="strikes-title" id="strikes-title">⚡ Mis strikes</div>
  <div id="strikes-summary" style="font-size:11px;color:var(--text-dim);font-family:var(--mono);"></div>
  </div>
- <div class="strike-meter"><div class="strike-meter-fill" id="strike-meter-fill" style="width:0%;background:#4ade80;"></div></div>
  <div id="strikes-list"></div>
  </div>
  <div class="strikes-wrap" id="reg-wrap" style="display:none;"></div>
@@ -1567,7 +1550,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
-const APP_VERSION='19.1';
+const APP_VERSION='19.2';
 // Promesas rechazadas sin manejar y errores de script: antes desaparecían sin rastro en consola del agente.
 window.addEventListener('unhandledrejection',e=>console.error('[unhandledrejection]',e.reason&&(e.reason.stack||e.reason.message||e.reason)));
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
@@ -2036,6 +2019,7 @@ const STRIKE_CATS={
  grave:{label:'Tardanza grave',icon:'🔴',color:'#f87171',per:1,tipo:'🔴 Grave',waiver:'tardanza'},
  nodesc:{label:'No desconexión',icon:'🔵',color:'#60a5fa',per:3,tipo:'🔵 No desconexión',waiver:'nodesconex'}
 };
+const STRIKE_AVISO_INFO='Los strikes son solo informativos (alerta temprana): no generan llamados de atención, escalamientos ni correos. Desde el 1 de noviembre de 2026 los llamados de atención se rigen únicamente por el Reglamento Interno de Trabajo.';
 const MESES_LARGO=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
 const capStr=s=>s.charAt(0).toUpperCase()+s.slice(1);
 function strikeVigencia(now){
@@ -2098,11 +2082,18 @@ function computeAgentStrikes(o){
  // turno nocturno: parseTime da el fin con la fecha de inicio; si se<ss sumar 24 h
  const seAdj=(ss&&se<ss)?new Date(se.getTime()+24*3600000):se;
  const extraHrs=(re-seAdj)/3600000;
- if(extraHrs>cfg.nodescHrs)mk('nodesc',`No se desconectó a tiempo — salida ${m.fin}, salida real ${hhmm(re)}`);
+ // La «salida real» solo es una hora de desconexión si cae en el MISMO día en que termina el turno programado. Si el turno se cerró
+ // al día siguiente o después (se olvidó cerrar: pasadas las 18 h el cierre es el clic de quien lo cerró, no la desconexión), no hay
+ // hora real de salida que medir: no es no desconexión (el correo antiguo mostraba solo la hora, p. ej. «09:30 a. m.», sin el día).
+ const cierreTardio=re.toDateString()!==seAdj.toDateString()&&re>seAdj;
+ if(extraHrs>cfg.nodescHrs&&!cierreTardio)mk('nodesc',`No se desconectó a tiempo — salida programada ${m.fin}, salida real ${hhmm(re)}`);
  }
  });
  return out.sort((a,b)=>a.date-b.date);
 }
+// MODELO ANTIGUO, SOLO INFORMATIVO (desde el 1-nov-2026): los strikes se muestran como alerta temprana y NO generan llamados, escalamientos ni
+// correos; los llamados de atención los genera únicamente el Reglamento. La reconstrucción de «llamados» de abajo ya no la usa la interfaz
+// (se conserva solo para consulta y pruebas).
 // Aplica la política de vigencia. Los llamados se reconstruyen cronológicamente (un llamado se «emite» cuando UNA
 // categoría completa su umbral: 3 leves, 2 moderadas, 1 grave, 3 no desconexión) y quedan fechados con el día del
 // strike que lo completó. Al sumar un strike solo cuentan para ese llamado los de su misma ventana de 3 meses:
@@ -2140,27 +2131,6 @@ function applyStrikePolicy(strikes,now){
  active.forEach(s=>{const k=strikeMonthKey(s.date);if(byMonth[k])byMonth[k].push(s);});
  return{reglamento,vig,active,vencidos,waived,llamados,llamadosActive,llamadosArchived,counts,llamadosByCat,pending,byMonth,
  totalActive:active.length,totalLlamados:llamadosActive.length};
-}
-// Historial para el correo de proceso disciplinario: los primeros 3 llamados VIGENTES con sus strikes.
-function buildLlamadoHistorialVigente(policy){
- return policy.llamadosActive.slice(0,3).map((l,i)=>({llamadoNumero:i+1,strikes:l.strikes.map(s=>({tipo:STRIKE_CATS[s.cat].tipo.replace(/^\S+\s/,''),fecha:s.fecha,descripcion:s.detalle}))}));
-}
-// Registro de «ya se notificó este llamado». Las reglas de Firestore NO permiten la colección strike_notifications
-// (error «Missing or insufficient permissions» confirmado en vivo el 16-oct-2026), así que la lectura devolvía null
-// y la escritura fallaba: cada carga del panel de un agente con ≥1 llamado volvía a enviar el correo al líder. Con
-// este respaldo en localStorage el aviso se envía una sola vez por navegador y por aumento del contador, aunque
-// Firestore no responda. (La solución completa es agregar la regla de strike_notifications en Firebase.)
-async function getStrikeNotifSafe(docId){
- let remote=null;
- try{remote=window.getStrikeNotification?await window.getStrikeNotification(docId):null;}catch(e){}
- let local=null;
- try{local=JSON.parse(localStorage.getItem('pg_sn_'+docId)||'null');}catch(e){}
- if(remote&&!remote._readError){return(local&&local.notifiedAt&&(!remote.notifiedAt||local.notifiedAt>remote.notifiedAt))?local:remote;}
- return local;
-}
-async function saveStrikeNotifSafe(docId,data){
- try{localStorage.setItem('pg_sn_'+docId,JSON.stringify({llamadoNumero:data.llamadoNumero,notifiedAt:data.notifiedAt,activo:data.activo}));}catch(e){}
- try{return window.saveStrikeNotification?await window.saveStrikeNotification(docId,data):false;}catch(e){return false;}
 }
 // Modelo completo de strikes de UN agente (lo usan «Mis strikes» del agente y el Historial del admin): una sola
 // lectura de sus turnos + sus retiros + sus apelaciones + la malla (en caché). No hay lecturas en bucle por agente.
@@ -2205,13 +2175,11 @@ function strikeMonthsHTML(model,opts){
  opts=opts||{};
  const rows=[...model.vig.months].reverse().map(mo=>{
  const list=(model.byMonth[mo.key]||[]).slice().sort((a,b)=>b.date-a.date);
- const lls=model.llamadosActive.filter(l=>strikeMonthKey(l.issued)===mo.key);
  const items=list.map(s=>{
  const c=STRIKE_CATS[s.cat];
  return`<div style="padding:5px 0;border-bottom:1px solid var(--border);"><div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;flex-wrap:wrap;"><span style="font-size:11px;color:var(--text-muted);">${c.icon} <span style="font-family:var(--mono);">${esc(s.fecha)}</span> — ${esc(s.detalle)}</span>${opts.apelar?opts.apelar(s):''}</div>${opts.admin?opts.admin(s):''}</div>`;
  }).join('');
- const llHTML=lls.map(l=>`<div style="font-size:10.5px;color:#fb923c;margin-top:5px;">📣 Llamado de atención emitido el ${fmtDMYs(l.issued)} · ${STRIKE_CATS[l.cat].label} (${l.strikes.length} strike${l.strikes.length!==1?'s':''})</div>`).join('');
- return`<div style="padding:10px 16px;border-top:1px solid var(--border);"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;"><span style="font-size:12px;font-weight:700;color:var(--text);">🗓️ ${capStr(mo.nombre)} ${mo.y}</span><span style="font-size:10px;color:var(--text-dim);font-family:var(--mono);">${list.length} strike${list.length!==1?'s':''}</span></div>${items||'<div style="font-size:10.5px;color:var(--text-dim);">Sin strikes este mes</div>'}${llHTML}</div>`;
+ return`<div style="padding:10px 16px;border-top:1px solid var(--border);"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;"><span style="font-size:12px;font-weight:700;color:var(--text);">🗓️ ${capStr(mo.nombre)} ${mo.y}</span><span style="font-size:10px;color:var(--text-dim);font-family:var(--mono);">${list.length} strike${list.length!==1?'s':''}</span></div>${items||'<div style="font-size:10.5px;color:var(--text-dim);">Sin strikes este mes</div>'}</div>`;
  }).join('');
  return rows;
 }
@@ -2220,57 +2188,14 @@ function strikeMonthsHTML(model,opts){
 function strikeHistorialHTML(model,idp){
  const venc=model.vencidos.slice().sort((a,b)=>b.date-a.date);
  const waived=model.waived.slice().sort((a,b)=>b.date-a.date);
- const llArch=model.llamadosArchived.slice().sort((a,b)=>b.issued-a.issued);
- const n=venc.length+waived.length+llArch.length;
+ const n=venc.length+waived.length;
  const line=(s,badge,extra)=>{const c=STRIKE_CATS[s.cat];return`<div style="padding:5px 0;border-bottom:1px solid var(--border);"><div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;flex-wrap:wrap;"><span style="font-size:11px;color:var(--text-muted);">${c.icon} <span style="font-family:var(--mono);">${esc(s.fecha)}</span> — ${esc(s.detalle)}</span>${badge}</div>${extra?`<div style="font-size:10px;color:var(--text-dim);margin-top:2px;">${extra}</div>`:''}</div>`;};
  const vencHTML=venc.map(s=>line(s,STRIKE_BADGE('Vencido','#9ca3af'),`Dejó de contar el ${fmtDMYs(strikeExpiryDate(s.date))}`)).join('');
- const llHTML=llArch.map(l=>`<div style="padding:5px 0;border-bottom:1px solid var(--border);"><div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;flex-wrap:wrap;"><span style="font-size:11px;color:var(--text-muted);">📣 Llamado de atención · ${STRIKE_CATS[l.cat].label} <span style="font-family:var(--mono);">${fmtDMYs(l.issued)}</span></span>${STRIKE_BADGE('Vencido','#9ca3af')}</div><div style="font-size:10px;color:var(--text-dim);margin-top:2px;">Dejó de contar el ${fmtDMYs(strikeExpiryDate(l.issued))}</div></div>`).join('');
  const wHTML=waived.map(s=>{const i=strikeWaivedInfo(s);return line(s,STRIKE_BADGE(i.motivo,'#4ade80'),`${i.motivo==='Apelación aprobada'?'Aprobada':'Retirado'} el ${fmtDMYs(i.cuando)} por ${esc(i.quien)}${i.texto?' — «'+esc(i.texto)+'»':''}`);}).join('');
  const sec=(t,c,h)=>h?`<div style="margin-top:10px;"><div style="font-size:10px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:.06em;font-family:var(--mono);margin-bottom:4px;">${t} (${c})</div>${h}</div>`:'';
- const body=n?(sec('Apelación aprobada / retirados',waived.length,wHTML)+sec('Strikes vencidos',venc.length,vencHTML)+sec('Llamados de atención vencidos',llArch.length,llHTML)):'<div style="font-size:11px;color:var(--text-dim);">No hay strikes ni llamados archivados.</div>';
+ const body=n?(sec('Apelación aprobada / retirados',waived.length,wHTML)+sec('Strikes vencidos',venc.length,vencHTML)):'<div style="font-size:11px;color:var(--text-dim);">No hay strikes ni llamados archivados.</div>';
  const bid='strike-hist-'+idp;
- return`<div style="border-top:1px solid var(--border);"><div onclick="const b=document.getElementById('${bid}');b.style.display=b.style.display==='none'?'block':'none'" style="padding:12px 16px;cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between;gap:8px;"><span style="font-size:12px;font-weight:700;color:var(--text);">📜 Historial (solo consulta) <span style="font-weight:400;color:var(--text-dim);">· ${n} archivado${n!==1?'s':''}</span></span><span style="font-size:10px;color:var(--text-dim);">▸</span></div><div id="${bid}" style="display:none;padding:0 16px 14px 16px;"><div style="font-size:10.5px;color:var(--text-dim);margin-bottom:2px;">Lo archivado ya no cuenta para tus contadores ni para llamados de atención.</div>${body}</div></div>`;
-}
-// Notificaciones por correo (llamado nuevo / proceso disciplinario) sobre los llamados VIGENTES.
-async function notifyStrikeLevels(model,userEmail,agentName){
- const total=model.totalLlamados;
- const liderEmail=model.malla.find(m=>m.lider)?.lider||'';
- const vig=model.vig;
- const detalleActivos=model.active.map(s=>({tipo:STRIKE_CATS[s.cat].tipo,fecha:s.fecha,descripcion:s.detalle}));
- try{
- const docId=`${userEmail}_llamados`;
- const last=await getStrikeNotifSafe(docId);
- const lastN=last?.llamadoNumero||0;
- if(total>lastN){
- const payload={agentName,agentEmail:userEmail,liderEmail,mes:vig.label,llamadoNumero:total,totalStrikes:model.totalActive,esTercerLlamado:total>=3,detalle:detalleActivos};
- try{
- await fetch(NOTIF_SCRIPT+'?type=strike_warning&data='+encodeURIComponent(JSON.stringify(payload)),{mode:'no-cors'});
- await saveStrikeNotifSafe(docId,{llamadoNumero:total,notifiedAt:new Date().toISOString()});
- console.log('[strikes] Notificación de llamado #'+total+' enviada para '+userEmail);
- }catch(e){console.warn('[strikes] Error enviando notificación de llamado:',e);}
- }else if(total<lastN){
- // Bajó por archivo/apelación: se actualiza el registro (sin correo) para que el próximo aumento SÍ se notifique.
- await saveStrikeNotifSafe(docId,{llamadoNumero:total,notifiedAt:new Date().toISOString()});
- }
- }catch(e){console.warn('[strikes] Error verificando llamado nuevo:',e);}
- try{
- const discId=`${userEmail}_disciplinary`;
- const disc=await getStrikeNotifSafe(discId);
- if(total>=3){
- if(!disc||disc.activo===false){
- const hist=buildLlamadoHistorialVigente(model);
- const payload={agentName,agentEmail:userEmail,liderEmail,mes:vig.label,historial:hist};
- try{
- await fetch(NOTIF_SCRIPT+'?type=disciplinary_warning&data='+encodeURIComponent(JSON.stringify(payload)),{mode:'no-cors'});
- await saveStrikeNotifSafe(discId,{llamadoNumero:total,notifiedAt:new Date().toISOString(),activo:true});
- console.log('[strikes] Notificación de proceso disciplinario enviada para '+userEmail);
- }catch(e){console.warn('[strikes] Error enviando notificación disciplinaria:',e);}
- }
- }else if(disc&&disc.activo!==false){
- // Ya no hay 3 llamados vigentes: el evento queda cerrado (sin correo) y podrá notificarse de nuevo si se repite.
- await saveStrikeNotifSafe(discId,{llamadoNumero:total,notifiedAt:new Date().toISOString(),activo:false});
- }
- }catch(e){console.warn('[strikes] Error verificando proceso disciplinario:',e);}
+ return`<div style="border-top:1px solid var(--border);"><div onclick="const b=document.getElementById('${bid}');b.style.display=b.style.display==='none'?'block':'none'" style="padding:12px 16px;cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between;gap:8px;"><span style="font-size:12px;font-weight:700;color:var(--text);">📜 Historial (solo consulta) <span style="font-weight:400;color:var(--text-dim);">· ${n} archivado${n!==1?'s':''}</span></span><span style="font-size:10px;color:var(--text-dim);">▸</span></div><div id="${bid}" style="display:none;padding:0 16px 14px 16px;"><div style="font-size:10.5px;color:var(--text-dim);margin-bottom:2px;">Lo archivado ya no cuenta para tus contadores.</div>${body}</div></div>`;
 }
 async function loadStrikes(){
  const userEmail=document.getElementById('user-email').textContent;
@@ -2279,88 +2204,45 @@ async function loadStrikes(){
  const wrap=document.getElementById('strikes-wrap');
  const list=document.getElementById('strikes-list');
  const summary=document.getElementById('strikes-summary');
- const meterFill=document.getElementById('strike-meter-fill');
  if(!wrap||!list)return;
  const now=new Date();
  const model=await buildAgentStrikeModel(userEmail,now);
  const vig=model.vig;
  const titleEl=document.getElementById('strikes-title');
- if(titleEl)titleEl.textContent='⚡ Mis strikes · '+vig.label;
- console.log('[loadStrikes] vigencia',vig.label,'— activos:',model.counts,'llamados vigentes:',model.totalLlamados,'archivados:',model.vencidos.length,'retirados:',model.waived.length);
+ if(titleEl)titleEl.textContent='⚡ Mis strikes (informativo) · '+vig.label;
+ console.log('[loadStrikes] vigencia',vig.label,'— activos:',model.counts,'archivados:',model.vencidos.length,'retirados:',model.waived.length);
  if(model.mallaFalló&&!model.malla.length){
  wrap.style.display='block';
  list.innerHTML=`<div style="padding:24px 16px;text-align:center;font-size:12px;color:var(--text-dim);">⚠️ No se pudo cargar tu malla para calcular los strikes. Se reintentará al recargar.</div>`;
  return;
  }
- notifyStrikeLevels(model,userEmail,document.getElementById('user-name').textContent).catch(e=>console.warn('[strikes] notificaciones:',e));
  loadReglamentoAgente(model,userEmail).catch(e=>console.warn('[reglamento] sección del agente:',e));
- const totalLlamados=model.totalLlamados,totalStrikes=model.totalActive,enDescargos=totalLlamados>=3;
- wrap.style.display='block';
- const pct=Math.min(100,Math.round((totalLlamados/3)*100));
- const meterColor=enDescargos?'#f87171':totalLlamados===2?'#fb923c':totalLlamados===1?'#fbbf24':'#4ade80';
- meterFill.style.width=pct+'%';
- meterFill.style.background=meterColor;
+ const totalStrikes=model.totalActive;
+ const pctColor=totalStrikes===0?'#4ade80':'#fbbf24';
  let estadoBadge='';
- if(enDescargos)estadoBadge=`<span style="background:rgba(248,113,113,0.15);border:1px solid rgba(248,113,113,0.4);color:#f87171;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;">🚨 Proceso disciplinario</span>`;
- else if(totalLlamados===2)estadoBadge=`<span style="background:rgba(251,146,60,0.15);border:1px solid rgba(251,146,60,0.4);color:#fb923c;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;">⚠️ ${3-totalLlamados} llamado más = descargos</span>`;
- else if(totalLlamados===1)estadoBadge=`<span style="background:rgba(251,191,36,0.12);border:1px solid rgba(251,191,36,0.3);color:#fbbf24;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;">⚠️ ${totalLlamados} llamado de atención</span>`;
- else if(totalStrikes===0)estadoBadge=`<span style="background:rgba(74,222,128,0.1);border:1px solid rgba(74,222,128,0.3);color:#4ade80;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;">🏆 Sin strikes</span>`;
- else estadoBadge=`<span style="background:rgba(74,222,128,0.08);border:1px solid rgba(74,222,128,0.2);color:#4ade80;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;">✅ Sin llamados aún</span>`;
+ if(totalStrikes===0)estadoBadge=`<span style="background:rgba(74,222,128,0.1);border:1px solid rgba(74,222,128,0.3);color:#4ade80;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;">🏆 Sin strikes</span>`;
+ else estadoBadge=`<span style="background:rgba(251,191,36,0.12);border:1px solid rgba(251,191,36,0.3);color:#fbbf24;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;">ℹ️ ${totalStrikes} strike${totalStrikes!==1?'s':''} · solo informativo</span>`;
  summary.innerHTML=estadoBadge;
+ // Aviso fijo: los strikes ya no generan llamados (desde el 1-nov-2026 solo rige el Reglamento).
+ const infoHTML=`<div style="margin:12px 16px 4px;background:rgba(251,191,36,0.08);border:1px solid rgba(251,191,36,0.35);border-radius:10px;padding:10px 12px;font-size:11.5px;line-height:1.6;color:var(--text-muted);">ℹ️ ${STRIKE_AVISO_INFO} Tus tardanzas y llamados de atención los ves en la sección «Reglamento».</div>`;
  // Política de vigencia — visible siempre, con los nombres de los meses de la ventana vigente.
  const politicaHTML=`<div style="margin:12px 16px 4px;background:rgba(96,165,250,0.08);border:1px solid rgba(96,165,250,0.3);border-radius:10px;padding:10px 12px;font-size:11.5px;line-height:1.6;color:var(--text-muted);">🗓️ Tus faltas tienen una vigencia de 3 meses. Aquí ves las de los últimos tres meses (${vig.nombres}). Al iniciar cada mes, las del mes más antiguo se archivan y dejan de contar. Las apelaciones aprobadas tampoco cuentan.</div>`;
- const llamadosHTML=`<div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;">
- <div style="flex:1;">
- <div style="font-size:11px;color:var(--text-dim);margin-bottom:6px;font-family:var(--mono);">Llamados de atención vigentes</div>
- <div style="display:flex;gap:6px;">
- ${[1,2,3].map(n=>{
- const filled=n<=totalLlamados;
- const isCurrent=n===totalLlamados+1;
- return`<div style="width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;
- background:${filled?(n===3?'rgba(248,113,113,0.2)':'rgba(251,146,60,0.15)'):'var(--surface2)'};
- border:2px solid ${filled?(n===3?'#f87171':'#fb923c'):'var(--border)'};
- color:${filled?(n===3?'#f87171':'#fb923c'):'var(--text-dim)'};
- ${isCurrent&&!filled?'box-shadow:0 0 0 3px rgba(251,146,60,0.2);':''}">${n}</div>`;
- }).join('')}
- <div style="width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;
- background:${enDescargos?'rgba(248,113,113,0.2)':'var(--surface2)'};
- border:2px solid ${enDescargos?'#f87171':'var(--border)'};
- color:${enDescargos?'#f87171':'var(--text-dim)'};">⚖️</div>
- </div>
- </div>
+ const resumenHTML=`<div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;">
+ <div style="flex:1;font-size:11px;color:var(--text-dim);font-family:var(--mono);">Alerta temprana · strikes de los últimos tres meses</div>
  <div style="text-align:right;">
- <div style="font-size:22px;font-weight:800;color:${meterColor};">${totalStrikes}</div>
+ <div style="font-size:22px;font-weight:800;color:${pctColor};">${totalStrikes}</div>
  <div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);">strikes vigentes</div>
  </div>
  </div>`;
- // Progreso por categoría (solo strikes vigentes y el avance hacia el siguiente llamado)
+ // Strikes vigentes por categoría (solo información; no hay avance hacia ningún llamado)
  const tipoRows=Object.keys(STRIKE_CATS).map(k=>{
  const c=STRIKE_CATS[k];
  if(!model.counts[k])return'';
- const pend=model.pending[k],faltan=c.per-pend,lls=model.llamadosByCat[k];
- const progPct=Math.min(100,Math.round((pend/c.per)*100));
- return`<div style="padding:10px 16px;border-bottom:1px solid var(--border);">
- <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
- <div style="display:flex;align-items:center;gap:6px;"><span style="font-size:14px;">${c.icon}</span><span style="font-size:12px;font-weight:600;color:${c.color};">${c.label}</span>
- <span style="font-size:11px;background:${c.color}22;border:1px solid ${c.color}44;color:${c.color};padding:1px 7px;border-radius:10px;font-family:var(--mono);">${model.counts[k]} strike${model.counts[k]!==1?'s':''}</span></div>
- ${lls>0?`<span style="font-size:10px;color:${c.color};font-family:var(--mono);">${lls} llamado${lls!==1?'s':''}</span>`:''}
- </div>
- <div style="height:4px;background:var(--surface3);border-radius:2px;overflow:hidden;margin-bottom:4px;"><div style="height:100%;width:${progPct}%;background:${c.color};border-radius:2px;transition:width 0.5s;"></div></div>
- <div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);">Faltan ${faltan} strike${faltan!==1?'s':''} para ${lls>0?'el siguiente':'un'} llamado de atención · ${c.per} strike${c.per!==1?'s':''} = 1 llamado</div>
+ return`<div style="padding:8px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:6px;">
+ <span style="font-size:14px;">${c.icon}</span><span style="font-size:12px;font-weight:600;color:${c.color};">${c.label}</span>
+ <span style="font-size:11px;background:${c.color}22;border:1px solid ${c.color}44;color:${c.color};padding:1px 7px;border-radius:10px;font-family:var(--mono);">${model.counts[k]} strike${model.counts[k]!==1?'s':''}</span>
  </div>`;
  }).join('');
- const near=Object.keys(STRIKE_CATS).filter(k=>model.pending[k]>0&&STRIKE_CATS[k].per-model.pending[k]===1&&STRIKE_CATS[k].per>1).map(k=>STRIKE_CATS[k].label.toLowerCase());
- let avisoHTML='';
- if(near.length)avisoHTML=`<div style="margin:10px 16px;background:rgba(251,146,60,0.08);border:1px solid rgba(251,146,60,0.3);border-radius:8px;padding:10px 12px;font-size:11px;color:#fb923c;">⚠️ Estás a <strong>1 strike</strong> de un nuevo llamado de atención por: ${near.join(', ')}.</div>`;
- if(totalLlamados===2)avisoHTML+=`<div style="margin:10px 16px;background:rgba(248,113,113,0.08);border:1px solid rgba(248,113,113,0.3);border-radius:8px;padding:10px 12px;font-size:11px;color:#f87171;">🚨 Tienes 2 llamados de atención vigentes. <strong>Un llamado más activa un proceso disciplinario.</strong></div>`;
- const reglamHTML=`<div style="padding:12px 16px;border-top:1px solid var(--border);background:var(--surface2);">
- <div style="font-size:10px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px;font-family:var(--mono);">📋 Escala disciplinaria (sin justa causa)</div>
- <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
- ${[['🟡','Tardanza leve (5–19 min)','3 strikes = llamado'],['🟠','Tardanza moderada (20–59 min)','2 strikes = llamado'],['🔴','Tardanza grave (60+ min)','1 strike = llamado'],['🔵','No desconexión (+4h)','3 strikes = llamado']]
- .map(([icon,label,rule])=>`<div style="font-size:10px;color:var(--text-muted);display:flex;align-items:flex-start;gap:4px;"><span>${icon}</span><span><strong>${label}</strong><br/>${rule}</span></div>`).join('')}
- </div>
- <div style="margin-top:8px;font-size:10px;color:var(--text-dim);font-family:var(--mono);">⚖️ 3 llamados de atención vigentes (cualquier combinación) = proceso disciplinario</div>
- </div>`;
  // Apelaciones: el botón/estado va en cada strike vigente del detalle por mes
  window._myStrikeCtx={};
  model.active.forEach(s=>{if(s.wid)window._myStrikeCtx[s.wid]={fecha:s.fecha,cat:STRIKE_CATS[s.cat].waiver,detalle:`${STRIKE_CATS[s.cat].tipo} — ${s.detalle}`};});
@@ -2373,7 +2255,7 @@ async function loadStrikes(){
  };
  const detalleHTML=totalStrikes===0?`<div style="padding:24px 16px;text-align:center;"><div style="font-size:40px;margin-bottom:10px;">🏆</div><div style="font-size:15px;font-weight:700;color:#4ade80;margin-bottom:4px;">¡Sin strikes vigentes en ${vig.label}!</div><div style="font-size:12px;color:var(--text-dim);">Tu puntualidad y responsabilidad son excelentes. ¡Sigue así!</div></div>`
  :`<div style="padding:8px 16px 0;font-size:10px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:.06em;font-family:var(--mono);">📨 ¿Un strike fue justificado? Puedes apelarlo</div>`+strikeMonthsHTML(model,{apelar});
- list.innerHTML=politicaHTML+llamadosHTML+avisoHTML+tipoRows+detalleHTML+strikeHistorialHTML(model,'agente')+reglamHTML;
+ list.innerHTML=infoHTML+politicaHTML+resumenHTML+tipoRows+detalleHTML+strikeHistorialHTML(model,'agente');
 }
 // ── COMUNICADO ANCLADO (v18.7): mecanismo reutilizable para anuncios ──
 // configs/global.comunicado = {id,titulo,cuerpo,resumen,fin(ISO con offset),activo,publicadoAt,publicadoPor}. Si no existe se usa
@@ -2733,7 +2615,7 @@ async function showStrikeHistorial(prefEmail){
  const chips=Object.keys(STRIKE_CATS).filter(k=>model.counts[k]).map(k=>STRIKE_BADGE(`${STRIKE_CATS[k].icon} ${model.counts[k]}`,STRIKE_CATS[k].color)).join(' ');
  body.innerHTML=`<div style="border:1px solid var(--border);border-radius:12px;overflow:hidden;background:var(--surface2);">
  <div style="padding:12px 16px;"><div style="font-size:14px;font-weight:700;color:var(--text);">${esc(nombre)}</div>
- <div style="font-size:11px;color:var(--text-dim);margin-top:2px;">Vigencia: <strong>${vig.label}</strong> · ${model.totalActive} strike${model.totalActive!==1?'s':''} vigente${model.totalActive!==1?'s':''} · <strong style="color:${model.totalLlamados>=3?'#f87171':model.totalLlamados?'#fb923c':'#4ade80'};">${model.totalLlamados} llamado${model.totalLlamados!==1?'s':''} vigente${model.totalLlamados!==1?'s':''}</strong>${model.totalLlamados>=3?' · 🚨 proceso disciplinario':''}</div>
+ <div style="font-size:11px;color:var(--text-dim);margin-top:2px;">Vigencia: <strong>${vig.label}</strong> · ${model.totalActive} strike${model.totalActive!==1?'s':''} vigente${model.totalActive!==1?'s':''} · <em>solo informativo</em><div style="margin-top:4px;color:var(--text-dim);">${STRIKE_AVISO_INFO}</div></div>
  <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;">${chips}</div></div>
  <div style="padding:6px 16px 0;font-size:10px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:.06em;font-family:var(--mono);">✅ Vigente</div>
  ${strikeMonthsHTML(model,{apelar:s=>s.appeal&&s.appeal.status==='pending'?'<span style="font-size:10px;color:#fbbf24;">⏳ Apelación pendiente</span>':''})}
@@ -5926,7 +5808,7 @@ async function retirarStrike(wid){
 }
 async function restaurarStrike(wid){
  if(!isSuperAdminUser(document.getElementById('user-email').textContent))return;
- if(!confirm('¿Restaurar este strike? Volverá a contar para los llamados de atención.'))return;
+ if(!confirm('¿Restaurar este strike? Volverá a contar como strike (solo informativo).'))return;
  const r=await window.deleteStrikeWaiver(wid);
  if(!r.ok){toast('❌ No se pudo restaurar: '+r.error);return;}
  toast('↩ Strike restaurado');
@@ -6158,9 +6040,9 @@ async function renderPanel2Insights(rows,allTurnos,fromDate,toDate,cyc){
  const strikes=computeAgentStrikes({email,malla:mallaByUser.get(email)||[],turnos:turnosByUser.get(email)||[],waiverMap,appealMap,cfg:cfgI,now:nowI});
  const pol=applyStrikePolicy(strikes,nowI);
  const wInWin=pol.waived.filter(s=>s.date>=vigI.start);
- if(pol.totalActive||pol.totalLlamados||wInWin.length)models.push([email,{nombre:info.get(email).nombre||email.split('@')[0],pol,wInWin,email}]);
+ if(pol.totalActive||wInWin.length)models.push([email,{nombre:info.get(email).nombre||email.split('@')[0],pol,wInWin,email}]);
  });
- models.sort((a,b)=>b[1].pol.totalLlamados-a[1].pol.totalLlamados||b[1].pol.totalActive-a[1].pol.totalActive);
+ models.sort((a,b)=>b[1].pol.totalActive-a[1].pol.totalActive);
  models.forEach(([email,v])=>{v.pol.active.forEach(s=>{if(s.wid)window._strikeCtx[s.wid]={email,nombre:v.nombre,fecha:s.fecha,cat:STRIKE_CATS[s.cat].waiver,detalle:`${STRIKE_CATS[s.cat].tipo} — ${s.detalle}`};});});
  const btnStyle='margin-left:8px;background:none;border:1px solid var(--border);color:var(--text-muted);padding:1px 7px;border-radius:6px;font-size:10px;font-family:var(--mono);cursor:pointer;';
  const apelacionHTML=wid=>{
@@ -6172,12 +6054,10 @@ async function renderPanel2Insights(rows,allTurnos,fromDate,toDate,cyc){
  const retirarBtn=wid=>canWaive&&wid?`<button onclick="retirarStrike('${wid}')" style="${btnStyle}">✂️ Retirar</button>`:'';
  const restaurarBtn=wid=>canWaive&&wid?`<button onclick="restaurarStrike('${wid}')" style="${btnStyle}">↩ Restaurar</button>`:'';
  const chip=(n,c,ic)=>n>0?`<span style="font-size:10px;background:${c}1a;color:${c};border:1px solid ${c}4d;padding:1px 7px;border-radius:10px;font-family:var(--mono);">${ic} ${n}</span>`:'';
- strikesHTML=insightCard('strikes',`⚖️ Strikes vigentes · ${vigI.label}`,'#fbbf24',models,'Sin strikes vigentes en esta ventana',
- v=>{const p=v.pol,n=p.totalLlamados,color=n>=3?'#f87171':n===2?'#fb923c':n===1?'#fbbf24':'#9ca3af';
+ strikesHTML=insightCard('strikes',`⚖️ Strikes vigentes · ${vigI.label} · solo informativo`,'#fbbf24',models,'Sin strikes vigentes en esta ventana. '+STRIKE_AVISO_INFO,
+ v=>{const p=v.pol,color=p.totalActive?'#fbbf24':'#9ca3af';
  return Object.keys(STRIKE_CATS).map(k=>chip(p.counts[k],STRIKE_CATS[k].color,STRIKE_CATS[k].icon)).join('')
  +`<span style="font-size:11px;font-weight:800;color:${color};background:${color}22;border:1px solid ${color}44;padding:2px 8px;border-radius:10px;font-family:var(--mono);">${p.totalActive} strike${p.totalActive!==1?'s':''}</span>`
- +(n>0?`<span style="font-size:10px;color:${color};font-family:var(--mono);">· ${n} llamado${n!==1?'s':''} vigente${n!==1?'s':''}</span>`:'')
- +(n>=3?'<span style="font-size:11px;">⚖️</span>':'')
  +(v.wInWin.length?`<span style="font-size:10px;color:#4ade80;font-family:var(--mono);">✅ ${v.wInWin.length} retirado${v.wInWin.length!==1?'s':''}</span>`:'')
  +(p.active.some(s=>appealMap.get(s.wid)?.status==='pending')?'<span style="font-size:10px;color:#fbbf24;font-family:var(--mono);">📨 apelación</span>':'');},
  v=>{

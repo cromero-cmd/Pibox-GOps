@@ -121,14 +121,10 @@ for(const cargo of ['AGENTE DE OPERACIONES','COORDINADOR','','ACTIVO','INACTIVO 
  t('C9 getLiderEmailMap con los encabezados en la fila 3: nombre → correo, sin la fila de encabezados como «agente»',lm['Laura Líder']==='laura@pibox.app'&&!lm['NOMBRE']&&!('CORREO' in lm),lm);
  t('C10 getAgentDataMap: cédula (columna DOCUMENTO) y nombre; incluye al retirado (la nómina pasada lo necesita) y no la fila de encabezados',dm['laura@pibox.app']&&dm['laura@pibox.app'].cedula==='100'&&dm['ana@pibox.app']&&!dm['CORREO'],dm);}
 
-// ═══ C2. Strikes: sendPendingStrikeAlerts / getAgentsFromBase3 ═══
-{const w=mundo({base:hoja([base('ana@pibox.app','ANA','INACTIVO'),base('beto@pibox.app','BETO'),base('coord@pibox.app','COORD','COORDINADOR DE OPERACIONES'),base('cromero@pibox.app','SUPER','GERENTE'),base('dani@pibox.app','DANI','AGENTE')]),props:{agentes_retirados:'dani@pibox.app'}});
- const ag=w.run('getAgentsFromBase3()');
- t('S1 getAgentsFromBase3 excluye a los INACTIVO (y a los de la propiedad) y a coordinadores/admins; ya no toma la fila de encabezados como agente',JSON.stringify(ag.map(a=>a.email))==='["beto@pibox.app"]',ag);}
-{ // sendPendingStrikeAlerts de punta a punta: un agente activo con 3 tardanzas y uno INACTIVO con 3 tardanzas → solo el activo se evalúa
- const w=mundo({base:hoja([base('ana@pibox.app','ANA','INACTIVO'),base('beto@pibox.app','BETO')])});
+// ═══ C2. Strikes: el modelo antiguo ya no envía nada (ver también pigops_notif_seguridad_test.js, sección B) ═══
+{const w=mundo({base:hoja([base('ana@pibox.app','ANA','INACTIVO'),base('beto@pibox.app','BETO')])});
  w.run('sendPendingStrikeAlerts()');
- t('S2 sendPendingStrikeAlerts evalúa solo 1 agente (el INACTIVO queda fuera)',w.logs.some(l=>/sendPendingStrikeAlerts: 1 agentes a evaluar/.test(l)),w.logs.filter(l=>/agentes/.test(l)));}
+ t('S1 sendPendingStrikeAlerts desactivado: ningún correo y ninguna lectura de Firestore ni de la malla',w.sent.length===0&&w.fetches.length===0&&w.logs.some(l=>/MODELO ANTIGUO DE STRIKES DESACTIVADO/.test(l)),w.logs);}
 
 // ═══ D. Recordatorio de inicio de turno (sendShiftReminders) ═══
 {const w=mundo({now:BOG('2026-11-05',8,50),malla:[w0.fila('5/11/2026','ana@pibox.app','9:00:00'),w0.fila('11/5/2026','luis@pibox.app','9:00:00'),w0.fila('5/11/2026','retirada@pibox.app','9:00:00')],

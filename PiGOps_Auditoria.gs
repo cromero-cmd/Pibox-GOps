@@ -47,7 +47,8 @@ function aud_clasificar(diffSeg, editadoPorAdmin, cfg) {
 
 // Lee los turnos desde `desdeISO` (yyyy-MM-dd, Bogotá). Lanza ante CUALQUIER falla de lectura: una auditoría incompleta no
 // puede interpretarse como «sin hallazgos» (mismo criterio que leerTurnosHoyRest_).
-function aud_leerTurnos(desdeISO) {
+function aud_leerTurnos(desdeISO, maxTurnos) {
+  maxTurnos = maxTurnos || AUD_CONFIG.MAX_TURNOS;
   var token = ScriptApp.getOAuthToken();
   var desde = new Date(desdeISO + 'T00:00:00-05:00');
   var margen = new Date(desde.getTime() - 24 * 3600000).toISOString();
@@ -80,11 +81,12 @@ function aud_leerTurnos(desdeISO) {
         userEmail: (f.userEmail && f.userEmail.stringValue) || '',
         status: (f.status && f.status.stringValue) || '',
         startTime: new Date(st), createTime: new Date(r.document.createTime),
+        endTime: (f.endTime && f.endTime.timestampValue) ? new Date(f.endTime.timestampValue) : null,
         editadoPor: (f.editedBy && f.editedBy.stringValue) || (f.forcedClosedBy && f.forcedClosedBy.stringValue) || '',
         recuperado: !!(f.startRecovered && f.startRecovered.booleanValue)
       });
     }
-    if (turnos.length > AUD_CONFIG.MAX_TURNOS) throw new Error('Se superó el tope de ' + AUD_CONFIG.MAX_TURNOS + ' turnos; la auditoría quedaría incompleta.');
+    if (turnos.length > maxTurnos) throw new Error('Se superó el tope de ' + maxTurnos + ' turnos; la auditoría quedaría incompleta.');
     if (enPagina < AUD_CONFIG.PAGINA) break;
     offset += AUD_CONFIG.PAGINA;
   }
@@ -125,4 +127,134 @@ function auditoriaRelojesDesde(desdeISO) {
   if (hallazgos.length > 300) Logger.log('… y ' + (hallazgos.length - 300) + ' hallazgos más (solo se imprimen 300; el arreglo devuelto los trae todos).');
   if (!hallazgos.length) Logger.log('Sin hallazgos: todos los turnos concuerdan con la hora del servidor.');
   return { revisados: turnos.length, cuenta: cuenta, hallazgos: hallazgos };
+}
+
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════════════════
+//  IMPACTO DEL MODELO ANTIGUO DE STRIKES (solo lectura; 5-nov-2026)
+//  Desde el 1-nov-2026 el único sistema que genera llamados de atención es el Reglamento. Estas dos funciones NO envían ni escriben nada:
+//
+//  auditoriaLlamadosViejos()   lista los correos «⚡ Acción requerida — Llamado de atención #N» y «⚖️ Proceso disciplinario requerido»
+//                              enviados DESDE el 1-nov-2026 (agente, fecha, número de llamado, destinatarios), para avisar a los
+//                              coordinadores que no aplican. Lee la carpeta ENVIADOS de la cuenta dueña del script con GmailApp.search, que
+//                              pide el permiso de LECTURA de Gmail (el script hasta hoy solo enviaba): al ejecutarla por primera vez Apps
+//                              Script pide autorizarlo; si el manifiesto (appsscript.json) lista oauthScopes explícitos hay que agregar
+//                              https://www.googleapis.com/auth/gmail.readonly. Los llamados del Reglamento NO aparecen (otro asunto).
+//  auditoriaNoDesconexion()    revisa, desde el 1-jun-2026, cada día de malla donde el turno cerró MÁS de 4 h después de la salida programada
+//                              y lo clasifica: MISMO_DIA (sigue siendo no desconexión) o CIERRE_DIA_POSTERIOR (el turno se cerró otro día:
+//                              no hay hora real de salida; con la regla corregida ya NO es no desconexión). Imprime la hora de cierre con su
+//                              fecha completa, que es lo que el texto antiguo del correo omitía («salida real 09:30 a. m.»).
+//  Usan funciones de PiGOps_Reglamento.gs (mismo proyecto). Ejecutar desde el editor → Ver → Registros de ejecución.
+// ══════════════════════════════════════════════════════════════════════════════════════════════════════════════
+var AUD_LLAMADOS_VIEJOS = { DESDE: '2026-11-01', MAX_HILOS: 500 };
+
+function aud_textoPlano(html) {
+  return String(html || '').replace(/<style[\s\S]*?<\/style>/gi, ' ').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim();
+}
+// Analiza UN correo (asunto, cuerpo) del modelo antiguo. Devuelve null si no es de ese modelo. Pura.
+function aud_parsearCorreoViejo(asunto, cuerpoHtml) {
+  var a = String(asunto || ''), txt = aud_textoPlano(cuerpoHtml), m;
+  var tipo = null, numero = null, agente = '';
+  if ((m = a.match(/Acci[oó]n requerida\s*[—-]\s*Llamado de atenci[oó]n\s*#(\d+)\s+para\s+(.+)$/i))) { tipo = 'Llamado de atención'; numero = parseInt(m[1], 10); agente = m[2].trim(); }
+  else if ((m = a.match(/Proceso disciplinario requerido\s*[—-]\s*(.+)$/i))) { tipo = 'Proceso disciplinario (3 llamados)'; agente = m[1].trim(); }
+  else return null;
+  var correo = (txt.match(/\(([^\s()]+@[^\s()]+)\)/) || [])[1] || '';
+  var periodo = (txt.match(/en el per[ií]odo\s+(.+?)\s*(?:\(|,|\.|por lo que)/i) || [])[1] || '';
+  var strikes = (txt.match(/\((\d+)\s+strikes? en total/i) || [])[1];
+  return { tipo: tipo, numero: numero, agente: agente, agenteEmail: correo, periodo: periodo, strikes: strikes ? parseInt(strikes, 10) : null };
+}
+
+function auditoriaLlamadosViejos() { return auditoriaLlamadosViejosDesde_(AUD_LLAMADOS_VIEJOS.DESDE); }
+function auditoriaLlamadosViejosDesde_(desdeISO) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(desdeISO))) throw new Error('Fecha inválida; usa yyyy-MM-dd');
+  var desde = new Date(desdeISO + 'T00:00:00-05:00');
+  var d0 = new Date(desde.getTime() - 24 * 3600000);
+  var after = d0.getUTCFullYear() + '/' + (d0.getUTCMonth() + 1) + '/' + d0.getUTCDate(); // un día de margen: Gmail interpreta la fecha en otra zona
+  var consulta = 'in:sent after:' + after + ' (subject:"Acción requerida" OR subject:"Proceso disciplinario requerido")';
+  var hilos = [], pos = 0;
+  while (true) {
+    var lote = GmailApp.search(consulta, pos, 100);
+    hilos = hilos.concat(lote);
+    if (lote.length < 100) break;
+    pos += 100;
+    if (hilos.length >= AUD_LLAMADOS_VIEJOS.MAX_HILOS) throw new Error('Más de ' + AUD_LLAMADOS_VIEJOS.MAX_HILOS + ' hilos: la lista quedaría incompleta.');
+  }
+  var envios = [];
+  hilos.forEach(function (h) {
+    h.getMessages().forEach(function (msg) {
+      var fecha = msg.getDate();
+      if (fecha.getTime() < desde.getTime()) return;
+      var info = aud_parsearCorreoViejo(msg.getSubject(), msg.getBody());
+      if (!info) return;
+      envios.push({ fecha: fecha, tipo: info.tipo, numero: info.numero, agente: info.agente, agenteEmail: info.agenteEmail, periodo: info.periodo, strikes: info.strikes,
+        para: String(msg.getTo() || ''), cc: String(msg.getCc() || ''), asunto: msg.getSubject() });
+    });
+  });
+  envios.sort(function (x, y) { return x.fecha - y.fecha; });
+  Logger.log('CORREOS DEL MODELO ANTIGUO DE STRIKES enviados desde ' + desdeISO + ' (solo lectura; NO aplican desde el 1-nov-2026): ' + envios.length);
+  envios.forEach(function (e) {
+    Logger.log(aud_hora(e.fecha) + ' | ' + e.tipo + (e.numero ? ' #' + e.numero : '') + ' | agente: ' + e.agente + (e.agenteEmail ? ' <' + e.agenteEmail + '>' : '') +
+      ' | período: ' + (e.periodo || '—') + (e.strikes != null ? ' (' + e.strikes + ' strikes)' : '') + ' | para: ' + e.para + (e.cc ? ' | cc: ' + e.cc : ''));
+  });
+  // Resumen por destinatario: a quién hay que avisarle que no aplican
+  var porDest = {};
+  envios.forEach(function (e) {
+    (e.para + ',' + e.cc).split(',').map(function (x) { var mm = String(x).match(/[^\s<>"',;]+@[^\s<>"',;]+/); return mm ? mm[0].toLowerCase() : ''; }).filter(Boolean).forEach(function (d) {
+      (porDest[d] = porDest[d] || {})[e.agente || e.agenteEmail || '?'] = true;
+    });
+  });
+  Logger.log('A QUIÉN AVISAR (destinatario → agentes de los correos que recibió):');
+  Object.keys(porDest).sort().forEach(function (d) { Logger.log('  ' + d + ' → ' + Object.keys(porDest[d]).join(', ')); });
+  if (!envios.length) Logger.log('Ningún correo del modelo antiguo enviado desde esa fecha en la carpeta Enviados de esta cuenta.');
+  return envios;
+}
+
+// ── No desconexión: ¿cuántas están mal calculadas? ──
+var AUD_NODESC = { DESDE: '2026-06-01', HORAS: 4, MAX_TURNOS: 30000 };
+// malla: [{fecha:'D/M/YYYY', usuario, inicio, fin, novedad}] · turnos: [{id, userEmail, status, startTime:Date, endTime:Date|null, editadoPor}]
+// Devuelve los días con cierre más de `cfg.HORAS` después de la salida programada, clasificados. Pura (sin IO).
+function aud_nodescCalcular(malla, turnos, cfg) {
+  cfg = cfg || AUD_NODESC;
+  var porDia = {};
+  turnos.forEach(function (t) {
+    if (!t.userEmail || !t.startTime) return;
+    var k = t.userEmail + '|' + reg_isoBogota(t.startTime);
+    (porDia[k] = porDia[k] || []).push(t);
+  });
+  var out = [];
+  malla.forEach(function (m) {
+    var iso = reg_isoDesdeDDMMYYYY(m.fecha);
+    if (!iso || !m.usuario || m.novedad) return;
+    var hf = reg_horaProgramada(m.fin), hi = reg_horaProgramada(m.inicio);
+    if (!hf) return;
+    var dia = (porDia[m.usuario + '|' + iso] || []).slice().sort(function (a, b) { return a.startTime - b.startTime; });
+    var turno = null, i;
+    for (i = 0; i < dia.length; i++) if (dia[i].status === 'ended') { turno = dia[i]; break; }
+    if (!turno) for (i = 0; i < dia.length; i++) if (dia[i].status === 'interrupted') { turno = dia[i]; break; }
+    if (!turno) turno = dia[0] || null;
+    if (!turno || !turno.endTime) return; // sin cierre no hay falta (regla v18.6)
+    var fin = reg_progADate(iso, hf);
+    if (hi && fin < reg_progADate(iso, hi)) fin = new Date(fin.getTime() + 24 * 3600000); // turno que cruza la medianoche
+    var extra = (turno.endTime.getTime() - fin.getTime()) / 3600000;
+    if (extra <= cfg.HORAS) return;
+    var categoria = reg_isoBogota(turno.endTime) > reg_isoBogota(fin) ? 'CIERRE_DIA_POSTERIOR' : 'MISMO_DIA';
+    out.push({ categoria: categoria, usuario: m.usuario, fecha: m.fecha, iso: iso, finProgramado: m.fin, inicioProgramado: m.inicio, turnoId: turno.id || '', status: turno.status,
+      startTime: turno.startTime, endTime: turno.endTime, horasExtra: Math.round(extra * 10) / 10, editadoPor: turno.editadoPor || '' });
+  });
+  return out.sort(function (a, b) { return a.iso < b.iso ? -1 : a.iso > b.iso ? 1 : (a.usuario < b.usuario ? -1 : 1); });
+}
+function auditoriaNoDesconexion() { return auditoriaNoDesconexionDesde_(AUD_NODESC.DESDE); }
+function auditoriaNoDesconexionDesde_(desdeISO) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(desdeISO))) throw new Error('Fecha inválida; usa yyyy-MM-dd');
+  var turnos = aud_leerTurnos(desdeISO, AUD_NODESC.MAX_TURNOS);
+  var malla = reg_leerMalla(desdeISO);
+  var hallazgos = aud_nodescCalcular(malla, turnos);
+  var cuenta = { MISMO_DIA: 0, CIERRE_DIA_POSTERIOR: 0 };
+  hallazgos.forEach(function (h) { cuenta[h.categoria]++; });
+  Logger.log('NO DESCONEXIÓN (solo lectura) desde ' + desdeISO + ': ' + hallazgos.length + ' días con cierre más de ' + AUD_NODESC.HORAS + ' h después de la salida programada');
+  Logger.log('  MISMO_DIA (siguen siendo no desconexión): ' + cuenta.MISMO_DIA + ' · CIERRE_DIA_POSTERIOR (el turno se cerró otro día; NO son no desconexión con la regla corregida): ' + cuenta.CIERRE_DIA_POSTERIOR);
+  hallazgos.forEach(function (h) {
+    Logger.log(h.categoria + ' | ' + h.usuario + ' | día ' + h.fecha + ' | salida programada ' + h.finProgramado + ' | turno ' + aud_hora(h.startTime) + ' → CERRADO ' + aud_hora(h.endTime) + ' (' + h.horasExtra + ' h después de lo programado) | estado ' + h.status + (h.editadoPor ? ' | editado por ' + h.editadoPor : '') + ' | turno ' + h.turnoId);
+  });
+  return { desde: desdeISO, cuenta: cuenta, hallazgos: hallazgos };
 }
