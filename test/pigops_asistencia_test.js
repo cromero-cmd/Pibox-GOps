@@ -14,6 +14,8 @@ const BOG=(iso,h,mi)=>{const p=iso.split('-').map(Number);return new Date(Date.U
 function fmt(d,pat){const P=Object.fromEntries(new Intl.DateTimeFormat('en-GB',{timeZone:'America/Bogota',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',hourCycle:'h23'}).formatToParts(d).map(x=>[x.type,x.value]));
  return pat.replace('yyyy',P.year).replace('dd',P.day).replace('MM',P.month).replace('HH',P.hour).replace(/\bd\b/,String(+P.day)).replace(/\bM\b/,String(+P.month));}
 
+// BASE 3.0 con la estructura real: fila 1 vacía, fila 2 «VACACIONES», encabezados en la fila 3, datos desde la 4 (E nombre, G correo)
+const BASE3_ENC=[Array(16).fill(''),Array(16).fill('').map((x,i)=>i===11?'VACACIONES':x),['','OPERADOR','TIPO DE DOC.','DOCUMENTO','NOMBRE','CARGO','CORREO','ROL TRUMP','LÍDER INMEDIATO','CIUDAD','DIRECCIÓN','FECHA 1','FECHA 2','FECHA 3','FECHA 4','LINEA DE EXPERIENCIA']];
 function mundo(o={}){
  const w={now:o.now||BOG('2026-11-04',10,32),sent:[],logs:[],props:Object.assign({admin_emails:'cromero@pibox.app,otro@pibox.app',malla_sheet_id:'SHEET'},o.props||{}),fetches:[],
   malla:o.malla||[],resp:o.resp,lideres:o.lideres||[]};
@@ -24,7 +26,7 @@ function mundo(o={}){
   PropertiesService:{getScriptProperties:()=>({getProperty:k=>k in w.props?w.props[k]:null,setProperty:(k,v)=>{w.props[k]=String(v);},deleteProperty:k=>{delete w.props[k];}})},
   GmailApp:{sendEmail:(to,subj,body,opt)=>w.sent.push({to,subject:subj,body,html:(opt||{}).htmlBody||'',cc:(opt||{}).cc,name:(opt||{}).name})},
   SpreadsheetApp:{openById:()=>({getSheetByName:n=>n==='Malla'?{getDataRange:()=>({getDisplayValues:()=>[['h','fecha','usuario','nombre','x','inicio','fin','x','x','lider','novedad']].concat(w.malla)})}
-     :n==='BASE 3.0'?{getDataRange:()=>({getValues:()=>[['h']].concat(w.lideres)})}:null})},
+     :n==='BASE 3.0'?{getDataRange:()=>({getValues:()=>BASE3_ENC.concat(w.lideres)})}:null})},
   UrlFetchApp:{fetch:(url,opt)=>{w.fetches.push({url,opt});const r=typeof w.resp==='function'?w.resp(url,opt):w.resp;if(r instanceof Error)throw r;
     return{getResponseCode:()=>r.code,getContentText:()=>typeof r.body==='string'?r.body:JSON.stringify(r.body)};}}};
  vm.createContext(ctx);vm.runInContext(GS0,ctx);vm.runInContext(GSR,ctx);

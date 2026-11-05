@@ -509,29 +509,29 @@ function runStrikeAlerts() {
 }
 
 function getAgentsFromBase3() {
-  // Agentes activos desde BASE 3.0 — excluye coordinadores/admins, que no deben recibir su
-  // propio llamado de atención vía este flujo.
+  // Agentes activos desde BASE 3.0 — excluye coordinadores/admins, que no deben recibir su propio llamado de atención vía este flujo,
+  // y a los RETIRADOS (CARGO = INACTIVO o propiedad agentes_retirados): no reciben strikes ni llamados.
   try {
-    var ss = SpreadsheetApp.openById(getMallaSheetId());
-    var sheet = ss.getSheetByName('BASE 3.0');
-    if (!sheet) { Logger.log('No BASE 3.0 sheet found'); return []; }
-    var data = sheet.getDataRange().getValues();
+    var base = base3Leer_();
+    if (!base.ok) { Logger.log('getAgentsFromBase3: ' + base.motivo); return []; }
     var props = PropertiesService.getScriptProperties();
     var adminEmailsStr = props.getProperty('admin_emails') || 'cromero@pibox.app';
     var adminEmails = adminEmailsStr.split(',').map(function(e) { return e.trim().toLowerCase(); }).filter(Boolean);
-    var agents = [];
-    for (var i = 1; i < data.length; i++) {
-      var nombre = data[i][4] ? data[i][4].toString().trim() : ''; // col E
-      var cargo = data[i][5] ? data[i][5].toString().trim() : ''; // col F
-      var email = data[i][6] ? data[i][6].toString().trim() : ''; // col G
-      if (!email || !nombre) continue;
+    var manuales = retiradosManuales_();
+    var agents = [], retirados = 0;
+    base.filas.forEach(function(f) {
+      var nombre = f.v[base.col.nombre] ? f.v[base.col.nombre].toString().trim() : '';
+      var cargo = f.v[base.col.cargo] ? f.v[base.col.cargo].toString().trim() : '';
+      var email = f.v[base.col.correo] ? f.v[base.col.correo].toString().trim() : '';
+      if (!email || !nombre) return;
+      if (cargoEsInactivo_(cargo) || manuales[email.toLowerCase()]) { retirados++; return; }
       var cargoUpper = cargo.toUpperCase();
-      if (cargoUpper.indexOf('COORDINADOR') !== -1 || cargoUpper.indexOf('ADMIN') !== -1) continue;
-      if (adminEmails.indexOf(email.toLowerCase()) !== -1) continue;
-      if (email.toLowerCase() === 'cromero@pibox.app') continue;
+      if (cargoUpper.indexOf('COORDINADOR') !== -1 || cargoUpper.indexOf('ADMIN') !== -1) return;
+      if (adminEmails.indexOf(email.toLowerCase()) !== -1) return;
+      if (email.toLowerCase() === 'cromero@pibox.app') return;
       agents.push({ nombre: nombre, cargo: cargo, email: email });
-    }
-    Logger.log('getAgentsFromBase3: ' + agents.length + ' agentes (excluyendo coordinadores/admins)');
+    });
+    Logger.log('getAgentsFromBase3: ' + agents.length + ' agentes (excluyendo coordinadores/admins y ' + retirados + ' retirados)');
     return agents;
   } catch (e) {
     Logger.log('Error en getAgentsFromBase3: ' + e.message);
@@ -1135,57 +1135,75 @@ function asistenciaFilasDeDia_(data, diaISO, retirados) {
   return { tomadas: tomadas, excluidas: excluidas };
 }
 
-// ── RETIRADOS ──
-// Quién está retirado se toma de BASE 3.0 (la misma hoja de la que salen nombre, cargo, correo y líder) y de una lista manual:
-//  1. Una columna de estado con valor de retiro. La columna se ubica POR SU ENCABEZADO (no por posición): «Estado», «Estatus»,
-//     «Situación», «Estado laboral»… con un valor como Retirado / Inactivo / Desvinculado / Baja / Terminado / Liquidado / Renunció; o una
-//     columna «Activo» con No / Falso / 0.
-//  2. Una columna de fecha de retiro («Fecha de retiro», «Fecha de salida», «Fecha de desvinculación»…) con una fecha igual o anterior a hoy
-//     (una fecha futura todavía no es retiro).
-//  3. La propiedad de script `agentes_retirados` (correos separados por coma): para marcar a mano a alguien que BASE 3.0 no refleje.
-// diagnosticoAsistencia() imprime los encabezados de BASE 3.0 y qué columnas se reconocieron.
-function normEncabezado_(v) { return String(v == null ? '' : v).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim(); }
-function esColumnaEstado_(h) { return /^(estado|estatus|status|situacion)( laboral| del colaborador| colaborador| agente| contrato| actual)?$/.test(h); }
-function esColumnaActivo_(h) { return /^activ[oa]$/.test(h); }
-function esColumnaFechaRetiro_(h) { return /^fecha( de)? (retiro|salida|desvinculacion|terminacion|baja)/.test(h) || /^(retiro|desvinculacion|fecha retiro)$/.test(h); }
-function valorEsRetiro_(v) { return /retirad|inactiv|desvincul|\bbaja\b|terminad|liquidad|finalizad|ex ?colabor|renunci|despedid/.test(normEncabezado_(v)); }
-function valorEsNoActivo_(v) { return /^(no|false|falso|0|n)$/.test(normEncabezado_(v)); }
-// Devuelve {ok, set:{correo:true}, origen:{correo:'motivo'}, encabezados:[...], columnas:{estado:[..],activo:[..],fechaRetiro:[..]}, motivo}.
-// ok:false SOLO si BASE 3.0 no se pudo leer (hoja ausente o excepción): quien llama NO debe tratarlo como «nadie está retirado».
-function leerRetirados_(hoyISO) {
-  var res = { ok: true, set: {}, origen: {}, encabezados: [], columnas: { estado: [], activo: [], fechaRetiro: [] }, motivo: '' };
-  function marcar(email, porque) { var k = String(email || '').trim().toLowerCase(); if (!k) return; res.set[k] = true; if (!res.origen[k]) res.origen[k] = porque; }
+// ── BASE 3.0 ──
+// Estructura real: fila 1 vacía; fila 2 con «VACACIONES» combinada sobre L–O; los encabezados están en la fila 3 y los datos empiezan en la 4
+// (B OPERADOR, C TIPO DE DOC., D DOCUMENTO, E NOMBRE, F CARGO, G CORREO, H ROL TRUMP, I LÍDER INMEDIATO, J ciudad, K dirección, L–O fechas
+// de vacaciones, P LÍNEA DE EXPERIENCIA). La fila de encabezados NO se supone: se busca la primera fila (de las primeras BASE3_FILAS_BUSQUEDA)
+// que tenga una celda «CORREO», así no se rompe si alguien agrega o quita filas arriba. Cada columna se ubica por su encabezado; si falta el
+// de NOMBRE, CARGO o DOCUMENTO se usa su posición habitual (E, F, D). Sin fila de encabezados reconocible → ok:false (nadie debe tratarlo
+// como «hoja vacía»).
+var BASE3_FILAS_BUSQUEDA = 30;
+function normEncabezado_(v) { return String(v == null ? '' : v).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim(); }
+// Devuelve {ok, motivo, filaEncabezados (1 = primera fila de la hoja), encabezados:[texto], col:{correo,nombre,cargo,documento}, filas:[{fila (número de fila en la hoja), v:[celdas]}]}
+function base3Leer_() {
+  var res = { ok: false, motivo: '', filaEncabezados: 0, encabezados: [], col: {}, filas: [] };
   try {
-    var manual = PropertiesService.getScriptProperties().getProperty('agentes_retirados') || '';
-    manual.split(/[,;\n]/).forEach(function (e) { marcar(e, 'propiedad agentes_retirados'); });
     var sheet = SpreadsheetApp.openById(getMallaSheetId()).getSheetByName('BASE 3.0');
-    if (!sheet) { res.ok = false; res.motivo = 'no se encontró la hoja BASE 3.0'; return res; }
+    if (!sheet) { res.motivo = 'no se encontró la hoja BASE 3.0'; return res; }
     var data = sheet.getDataRange().getValues();
-    if (!data.length) { res.ok = false; res.motivo = 'la hoja BASE 3.0 está vacía'; return res; }
-    var enc = data[0].map(normEncabezado_);
-    res.encabezados = data[0].map(function (h) { return String(h == null ? '' : h).trim(); });
-    var cEmail = 6; // columna G = correo (igual que en el resto del script)
-    enc.forEach(function (h, c) {
-      if (c === cEmail) return;
-      if (esColumnaEstado_(h)) res.columnas.estado.push(c);
-      else if (esColumnaActivo_(h)) res.columnas.activo.push(c);
-      else if (esColumnaFechaRetiro_(h)) res.columnas.fechaRetiro.push(c);
-    });
-    for (var i = 1; i < data.length; i++) {
-      var email = data[i][cEmail] ? String(data[i][cEmail]).trim() : '';
-      if (!email) continue;
-      res.columnas.estado.forEach(function (c) { if (valorEsRetiro_(data[i][c])) marcar(email, 'BASE 3.0, «' + res.encabezados[c] + '»: ' + data[i][c]); });
-      res.columnas.activo.forEach(function (c) { var v = data[i][c]; if (String(v == null ? '' : v).trim() !== '' && valorEsNoActivo_(v)) marcar(email, 'BASE 3.0, «' + res.encabezados[c] + '»: ' + v); });
-      res.columnas.fechaRetiro.forEach(function (c) {
-        var v = data[i][c], iso = null;
-        if (Object.prototype.toString.call(v) === '[object Date]') iso = Utilities.formatDate(v, 'America/Bogota', 'yyyy-MM-dd');
-        else iso = mallaFechaISO_(v);
-        if (iso && hoyISO && iso <= hoyISO) marcar(email, 'BASE 3.0, «' + res.encabezados[c] + '»: ' + mallaFechaTexto_(iso));
-      });
+    var h = -1;
+    for (var i = 0; i < data.length && i < BASE3_FILAS_BUSQUEDA; i++) {
+      if (data[i].some(function (c) { return normEncabezado_(c) === 'correo'; })) { h = i; break; }
     }
+    if (h < 0) { res.motivo = 'no se encontró la fila de encabezados de BASE 3.0 (una fila con «CORREO» en las primeras ' + BASE3_FILAS_BUSQUEDA + ' filas)'; return res; }
+    var enc = data[h].map(normEncabezado_);
+    var buscar = function (nombres, defecto) { for (var k = 0; k < nombres.length; k++) { var ix = enc.indexOf(nombres[k]); if (ix >= 0) return ix; } return defecto; };
+    res.col = { correo: enc.indexOf('correo'), nombre: buscar(['nombre', 'nombres'], 4), cargo: buscar(['cargo'], 5), documento: buscar(['documento', 'cedula', 'numero de documento'], 3) };
+    res.filaEncabezados = h + 1;
+    res.encabezados = data[h].map(function (c) { return String(c == null ? '' : c).trim(); });
+    for (var j = h + 1; j < data.length; j++) res.filas.push({ fila: j + 1, v: data[j] });
+    res.ok = true;
     return res;
   } catch (e) {
-    res.ok = false; res.motivo = 'excepción al leer BASE 3.0: ' + e.message;
+    res.motivo = 'excepción al leer BASE 3.0: ' + e.message;
+    return res;
+  }
+}
+
+// ── RETIRADOS ──
+// Un agente está RETIRADO cuando su CARGO en BASE 3.0 es «INACTIVO» (sin distinguir mayúsculas, tildes ni espacios). Además, la propiedad de
+// script `agentes_retirados` (correos separados por coma) permite marcar a mano a alguien que BASE 3.0 todavía no refleje.
+function cargoEsInactivo_(cargo) { return normEncabezado_(cargo).replace(/ /g, '') === 'inactivo'; }
+function retiradosManuales_() {
+  var out = {};
+  (PropertiesService.getScriptProperties().getProperty('agentes_retirados') || '').split(/[,;\n]/).forEach(function (e) { e = e.trim().toLowerCase(); if (e) out[e] = true; });
+  return out;
+}
+// Devuelve {ok, set:{correoEnMinúsculas:true}, origen:{correo:'motivo'}, filaEncabezados, encabezados, col, filaDe:{correo:n}, motivo}.
+// ok:false SOLO si BASE 3.0 no se pudo leer o no se reconoce (hoja ausente, sin fila de encabezados, excepción): quien llama NO debe tratarlo
+// como «nadie está retirado». (hoyISO se conserva por compatibilidad con los llamadores; la regla ya no depende de la fecha.)
+function leerRetirados_(hoyISO) {
+  var res = { ok: false, set: {}, origen: {}, filaDe: {}, filaEncabezados: 0, encabezados: [], col: {}, motivo: '' };
+  try {
+    var manual = retiradosManuales_();
+    var base = base3Leer_();
+    if (!base.ok) { res.motivo = base.motivo; return res; }
+    res.filaEncabezados = base.filaEncabezados; res.encabezados = base.encabezados; res.col = base.col;
+    Object.keys(manual).forEach(function (k) { res.set[k] = true; res.origen[k] = 'propiedad agentes_retirados'; });
+    base.filas.forEach(function (f) {
+      var email = f.v[base.col.correo] ? String(f.v[base.col.correo]).trim().toLowerCase() : '';
+      if (!email) return;
+      var cargo = f.v[base.col.cargo];
+      if (cargoEsInactivo_(cargo)) {
+        res.set[email] = true;
+        res.filaDe[email] = f.fila;
+        if (!res.origen[email]) res.origen[email] = 'BASE 3.0, fila ' + f.fila + ', CARGO = ' + String(cargo).trim();
+      }
+    });
+    res.ok = true;
+    return res;
+  } catch (e) {
+    res.motivo = 'excepción al leer BASE 3.0: ' + e.message;
     return res;
   }
 }
@@ -1262,15 +1280,14 @@ function diagnosticoAsistenciaDe_(diaISO, hhmm) {
   Logger.log('    → el código anterior habría enviado alertas por ' + alertarian + ' fila(s) fantasma en este momento.');
 
   Logger.log('');
-  Logger.log('(4) RETIRADOS: ' + Object.keys(retirados.set).length + (retirados.ok ? '' : ' (lectura fallida)'));
-  Object.keys(retirados.set).forEach(function (e) { Logger.log('  ' + e + ' — ' + retirados.origen[e]); });
-  Logger.log('  Encabezados de BASE 3.0: ' + (retirados.encabezados.length ? retirados.encabezados.map(function (h, c) { return String.fromCharCode(65 + c) + '=«' + h + '»'; }).join(' · ') : '(no se leyeron)'));
-  Logger.log('  Columnas reconocidas → estado: ' + (retirados.columnas.estado.map(function (c) { return retirados.encabezados[c]; }).join(', ') || 'NINGUNA') +
-    ' · activo: ' + (retirados.columnas.activo.map(function (c) { return retirados.encabezados[c]; }).join(', ') || 'ninguna') +
-    ' · fecha de retiro: ' + (retirados.columnas.fechaRetiro.map(function (c) { return retirados.encabezados[c]; }).join(', ') || 'ninguna'));
-  if (!retirados.columnas.estado.length && !retirados.columnas.activo.length && !retirados.columnas.fechaRetiro.length) {
-    Logger.log('  ⚠️ BASE 3.0 no tiene ninguna columna reconocible de estado/retiro: solo cuenta la propiedad agentes_retirados. Si hay una columna con otro nombre, avísalo para agregarla.');
+  Logger.log('(4) BASE 3.0 Y RETIRADOS');
+  if (retirados.ok) {
+    var colLetra = function (c) { return String.fromCharCode(65 + c); };
+    Logger.log('  Encabezados encontrados en la FILA ' + retirados.filaEncabezados + ' de BASE 3.0 (datos desde la fila ' + (retirados.filaEncabezados + 1) + '): ' + retirados.encabezados.map(function (h, c) { return h ? colLetra(c) + '=«' + h + '»' : ''; }).filter(Boolean).join(' · '));
+    Logger.log('  Columnas usadas → CORREO: ' + colLetra(retirados.col.correo) + ' · CARGO: ' + colLetra(retirados.col.cargo) + ' · NOMBRE: ' + colLetra(retirados.col.nombre) + ' · DOCUMENTO: ' + colLetra(retirados.col.documento));
   }
+  Logger.log('  Retirados detectados (CARGO = INACTIVO o propiedad agentes_retirados): ' + Object.keys(retirados.set).length + (retirados.ok ? '' : ' (lectura fallida)'));
+  Object.keys(retirados.set).forEach(function (e) { Logger.log('    ' + e + ' — ' + retirados.origen[e]); });
   Logger.log('(5) TURNOS DE ESE DÍA EN FIRESTORE: ' + (lectura.ok ? lectura.emails.length + ' → ' + lectura.emails.join(', ') : 'lectura fallida'));
   Logger.log('=== FIN DIAGNÓSTICO ===');
   return { dia: hoyISO, tomadas: sel.tomadas, excluidas: sel.excluidas, fantasmas: fantasmas, retirados: Object.keys(retirados.set), lecturaTurnosOk: lectura.ok, lecturaRetiradosOk: retirados.ok };
@@ -1547,19 +1564,17 @@ function setMallaSheetId(id) {
 
 // ── LEADER EMAIL LOOKUP ──
 function getAgentDataMap() {
-  // Retorna mapa email → { cedula, nombre } desde BASE 3.0
+  // Retorna mapa email → { cedula, nombre } desde BASE 3.0 (incluye a los retirados: la nómina de semanas pasadas aún los necesita)
   try {
-    const ss = SpreadsheetApp.openById(getMallaSheetId());
-    const sheet = ss.getSheetByName('BASE 3.0');
-    if (!sheet) return {};
-    const data = sheet.getDataRange().getValues();
+    const base = base3Leer_();
+    if (!base.ok) { Logger.log('getAgentDataMap: ' + base.motivo); return {}; }
     const map = {};
-    for (var i = 1; i < data.length; i++) {
-      const cedula = data[i][3] ? data[i][3].toString().trim() : ''; // col D
-      const nombre = data[i][4] ? data[i][4].toString().trim() : ''; // col E
-      const email  = data[i][6] ? data[i][6].toString().trim() : ''; // col G
+    base.filas.forEach(function(f) {
+      const cedula = f.v[base.col.documento] ? f.v[base.col.documento].toString().trim() : '';
+      const nombre = f.v[base.col.nombre] ? f.v[base.col.nombre].toString().trim() : '';
+      const email  = f.v[base.col.correo] ? f.v[base.col.correo].toString().trim() : '';
       if (email) map[email] = { cedula: cedula, nombre: nombre };
-    }
+    });
     return map;
   } catch(e) {
     Logger.log('Error loading agent data: ' + e.message);
@@ -1569,16 +1584,14 @@ function getAgentDataMap() {
 
 function getLiderEmailMap() {
   try {
-    const ss = SpreadsheetApp.openById(getMallaSheetId());
-    const sheet = ss.getSheetByName('BASE 3.0');
-    if (!sheet) { Logger.log('No BASE 3.0 sheet found'); return {}; }
-    const data = sheet.getDataRange().getValues();
+    const base = base3Leer_();
+    if (!base.ok) { Logger.log('getLiderEmailMap: ' + base.motivo); return {}; }
     const map = {};
-    for (var i = 1; i < data.length; i++) {
-      const nombre = data[i][4] ? data[i][4].toString().trim() : ''; // col E
-      const email  = data[i][6] ? data[i][6].toString().trim() : ''; // col G
+    base.filas.forEach(function(f) {
+      const nombre = f.v[base.col.nombre] ? f.v[base.col.nombre].toString().trim() : '';
+      const email  = f.v[base.col.correo] ? f.v[base.col.correo].toString().trim() : '';
       if (nombre && email) map[nombre] = email;
-    }
+    });
     Logger.log('Leader map loaded: ' + Object.keys(map).length + ' entries');
     return map;
   } catch(e) {

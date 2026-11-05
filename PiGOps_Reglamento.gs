@@ -573,19 +573,19 @@ function reg_leerMalla(desdeISO) {
   }
   return rows;
 }
-// BASE 3.0: nombre (E), cargo (F), correo (G), cédula (D). Líder = columna J de la malla (nombre o correo) resuelto con la misma hoja.
+// BASE 3.0: nombre, cargo, correo y documento, ubicados por su encabezado (la fila de encabezados se busca, no se supone: base3Leer_ en
+// PiGOps_Notificaciones_v5.gs). Líder = columna J de la malla (nombre o correo) resuelto con la misma hoja.
 function reg_agentes(malla) {
-  var sheet = SpreadsheetApp.openById(getMallaSheetId()).getSheetByName('BASE 3.0');
+  var base = base3Leer_();
   var porEmail = {}, porNombre = {};
-  if (sheet) {
-    var data = sheet.getDataRange().getValues();
-    for (var i = 1; i < data.length; i++) {
-      var nombre = String(data[i][4] || '').trim(), cargo = String(data[i][5] || '').trim(), email = String(data[i][6] || '').trim(), cedula = String(data[i][3] || '').trim();
-      if (!email) continue;
+  if (base.ok) {
+    base.filas.forEach(function (f) {
+      var nombre = String(f.v[base.col.nombre] || '').trim(), cargo = String(f.v[base.col.cargo] || '').trim(), email = String(f.v[base.col.correo] || '').trim(), cedula = String(f.v[base.col.documento] || '').trim();
+      if (!email) return;
       porEmail[email] = { nombre: nombre, cargo: cargo, cedula: cedula };
       if (nombre) porNombre[nombre] = email;
-    }
-  }
+    });
+  } else Logger.log('reg_agentes: ' + base.motivo + ' (se continúa sin datos de BASE 3.0)');
   var out = {};
   Object.keys(porEmail).forEach(function (e) { out[e] = porEmail[e]; });
   (malla || []).forEach(function (m) {

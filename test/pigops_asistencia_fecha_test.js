@@ -16,12 +16,17 @@ const BOG=(iso,h,mi)=>{const p=iso.split('-').map(Number);return new Date(Date.U
 function fmt(d,pat){const P=Object.fromEntries(new Intl.DateTimeFormat('en-GB',{timeZone:'America/Bogota',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(d).map(x=>[x.type,x.value]));
  return pat.replace('yyyy',P.year).replace('dd',P.day).replace('MM',P.month).replace('HH',P.hour).replace('mm',P.minute).replace(/\bd\b/,String(+P.day)).replace(/\bM\b/,String(+P.month));}
 
-// BASE 3.0 por defecto: encabezados reales de las columnas conocidas (D cédula, E nombre, F cargo, G correo, J ciudad) + «Estado»
-const ENC=['','','','Cédula','Nombre','Cargo','Correo','','','Ciudad','Estado'];
-const base=(email,nombre,estado,extra)=>{const r=['','','','1',nombre||email.split('@')[0].toUpperCase(),'Agente',email,'','','Bogotá',estado===undefined?'Activo':estado];if(extra)Object.assign(r,extra);return r;};
+// BASE 3.0 con la estructura REAL: fila 1 vacía; fila 2 con «VACACIONES» sobre L–O; encabezados en la fila 3; datos desde la fila 4.
+// Columnas: A vacía, B OPERADOR, C TIPO DE DOC., D DOCUMENTO, E NOMBRE, F CARGO, G CORREO, H ROL TRUMP, I LÍDER INMEDIATO, J ciudad, K dirección,
+// L–O FECHA 1–4 (vacaciones), P LINEA DE EXPERIENCIA.
+const ENC=['','OPERADOR','TIPO DE DOC.','DOCUMENTO','NOMBRE','CARGO','CORREO','ROL TRUMP','LÍDER INMEDIATO','CIUDAD','DIRECCIÓN','FECHA 1','FECHA 2','FECHA 3','FECHA 4','LINEA DE EXPERIENCIA'];
+const VAC=['','','','','','','','','','','','VACACIONES','','','',''];
+const VACIA=ENC.map(()=>'');
+const base=(email,nombre,cargo)=>['','Pibox','CC','100',nombre||email.split('@')[0].toUpperCase(),cargo===undefined?'AGENTE DE OPERACIONES':cargo,email,'','JEFE','Bogotá','Calle 1','','','','',''];
+const hoja=(datos,arriba)=>[VACIA,VAC,ENC].concat(datos||[]);   // la hoja completa tal como la devuelve getValues()
 function mundo(o={}){
  const w={now:o.now||BOG('2026-11-05',10,32),sent:[],logs:[],props:Object.assign({admin_emails:'cromero@pibox.app',malla_sheet_id:'SHEET'},o.props||{}),fetches:[],
-  malla:o.malla||[],base:o.base===undefined?[ENC]:o.base,resp:o.resp===undefined?{code:200,body:[{readTime:'x'}]}:o.resp};
+  malla:o.malla||[],base:o.base===undefined?hoja([]):o.base,resp:o.resp===undefined?{code:200,body:[{readTime:'x'}]}:o.resp};
  const ctx={console,Date,Math,JSON,Object,Array,String,Number,RegExp,Error,parseInt,Map,Set,
   Logger:{log:m=>w.logs.push(String(m))},
   Utilities:{formatDate:(d,tz,pat)=>fmt(d,pat),sleep(){}},
@@ -81,35 +86,53 @@ const w0=mundo();
  w.run('checkAttendance()');
  t('B8 agente conectado con el correo en otra capitalización: no se alerta',w.sent.length===0,w.sent.map(m=>m.subject));}
 
-// ═══ C. Retirados en checkAttendance ═══
+// ═══ C. Retirados: CARGO = INACTIVO en BASE 3.0 (encabezados en la fila 3, no en la 1) ═══
 const hoyFilas=()=>[w0.fila('5/11/2026','ana@pibox.app','9:00:00'),w0.fila('5/11/2026','beto@pibox.app','9:00:00')];
-{const w=mundo({malla:hoyFilas(),base:[ENC,base('ana@pibox.app','ANA','Retirado'),base('beto@pibox.app','BETO','Activo')]});w.run('checkAttendance()');
- t('C1 retirada en BASE 3.0 («Estado» = Retirado) aparece en la malla de hoy: no se le alerta; al activo sí',JSON.stringify(nombresAlertados(w))==='["BETO"]'&&!w.sent.some(m=>m.to==='ana@pibox.app'),w.sent.map(m=>m.subject+'→'+m.to));
- t('C1b el log dice por qué se ignora',w.logs.some(l=>/Se ignora a ana@pibox\.app: figura como retirado \(BASE 3\.0, «Estado»: Retirado\)/.test(l)),w.logs);}
-for(const [etq,estado] of [['Inactivo','Inactivo'],['Desvinculado','Desvinculado'],['Baja','Baja'],['Terminado','Terminado'],['Renunció','Renunció']]){
- const w=mundo({malla:[w0.fila('5/11/2026','ana@pibox.app','9:00:00')],base:[ENC,base('ana@pibox.app','ANA',estado)]});w.run('checkAttendance()');
- t('C2 estado «'+etq+'» también cuenta como retirado',w.sent.length===0,w.sent.map(m=>m.subject));}
-{const w=mundo({malla:[w0.fila('5/11/2026','ana@pibox.app','9:00:00')],base:[ENC.slice(0,10).concat(['Estado laboral']),base('ana@pibox.app','ANA','RETIRADA')]});w.run('checkAttendance()');
- t('C3 «Estado laboral» = RETIRADA (mayúsculas, femenino) también',w.sent.length===0,w.sent.map(m=>m.subject));}
-{const w=mundo({malla:hoyFilas(),base:[ENC.slice(0,10).concat(['Activo']),base('ana@pibox.app','ANA','No'),base('beto@pibox.app','BETO','Sí')]});w.run('checkAttendance()');
- t('C4 columna «Activo» con No = retirado; con Sí = activo',JSON.stringify(nombresAlertados(w))==='["BETO"]',w.sent.map(m=>m.subject));}
-{const w=mundo({malla:hoyFilas(),base:[ENC.slice(0,10).concat(['Fecha de retiro']),base('ana@pibox.app','ANA',new Date(Date.UTC(2026,9,30,5,0,0))),base('beto@pibox.app','BETO','15/12/2026')]});w.run('checkAttendance()');
- t('C5 «Fecha de retiro» pasada (celda de fecha) = retirado; una fecha futura (texto) todavía no',JSON.stringify(nombresAlertados(w))==='["BETO"]',w.sent.map(m=>m.subject));}
-{const w=mundo({malla:hoyFilas(),base:[ENC,base('ana@pibox.app','ANA','Activo'),base('beto@pibox.app','BETO','Activo')],props:{agentes_retirados:' Ana@pibox.app ;otro@pibox.app'}});w.run('checkAttendance()');
- t('C6 la propiedad agentes_retirados (mayúsculas y espacios incluidos) excluye aunque BASE 3.0 diga Activo',JSON.stringify(nombresAlertados(w))==='["BETO"]',w.sent.map(m=>m.subject));}
-{const w=mundo({malla:[w0.fila('5/11/2026','Ana@pibox.app','9:00:00')],base:[ENC,base('ana@pibox.app','ANA','Retirado')]});w.run('checkAttendance()');
- t('C7 la comparación de correos no distingue mayúsculas (malla «Ana@», BASE «ana@»)',w.sent.length===0,w.sent.map(m=>m.subject));}
-{const w=mundo({malla:hoyFilas(),base:[ENC.slice(0,10),base('ana@pibox.app','ANA').slice(0,10),base('beto@pibox.app','BETO').slice(0,10)]});w.run('checkAttendance()');
- t('C8 BASE 3.0 sin ninguna columna de estado: no se excluye a nadie y no falla',JSON.stringify(nombresAlertados(w))==='["ANA","BETO"]'&&fallas(w).length===0,w.sent.map(m=>m.subject));}
+{const w=mundo({malla:hoyFilas(),base:hoja([base('ana@pibox.app','ANA','INACTIVO'),base('beto@pibox.app','BETO')])});w.run('checkAttendance()');
+ t('C1 agente con CARGO = INACTIVO en la malla de hoy: no recibe alerta de ausencia ni correo; el activo sí',JSON.stringify(nombresAlertados(w))==='["BETO"]'&&!w.sent.some(m=>m.to==='ana@pibox.app'),w.sent.map(m=>m.subject+'→'+m.to));
+ t('C1b el log dice por qué se ignora (fila de BASE 3.0 y valor)',w.logs.some(l=>/Se ignora a ana@pibox\.app: figura como retirado \(BASE 3\.0, fila 4, CARGO = INACTIVO\)/.test(l)),w.logs);}
+for(const [etq,cargo] of [['minúsculas','inactivo'],['con espacios',' Inactivo  '],['mezcla','InAcTiVo'],['espacio interno','IN ACTIVO']]){
+ const w=mundo({malla:[w0.fila('5/11/2026','ana@pibox.app','9:00:00')],base:hoja([base('ana@pibox.app','ANA',cargo)])});w.run('checkAttendance()');
+ t('C2 CARGO «'+cargo+'» ('+etq+') cuenta como INACTIVO',w.sent.length===0,w.sent.map(m=>m.subject));}
+for(const cargo of ['AGENTE DE OPERACIONES','COORDINADOR','','ACTIVO','INACTIVO TEMPORAL']){
+ const w=mundo({malla:[w0.fila('5/11/2026','ana@pibox.app','9:00:00')],base:hoja([base('ana@pibox.app','ANA',cargo)])});w.run('checkAttendance()');
+ t('C3 CARGO «'+cargo+'» NO es retirado: sí se alerta',JSON.stringify(nombresAlertados(w))==='["ANA"]',w.sent.map(m=>m.subject));}
+{const w=mundo({malla:hoyFilas(),base:hoja([base('ana@pibox.app','ANA'),base('beto@pibox.app','BETO')]),props:{agentes_retirados:' Ana@pibox.app ;otro@pibox.app'}});w.run('checkAttendance()');
+ t('C4 la propiedad agentes_retirados (mayúsculas y espacios incluidos) excluye aunque BASE 3.0 diga activo',JSON.stringify(nombresAlertados(w))==='["BETO"]',w.sent.map(m=>m.subject));}
+{const w=mundo({malla:[w0.fila('5/11/2026','Ana@pibox.app','9:00:00')],base:hoja([base('ana@pibox.app','ANA','INACTIVO')])});w.run('checkAttendance()');
+ t('C5 la comparación de correos no distingue mayúsculas (malla «Ana@», BASE «ana@»)',w.sent.length===0,w.sent.map(m=>m.subject));}
+// Encabezados movidos: la fila se BUSCA, no se supone
+{const filas=[base('ana@pibox.app','ANA','INACTIVO'),base('beto@pibox.app','BETO')];
+ const casos={'en la fila 1':[ENC].concat(filas),'en la fila 3 (real)':[VACIA,VAC,ENC].concat(filas),'en la fila 7 (alguien agregó filas arriba)':[VACIA,VACIA,VACIA,VACIA,VAC,VACIA,ENC].concat(filas),
+  'con una fila de totales y otra vacía entre encabezados y datos':[VACIA,ENC,VACIA].concat(filas)};
+ for(const [etq,sheet] of Object.entries(casos)){
+  const w=mundo({malla:hoyFilas(),base:sheet});w.run('checkAttendance()');
+  t('C6 encabezados '+etq+': ana (INACTIVO) ignorada, beto alertado',JSON.stringify(nombresAlertados(w))==='["BETO"]'&&fallas(w).length===0,w.sent.map(m=>m.subject));}}
+{const w=mundo({malla:hoyFilas(),base:[VACIA,VAC,ENC.map(h=>h==='CORREO'?'EMAIL':h),base('ana@pibox.app','ANA','INACTIVO')]});w.run('checkAttendance()');
+ t('C7 BASE 3.0 sin ninguna fila con «CORREO»: FALLA SEGURA — ninguna alerta y UN aviso técnico que lo explica',ausencias(w).length===0&&aAgente(w).length===0&&fallas(w).length===1&&/CORREO/.test(fallas(w)[0].html),w.sent.map(m=>m.subject));}
 {const w=mundo({malla:hoyFilas(),base:null});w.run('checkAttendance()');
- t('C9 BASE 3.0 inexistente: FALLA SEGURA — ninguna alerta de ausencia y UN aviso técnico',ausencias(w).length===0&&aAgente(w).length===0&&fallas(w).length===1,w.sent.map(m=>m.subject));
- t('C9b el aviso técnico dice que no se pudo leer BASE 3.0',fallas(w).length&&/BASE 3\.0/.test(fallas(w)[0].subject+fallas(w)[0].html),fallas(w).map(m=>m.subject));
+ t('C8 BASE 3.0 inexistente: FALLA SEGURA — ninguna alerta de ausencia y UN aviso técnico',ausencias(w).length===0&&aAgente(w).length===0&&fallas(w).length===1,w.sent.map(m=>m.subject));
+ t('C8b el aviso técnico dice que no se pudo leer BASE 3.0',fallas(w).length&&/BASE 3\.0/.test(fallas(w)[0].subject+fallas(w)[0].html),fallas(w).map(m=>m.subject));
  w.run('checkAttendance()');
- t('C9c un segundo intento en la misma hora no repite el aviso técnico',fallas(w).length===1);}
+ t('C8c un segundo intento en la misma hora no repite el aviso técnico',fallas(w).length===1);}
+{// el líder por nombre y la cédula se leen bien con los encabezados en la fila 3 (antes se leía desde la fila 1)
+ const w=mundo({base:hoja([base('laura@pibox.app','Laura Líder'),base('ana@pibox.app','ANA','INACTIVO')])});
+ const lm=w.run('getLiderEmailMap()'),dm=w.run('getAgentDataMap()');
+ t('C9 getLiderEmailMap con los encabezados en la fila 3: nombre → correo, sin la fila de encabezados como «agente»',lm['Laura Líder']==='laura@pibox.app'&&!lm['NOMBRE']&&!('CORREO' in lm),lm);
+ t('C10 getAgentDataMap: cédula (columna DOCUMENTO) y nombre; incluye al retirado (la nómina pasada lo necesita) y no la fila de encabezados',dm['laura@pibox.app']&&dm['laura@pibox.app'].cedula==='100'&&dm['ana@pibox.app']&&!dm['CORREO'],dm);}
+
+// ═══ C2. Strikes: sendPendingStrikeAlerts / getAgentsFromBase3 ═══
+{const w=mundo({base:hoja([base('ana@pibox.app','ANA','INACTIVO'),base('beto@pibox.app','BETO'),base('coord@pibox.app','COORD','COORDINADOR DE OPERACIONES'),base('cromero@pibox.app','SUPER','GERENTE'),base('dani@pibox.app','DANI','AGENTE')]),props:{agentes_retirados:'dani@pibox.app'}});
+ const ag=w.run('getAgentsFromBase3()');
+ t('S1 getAgentsFromBase3 excluye a los INACTIVO (y a los de la propiedad) y a coordinadores/admins; ya no toma la fila de encabezados como agente',JSON.stringify(ag.map(a=>a.email))==='["beto@pibox.app"]',ag);}
+{ // sendPendingStrikeAlerts de punta a punta: un agente activo con 3 tardanzas y uno INACTIVO con 3 tardanzas → solo el activo se evalúa
+ const w=mundo({base:hoja([base('ana@pibox.app','ANA','INACTIVO'),base('beto@pibox.app','BETO')])});
+ w.run('sendPendingStrikeAlerts()');
+ t('S2 sendPendingStrikeAlerts evalúa solo 1 agente (el INACTIVO queda fuera)',w.logs.some(l=>/sendPendingStrikeAlerts: 1 agentes a evaluar/.test(l)),w.logs.filter(l=>/agentes/.test(l)));}
 
 // ═══ D. Recordatorio de inicio de turno (sendShiftReminders) ═══
 {const w=mundo({now:BOG('2026-11-05',8,50),malla:[w0.fila('5/11/2026','ana@pibox.app','9:00:00'),w0.fila('11/5/2026','luis@pibox.app','9:00:00'),w0.fila('5/11/2026','retirada@pibox.app','9:00:00')],
-   base:[ENC,base('ana@pibox.app','ANA'),base('luis@pibox.app','LUIS'),base('retirada@pibox.app','RETIRADA','Retirado')]});
+   base:hoja([base('ana@pibox.app','ANA'),base('luis@pibox.app','LUIS'),base('retirada@pibox.app','RETIRADA','INACTIVO')])});
  w.run('sendShiftReminders()');
  t('D1 recordatorio de las 8:50: solo a quien tiene turno HOY y no está retirado (ni a la fila del 11 de mayo)',w.sent.length===1&&w.sent[0].to==='ana@pibox.app',w.sent.map(m=>m.to));}
 
@@ -120,7 +143,7 @@ for(const [etq,estado] of [['Inactivo','Inactivo'],['Desvinculado','Desvinculado
  const filas=w.run('reg_leerMalla("2026-11-05")');
  t('E2 reg_leerMalla desde el 5-nov incluye «5/11/2026» y deja fuera «11/5/2026»',filas.length===1&&filas[0].fecha==='5/11/2026',filas);}
 { // reg_correr con deps falsos: dos agentes con la misma tardanza (3-nov), una retirada
- const w=mundo();const R=n=>w.ctx[n];
+ const w=mundo({base:hoja([base('ana@pibox.app','ANA','INACTIVO'),base('beto@pibox.app','BETO')])});const R=n=>w.ctx[n];
  const db={reglamento_casos:{},strike_waivers:{},strike_appeals:{}},sent=[];
  const turno=e=>({userEmail:e,status:'ended',startTime:new Date(BOG('2026-11-03',9,0).getTime()+15*60000),endTime:BOG('2026-11-03',17,0)});
  const mallaR=['ana@pibox.app','beto@pibox.app'].map(e=>({fecha:'3/11/2026',usuario:e,inicio:'9:00:00',fin:'16:00:00',novedad:'',lider:'jefe@pibox.app'}));
@@ -131,9 +154,9 @@ for(const [etq,estado] of [['Inactivo','Inactivo'],['Desvinculado','Desvinculado
    crear:(c,id,o)=>{db[c]=db[c]||{};if(db[c][id])return false;db[c][id]=JSON.parse(JSON.stringify(o));return true;},
    actualizar:(c,id,o)=>{db[c][id]=Object.assign(db[c][id]||{},JSON.parse(JSON.stringify(o)));},
    enviarCorreo:m=>sent.push(m),generarPdfLlamado:()=>({blob:{name:'l.pdf'},url:'u'}),generarSoporte:()=>({blob:{name:'s.xlsx'},url:'u'})};
-   if(conRetirados)d.retirados=()=>({'ana@pibox.app':true});return d;};
+   if(conRetirados)d.retirados=w.ctx.reg_depsProduccion().retirados;return d;}; // el dep REAL de producción, leyendo BASE 3.0 (ana = INACTIVO)
  const r1=R('reg_correr')(mk(BOG('2026-11-04',7,0),true),{avisos:true,plazos:false});
- t('E3 Reglamento: la tardanza de la retirada no genera aviso, ni registro; la del agente activo sí',r1.avisos===1&&r1.retirados===1&&Object.keys(db.reglamento_casos).length===1&&Object.keys(db.reglamento_casos)[0].indexOf('beto@')===0,{r1,k:Object.keys(db.reglamento_casos)});
+ t('E3 Reglamento (con el dep de producción y BASE 3.0, ana = INACTIVO): la tardanza de la retirada no genera aviso, ni registro; la del agente activo sí',r1.avisos===1&&r1.retirados===1&&Object.keys(db.reglamento_casos).length===1&&Object.keys(db.reglamento_casos)[0].indexOf('beto@')===0,{r1,k:Object.keys(db.reglamento_casos)});
  sent.length=0;
  const r2=R('reg_correr')(mk(BOG('2026-11-09',7,0),true),{avisos:true,plazos:true});
  t('E4 vencido el plazo: llamado solo para el activo; la retirada no recibe llamado (ni siquiera con un caso previo)',r2.llamados===1&&sent.every(m=>!/ana@/.test(JSON.stringify(m.to))),{r2,to:sent.map(m=>m.to)});
@@ -141,8 +164,11 @@ for(const [etq,estado] of [['Inactivo','Inactivo'],['Desvinculado','Desvinculado
  const db2=db;Object.keys(db).forEach(k=>db[k]={});sent.length=0;
  const r3=R('reg_correr')(mk(BOG('2026-11-04',7,0),false),{avisos:true,plazos:false});
  t('E5 sin lista de retirados (compatibilidad) ambos reciben aviso',r3.avisos===2,r3);}
+{ // reg_agentes lee BASE 3.0 con los encabezados en la fila 3
+ const wa=mundo({base:hoja([base('beto@pibox.app','BETO','AGENTE DE OPERACIONES')])});const ag=wa.run('reg_agentes([])');
+ t('E5b reg_agentes toma nombre, cargo y cédula de BASE 3.0 con los encabezados en la fila 3 (sin la fila de encabezados como agente)',ag['beto@pibox.app']&&ag['beto@pibox.app'].cargo==='AGENTE DE OPERACIONES'&&ag['beto@pibox.app'].cedula==='100'&&!ag['CORREO'],ag);}
 { // producción: el dep lee BASE 3.0 y lanza si no se puede
- const w=mundo({base:[ENC,base('ana@pibox.app','ANA','Retirado'),base('beto@pibox.app','BETO')]});
+ const w=mundo({base:hoja([base('ana@pibox.app','ANA','INACTIVO'),base('beto@pibox.app','BETO')])});
  const set=w.run('reg_depsProduccion().retirados("2026-11-05")');
  t('E6 reg_depsProduccion().retirados lee BASE 3.0',set['ana@pibox.app']===true&&!set['beto@pibox.app'],set);
  const w2=mundo({base:null});let lanzo=false;try{w2.run('reg_depsProduccion().retirados("2026-11-05")');}catch(e){lanzo=/BASE 3\.0/.test(e.message);}
@@ -150,15 +176,18 @@ for(const [etq,estado] of [['Inactivo','Inactivo'],['Desvinculado','Desvinculado
 
 // ═══ F. Diagnóstico de solo lectura ═══
 {const w=mundo({malla:[w0.fila('5/11/2026','ana@pibox.app','9:00:00'),w0.fila('11/5/2026','luis@pibox.app','9:00:00'),w0.fila('5/11/2026','sin@pibox.app',''),w0.fila('5/11/2026','novedad@pibox.app','9:00:00',{10:'Incapacidad'}),w0.fila('5/11/2026','retirada@pibox.app','9:00:00')],
-   base:[ENC,base('ana@pibox.app'),base('luis@pibox.app'),base('retirada@pibox.app','RETIRADA','Retirado')],props:{pigops_marca:'x'}});
+   base:hoja([base('ana@pibox.app'),base('luis@pibox.app'),base('retirada@pibox.app','RETIRADA','INACTIVO')]),props:{pigops_marca:'x'}});
  const props0=JSON.stringify(w.props);
  const r=w.run('diagnosticoAsistencia()');
  const L=w.logs.join('\n');
  t('F1 el diagnóstico no envía ningún correo ni escribe propiedades',w.sent.length===0&&JSON.stringify(w.props)===props0,w.sent);
  t('F2 solo lee Firestore (runQuery) y no escribe: una única consulta POST a :runQuery',w.fetches.length===1&&/:runQuery$/.test(w.fetches[0].url),w.fetches.map(f=>f.url));
- t('F3 lista como TOMADA solo a ana y explica las descartadas (sin hora, con novedad, retirada)',r.tomadas.length===1&&r.tomadas[0].usuario==='ana@pibox.app'&&/sin hora de inicio/.test(L)&&/con novedad «Incapacidad»/.test(L)&&/retirado — BASE 3\.0, «Estado»: Retirado/.test(L),L);
+ t('F3 lista como TOMADA solo a ana y explica las descartadas (sin hora, con novedad, retirada)',r.tomadas.length===1&&r.tomadas[0].usuario==='ana@pibox.app'&&/sin hora de inicio/.test(L)&&/con novedad «Incapacidad»/.test(L)&&/retirado — BASE 3\.0, fila 6, CARGO = INACTIVO/.test(L),L);
  t('F4 muestra la FILA FANTASMA: «11/5/2026» = 11/05/2026, NO es 05/11/2026, y qué habría hecho el código anterior',r.fantasmas.length===1&&/FILAS FANTASMA.*: 1/.test(L)&&/texto «11\/5\/2026» = 11\/05\/2026 \(NO es 05\/11\/2026\) \| luis@pibox\.app/.test(L)&&/el código anterior: ALERTA nivel 3/.test(L),L);
- t('F5 imprime encabezados de BASE 3.0 y las columnas reconocidas',/Encabezados de BASE 3\.0: .*G=«Correo».*K=«Estado»/.test(L)&&/estado: Estado/.test(L),L);
+ t('F5 el diagnóstico dice en qué FILA están los encabezados, qué columnas usa y lista los retirados con su fila',/Encabezados encontrados en la FILA 3 de BASE 3\.0 \(datos desde la fila 4\)/.test(L)&&/CORREO: G · CARGO: F · NOMBRE: E · DOCUMENTO: D/.test(L)&&/Retirados detectados \(CARGO = INACTIVO o propiedad agentes_retirados\): 1/.test(L)&&/retirada@pibox\.app — BASE 3\.0, fila 6, CARGO = INACTIVO/.test(L),L);}
+{const w=mundo({malla:[],base:[VACIA,VACIA,VACIA,VACIA,VAC,ENC,base('ana@pibox.app','ANA','INACTIVO')]});w.run('diagnosticoAsistencia()');
+ t('F5b con los encabezados en la fila 6 el diagnóstico lo informa',w.logs.some(l=>/Encabezados encontrados en la FILA 6 de BASE 3\.0 \(datos desde la fila 7\)/.test(l))&&w.logs.some(l=>/ana@pibox\.app — BASE 3\.0, fila 7, CARGO = INACTIVO/.test(l)),w.logs);}
+{const w=mundo({malla:[w0.fila('5/11/2026','ana@pibox.app','9:00:00'),w0.fila('11/5/2026','luis@pibox.app','9:00:00')],base:hoja([base('ana@pibox.app'),base('luis@pibox.app')])});const r=w.run('diagnosticoAsistencia()');const L=w.logs.join('\n');
  t('F6 indica el texto que buscaba el código anterior',/«11\/5\/2026» \(interpretado día\/mes sería el 11\/05\/2026\)/.test(L),L);}
 {const w=mundo({malla:[w0.fila('4/11/2026','ana@pibox.app','9:00:00'),w0.fila('11/4/2026','garcia@pibox.app','9:00:00')]});
  const r=w.run('diagnosticoAsistenciaCaso4Nov()');
