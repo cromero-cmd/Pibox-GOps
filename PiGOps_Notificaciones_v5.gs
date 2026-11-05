@@ -826,27 +826,27 @@ function checkAttendance() {
   if (!sheet) { Logger.log('No Malla sheet tab found'); return; }
 
   const data = sheet.getDataRange().getDisplayValues();
-  const today = Utilities.formatDate(now, 'America/Bogota', 'dd/MM/yyyy');
-  const todayAlt1 = Utilities.formatDate(now, 'America/Bogota', 'd/M/yyyy');
-  const todayAlt2 = Utilities.formatDate(now, 'America/Bogota', 'dd-MM-yyyy');
-  const todayAlt3 = Utilities.formatDate(now, 'America/Bogota', 'M/d/yyyy');
-  function matchesDate(f){ return f===today||f===todayAlt1||f===todayAlt2||f===todayAlt3; }
-  Logger.log('Looking for date: ' + today + ' | alt: ' + todayAlt1);
+  // La fecha de la malla es SIEMPRE día/mes/año. Se compara la fecha ya interpretada (nunca texto contra texto): antes (hasta 5-nov-2026)
+  // se aceptaba también el formato M/d/yyyy, y del 1 al 12 de cada mes «hoy» coincidía con el día 11 de otro mes (el 5-nov = «11/5/2026» = 11 de mayo).
+  const todayISO = Utilities.formatDate(now, 'America/Bogota', 'yyyy-MM-dd');
+  const today = mallaFechaTexto_(todayISO);
+  Logger.log('Looking for date: ' + today + ' (' + todayISO + ')');
+
+  // Retirados: nunca se alerta ni se escribe a quien ya no trabaja, aunque siga apareciendo en la malla. FALLA SEGURA: si no se puede leer
+  // BASE 3.0 no se sabe quién está retirado → no se envía nada en esta ejecución (igual que con la lectura de turnos).
+  const retirados = leerRetirados_(todayISO);
+  if (!retirados.ok) {
+    Logger.log('checkAttendance ABORTADA: no se pudo leer BASE 3.0 para excluir retirados — ' + retirados.motivo + '. No se envió ninguna alerta de ausencia.');
+    avisoTecnicoAsistencia_('no se pudo leer BASE 3.0 para excluir a los retirados (' + retirados.motivo + ')', now);
+    return;
+  }
 
   // Get today's entries
-  const todayEntries = [];
-  for (var i = 1; i < data.length; i++) {
-    const row = data[i];
-    const fecha = row[1] ? row[1].trim() : '';
-    if (!matchesDate(fecha)) continue;
-    const usuario = row[2] ? row[2].trim() : '';
-    const nombre = row[3] ? row[3].trim() : '';
-    const inicio = row[5] ? row[5].trim() : '';
-    const lider = row[9] ? row[9].trim() : '';
-    const novedad = row[10] ? row[10].trim() : '';
-    if (!usuario || !inicio || novedad) continue;
-    todayEntries.push({ usuario: usuario, nombre: nombre, inicio: inicio, lider: lider });
-  }
+  const seleccion = asistenciaFilasDeDia_(data, todayISO, retirados.set);
+  const todayEntries = seleccion.tomadas;
+  seleccion.excluidas.forEach(function(x) {
+    if (x.motivo === 'retirado') Logger.log('Se ignora a ' + x.usuario + ': figura como retirado (' + (retirados.origen[String(x.usuario).toLowerCase()] || 'BASE 3.0') + ').');
+  });
 
   if (!todayEntries.length) { Logger.log('No entries for today: ' + today); return; }
   Logger.log('Checking ' + todayEntries.length + ' entries for today');
@@ -874,6 +874,8 @@ function checkAttendance() {
     return;
   }
   const activeTurnos = lectura.emails;
+  const activosMin = {};
+  activeTurnos.forEach(function(e) { activosMin[String(e).trim().toLowerCase()] = true; });
   Logger.log('Active turnos found: ' + activeTurnos.length);
 
   // Mark already-connected agents in cache to avoid re-sending alerts
@@ -902,7 +904,8 @@ function checkAttendance() {
     if (minsLate <= 5) return; // within tolerance, skip
 
     // Check if already connected
-    const isConnected = activeTurnos.some(function(t) { return t === entry.usuario; });
+    // (sin distinguir mayúsculas: «Ana@…» en la malla y «ana@…» en Firestore son la misma persona)
+    const isConnected = !!activosMin[String(entry.usuario).trim().toLowerCase()];
     if (isConnected) {
       // Clear notifications for this user
       if (notified[entry.usuario]) {
@@ -1045,22 +1048,20 @@ function sendShiftReminders() {
   if (!sheet) return;
 
   const data = sheet.getDataRange().getDisplayValues();
-  const today = Utilities.formatDate(now, 'America/Bogota', 'dd/MM/yyyy');
-  const todayAlt1 = Utilities.formatDate(now, 'America/Bogota', 'd/M/yyyy');
-  function matchesToday(f){ return f===today||f===todayAlt1; }
+  const todayISO = Utilities.formatDate(now, 'America/Bogota', 'yyyy-MM-dd');
+
+  // Sin lista de retirados no se sabe a quién NO recordarle: se omite esta ejecución (el siguiente ciclo reintenta).
+  const retirados = leerRetirados_(todayISO);
+  if (!retirados.ok) { Logger.log('sendShiftReminders omitido: no se pudo leer BASE 3.0 para excluir retirados — ' + retirados.motivo); return; }
 
   const reminderSentStr = props.getProperty('shift_reminders_sent') || '';
   const reminderSent = reminderSentStr ? JSON.parse(reminderSentStr) : {};
 
-  for (var i = 1; i < data.length; i++) {
-    const row = data[i];
-    const fecha = row[1] ? row[1].trim() : '';
-    if (!matchesToday(fecha)) continue;
-    const usuario = row[2] ? row[2].trim() : '';
-    const nombre = row[3] ? row[3].trim() : '';
-    const inicio = row[5] ? row[5].trim() : '';
-    const novedad = row[10] ? row[10].trim() : '';
-    if (!usuario || !inicio || novedad) continue;
+  const filasHoy = asistenciaFilasDeDia_(data, todayISO, retirados.set).tomadas;
+  for (var i = 0; i < filasHoy.length; i++) {
+    const usuario = filasHoy[i].usuario;
+    const nombre = filasHoy[i].nombre;
+    const inicio = filasHoy[i].inicio;
 
     const scheduledStart = parseTimeToDate(inicio, now);
     if (!scheduledStart) continue;
@@ -1091,39 +1092,188 @@ function sendShiftReminders() {
   }
 }
 
-// ── DIAGNÓSTICO (no envía correos) ──
-function diagnosticoAttendance() {
-  const lecturaDiag = leerTurnosHoyRest_();
-  const activeTurnos = lecturaDiag.emails;
-  Logger.log('=== DIAGNÓSTICO ===');
-  if (!lecturaDiag.ok) Logger.log('⚠️ LECTURA DE TURNOS FALLIDA (checkAttendance NO enviaría alertas): ' + lecturaDiag.motivo);
-  Logger.log('Active turnos found: ' + activeTurnos.length + ' | users: ' + activeTurnos.join(', '));
+// ── FECHAS DE LA MALLA Y FILAS DEL DÍA ──
+// La malla (hoja «Malla», columna B) usa SIEMPRE día/mes/año. Una sola función la interpreta; ningún código compara fechas de la malla como
+// texto contra un formato de Utilities.formatDate. Causa de las falsas alertas del 4 y 5-nov-2026: checkAttendance aceptaba también
+// 'M/d/yyyy', y del 1 al 12 de cada mes «hoy» coincidía con el día 11 de otro mes (5-nov → «11/5/2026» = 11 de mayo).
+function mallaPad_(n) { return (n < 10 ? '0' : '') + n; }
+// «5/11/2026», «05/11/2026», «05-11-2026», «05.11.26» (día primero) o «2026-11-05» (ISO, sin ambigüedad) → 'yyyy-MM-dd'; null si no es una fecha real.
+function mallaFechaISO_(texto) {
+  var s = String(texto == null ? '' : texto).trim(), m, d, mo, y;
+  if (!s) return null;
+  if ((m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T].*)?$/))) { y = +m[1]; mo = +m[2]; d = +m[3]; }
+  else if ((m = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2}|\d{4})(?:\s+\d{1,2}:\d{2}(?::\d{2})?)?$/))) { d = +m[1]; mo = +m[2]; y = +m[3]; if (m[3].length === 2) y += 2000; }
+  else return null;
+  if (mo < 1 || mo > 12 || d < 1 || d > new Date(Date.UTC(y, mo, 0)).getUTCDate()) return null;
+  return y + '-' + mallaPad_(mo) + '-' + mallaPad_(d);
+}
+// 'yyyy-MM-dd' → 'dd/MM/yyyy' (para los logs y la comparación humana)
+function mallaFechaTexto_(iso) { var p = String(iso).split('-'); return mallaPad_(+p[2]) + '/' + mallaPad_(+p[1]) + '/' + p[0]; }
 
-  const ss = SpreadsheetApp.openById(getMallaSheetId());
-  const sheet = ss.getSheetByName(MALLA_SHEET_NAME);
-  const data = sheet.getDataRange().getDisplayValues();
-  const now = new Date();
-  const today = Utilities.formatDate(now, 'America/Bogota', 'dd/MM/yyyy');
-  const todayAlt1 = Utilities.formatDate(now, 'America/Bogota', 'd/M/yyyy');
-  function matchesDate(f){ return f===today||f===todayAlt1; }
-
-  var found = 0;
+// Filas de la malla que corresponden al día `diaISO`, ya separadas en tomadas y excluidas (con el motivo). Pura: no lee ni envía nada;
+// la usan checkAttendance, sendShiftReminders y los diagnósticos, así que el diagnóstico muestra exactamente lo que toma el script.
+// data = getDisplayValues() de «Malla» (fila 0 = encabezados; B fecha, C usuario, D nombre, F inicio, J líder, K novedad).
+// retirados = {correoEnMinúsculas: true}
+function asistenciaFilasDeDia_(data, diaISO, retirados) {
+  var tomadas = [], excluidas = [];
+  retirados = retirados || {};
   for (var i = 1; i < data.length; i++) {
-    const row = data[i];
-    const fecha = row[1] ? row[1].trim() : '';
-    if (!matchesDate(fecha)) continue;
-    const usuario = row[2] ? row[2].trim() : '';
-    const inicio = row[5] ? row[5].trim() : '';
-    const novedad = row[10] ? row[10].trim() : '';
-    if (!usuario || !inicio || novedad) continue;
-    found++;
-    const scheduledStart = parseTimeToDate(inicio, now);
-    const minsLate = scheduledStart ? Math.round((now - scheduledStart) / 60000) : 0;
-    const isConnected = activeTurnos.some(function(t) { return t === usuario; });
-    Logger.log('Agente: ' + usuario + ' | inicio: ' + inicio + ' | tardanza: ' + minsLate + ' min | conectado: ' + isConnected);
+    var row = data[i];
+    if (mallaFechaISO_(row[1]) !== diaISO) continue;
+    var usuario = row[2] ? String(row[2]).trim() : '';
+    var nombre = row[3] ? String(row[3]).trim() : '';
+    var inicio = row[5] ? String(row[5]).trim() : '';
+    var lider = row[9] ? String(row[9]).trim() : '';
+    var novedad = row[10] ? String(row[10]).trim() : '';
+    var base = { fila: i + 1, fecha: String(row[1] || '').trim(), usuario: usuario, nombre: nombre, inicio: inicio, lider: lider, novedad: novedad };
+    if (!usuario) { base.motivo = 'sin usuario'; excluidas.push(base); continue; }
+    if (!inicio) { base.motivo = 'sin hora de inicio'; excluidas.push(base); continue; }
+    if (novedad) { base.motivo = 'con novedad «' + novedad + '»'; excluidas.push(base); continue; }
+    if (retirados[usuario.toLowerCase()]) { base.motivo = 'retirado'; excluidas.push(base); continue; }
+    tomadas.push(base);
   }
-  Logger.log('Total entradas hoy: ' + found);
+  return { tomadas: tomadas, excluidas: excluidas };
+}
+
+// ── RETIRADOS ──
+// Quién está retirado se toma de BASE 3.0 (la misma hoja de la que salen nombre, cargo, correo y líder) y de una lista manual:
+//  1. Una columna de estado con valor de retiro. La columna se ubica POR SU ENCABEZADO (no por posición): «Estado», «Estatus»,
+//     «Situación», «Estado laboral»… con un valor como Retirado / Inactivo / Desvinculado / Baja / Terminado / Liquidado / Renunció; o una
+//     columna «Activo» con No / Falso / 0.
+//  2. Una columna de fecha de retiro («Fecha de retiro», «Fecha de salida», «Fecha de desvinculación»…) con una fecha igual o anterior a hoy
+//     (una fecha futura todavía no es retiro).
+//  3. La propiedad de script `agentes_retirados` (correos separados por coma): para marcar a mano a alguien que BASE 3.0 no refleje.
+// diagnosticoAsistencia() imprime los encabezados de BASE 3.0 y qué columnas se reconocieron.
+function normEncabezado_(v) { return String(v == null ? '' : v).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim(); }
+function esColumnaEstado_(h) { return /^(estado|estatus|status|situacion)( laboral| del colaborador| colaborador| agente| contrato| actual)?$/.test(h); }
+function esColumnaActivo_(h) { return /^activ[oa]$/.test(h); }
+function esColumnaFechaRetiro_(h) { return /^fecha( de)? (retiro|salida|desvinculacion|terminacion|baja)/.test(h) || /^(retiro|desvinculacion|fecha retiro)$/.test(h); }
+function valorEsRetiro_(v) { return /retirad|inactiv|desvincul|\bbaja\b|terminad|liquidad|finalizad|ex ?colabor|renunci|despedid/.test(normEncabezado_(v)); }
+function valorEsNoActivo_(v) { return /^(no|false|falso|0|n)$/.test(normEncabezado_(v)); }
+// Devuelve {ok, set:{correo:true}, origen:{correo:'motivo'}, encabezados:[...], columnas:{estado:[..],activo:[..],fechaRetiro:[..]}, motivo}.
+// ok:false SOLO si BASE 3.0 no se pudo leer (hoja ausente o excepción): quien llama NO debe tratarlo como «nadie está retirado».
+function leerRetirados_(hoyISO) {
+  var res = { ok: true, set: {}, origen: {}, encabezados: [], columnas: { estado: [], activo: [], fechaRetiro: [] }, motivo: '' };
+  function marcar(email, porque) { var k = String(email || '').trim().toLowerCase(); if (!k) return; res.set[k] = true; if (!res.origen[k]) res.origen[k] = porque; }
+  try {
+    var manual = PropertiesService.getScriptProperties().getProperty('agentes_retirados') || '';
+    manual.split(/[,;\n]/).forEach(function (e) { marcar(e, 'propiedad agentes_retirados'); });
+    var sheet = SpreadsheetApp.openById(getMallaSheetId()).getSheetByName('BASE 3.0');
+    if (!sheet) { res.ok = false; res.motivo = 'no se encontró la hoja BASE 3.0'; return res; }
+    var data = sheet.getDataRange().getValues();
+    if (!data.length) { res.ok = false; res.motivo = 'la hoja BASE 3.0 está vacía'; return res; }
+    var enc = data[0].map(normEncabezado_);
+    res.encabezados = data[0].map(function (h) { return String(h == null ? '' : h).trim(); });
+    var cEmail = 6; // columna G = correo (igual que en el resto del script)
+    enc.forEach(function (h, c) {
+      if (c === cEmail) return;
+      if (esColumnaEstado_(h)) res.columnas.estado.push(c);
+      else if (esColumnaActivo_(h)) res.columnas.activo.push(c);
+      else if (esColumnaFechaRetiro_(h)) res.columnas.fechaRetiro.push(c);
+    });
+    for (var i = 1; i < data.length; i++) {
+      var email = data[i][cEmail] ? String(data[i][cEmail]).trim() : '';
+      if (!email) continue;
+      res.columnas.estado.forEach(function (c) { if (valorEsRetiro_(data[i][c])) marcar(email, 'BASE 3.0, «' + res.encabezados[c] + '»: ' + data[i][c]); });
+      res.columnas.activo.forEach(function (c) { var v = data[i][c]; if (String(v == null ? '' : v).trim() !== '' && valorEsNoActivo_(v)) marcar(email, 'BASE 3.0, «' + res.encabezados[c] + '»: ' + v); });
+      res.columnas.fechaRetiro.forEach(function (c) {
+        var v = data[i][c], iso = null;
+        if (Object.prototype.toString.call(v) === '[object Date]') iso = Utilities.formatDate(v, 'America/Bogota', 'yyyy-MM-dd');
+        else iso = mallaFechaISO_(v);
+        if (iso && hoyISO && iso <= hoyISO) marcar(email, 'BASE 3.0, «' + res.encabezados[c] + '»: ' + mallaFechaTexto_(iso));
+      });
+    }
+    return res;
+  } catch (e) {
+    res.ok = false; res.motivo = 'excepción al leer BASE 3.0: ' + e.message;
+    return res;
+  }
+}
+
+// ── DIAGNÓSTICO DE ASISTENCIA (SOLO LECTURA: no envía correos, no escribe en Firestore ni en propiedades) ──
+// Ejecutar desde el editor → Ver → Registros de ejecución.
+//   diagnosticoAsistencia()           HOY, a la hora actual
+//   diagnosticoAsistenciaCaso4Nov()   el 4-nov-2026 a las 10:32 (la hora de las falsas alertas): qué habría tomado el código anterior
+// Muestra: (1) las filas que el script TOMA hoy y por qué; (2) las filas de hoy que descarta y por qué; (3) «FILAS FANTASMA»: filas de OTRO
+// día que el código anterior tomaba como si fueran de hoy por el formato M/d/yyyy (con la fecha real de cada una y si habrían
+// generado alerta); (4) retirados detectados y de dónde, con los encabezados de BASE 3.0; (5) turnos de ese día en Firestore.
+function diagnosticoAsistencia() { return diagnosticoAsistenciaDe_(null, null); }
+function diagnosticoAsistenciaCaso4Nov() { return diagnosticoAsistenciaDe_('2026-11-04', '10:32'); }
+function diagnosticoAttendance() { return diagnosticoAsistencia(); } // nombre anterior
+function diagnosticoAsistenciaDe_(diaISO, hhmm) {
+  var ahora = new Date();
+  if (diaISO) {
+    if (mallaFechaISO_(diaISO) !== diaISO) throw new Error('Fecha inválida; usa yyyy-MM-dd');
+    ahora = new Date(diaISO + 'T' + (hhmm || '12:00') + ':00-05:00');
+  }
+  var hoyISO = Utilities.formatDate(ahora, 'America/Bogota', 'yyyy-MM-dd');
+  var p = hoyISO.split('-');
+  // Formato ANTERIOR (erróneo), armado a mano para reproducir qué texto buscaba el código viejo: M/d/yyyy
+  var textoViejoMD = (+p[1]) + '/' + (+p[2]) + '/' + p[0];
+  Logger.log('=== DIAGNÓSTICO DE ASISTENCIA (solo lectura) ===');
+  Logger.log('Momento evaluado: ' + Utilities.formatDate(ahora, 'America/Bogota', 'yyyy-MM-dd HH:mm') + ' (Bogotá)' + (diaISO ? ' — simulado' : ''));
+  Logger.log('Fecha buscada: ' + mallaFechaTexto_(hoyISO) + ' (día/mes/año).  Texto que buscaba el código anterior con M/d/yyyy: «' + textoViejoMD + '» (' + (((+p[1]) === (+p[2])) ? 'igual a la fecha real: este día no tiene ambigüedad' : 'interpretado día/mes sería el ' + mallaFechaTexto_(mallaFechaISO_(textoViejoMD) || '0000-00-00') + (mallaFechaISO_(textoViejoMD) ? '' : ' (no existe como fecha)')) + ')');
+
+  var sheet = SpreadsheetApp.openById(getMallaSheetId()).getSheetByName(MALLA_SHEET_NAME);
+  if (!sheet) throw new Error('No se encontró la hoja Malla');
+  var data = sheet.getDataRange().getDisplayValues();
+  var retirados = leerRetirados_(hoyISO);
+  if (!retirados.ok) Logger.log('⚠️ NO SE PUDO LEER BASE 3.0 (checkAttendance abortaría sin enviar nada): ' + retirados.motivo);
+  var lectura = leerTurnosHoyRest_(ahora, diaISO ? { dia: hoyISO } : null);
+  if (!lectura.ok) Logger.log('⚠️ LECTURA DE TURNOS FALLIDA (checkAttendance NO enviaría alertas): ' + lectura.motivo);
+  var conectados = {};
+  (lectura.emails || []).forEach(function (e) { conectados[String(e).trim().toLowerCase()] = true; });
+  var sel = asistenciaFilasDeDia_(data, hoyISO, retirados.set);
+
+  function nivel(inicio) {
+    var prog = parseTimeToDate(inicio, ahora), mins = prog ? Math.round((ahora - prog) / 60000) : 0;
+    return { mins: mins, nivel: mins <= 5 ? 'sin alerta (a tiempo)' : mins >= 60 ? 'ALERTA nivel 3 (+60)' : mins >= 20 ? 'ALERTA nivel 2 (+20)' : mins >= 10 ? 'ALERTA nivel 1 (+10)' : 'sin alerta (aún no llega a +10)' };
+  }
+  Logger.log('');
+  Logger.log('(1) FILAS QUE EL SCRIPT TOMA PARA ' + mallaFechaTexto_(hoyISO) + ': ' + sel.tomadas.length);
+  sel.tomadas.forEach(function (f) {
+    var c = !!conectados[f.usuario.toLowerCase()], n = nivel(f.inicio);
+    Logger.log('  fila ' + f.fila + ' | fecha «' + f.fecha + '» | ' + f.usuario + ' | inicio ' + f.inicio + ' | líder ' + (f.lider || '—') + ' | ' + (lectura.ok ? (c ? 'CONECTADO' : 'sin turno ese día') : 'conexión desconocida') + ' | ' + (c ? 'sin alerta (conectado)' : n.nivel + ' (' + n.mins + ' min)'));
+  });
+  Logger.log('(2) FILAS DE ESE DÍA QUE SE DESCARTAN: ' + sel.excluidas.length);
+  sel.excluidas.forEach(function (f) {
+    Logger.log('  fila ' + f.fila + ' | «' + f.fecha + '» | ' + (f.usuario || '(sin usuario)') + ' | ' + f.motivo + (f.motivo === 'retirado' ? ' — ' + (retirados.origen[f.usuario.toLowerCase()] || '') : ''));
+  });
+
+  // Filas que el código anterior habría tomado: texto igual a alguno de dd/MM/yyyy, d/M/yyyy, dd-MM-yyyy o M/d/yyyy
+  var dd = mallaPad_(+p[2]), mm = mallaPad_(+p[1]);
+  var textosViejos = [dd + '/' + mm + '/' + p[0], (+p[2]) + '/' + (+p[1]) + '/' + p[0], dd + '-' + mm + '-' + p[0], textoViejoMD];
+  var fantasmas = [];
+  for (var i = 1; i < data.length; i++) {
+    var row = data[i], fecha = row[1] ? String(row[1]).trim() : '';
+    if (textosViejos.indexOf(fecha) === -1 || mallaFechaISO_(fecha) === hoyISO) continue; // coincide con el formato viejo y NO con la fecha real
+    var usuario = row[2] ? String(row[2]).trim() : '', inicio = row[5] ? String(row[5]).trim() : '', novedad = row[10] ? String(row[10]).trim() : '';
+    fantasmas.push({ fila: i + 1, fecha: fecha, real: mallaFechaISO_(fecha), usuario: usuario, inicio: inicio, novedad: novedad, lider: row[9] ? String(row[9]).trim() : '' });
+  }
+  Logger.log('(3) FILAS FANTASMA (las tomaba el código anterior como de hoy y NO lo son): ' + fantasmas.length);
+  var alertarian = 0;
+  fantasmas.forEach(function (f) {
+    var vieja = f.usuario && f.inicio && !f.novedad, c = !!conectados[f.usuario.toLowerCase()], n = vieja ? nivel(f.inicio) : { mins: 0, nivel: 'el código anterior también la descartaba' };
+    var alerta = vieja && !c && n.mins > 5; // con lectura fallida nadie figura conectado: igual que hacía el código anterior
+    if (alerta && n.mins >= 10) alertarian++;
+    Logger.log('  fila ' + f.fila + ' | texto «' + f.fecha + '» = ' + (f.real ? mallaFechaTexto_(f.real) : '?') + ' (NO es ' + mallaFechaTexto_(hoyISO) + ') | ' + (f.usuario || '(sin usuario)') + ' | inicio ' + f.inicio + (f.novedad ? ' | novedad «' + f.novedad + '»' : '') +
+      ' | ' + (vieja ? (c ? 'conectado ese día → sin alerta' : 'sin turno ese día → el código anterior: ' + n.nivel + ' (' + n.mins + ' min)') : n.nivel) + (retirados.set[f.usuario.toLowerCase()] ? ' | RETIRADO (' + (retirados.origen[f.usuario.toLowerCase()] || '') + ')' : ''));
+  });
+  Logger.log('    → el código anterior habría enviado alertas por ' + alertarian + ' fila(s) fantasma en este momento.');
+
+  Logger.log('');
+  Logger.log('(4) RETIRADOS: ' + Object.keys(retirados.set).length + (retirados.ok ? '' : ' (lectura fallida)'));
+  Object.keys(retirados.set).forEach(function (e) { Logger.log('  ' + e + ' — ' + retirados.origen[e]); });
+  Logger.log('  Encabezados de BASE 3.0: ' + (retirados.encabezados.length ? retirados.encabezados.map(function (h, c) { return String.fromCharCode(65 + c) + '=«' + h + '»'; }).join(' · ') : '(no se leyeron)'));
+  Logger.log('  Columnas reconocidas → estado: ' + (retirados.columnas.estado.map(function (c) { return retirados.encabezados[c]; }).join(', ') || 'NINGUNA') +
+    ' · activo: ' + (retirados.columnas.activo.map(function (c) { return retirados.encabezados[c]; }).join(', ') || 'ninguna') +
+    ' · fecha de retiro: ' + (retirados.columnas.fechaRetiro.map(function (c) { return retirados.encabezados[c]; }).join(', ') || 'ninguna'));
+  if (!retirados.columnas.estado.length && !retirados.columnas.activo.length && !retirados.columnas.fechaRetiro.length) {
+    Logger.log('  ⚠️ BASE 3.0 no tiene ninguna columna reconocible de estado/retiro: solo cuenta la propiedad agentes_retirados. Si hay una columna con otro nombre, avísalo para agregarla.');
+  }
+  Logger.log('(5) TURNOS DE ESE DÍA EN FIRESTORE: ' + (lectura.ok ? lectura.emails.length + ' → ' + lectura.emails.join(', ') : 'lectura fallida'));
   Logger.log('=== FIN DIAGNÓSTICO ===');
+  return { dia: hoyISO, tomadas: sel.tomadas, excluidas: sel.excluidas, fantasmas: fantasmas, retirados: Object.keys(retirados.set), lecturaTurnosOk: lectura.ok, lecturaRetiradosOk: retirados.ok };
 }
 
 // ── COMBINED TRIGGER (every 10 min) ──
@@ -1139,7 +1289,8 @@ function runAttendanceCheck() {
 // checkAttendance concluía que NADIE había iniciado turno → falsas alertas de «Ausencia en turno» a agentes conectados. Se valida el
 // código HTTP, que el cuerpo sea JSON y un ARREGLO, y que ningún elemento sea un error (runQuery devuelve los errores dentro del arreglo,
 // a veces incluso con HTTP 200). Cuando falla se deja en el log el código y el cuerpo.
-function leerTurnosHoyRest_(now) {
+// opts.dia ('yyyy-MM-dd', solo para los diagnósticos de un día pasado) acota también el final del día; sin opts la consulta es la de siempre.
+function leerTurnosHoyRest_(now, opts) {
   now = now || new Date();
   var LIMITE = 1000;
   try {
@@ -1148,10 +1299,16 @@ function leerTurnosHoyRest_(now) {
     var hoy = Utilities.formatDate(now, 'America/Bogota', 'yyyy-MM-dd');
     var todayStartISO = new Date(hoy + 'T00:00:00-05:00').toISOString();
     var queryUrl = 'https://firestore.googleapis.com/v1/projects/' + FIREBASE_PROJECT + '/databases/(default)/documents:runQuery';
+    var filtroInicio = { fieldFilter: { field: { fieldPath: 'startTime' }, op: 'GREATER_THAN_OR_EQUAL', value: { timestampValue: todayStartISO } } };
+    var where = filtroInicio;
+    if (opts && opts.dia) {
+      var finDia = new Date(new Date(opts.dia + 'T00:00:00-05:00').getTime() + 24 * 3600000).toISOString();
+      where = { compositeFilter: { op: 'AND', filters: [filtroInicio, { fieldFilter: { field: { fieldPath: 'startTime' }, op: 'LESS_THAN', value: { timestampValue: finDia } } }] } };
+    }
     var queryBody = {
       structuredQuery: {
         from: [{ collectionId: 'turnos' }],
-        where: { fieldFilter: { field: { fieldPath: 'startTime' }, op: 'GREATER_THAN_OR_EQUAL', value: { timestampValue: todayStartISO } } },
+        where: where,
         limit: LIMITE
       }
     };

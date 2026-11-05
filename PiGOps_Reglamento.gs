@@ -248,10 +248,15 @@ function reg_correr(deps, opts) {
   var malla = deps.leerMalla(ventIni), turnos = deps.leerTurnos(ventIni, now);
   var agentes = deps.agentes();
   var ctx = { waivers: deps.listar('strike_waivers'), appeals: deps.listar('strike_appeals'), docs: deps.listar(REG.COL), now: now, modoPrueba: cfg.modoPrueba };
+  // Retirados (BASE 3.0 o propiedad agentes_retirados): no se les avisa, no se les genera llamado ni falta grave, aunque sigan en la malla o
+  // tengan una tardanza en plazo. deps.retirados() lanza si BASE 3.0 no se puede leer: la ejecución se aborta en vez de actuar a ciegas.
+  var retirados = deps.retirados ? deps.retirados(hoy) : {};
+  var esRetirado = function (email) { return !!retirados[String(email || '').trim().toLowerCase()]; };
   var porAgente = {};
   reg_detectarTardanzas(malla, turnos).forEach(function (t) { (porAgente[t.email] = porAgente[t.email] || []).push(t); });
-  var res = { avisos: 0, llamados: 0, faltasGraves: 0, art6013: 0, retenidos: 0, errores: [] };
+  var res = { avisos: 0, llamados: 0, faltasGraves: 0, art6013: 0, retenidos: 0, retirados: 0, errores: [] };
   Object.keys(porAgente).forEach(function (email) {
+    if (esRetirado(email)) { res.retirados++; return; }
     try { reg_procesarAgente(deps, cfg, opts, email, porAgente[email], agentes[email] || {}, ctx, res, hoy); }
     catch (e) { res.errores.push(email + ': ' + e.message); }
   });
@@ -261,6 +266,7 @@ function reg_correr(deps, opts) {
     Object.keys(ctx.docs).forEach(function (k) { if (ctx.docs[k].userEmail) emails[ctx.docs[k].userEmail] = true; });
     Object.keys(emails).forEach(function (email) {
       if (porAgente[email]) return;
+      if (esRetirado(email)) return;
       try { reg_revisar6013(deps, cfg, email, agentes[email] || {}, ctx, res, hoy); } catch (e) { res.errores.push(email + ' 60.13: ' + e.message); }
     });
   }
@@ -791,6 +797,11 @@ function reg_depsProduccion() {
     leerMalla: function (d) { malla = reg_leerMalla(d); return malla; },
     leerTurnos: reg_leerTurnos,
     agentes: function () { return reg_agentes(malla); },
+    retirados: function (hoyISO) {
+      var r = leerRetirados_(hoyISO); // PiGOps_Notificaciones_v5.gs
+      if (!r.ok) throw new Error('No se pudo leer BASE 3.0 para excluir retirados: ' + r.motivo);
+      return r.set;
+    },
     listar: reg_listarColeccion,
     crear: reg_crearDoc,
     actualizar: reg_actualizarDoc,
