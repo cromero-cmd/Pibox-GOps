@@ -1550,7 +1550,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
-const APP_VERSION='19.2';
+const APP_VERSION='19.3';
 // Promesas rechazadas sin manejar y errores de script: antes desaparecían sin rastro en consola del agente.
 window.addEventListener('unhandledrejection',e=>console.error('[unhandledrejection]',e.reason&&(e.reason.stack||e.reason.message||e.reason)));
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
@@ -2086,7 +2086,9 @@ function computeAgentStrikes(o){
  // al día siguiente o después (se olvidó cerrar: pasadas las 18 h el cierre es el clic de quien lo cerró, no la desconexión), no hay
  // hora real de salida que medir: no es no desconexión (el correo antiguo mostraba solo la hora, p. ej. «09:30 a. m.», sin el día).
  const cierreTardio=re.toDateString()!==seAdj.toDateString()&&re>seAdj;
- if(extraHrs>cfg.nodescHrs&&!cierreTardio)mk('nodesc',`No se desconectó a tiempo — salida programada ${m.fin}, salida real ${hhmm(re)}`);
+ // Un turno cerrado AUTOMÁTICAMENTE (PiGOps_CierreTurnos.gs, v19.3) no tiene hora real de salida: se registra la programada (o inicio + 14 h
+ // sin malla). El cierre automático nunca genera no desconexión ni ninguna otra falta; la tardanza del INICIO sigue siendo del Reglamento.
+ if(extraHrs>cfg.nodescHrs&&!cierreTardio&&!turno.cierreAutomatico)mk('nodesc',`No se desconectó a tiempo — salida programada ${m.fin}, salida real ${hhmm(re)}`);
  }
  });
  return out.sort((a,b)=>a.date-b.date);
@@ -5468,6 +5470,7 @@ async function loadPanel2(opts){
  ${r.turnoId&&t?.resumeAuthorized?'<span style="font-size:9px;color:var(--p2);font-family:var(--mono);">✔ Reanudación autorizada</span>':''}
  ${r.turnoId&&t?.earlyLeave&&t?.earlyLeaveStatus==='pending_review'?`<button onclick="reviewEarlyLeave('${r.turnoId}',true,this)" style="background:rgba(74,222,128,0.08);border:1px solid rgba(74,222,128,0.3);color:#4ade80;padding:3px 8px;border-radius:5px;font-size:9px;font-family:var(--mono);cursor:pointer;white-space:nowrap;">✅ Justificar salida</button><button onclick="reviewEarlyLeave('${r.turnoId}',false,this)" style="background:rgba(248,113,113,0.08);border:1px solid rgba(248,113,113,0.3);color:#f87171;padding:3px 8px;border-radius:5px;font-size:9px;font-family:var(--mono);cursor:pointer;margin-top:2px;white-space:nowrap;">❌ No justificar</button>`:''}
  ${r.turnoId&&t?.earlyLeave&&t?.earlyLeaveStatus==='justified'?'<span style="font-size:9px;color:#4ade80;font-family:var(--mono);">✔ Salida justificada</span>':''}
+ ${r.turnoId&&t?.cierreAutomatico?`<span title="${esc(autoCloseTitle(t))}" style="font-size:9px;color:#fb923c;font-family:var(--mono);cursor:help;">🤖 Cierre automático${t.cierreAutomaticoConfirmadoAt?' · ✔ confirmado':''}</span>`:''}
  ${r.turnoId&&t?.earlyLeave&&t?.earlyLeaveStatus==='not_justified'?'<span style="font-size:9px;color:#f87171;font-family:var(--mono);">✖ Salida no justificada</span>':''}
  ${!r.turnoId&&r.cumplStatus.cls==='ausente'?`<button onclick="reviewAbsence('${r.usuario}','${r.fecha}',this)" style="background:rgba(96,165,250,0.08);border:1px solid rgba(96,165,250,0.3);color:#60a5fa;padding:3px 8px;border-radius:5px;font-size:9px;font-family:var(--mono);cursor:pointer;white-space:nowrap;">📋 Justificar ausencia</button>`:''}
  ${!r.turnoId&&r.cumplStatus.cls==='ausente_justificada'?`<span style="font-size:9px;color:#4ade80;font-family:var(--mono);">✔ Ausencia justificada${r.absenceMotivo?' · '+r.absenceMotivo:''}</span>`:''}
@@ -6338,6 +6341,12 @@ function renderOvertimeList(el,events){
  ${pendingReview.length?`<div style="font-size:12px;font-weight:800;color:#fbbf24;margin-bottom:8px;${pendingFinal.length?'margin-top:18px;':''}">🟡 Pendientes de coordinador (${pendingReview.length})</div>${pendingReview.map(e=>overtimeRowHTML(e,true)).join('')}`:''}
  `;
 }
+// Texto explicativo de un turno cerrado automáticamente (PiGOps_CierreTurnos.gs): motivo, hora real del cierre y valores anteriores.
+function autoCloseTitle(t){
+ const at=t.cierreAutomaticoAt?.toDate?.();
+ const prev=t.cierreAutomaticoEndTimePrevio?.toDate?.();
+ return'Cierre automático: '+(t.cierreAutomaticoMotivo||'turno olvidado')+(at?' · se cerró el '+at.toLocaleString('es-CO',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}):'')+(prev?' · hora de interrupción anterior '+prev.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):'')+'. La salida registrada es la programada: confírmala o corrígela.';
+}
 async function forceCloseTurno(turnoId,btn){
  if(!confirm('¿Confirmas que quieres forzar el cierre de este turno? Esta acción no se puede deshacer.'))return;
  btn.textContent='Cerrando...';btn.disabled=true;
@@ -6700,9 +6709,14 @@ async function loadFreshPayrollData(cyc){
  let diffSecs=reportStart&&reportEnd?Math.round((reportEnd-reportStart)/1000):null;
  if(diffSecs!==null&&diffSecs<0)diffSecs+=86400;
  const secs=diffSecs!==null?Math.max(0,diffSecs-(almuerzHrs*3600)):null;
+ // Turno cerrado AUTOMÁTICAMENTE (PiGOps_CierreTurnos.gs): se destaca en la prenómina para confirmar o corregir la salida. Solo estas
+ // filas llevan turnoId (para poder confirmar y corregir en Firestore); las demás filas siguen como antes.
+ const ac=turno?.cierreAutomatico?{motivo:turno.cierreAutomaticoMotivo||'',at:turno.cierreAutomaticoAt?.toDate?.()?.toISOString?.()||'',
+ prev:turno.cierreAutomaticoEndTimePrevio?.toDate?.()?.toISOString?.()||'',startMs:rs?rs.getTime():0,confirmado:!!turno.cierreAutomaticoConfirmadoAt}:null;
  return{
  name:m.nombre||m.usuario?.split('@')[0]||'—',
  email:m.usuario||'',
+ ...(ac?{turnoId:turno.id,autoClose:ac}:{}),
  date:d?fmtDate(d):'—',
  // Novedad de votaciones permite trabajar media jornada — mostrar los registros reales de
  // entrada/salida en vez de ceros, igual que un día sin novedad. Solo las demás novedades
@@ -6753,7 +6767,10 @@ function renderPayrollPreviewTable(){
  const cols=['Nombre','Fecha','Entrada','Salida','Almuerzo','Horas trabajadas','Total semana','Extras','Novedad'];
  const fields=['name','date','checkIn','checkOut','almuerzo','hours','totalWeek','extras','novedad'];
  const editableCols=new Set(['checkIn','checkOut','almuerzo','novedad']);
- body.innerHTML=`<div style="font-size:11px;color:var(--text-dim);margin-bottom:10px;font-family:var(--mono);">💡 Haz clic en cualquier celda para editarla antes de enviar. Extras = excedente sobre ${horasLegales}h semanales.</div>
+ const pendAuto=window._payrollPreviewRecords.filter(r=>r.autoClose&&!r.autoClose.confirmado).length;
+ const totAuto=window._payrollPreviewRecords.filter(r=>r.autoClose).length;
+ const autoBanner=totAuto?`<div id="payroll-auto-banner" style="background:rgba(251,146,60,0.10);border:1px solid rgba(251,146,60,0.45);border-radius:10px;padding:10px 14px;margin-bottom:10px;font-size:12px;color:var(--text);">🤖 <strong>${totAuto} turno${totAuto!==1?'s':''} con cierre automático</strong> (el agente olvidó cerrarlo): la salida registrada es la programada. ${pendAuto?`<strong style="color:#fb923c;">${pendAuto} por confirmar</strong> — confirma o corrige la hora de salida en las filas resaltadas. Si trabajó horas extra, se registran como extra con aprobación.`:'<span style="color:#4ade80;">Todos confirmados ✔</span>'}</div>`:'';
+ body.innerHTML=`${autoBanner}<div style="font-size:11px;color:var(--text-dim);margin-bottom:10px;font-family:var(--mono);">💡 Haz clic en cualquier celda para editarla antes de enviar. Extras = excedente sobre ${horasLegales}h semanales.</div>
  <div style="overflow-x:auto;">
  <table id="payroll-preview-table" style="width:100%;border-collapse:collapse;font-size:12px;">
  <thead>
@@ -6762,9 +6779,14 @@ function renderPayrollPreviewTable(){
  </tr>
  </thead>
  <tbody>
- ${window._payrollPreviewRecords.map((r,ri)=>`<tr style="${ri%2===0?'':'background:var(--surface2);'}">
+ ${window._payrollPreviewRecords.map((r,ri)=>`<tr style="${r.autoClose?(r.autoClose.confirmado?'background:rgba(74,222,128,0.06);box-shadow:inset 3px 0 0 #4ade80;':'background:rgba(251,146,60,0.14);box-shadow:inset 3px 0 0 #fb923c;'):(ri%2===0?'':'background:var(--surface2);')}">
  ${fields.map((f,fi)=>{
- const val=f==='extras'?extrasForAgent(r.name,ri):f==='totalWeek'?totalWeekForAgent(r.name,ri):(r[f]||'—');
+ let val=f==='extras'?extrasForAgent(r.name,ri):f==='totalWeek'?totalWeekForAgent(r.name,ri):(r[f]||'—');
+ // Fecha (no editable): marca de cierre automático + botón para confirmar la hora de salida registrada
+ if(f==='date'&&r.autoClose){
+ const a=r.autoClose;
+ val=`${esc(String(val))}<div style="margin-top:3px;font-size:10px;font-weight:700;color:${a.confirmado?'#4ade80':'#fb923c'};" title="${esc((a.motivo||'Turno olvidado')+' · la salida registrada es la programada: confírmala o corrígela en la columna Salida')}">🤖 Cierre automático${a.confirmado?' · ✔ confirmado':''}</div>${a.confirmado?'':`<button onclick="confirmAutoCloseRow(${ri},this)" style="margin-top:3px;background:rgba(74,222,128,0.12);border:1px solid rgba(74,222,128,0.4);color:#4ade80;padding:2px 8px;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;">✓ Confirmar salida</button>`}`;
+ }
  const editable=editableCols.has(f);
  const isExtra=f==='extras'&&val!=='00:00:00';
  return`<td style="padding:6px 8px;border:1px solid var(--border);${editable?'cursor:pointer;':''}${f==='novedad'&&val!=='—'?'color:#a78bfa;':''}${isExtra?'color:#fb923c;font-weight:700;':''}" ${editable?`onclick="editPayrollCell(this,${ri},'${f}')" title="Clic para editar"`:''}>${val}</td>`;
@@ -6773,6 +6795,22 @@ function renderPayrollPreviewTable(){
  </tbody>
  </table>
  </div>`;
+}
+// Confirma la hora de salida registrada de un turno con cierre automático (no cambia horas: solo deja constancia de quién la revisó).
+async function confirmAutoCloseRow(ri,btn){
+ const row=window._payrollPreviewRecords?.[ri];
+ if(!row||!row.autoClose||!row.turnoId)return;
+ if(btn){btn.disabled=true;btn.textContent='Confirmando...';}
+ try{
+ const who=document.getElementById('user-email').textContent;
+ await window.updateTurnoInFirebase(row.turnoId,{cierreAutomaticoConfirmadoPor:who,cierreAutomaticoConfirmadoAt:new Date()});
+ row.autoClose.confirmado=true;
+ renderPayrollPreviewTable();
+ }catch(e){
+ console.error('[prenómina] no se pudo confirmar el cierre automático:',e);
+ if(btn){btn.disabled=false;btn.textContent='✓ Confirmar salida';}
+ toast('❌ No se pudo confirmar: '+e.message);
+ }
 }
 function refreshPayrollExtrasColumn(){
  // Umbral según la semana reportada (lastSunday guardado en openPayrollPreview), no la fecha de hoy.
@@ -6931,10 +6969,19 @@ function editPayrollCell(td, rowIdx, field){
  const fecha=row.date; // DD-MMM-YYYY
  const updates={editedBy:'payroll-preview',editedAt:new Date().toISOString(),editReason:'Corrección prenómina'};
  if(field==='checkIn'){const t=parseTime(fecha,val);if(t)updates.startTime=t;}
- if(field==='checkOut'){const t=parseTime(fecha,val);if(t){updates.endTime=t;updates.status='ended';}}
+ if(field==='checkOut'){
+ let t=parseTime(fecha,val);
+ // turno que cruza la medianoche: la salida corregida es del día siguiente al inicio (solo se conoce el inicio en las filas con cierre automático)
+ if(t&&row.autoClose&&row.autoClose.startMs&&t.getTime()<=row.autoClose.startMs)t=new Date(t.getTime()+24*3600000);
+ if(t){updates.endTime=t;updates.status='ended';}
+ // corregir la salida de un cierre automático también lo deja confirmado (por quién y cuándo)
+ if(t&&row.autoClose){updates.cierreAutomaticoConfirmadoPor=document.getElementById('user-email').textContent;updates.cierreAutomaticoConfirmadoAt=new Date();updates.cierreAutomaticoCorregido=true;}
+ }
  if(updates.startTime&&updates.endTime)updates.accumulatedSeconds=Math.max(0,Math.round((updates.endTime-updates.startTime)/1000));
+ else if(updates.endTime&&row.autoClose&&row.autoClose.startMs)updates.accumulatedSeconds=Math.max(0,Math.round((updates.endTime.getTime()-row.autoClose.startMs)/1000));
  await window.updateTurnoInFirebase(row.turnoId,updates);
  td.style.outline='2px solid #4ade80';setTimeout(()=>td.style.outline='',1500);
+ if(row.autoClose&&field==='checkOut'&&!row.autoClose.confirmado){row.autoClose.confirmado=true;row.autoClose.corregido=true;savePayrollDraft();renderPayrollPreviewTable();}
  }catch(e){td.style.outline='2px solid #f87171';setTimeout(()=>td.style.outline='',1500);}
  }
  };
@@ -6944,6 +6991,8 @@ function editPayrollCell(td, rowIdx, field){
 async function confirmAndSendPayroll(){
  const btn=document.getElementById('payroll-send-btn');
  if(!btn)return;
+ const sinConfirmar=(window._payrollPreviewRecords||[]).filter(r=>r.autoClose&&!r.autoClose.confirmado);
+ if(sinConfirmar.length&&!confirm(`⚠️ Hay ${sinConfirmar.length} turno${sinConfirmar.length!==1?'s':''} con cierre automático sin confirmar (la salida registrada es la programada).\n\n¿Enviar la nómina de todos modos?`))return;
  btn.textContent='Enviando...';btn.disabled=true;
  const {weekStart,weekEnd,payrollEmails}=window._payrollPreviewMeta;
  const recipients=payrollEmails.split(',').map(e=>e.trim()).filter(Boolean);

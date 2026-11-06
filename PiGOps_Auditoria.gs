@@ -83,7 +83,9 @@ function aud_leerTurnos(desdeISO, maxTurnos) {
         startTime: new Date(st), createTime: new Date(r.document.createTime),
         endTime: (f.endTime && f.endTime.timestampValue) ? new Date(f.endTime.timestampValue) : null,
         editadoPor: (f.editedBy && f.editedBy.stringValue) || (f.forcedClosedBy && f.forcedClosedBy.stringValue) || '',
-        recuperado: !!(f.startRecovered && f.startRecovered.booleanValue)
+        recuperado: !!(f.startRecovered && f.startRecovered.booleanValue),
+        cierreAutomatico: !!(f.cierreAutomatico && f.cierreAutomatico.booleanValue),
+        overtimeStatus: (f.overtimeStatus && f.overtimeStatus.stringValue) || ''
       });
     }
     if (turnos.length > maxTurnos) throw new Error('Se superó el tope de ' + maxTurnos + ' turnos; la auditoría quedaría incompleta.');
@@ -257,4 +259,69 @@ function auditoriaNoDesconexionDesde_(desdeISO) {
     Logger.log(h.categoria + ' | ' + h.usuario + ' | día ' + h.fecha + ' | salida programada ' + h.finProgramado + ' | turno ' + aud_hora(h.startTime) + ' → CERRADO ' + aud_hora(h.endTime) + ' (' + h.horasExtra + ' h después de lo programado) | estado ' + h.status + (h.editadoPor ? ' | editado por ' + h.editadoPor : '') + ' | turno ' + h.turnoId);
   });
   return { desde: desdeISO, cuenta: cuenta, hallazgos: hallazgos };
+}
+
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════════════════
+//  TURNOS DE MÁS DE 14 HORAS (solo lectura; v19.3)
+//  Auditoría de nómina: un turno que duró más de 14 h casi siempre es un turno olvidado que alguien cerró después. Si no lo corrigió un
+//  admin, ese tiempo pudo llegar a la nómina de más (la prenómina usa la hora real de salida cuando hay extras aprobadas o una salida
+//  anticipada injustificada). No envía ni escribe nada.
+//
+//  auditoriaTurnosLargos()   turnos desde el 1-jun-2026 con duración (endTime − startTime) MAYOR a 14 h que NO fueron editados por un
+//                            admin (sin editedBy ni forcedClosedBy; los cierres automáticos de PiGOps_CierreTurnos.gs tampoco se editan
+//                            como admin: se listan marcados si superan 14 h). Por turno: agente, fecha, horas registradas, horas
+//                            programadas según la malla (salida − entrada; si la malla no tiene ese día, «sin malla»), la diferencia,
+//                            el estado, si había extras aprobadas (overtimeStatus) y el id. Los turnos aún abiertos (sin endTime) no
+//                            tienen duración: los lista cierreTurnosPendientes().
+//  Usa funciones de PiGOps_Reglamento.gs (mismo proyecto). Ejecutar desde el editor → Ver → Registros de ejecución.
+// ══════════════════════════════════════════════════════════════════════════════════════════════════════════════
+var AUD_LARGOS = { DESDE: '2026-06-01', HORAS: 14, MAX_TURNOS: 30000 };
+// malla: [{fecha:'D/M/YYYY', usuario, inicio, fin, novedad}] · turnos: [{id, userEmail, status, startTime:Date, endTime:Date|null, editadoPor, cierreAutomatico, overtimeStatus}]
+// Pura (sin IO). Devuelve [{usuario, fecha, iso, horasRegistradas, horasProgramadas|null, exceso|null, ...}] ordenado por fecha y agente.
+function aud_turnosLargosCalcular(turnos, malla, cfg) {
+  cfg = cfg || AUD_LARGOS;
+  var porDia = {};
+  malla.forEach(function (m) {
+    var iso = reg_isoDesdeDDMMYYYY(m.fecha);
+    if (!iso || !m.usuario) return;
+    (porDia[m.usuario + '|' + iso] = porDia[m.usuario + '|' + iso] || []).push(m);
+  });
+  var out = [];
+  turnos.forEach(function (t) {
+    if (!t.endTime || !t.startTime || t.editadoPor) return;
+    var horas = (t.endTime.getTime() - t.startTime.getTime()) / 3600000;
+    if (!(horas > cfg.HORAS)) return;
+    var iso = reg_isoBogota(t.startTime), prog = null, filas = porDia[t.userEmail + '|' + iso] || [], i;
+    for (i = 0; i < filas.length; i++) {
+      var hi = reg_horaProgramada(filas[i].inicio), hf = reg_horaProgramada(filas[i].fin);
+      if (!hi || !hf) continue;
+      var h = (hf.h * 60 + hf.mi - hi.h * 60 - hi.mi) / 60;
+      if (h <= 0) h += 24; // turno que cruza la medianoche
+      if (prog === null || h > prog) prog = h;
+    }
+    out.push({ usuario: t.userEmail, fecha: reg_aDDMMYYYY(iso), iso: iso, turnoId: t.id || '', status: t.status, startTime: t.startTime, endTime: t.endTime,
+      horasRegistradas: Math.round(horas * 10) / 10, horasProgramadas: prog === null ? null : Math.round(prog * 10) / 10,
+      exceso: prog === null ? null : Math.round((horas - prog) * 10) / 10, cierreAutomatico: !!t.cierreAutomatico, overtimeStatus: t.overtimeStatus || '' });
+  });
+  return out.sort(function (a, b) { return a.iso < b.iso ? -1 : a.iso > b.iso ? 1 : (a.usuario < b.usuario ? -1 : 1); });
+}
+function auditoriaTurnosLargos() { return auditoriaTurnosLargosDesde_(AUD_LARGOS.DESDE); }
+function auditoriaTurnosLargosDesde_(desdeISO) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(desdeISO))) throw new Error('Fecha inválida; usa yyyy-MM-dd');
+  var turnos = aud_leerTurnos(desdeISO, AUD_LARGOS.MAX_TURNOS);
+  var malla = reg_leerMalla(desdeISO);
+  var hallazgos = aud_turnosLargosCalcular(turnos, malla);
+  var sinMalla = hallazgos.filter(function (h) { return h.horasProgramadas === null; }).length;
+  var extras = hallazgos.filter(function (h) { return h.overtimeStatus === 'approved'; }).length;
+  var total = hallazgos.reduce(function (a, h) { return a + (h.exceso !== null ? Math.max(0, h.exceso) : 0); }, 0);
+  Logger.log('TURNOS DE MÁS DE ' + AUD_LARGOS.HORAS + ' h (solo lectura) desde ' + desdeISO + ': ' + hallazgos.length + ' sin edición de admin (' + turnos.length + ' turnos revisados)');
+  Logger.log('  Sin fila de malla ese día: ' + sinMalla + ' · con extras aprobadas (la prenómina usó la hora real): ' + extras + ' · exceso total sobre lo programado: ' + (Math.round(total * 10) / 10) + ' h');
+  hallazgos.forEach(function (h) {
+    Logger.log(h.usuario + ' | ' + h.fecha + ' | registradas ' + h.horasRegistradas + ' h (' + aud_hora(h.startTime) + ' → ' + aud_hora(h.endTime) + ') | programadas ' +
+      (h.horasProgramadas === null ? 'sin malla' : h.horasProgramadas + ' h') + (h.exceso !== null ? ' | diferencia +' + h.exceso + ' h' : '') + ' | estado ' + h.status +
+      (h.overtimeStatus ? ' | extras: ' + h.overtimeStatus : '') + (h.cierreAutomatico ? ' | CIERRE AUTOMÁTICO' : '') + ' | turno ' + h.turnoId);
+  });
+  if (!hallazgos.length) Logger.log('Ningún turno de más de ' + AUD_LARGOS.HORAS + ' h sin edición de un admin.');
+  return { desde: desdeISO, hallazgos: hallazgos };
 }
