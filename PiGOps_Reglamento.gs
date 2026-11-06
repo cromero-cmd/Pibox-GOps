@@ -556,6 +556,7 @@ function reg_leerTurnos(desdeISO, hasta) {
       if (r && r.error) throw new Error('Firestore turnos → error en la respuesta: ' + JSON.stringify(r.error).slice(0, 300));
       if (!r || !r.document) return;
       var o = reg_fsDoc(r.document);
+      if (o.status === 'archivado') return; // turno archivado en silencio (PiGOps_CierreTurnos.gs): no cuenta para tardanzas ni faltas
       if (o.userEmail && o.startTime) out.push({ userEmail: o.userEmail, status: o.status || '', startTime: new Date(o.startTime), endTime: o.endTime ? new Date(o.endTime) : null });
     });
     cur = fin;

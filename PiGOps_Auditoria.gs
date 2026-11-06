@@ -47,8 +47,9 @@ function aud_clasificar(diffSeg, editadoPorAdmin, cfg) {
 
 // Lee los turnos desde `desdeISO` (yyyy-MM-dd, Bogotá). Lanza ante CUALQUIER falla de lectura: una auditoría incompleta no
 // puede interpretarse como «sin hallazgos» (mismo criterio que leerTurnosHoyRest_).
-function aud_leerTurnos(desdeISO, maxTurnos) {
+function aud_leerTurnos(desdeISO, maxTurnos, opts) {
   maxTurnos = maxTurnos || AUD_CONFIG.MAX_TURNOS;
+  var incluirArchivados = !!(opts && opts.incluirArchivados);
   var token = ScriptApp.getOAuthToken();
   var desde = new Date(desdeISO + 'T00:00:00-05:00');
   var margen = new Date(desde.getTime() - 24 * 3600000).toISOString();
@@ -76,6 +77,7 @@ function aud_leerTurnos(desdeISO, maxTurnos) {
       var f = r.document.fields || {};
       var st = f.startTime && f.startTime.timestampValue;
       if (!st || !r.document.createTime) continue; // sin hora de inicio o sin createTime: no hay nada que comparar
+      if (!incluirArchivados && f.status && f.status.stringValue === 'archivado') continue; // turno archivado en silencio (PiGOps_CierreTurnos.gs): se ignora
       turnos.push({
         id: String(r.document.name || '').split('/').pop(),
         userEmail: (f.userEmail && f.userEmail.stringValue) || '',
@@ -85,6 +87,7 @@ function aud_leerTurnos(desdeISO, maxTurnos) {
         editadoPor: (f.editedBy && f.editedBy.stringValue) || (f.forcedClosedBy && f.forcedClosedBy.stringValue) || '',
         recuperado: !!(f.startRecovered && f.startRecovered.booleanValue),
         cierreAutomatico: !!(f.cierreAutomatico && f.cierreAutomatico.booleanValue),
+        accumulatedSeconds: f.accumulatedSeconds && f.accumulatedSeconds.integerValue !== undefined ? parseInt(f.accumulatedSeconds.integerValue, 10) : null,
         overtimeStatus: (f.overtimeStatus && f.overtimeStatus.stringValue) || ''
       });
     }
@@ -324,4 +327,100 @@ function auditoriaTurnosLargosDesde_(desdeISO) {
   });
   if (!hallazgos.length) Logger.log('Ningún turno de más de ' + AUD_LARGOS.HORAS + ' h sin edición de un admin.');
   return { desde: desdeISO, hallazgos: hallazgos };
+}
+
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════════════════
+//  CLASIFICACIÓN DE TURNOS ABIERTOS HISTÓRICOS (solo lectura; v19.4)
+//  El cierre automático solo aplica a turnos iniciados desde el 1-nov-2026. Los turnos ABIERTOS (active/interrupted) anteriores quedaron
+//  casi todos HUÉRFANOS: el agente inició otro turno y el anterior quedó abierto. Esta función los clasifica para decidir qué hacer; NO cierra,
+//  archiva, envía ni escribe nada (el archivo es aparte: archivarTurnosHistoricosAprobado() en PiGOps_CierreTurnos.gs).
+//
+//  auditoriaHistoricosAbiertos()   por cada turno abierto anterior al 1-nov-2026:
+//    DUPLICADO       el agente tiene OTRO turno cerrado (ended) que se solapa con ese mismo día: el mismo día de inicio, o un turno cerrado cuyo
+//                    intervalo contiene el inicio de este. Es el huérfano típico.
+//    SIN_MALLA       no hay horario ese día (sin fila de malla, o sin hora de salida).
+//    VARIOS_ABIERTOS (categoría añadida) el agente tiene VARIOS turnos abiertos ese día y ninguno cerrado: no se puede decir cuál es el real.
+//    UNICO           es el único turno del agente ese día: se trabajó pero nunca se cerró.
+//    Precedencia: DUPLICADO > SIN_MALLA > VARIOS_ABIERTOS > UNICO.
+//    Muestra agente, fecha, estado, hora de interrupción (si la tiene) y las horas que registraría si se cerrara con la salida programada
+//    (salida programada − inicio real; 0 si inició después de la salida; «sin horario» si no hay malla). OJO: la prenómina paga por la MALLA,
+//    no por el turno, así que cerrar un turno NO suma horas a la nómina por sí solo (solo con extras aprobadas o salida anticipada injustificada).
+//    Al final: resumen por agente y por mes (cantidad por categoría y horas).
+//  Usa funciones de PiGOps_CierreTurnos.gs y PiGOps_Reglamento.gs (mismo proyecto). Ejecutar desde el editor → Ver → Registros de ejecución.
+// ══════════════════════════════════════════════════════════════════════════════════════════════════════════════
+var AUD_HIST = { MAX_TURNOS: 30000 };
+// abiertos: turnos ABIERTOS (cualquier fecha) · todos: turnos de cualquier estado desde el más antiguo de los abiertos (para buscar duplicados) ·
+// malla: [{iso, usuario (minúsculas), inicio, fin}] (cie_leerMalla). Pura (sin IO). Devuelve [{categoria, usuario, iso, fecha, status, id, startTime, interrupcion, horas, duplicadoDe}].
+function aud_clasificarHistoricos(abiertos, todos, malla, cfg) {
+  var corte = (cfg && cfg.corte) || CIE.DESDE;
+  var cerrados = {}, abiertosPorDia = {};
+  todos.forEach(function (t) {
+    var e = String(t.userEmail || '').toLowerCase();
+    if (t.status === 'ended') (cerrados[e] = cerrados[e] || []).push(t);
+  });
+  abiertos.forEach(function (t) {
+    if (CIE.ESTADOS_ABIERTOS.indexOf(t.status) === -1) return;
+    var k = String(t.userEmail).toLowerCase() + '|' + reg_isoBogota(t.startTime);
+    abiertosPorDia[k] = (abiertosPorDia[k] || 0) + 1;
+  });
+  var out = [];
+  abiertos.forEach(function (t) {
+    if (CIE.ESTADOS_ABIERTOS.indexOf(t.status) === -1 || !t.startTime) return;
+    var iso = reg_isoBogota(t.startTime);
+    if (iso >= corte) return; // los de desde el corte son del cierre automático
+    var e = String(t.userEmail).toLowerCase(), ini = t.startTime.getTime();
+    var dup = (cerrados[e] || []).filter(function (c) {
+      if (c.id === t.id) return false;
+      return reg_isoBogota(c.startTime) === iso || (c.endTime && c.startTime.getTime() <= ini && ini <= c.endTime.getTime());
+    })[0] || null;
+    var h = cie_horario(t, malla);
+    var horas = h.codigo === 'malla' ? Math.max(0, Math.round((h.salida.getTime() - ini) / 360000) / 10) : (h.codigo === 'inicio_tarde' ? 0 : null);
+    var cat;
+    if (dup) cat = 'DUPLICADO';
+    else if (h.codigo === 'sin_malla') cat = 'SIN_MALLA';
+    else if (abiertosPorDia[e + '|' + iso] > 1) cat = 'VARIOS_ABIERTOS';
+    else cat = 'UNICO';
+    out.push({ categoria: cat, usuario: t.userEmail, iso: iso, fecha: reg_aDDMMYYYY(iso), status: t.status, id: t.id, startTime: t.startTime,
+      interrupcion: t.status === 'interrupted' && t.endTime ? t.endTime : null, horas: horas, salidaProgramada: h.codigo === 'malla' ? h.salida : null,
+      duplicadoDe: dup ? dup.id : '' });
+  });
+  return out.sort(function (a, b) { return a.iso < b.iso ? -1 : a.iso > b.iso ? 1 : (a.usuario < b.usuario ? -1 : a.usuario > b.usuario ? 1 : 0); });
+}
+// Resúmenes por agente y por mes: {clave: {total, DUPLICADO, SIN_MALLA, VARIOS_ABIERTOS, UNICO, horas}}. Pura.
+function aud_resumenHistoricos(hallazgos) {
+  var porAgente = {}, porMes = {};
+  var suma = function (m, k, h) {
+    var r = m[k] = m[k] || { total: 0, DUPLICADO: 0, SIN_MALLA: 0, VARIOS_ABIERTOS: 0, UNICO: 0, horas: 0 };
+    r.total++; r[h.categoria]++; if (h.horas) r.horas = Math.round((r.horas + h.horas) * 10) / 10;
+  };
+  hallazgos.forEach(function (h) { suma(porAgente, h.usuario, h); suma(porMes, h.iso.slice(0, 7), h); });
+  return { porAgente: porAgente, porMes: porMes };
+}
+function auditoriaHistoricosAbiertos() {
+  var abiertos = cie_leerTurnosAbiertos().filter(function (t) { return reg_isoBogota(t.startTime) < CIE.DESDE; });
+  var out = { corte: CIE.DESDE, hallazgos: [], cuenta: { DUPLICADO: 0, SIN_MALLA: 0, VARIOS_ABIERTOS: 0, UNICO: 0 }, porAgente: {}, porMes: {} };
+  if (!abiertos.length) { Logger.log('Ningún turno abierto anterior al ' + CIE.DESDE + '.'); return out; }
+  var minIso = abiertos.reduce(function (a, t) { var i = reg_isoBogota(t.startTime); return !a || i < a ? i : a; }, '');
+  var todos = aud_leerTurnos(reg_addDays(minIso, -1), AUD_HIST.MAX_TURNOS);            // falla (lanza) ante cualquier lectura incompleta
+  var malla = cie_leerMalla(reg_addDays(minIso, -1));
+  var hallazgos = aud_clasificarHistoricos(abiertos, todos, malla);
+  var res = aud_resumenHistoricos(hallazgos);
+  hallazgos.forEach(function (h) { out.cuenta[h.categoria]++; });
+  out.hallazgos = hallazgos; out.porAgente = res.porAgente; out.porMes = res.porMes;
+  var fh = function (d) { return reg_aDDMMYYYY(reg_isoBogota(d)) + ' ' + reg_horaAmPm(d); };
+  Logger.log('TURNOS ABIERTOS ANTERIORES AL ' + CIE.DESDE + ' (solo lectura; no se cerró, archivó ni envió nada): ' + hallazgos.length + ' (' + todos.length + ' turnos revisados desde ' + minIso + ')');
+  Logger.log('  DUPLICADO: ' + out.cuenta.DUPLICADO + ' · ÚNICO: ' + out.cuenta.UNICO + ' · SIN MALLA: ' + out.cuenta.SIN_MALLA + ' · VARIOS ABIERTOS: ' + out.cuenta.VARIOS_ABIERTOS);
+  hallazgos.forEach(function (h) {
+    Logger.log(h.categoria + ' | ' + h.usuario + ' | ' + h.fecha + ' | estado ' + h.status + ' | inicio ' + fh(h.startTime) + (h.interrupcion ? ' | interrumpido ' + fh(h.interrupcion) : '') +
+      ' | horas si se cerrara con la salida programada: ' + (h.horas === null ? 'sin horario' : h.horas + ' h' + (h.salidaProgramada ? ' (salida ' + reg_horaAmPm(h.salidaProgramada) + ')' : '')) +
+      (h.duplicadoDe ? ' | otro turno cerrado ' + h.duplicadoDe : '') + ' | turno ' + h.id);
+  });
+  var fila = function (k, r) { return k + ' → ' + r.total + ' (dup ' + r.DUPLICADO + ', único ' + r.UNICO + ', sin malla ' + r.SIN_MALLA + ', varios ' + r.VARIOS_ABIERTOS + ') · ' + r.horas + ' h'; };
+  Logger.log('RESUMEN POR AGENTE:');
+  Object.keys(res.porAgente).sort(function (a, b) { return res.porAgente[b].total - res.porAgente[a].total || (a < b ? -1 : 1); }).forEach(function (k) { Logger.log('  ' + fila(k, res.porAgente[k])); });
+  Logger.log('RESUMEN POR MES:');
+  Object.keys(res.porMes).sort().forEach(function (k) { Logger.log('  ' + fila(k, res.porMes[k])); });
+  Logger.log('Las horas son lo que registraría el turno hasta la salida programada; la prenómina paga por la malla, así que cerrarlos NO agrega horas a la nómina por sí solo.');
+  return out;
 }

@@ -60,6 +60,7 @@ function mundo(o={}){
    const d=w.docs.find(x=>x.document.name.endsWith('/turnos/'+id));
    if(!d)return{getResponseCode:()=>404,getContentText:()=>'{"error":{"code":404}}'};
    if(pre&&decodeURIComponent(pre)!==d.document.updateTime)return{getResponseCode:()=>400,getContentText:()=>'{"error":{"code":400,"status":"FAILED_PRECONDITION"}}'};
+   mask.forEach(k=>{if(!(k in body.fields))delete d.document.fields[k];});
    Object.keys(body.fields).forEach(k=>{d.document.fields[k]=body.fields[k];});
    d.document.updateTime='2026-11-05T20:02:00.000000Z';
    return{getResponseCode:()=>200,getContentText:()=>'{}'};}}};
@@ -69,7 +70,7 @@ function mundo(o={}){
  w.run=()=>vm.runInContext('cierreAutomaticoTurnos()',ctx);
  w.pendientes=()=>vm.runInContext('cierreTurnosPendientes()',ctx);
  w.estado=id=>{const d=w.docs.find(x=>x.document.name.endsWith('/turnos/'+id));const f=d.document.fields,g=k=>f[k]?decVal(f[k]):undefined;return{status:g('status'),endTime:g('endTime'),acc:g('accumulatedSeconds'),auto:g('cierreAutomatico'),at:g('cierreAutomaticoAt'),motivo:g('cierreAutomaticoMotivo'),
-   prevEstado:g('cierreAutomaticoEstadoPrevio'),prevEnd:g('cierreAutomaticoEndTimePrevio'),prevAcc:g('cierreAutomaticoAccPrevio'),editedBy:g('editedBy'),forced:g('forcedClosedBy')};};
+   archMotivo:g('archivoMotivo'),archPrevio:g('archivoEstadoPrevio'),archLote:g('archivoLote'),archAt:g('archivadoAt'),archPor:g('archivadoPor'),prevEstado:g('cierreAutomaticoEstadoPrevio'),prevEnd:g('cierreAutomaticoEndTimePrevio'),prevAcc:g('cierreAutomaticoAccPrevio'),editedBy:g('editedBy'),forced:g('forcedClosedBy')};};
  w.fallas=()=>w.sent.filter(m=>/^Cierre automático de turnos:/.test(m.subject));
  w.avisos=()=>w.sent.filter(m=>/se cerró automáticamente/.test(m.subject));
  return w;}
@@ -94,7 +95,16 @@ const t1=(w,o)=>doc('T1','agente1@pibox.app','active',BOG('2026-11-05',8,2),o);
  w.setNow(BOG('2026-11-05',20,1));w.run();t('A11 un minuto después sí',w.patches.length===1&&w.estado('T1').status==='ended');}
 {// interrumpido: la hora de interrupción (11:00) se conserva en el campo «previo»; la salida registrada es la programada
  const w=mundo({malla:malla1(),docs:[doc('T1','agente1@pibox.app','interrupted',BOG('2026-11-05',8,2),{endTime:BOG('2026-11-05',11,0),acc:10620})]});w.run();const e=w.estado('T1');
- t('A12 turno INTERRUMPIDO también se cierra: salida programada 16:00, estado previo y hora de interrupción previa conservados',e.status==='ended'&&e.endTime===BOG('2026-11-05',16,0).toISOString()&&e.prevEstado==='interrupted'&&e.prevEnd===BOG('2026-11-05',11,0).toISOString()&&e.prevAcc===10620,e);}
+ t('A12 turno INTERRUMPIDO antes de su salida: la salida registrada es la hora de INTERRUPCIÓN (11:00), no la programada (16:00); se conserva el acumulado real (10620 s) y el estado previo',e.status==='ended'&&e.endTime===BOG('2026-11-05',11,0).toISOString()&&e.acc===10620&&e.prevEstado==='interrupted'&&e.prevEnd===BOG('2026-11-05',11,0).toISOString()&&e.prevAcc===10620&&e.motivo==='Hora de interrupción (anterior a la salida programada)',e);}
+{// interrumpido DESPUÉS de la salida programada (17:30 > 16:00): rige la salida programada
+ const w=mundo({malla:malla1(),docs:[doc('T1','agente1@pibox.app','interrupted',BOG('2026-11-05',8,2),{endTime:BOG('2026-11-05',17,30),acc:30000})]});w.run();const e=w.estado('T1');
+ t('A12b interrumpido DESPUÉS de la salida programada (17:30 > 16:00): se registra la programada (16:00), como antes',e.endTime===BOG('2026-11-05',16,0).toISOString()&&e.motivo==='Salida programada + 4 h (malla)'&&e.prevEnd===BOG('2026-11-05',17,30).toISOString(),e);}
+{// interrumpido con la hora anterior al inicio (dato inconsistente): se ignora y rige la programada
+ const w=mundo({malla:malla1(),docs:[doc('T1','agente1@pibox.app','interrupted',BOG('2026-11-05',8,2),{endTime:BOG('2026-11-05',7,0),acc:0})]});w.run();
+ t('A12c hora de interrupción anterior al inicio (dato inconsistente): se ignora, rige la programada',w.estado('T1').endTime===BOG('2026-11-05',16,0).toISOString());}
+{// el correo de un interrumpido dice la hora de interrupción
+ const w=mundo({malla:malla1(),docs:[doc('T1','agente1@pibox.app','interrupted',BOG('2026-11-05',8,2),{endTime:BOG('2026-11-05',11,0),acc:10620})]});w.run();const m=w.avisos()[0];
+ t('A12d el correo de un interrumpido dice la hora de interrupción (11:00 a. m.) y no la programada',/a las 11:00 a\. m\.$/.test(m.subject)&&/la hora en que se interrumpió tu turno/.test(m.html)&&!/4:00 p\. m\./.test(m.html));}
 {// turno nocturno 22:00→06:00 (cruza la medianoche): la salida es la del día siguiente
  const w=mundo({now:BOG('2026-11-06',9,59),malla:[filaMalla(DIA,'agente1@pibox.app','ANA PRUEBA','22:00:00','06:00:00')],docs:[doc('N1','agente1@pibox.app','active',BOG('2026-11-05',22,1))]});w.run();
  t('A13 turno nocturno 22:00→06:00: a las 09:59 del día siguiente aún no (la salida es a las 06:00, +4 h = 10:00)',w.patches.length===0);
@@ -128,14 +138,20 @@ const t1=(w,o)=>doc('T1','agente1@pibox.app','active',BOG('2026-11-05',8,2),o);
  w.setNow(BOG('2026-11-06',8,0));w.run();const e=w.estado('L1');
  t('B5 …se cierra a las 14 h del inicio (08:00 del día siguiente), nunca con salida anterior al inicio',e.status==='ended'&&e.endTime===BOG('2026-11-06',8,0).toISOString()&&e.motivo==='Inicio posterior a la salida programada: 14 h desde el inicio',e);}
 
-// ═══ C. Retirados ═══
+// ═══ C. Retirados: archivo SILENCIOSO (no se cierra, no hay correo, no se toca endTime) ═══
+const CIE_MOTIVO_RET='Agente retirado (CARGO = INACTIVO): turno abierto vencido (archivo silencioso)';
+const archivado=(w,id)=>{const e=w.estado(id);return e.status==='archivado'&&e.auto===undefined&&e.endTime===undefined;};
 {const w=mundo({malla:malla1(),base:BASE3_ENC.concat([base3('LIDER UNO','Líder','lider1@pibox.app'),base3('ANA PRUEBA','INACTIVO','agente1@pibox.app')]),docs:[t1()]});w.run();
- t('C1 agente retirado (CARGO = INACTIVO): su turno abierto NO se cierra, no se escribe nada y no hay correos',w.patches.length===0&&w.estado('T1').status==='active'&&w.sent.length===0);}
+ t('C1 agente retirado (CARGO = INACTIVO): su turno abierto VENCIDO se ARCHIVA en silencio (status «archivado», sin endTime, sin cierre) y NO hay correos',archivado(w,'T1')&&w.sent.length===0&&w.patches.length===1,w.estado('T1'));
+ const f=w.patches[0].fields;
+ t('C1b el archivo guarda motivo, estado previo («active»), fecha, lote y quién lo hizo; NO escribe endTime ni accumulatedSeconds ni cierreAutomatico',f.archivoMotivo.stringValue===CIE_MOTIVO_RET&&f.archivoEstadoPrevio.stringValue==='active'&&!!f.archivadoAt.timestampValue&&/^retirado-20261105-/.test(f.archivoLote.stringValue)&&!('endTime' in f)&&!('accumulatedSeconds' in f)&&!('cierreAutomatico' in f),Object.keys(f));}
+{const w=mundo({now:BOG('2026-11-05',17,0),malla:malla1(),base:BASE3_ENC.concat([base3('LIDER UNO','Líder','lider1@pibox.app'),base3('ANA PRUEBA','INACTIVO','agente1@pibox.app')]),docs:[t1()]});w.run();
+ t('C1c un turno de retirado que AÚN no venció (17:00, +4 h = 20:00) no se toca',w.patches.length===0&&w.estado('T1').status==='active');}
 {const w=mundo({malla:malla1(),props:{agentes_retirados:'agente1@pibox.app'},docs:[t1()]});w.run();
- t('C2 retirado marcado a mano en la propiedad agentes_retirados: tampoco',w.patches.length===0&&w.sent.length===0);}
+ t('C2 retirado marcado a mano en la propiedad agentes_retirados: también se archiva en silencio',archivado(w,'T1')&&w.sent.length===0);}
 {const w=mundo({malla:malla1(),base:BASE3_ENC.concat([base3('LIDER UNO','Líder','lider1@pibox.app'),base3('ANA PRUEBA',' inactivo ','agente1@pibox.app'),base3('BETO PRUEBA','Agente','agente2@pibox.app')]),
-   docs:[t1(),doc('T2','agente2@pibox.app','active',BOG('2026-11-05',8,2))],malla2:0});w.malla.push(filaMalla(DIA,'agente2@pibox.app','BETO PRUEBA','8:00:00','16:00:00'));w.run();
- t('C3 con un retirado y un activo a la vez: solo se cierra el activo («INACTIVO» sin importar mayúsculas ni espacios)',w.patches.length===1&&w.patches[0].id==='T2'&&w.estado('T1').status==='active');}
+   docs:[t1(),doc('T2','agente2@pibox.app','active',BOG('2026-11-05',8,2))]});w.malla.push(filaMalla(DIA,'agente2@pibox.app','BETO PRUEBA','8:00:00','16:00:00'));w.run();
+ t('C3 con un retirado y un activo a la vez: el activo se cierra (con correo) y el retirado se archiva (sin correo); «INACTIVO» sin importar mayúsculas ni espacios',w.estado('T2').status==='ended'&&archivado(w,'T1')&&w.avisos().length===1&&w.avisos()[0].to==='agente2@pibox.app');}
 
 // ═══ D. Correo al agente con copia a su líder (estilo del Reglamento) ═══
 {const w=mundo({malla:malla1(),docs:[t1()]});w.run();const m=w.avisos()[0];
@@ -203,23 +219,23 @@ casosFalla.forEach(([n,o,re])=>{const w=mundo(Object.assign({malla:malla1(),docs
  w.run();t('F7 el resto (5) se cierra en la siguiente ejecución y nada se repite',w.patches.length===45&&w.avisos().length===45);}
 
 // ═══ G. Pendientes actuales: SOLO LECTURA ═══
-{const w=mundo({malla:malla1().concat([filaMalla('1/11/2026','agente2@pibox.app','BETO PRUEBA','8:00:00','16:00:00')]),
+{const w=mundo({malla:malla1().concat([filaMalla('1/11/2026','agente2@pibox.app','BETO PRUEBA','8:00:00','16:00:00'),filaMalla('2/11/2026','agente3@pibox.app','CARLA PRUEBA','8:00:00','16:00:00')]),
    base:BASE3_ENC.concat([base3('LIDER UNO','Líder','lider1@pibox.app'),base3('ANA PRUEBA','Agente','agente1@pibox.app'),base3('BETO PRUEBA','Agente','agente2@pibox.app'),base3('CARLA PRUEBA','INACTIVO','agente3@pibox.app')]),
-   docs:[t1(),doc('T2','agente2@pibox.app','interrupted',BOG('2026-11-01',8,0),{endTime:BOG('2026-11-01',10,0),acc:7200}),doc('T3','agente3@pibox.app','active',BOG('2026-10-20',8,0)),doc('T4','agente1@pibox.app','active',BOG('2026-11-05',19,0))]});
- // T4: turno aún en curso (iniciado a las 19:00, sin malla: faltan horas para las 14 h) → no aparece
+   docs:[t1(),doc('T2','agente2@pibox.app','interrupted',BOG('2026-11-01',8,0),{endTime:BOG('2026-11-01',10,0),acc:7200}),doc('T3','agente3@pibox.app','active',BOG('2026-11-02',8,0)),doc('T4','agente1@pibox.app','active',BOG('2026-11-05',19,0)),
+     doc('H1','agente1@pibox.app','active',BOG('2026-10-20',8,0)),doc('H2','agente1@pibox.app','interrupted',BOG('2026-04-10',8,0),{endTime:BOG('2026-04-10',9,0)})]});
  const r=w.pendientes();const L=w.logs.join('\n');
- t('G1 lista los que HOY se cerrarían (T1 con malla y T2 interrumpido de hace días) y excluye al retirado y al turno todavía en curso',r.plan.cerrar.map(x=>x.turno.id).join()==='T2,T1'&&r.plan.retirados.map(x=>x.turno.id).join()==='T3'&&r.plan.enCurso.length===1,{c:r.plan.cerrar.map(x=>x.turno.id),r:r.plan.retirados.map(x=>x.turno.id)});
- t('G2 cada línea trae agente, turno, inicio, salida programada, hora que se registraría, motivo y horas abierto',/CERRAR \| agente1@pibox\.app \| turno T1 \| estado active \| inicio 05\/11\/2026 8:02 a\. m\. \| salida programada 05\/11\/2026 4:00 p\. m\. \| se registraría la salida 05\/11\/2026 4:00 p\. m\. \| Salida programada \+ 4 h \(malla\) \| abierto 4 h después de la salida programada/.test(L.replace(/abierto 4\.0 h/,'abierto 4 h'))||/CERRAR \| agente1@pibox\.app \| turno T1/.test(L),L);
- t('G3 el interrumpido muestra su hora de interrupción actual y el retirado sale como EXCLUIDO',/CERRAR \| agente2@pibox\.app \| turno T2 \| estado interrupted.*hora de interrupción actual 01\/11\/2026 10:00 a\. m\./.test(L)&&/EXCLUIDO \(retirado\) \| agente3@pibox\.app \| turno T3/.test(L),L);
- t('G4 SOLO LECTURA: ningún PATCH, ningún correo, ninguna propiedad escrita, ningún turno cambia',w.patches.length===0&&w.sent.length===0&&Object.keys(w.props).join()==='malla_sheet_id'&&w.estado('T1').status==='active'&&w.estado('T2').status==='interrupted',{p:w.patches.length,s:w.sent.length,props:w.props});
- const antes=w.fetches.filter(f=>/PATCH/i.test(String(f.opt.method))).length;
- w.run(); // y la primera ejecución real cierra exactamente lo que listó
- t('G5 la primera ejecución real cierra EXACTAMENTE lo listado (T1 y T2), no al retirado ni al que sigue en curso',w.estado('T1').status==='ended'&&w.estado('T2').status==='ended'&&w.estado('T3').status==='active'&&w.estado('T4').status==='active'&&antes===0,[w.estado('T1').status,w.estado('T2').status]);
- t('G6 …y el cierre del interrumpido de hace días registra su salida programada del 1-nov (4:00 p. m.)',w.estado('T2').endTime===BOG('2026-11-01',16,0).toISOString()&&w.estado('T2').prevEnd===BOG('2026-11-01',10,0).toISOString());}
+ t('G1 lista los que HOY se cerrarían (T1 y T2, desde el 1-nov), el retirado va a «archivar» y el turno todavía en curso no aparece',r.plan.cerrar.map(x=>x.turno.id).join()==='T2,T1'&&r.plan.archivar.map(x=>x.turno.id).join()==='T3'&&r.plan.enCurso.length===1,{c:r.plan.cerrar.map(x=>x.turno.id),a:r.plan.archivar.map(x=>x.turno.id)});
+ t('G1b los turnos ANTERIORES al 1-nov (H1 de octubre, H2 de abril) NO entran: se cuentan aparte y no aparecen en CERRAR',r.plan.historicos.map(x=>x.turno.id).join()==='H2,H1'&&!/CERRAR \| .* \| turno H[12]/.test(L)&&/anteriores al corte, ignorados: 2/.test(L),L);
+ t('G2 cada línea CERRAR trae agente, turno, inicio, salida programada, hora que se registraría y motivo',/CERRAR \| agente1@pibox\.app \| turno T1 \| estado active \| inicio 05\/11\/2026 8:02 a\. m\. \| salida programada 05\/11\/2026 4:00 p\. m\. \| se registraría la salida 05\/11\/2026 4:00 p\. m\. \| Salida programada \+ 4 h \(malla\)/.test(L),L);
+ t('G3 el interrumpido muestra su hora de interrupción y que se registraría ESA hora (10:00 a. m.); el retirado sale como ARCHIVAR en silencio',/CERRAR \| agente2@pibox\.app \| turno T2 \| estado interrupted.*se registraría la salida 01\/11\/2026 10:00 a\. m\. \| Hora de interrupción.*hora de interrupción actual 01\/11\/2026 10:00 a\. m\./.test(L)&&/ARCHIVAR \(retirado, en silencio\) \| agente3@pibox\.app \| turno T3/.test(L),L);
+ t('G4 SOLO LECTURA: ningún PATCH, ningún correo, ninguna propiedad escrita, ningún turno cambia',w.patches.length===0&&w.sent.length===0&&Object.keys(w.props).join()==='malla_sheet_id'&&['T1','T2','T3','H1','H2'].every(i=>w.estado(i).status!=='ended'&&w.estado(i).status!=='archivado'),{p:w.patches.length,s:w.sent.length});
+ w.run(); // la primera ejecución real hace EXACTAMENTE lo listado
+ t('G5 la primera ejecución real cierra T1 y T2, archiva a T3 y NO toca los históricos (H1, H2), que siguen abiertos',w.estado('T1').status==='ended'&&w.estado('T2').status==='ended'&&archivado(w,'T3')&&w.estado('T4').status==='active'&&w.estado('H1').status==='active'&&w.estado('H2').status==='interrupted'&&w.patches.length===3,w.patches.map(x=>x.id));
+ t('G6 …el interrumpido del 1-nov queda con salida = su hora de interrupción (10:00) y los correos solo van a quienes se les cerró el turno (T1, T2)',w.estado('T2').endTime===BOG('2026-11-01',10,0).toISOString()&&w.avisos().map(m=>m.to).sort().join()==='agente1@pibox.app,agente2@pibox.app',w.avisos().map(m=>m.to));}
 {const w=mundo({malla:malla1(),docs:[t1()],respAbiertos:{code:500,body:'x'}});const r=w.pendientes();
  t('G7 si no puede leer, el listado lo dice y NO envía aviso técnico ni toca nada (solo lectura)',r.ok===false&&w.sent.length===0&&w.logs.some(l=>/No se pudo leer/.test(l)));}
 {const w=mundo({now:BOG('2026-11-05',17,0),malla:malla1(),docs:[doc('T9','agente1@pibox.app','active',BOG('2026-11-05',15,0))]});w.pendientes();
- t('G8 sin nada por cerrar lo dice',w.logs.some(l=>/Ningún turno abierto supera el límite/.test(l)));}
+ t('G8 sin nada por cerrar lo dice',w.logs.some(l=>/Ningún turno abierto desde el corte supera el límite/.test(l)));}
 
 // ═══ H. Disparador y estructura del archivo ═══
 {const w=mundo();vm.runInContext('instalarDisparadorCierreTurnos()',w.ctx);
@@ -261,6 +277,90 @@ casosFalla.forEach(([n,o,re])=>{const w=mundo(Object.assign({malla:malla1(),docs
 {const w=mundo({aud:[{error:{code:500}}],malla:[]});let err=null;try{vm.runInContext('auditoriaTurnosLargos()',w.ctx);}catch(e){err=e;}
  t('I13 falla segura de la auditoría: una lectura con error lanza (no entrega «sin hallazgos»)',!!err&&/error/i.test(err.message),err&&err.message);}
 
+
+// ═══ K. v19.4 — Corte por fecha, clasificación de históricos, archivo silencioso y su reversión ═══
+{// corte: 1-nov 00:00 de Bogotá entra; 31-oct 23:59 no
+ const docs=[doc('C1','agente1@pibox.app','active',BOG('2026-10-31',23,59)),doc('C2','agente2@pibox.app','active',BOG('2026-11-01',0,0)),doc('C3','agente3@pibox.app','active',BOG('2026-11-02',8,2))];
+ const w=mundo({now:BOG('2026-11-06',12,0),malla:[filaMalla('1/11/2026','agente2@pibox.app','BETO','0:00:00','6:00:00'),filaMalla('2/11/2026','agente3@pibox.app','CARLA','8:00:00','16:00:00'),filaMalla('31/10/2026','agente1@pibox.app','ANA','8:00:00','16:00:00')],docs});w.run();
+ t('K1 el corte es el 1-nov 00:00 de Bogotá: un turno del 31-oct 23:59 NO se cierra; el del 1-nov 00:00 y el del 2-nov SÍ',w.estado('C1').status==='active'&&w.estado('C2').status==='ended'&&w.estado('C3').status==='ended'&&w.patches.length===2,w.patches.map(x=>x.id));
+ t('K2 el turno del 31-oct no recibe correo ni marca de cierre automático; los de noviembre sí (2 correos)',w.avisos().map(m=>m.to).sort().join()==='agente2@pibox.app,agente3@pibox.app'&&w.estado('C1').auto===undefined);}
+{// un agente con ~20 turnos abiertos desde abril: NADA se escribe ni se envía, y ni siquiera se lee la malla
+ const docs=[];for(let i=0;i<20;i++)docs.push(doc('H'+i,'agente1@pibox.app',i%2?'active':'interrupted',BOG('2026-04-'+String(10+i).padStart(2,'0'),8,0),i%2?{}:{endTime:BOG('2026-04-'+String(10+i).padStart(2,'0'),9,0)}));
+ let hojas=0;const w=mundo({malla:malla1(),docs});const o=w.ctx.SpreadsheetApp.openById;w.ctx.SpreadsheetApp.openById=(...a)=>{hojas++;return o(...a);};w.run();
+ t('K3 20 turnos huérfanos de abril en adelante: el cierre automático no escribe, no envía correos y no lee malla ni BASE 3.0 (1 sola lectura a Firestore)',w.patches.length===0&&w.sent.length===0&&hojas===0&&w.fetches.length===1&&w.logs.some(l=>/anteriores al 2026-11-01.*20/.test(l)),w.logs);}
+
+// Mundo de clasificación: duplicado, único, sin malla, interrumpido antes de su salida, uno del 2 de noviembre y agentes con dos turnos el mismo día
+function mundoHist(extra){
+ const E=(id,email,s,e)=>doc(id,email,'ended',s,{endTime:e});
+ const docs=[
+  doc('DUP','agente1@pibox.app','active',BOG('2026-10-10',8,5)),E('DUPE','agente1@pibox.app',BOG('2026-10-10',8,0),BOG('2026-10-10',16,0)),   // DUPLICADO: otro turno cerrado el mismo día
+  doc('UNI','agente2@pibox.app','active',BOG('2026-10-12',8,0)),                                                                          // ÚNICO (malla 8–16 → 8,0 h)
+  doc('SIN','agente3@pibox.app','active',BOG('2026-10-13',8,0)),                                                                          // SIN MALLA
+  doc('INT','agente2@pibox.app','interrupted',BOG('2026-10-14',8,0),{endTime:BOG('2026-10-14',10,0),acc:7200}),                          // interrumpido a las 10:00, antes de su salida (16:00)
+  doc('V1','agente3@pibox.app','active',BOG('2026-10-15',8,0)),doc('V2','agente3@pibox.app','interrupted',BOG('2026-10-15',9,0),{endTime:BOG('2026-10-15',9,30)}), // dos turnos abiertos el mismo día, ninguno cerrado
+  doc('NOC','agente1@pibox.app','active',BOG('2026-10-21',3,0)),E('NOCE','agente1@pibox.app',BOG('2026-10-20',22,0),BOG('2026-10-21',6,0)), // DUPLICADO por solape: un turno nocturno cerrado cuyo intervalo contiene el inicio
+  doc('NOV2','agente1@pibox.app','active',BOG('2026-11-02',8,2)),                                                                          // del 2 de noviembre: NO es histórico
+  E('OTRO','agente2@pibox.app',BOG('2026-10-20',8,0),BOG('2026-10-20',16,0))];                                                            // turno cerrado de otro agente/día: no duplica nada
+ const malla=[filaMalla('10/10/2026','agente1@pibox.app','ANA','8:00:00','16:00:00'),filaMalla('12/10/2026','agente2@pibox.app','BETO','8:00:00','16:00:00'),filaMalla('14/10/2026','agente2@pibox.app','BETO','8:00:00','16:00:00'),
+  filaMalla('15/10/2026','agente3@pibox.app','CARLA','8:00:00','16:00:00'),filaMalla('21/10/2026','agente1@pibox.app','ANA','8:00:00','16:00:00'),filaMalla('2/11/2026','agente1@pibox.app','ANA','8:00:00','16:00:00')];
+ return mundo(Object.assign({now:BOG('2026-11-06',12,0),docs,aud:docs,malla},extra||{}));}
+{const w=mundoHist();const r=vm.runInContext('auditoriaHistoricosAbiertos()',w.ctx);const L=w.logs.join('\n');const cat=id=>(r.hallazgos.find(h=>h.id===id)||{}).categoria;
+ t('K4 clasifica los históricos: DUP=DUPLICADO, UNI=ÚNICO, SIN=SIN_MALLA, INT=ÚNICO (interrumpido), V1 y V2=VARIOS_ABIERTOS, NOC=DUPLICADO por solape nocturno',cat('DUP')==='DUPLICADO'&&cat('UNI')==='UNICO'&&cat('SIN')==='SIN_MALLA'&&cat('INT')==='UNICO'&&cat('V1')==='VARIOS_ABIERTOS'&&cat('V2')==='VARIOS_ABIERTOS'&&cat('NOC')==='DUPLICADO',r.hallazgos.map(h=>h.id+':'+h.categoria));
+ t('K5 el turno del 2 de noviembre NO se clasifica (es del cierre automático) y el cerrado de otro día no genera duplicados',cat('NOV2')===undefined&&r.hallazgos.length===7&&!r.hallazgos.some(h=>h.id==='OTRO'),r.hallazgos.map(h=>h.id));
+ const hr=id=>r.hallazgos.find(h=>h.id===id);
+ t('K6 horas si se cerrara con la salida programada: ÚNICO 8,0 h (8:00→16:00); el interrumpido también 8,0 h (programada) y muestra su hora de interrupción; sin malla = «sin horario» (null)',hr('UNI').horas===8&&hr('INT').horas===8&&!!hr('INT').interrupcion&&hr('INT').interrupcion.getTime()===BOG('2026-10-14',10,0).getTime()&&hr('SIN').horas===null,[hr('UNI').horas,hr('INT').horas,hr('SIN').horas]);
+ t('K7 cada línea muestra agente, fecha, estado, hora de interrupción y horas; el duplicado dice con qué turno cerrado se solapa',/ÚNICO|UNICO \| agente2@pibox\.app \| 14\/10\/2026 \| estado interrupted \| inicio 14\/10\/2026 8:00 a\. m\. \| interrumpido 14\/10\/2026 10:00 a\. m\. \| horas si se cerrara con la salida programada: 8 h \(salida 4:00 p\. m\.\)/.test(L)&&/DUPLICADO \| agente1@pibox\.app \| 10\/10\/2026 .* otro turno cerrado DUPE/.test(L)&&/SIN_MALLA \| agente3@pibox\.app \| 13\/10\/2026 .* sin horario/.test(L),L);
+ t('K8 resumen POR AGENTE (agente1: 2 duplicados; agente2: 2 únicos, 16 h; agente3: 1 sin malla + 2 varios) y POR MES (octubre: 7)',r.porAgente['agente1@pibox.app'].DUPLICADO===2&&r.porAgente['agente2@pibox.app'].UNICO===2&&r.porAgente['agente2@pibox.app'].horas===16&&r.porAgente['agente3@pibox.app'].SIN_MALLA===1&&r.porAgente['agente3@pibox.app'].VARIOS_ABIERTOS===2&&r.porMes['2026-10'].total===7&&/RESUMEN POR AGENTE/.test(L)&&/RESUMEN POR MES/.test(L)&&/2026-10 → 7/.test(L),r.porMes);
+ t('K9 SOLO LECTURA: ningún PATCH, ningún correo, ninguna propiedad escrita',w.patches.length===0&&w.sent.length===0&&Object.keys(w.props).join()==='malla_sheet_id');}
+{const w=mundoHist({respAbiertos:{code:503,body:'x'}});let err=null;try{vm.runInContext('auditoriaHistoricosAbiertos()',w.ctx);}catch(e){err=e;}
+ t('K10 falla segura de la clasificación: una lectura fallida lanza (no entrega una lista vacía)',!!err&&/HTTP 503/.test(err.message),err&&err.message);}
+{const w=mundoHist({aud:[{error:{code:500}}]});let err=null;try{vm.runInContext('auditoriaHistoricosAbiertos()',w.ctx);}catch(e){err=e;}
+ t('K11 con un error al leer los turnos cerrados tampoco entrega resultados parciales',!!err&&/error/i.test(err.message),err&&err.message);}
+
+// Archivo silencioso
+{const w=mundoHist();const abiertosAntes=w.docs.filter(d=>/active|interrupted/.test(d.document.fields.status.stringValue)).length;
+ const prev=vm.runInContext('archivarTurnosHistoricosVistaPrevia()',w.ctx);
+ t('K12 la vista previa del archivo es de solo lectura y lista los 7 históricos abiertos (no el del 2-nov)',prev.length===7&&w.patches.length===0&&w.sent.length===0&&Object.keys(w.props).join()==='malla_sheet_id'&&w.logs.some(l=>/VISTA PREVIA DEL ARCHIVO.*7 turnos/.test(l)));
+ const antesEnd={INT:w.estado('INT').endTime,INTacc:w.estado('INT').acc};
+ const r=vm.runInContext('archivarTurnosHistoricosAprobado()',w.ctx);
+ t('K13 archivar: los 7 históricos pasan a status «archivado»; el del 2-nov y los cerrados no se tocan',r.archivados.length===7&&['DUP','UNI','SIN','INT','V1','V2','NOC'].every(i=>w.estado(i).status==='archivado')&&w.estado('NOV2').status==='active'&&w.estado('DUPE').status==='ended'&&w.estado('OTRO').status==='ended',r);
+ const f=w.patches[0].fields,m=w.patches[0].mask;
+ t('K14 SIN endTime nuevo, SIN tocar accumulatedSeconds, SIN correos, SIN marca de cierre automático (el interrumpido conserva su hora y su acumulado)',w.sent.length===0&&!m.includes('endTime')&&!m.includes('accumulatedSeconds')&&!m.includes('cierreAutomatico')&&w.estado('INT').endTime===antesEnd.INT&&w.estado('INT').acc===antesEnd.INTacc&&w.estado('INT').auto===undefined,m);
+ const e=w.estado('INT');
+ t('K15 deja motivo, estado previo, fecha, lote y autor para poder revertir',e.archMotivo==='Histórico anterior al 1-nov-2026: turno abierto que nunca se cerró (archivo silencioso)'&&e.archPrevio==='interrupted'&&!!e.archAt&&/^historico-20261106-/.test(e.archLote)&&e.archPor==='PiGOps_CierreTurnos.gs'&&w.estado('UNI').archPrevio==='active',e);
+ t('K16 cada PATCH usa la precondición de updateTime (si el turno cambió mientras tanto, no se archiva)',w.patches.every(x=>!!x.pre));
+ // los módulos ignoran lo archivado
+ w.patches.length=0;w.sent.length=0;w.setNow(BOG('2026-11-06',13,0));const n0=w.logs.length;w.pendientes();const L=w.logs.slice(n0).join('\n');
+ t('K17 cierreTurnosPendientes() ignora los archivados: ya no hay históricos (solo el turno del 2-nov) y no los lista',!/H?\| turno (DUP|UNI|SIN|INT|V1|V2|NOC)\b/.test(L)&&w.logs.some(l=>/anteriores al corte, ignorados: 0/.test(l)),L);
+ w.run();
+ t('K18 el cierre automático tampoco los toca (solo cierra el del 2-nov)',w.patches.length===1&&w.patches[0].id==='NOV2'&&['DUP','UNI','SIN','INT','V1','V2','NOC'].every(i=>w.estado(i).status==='archivado'));
+ // reversible
+ const antes=JSON.stringify(w.docs.filter(d=>w.estado(d.document.name.split('/').pop()).status==='archivado').map(d=>d.document.name));
+ const rv=vm.runInContext('revertirArchivoTurnos()',w.ctx);
+ t('K19 REVERSIBLE: revertirArchivoTurnos() restaura el status previo (active/interrupted) de los 7 y borra los campos de archivo',rv.revertidos.length===7&&w.estado('UNI').status==='active'&&w.estado('INT').status==='interrupted'&&w.estado('V2').status==='interrupted'&&w.estado('UNI').archMotivo===undefined&&w.estado('UNI').archLote===undefined&&w.estado('INT').archPrevio===undefined,rv);
+ t('K20 …y el turno interrumpido vuelve EXACTAMENTE como estaba (misma hora de interrupción y acumulado)',w.estado('INT').endTime===antesEnd.INT&&w.estado('INT').acc===antesEnd.INTacc);
+ t('K21 tras revertir vuelven a aparecer como históricos abiertos (idempotente: archivar otra vez funciona)',vm.runInContext('archivarTurnosHistoricosAprobado()',w.ctx).archivados.length===7);
+ w.props.archivo_revertir_lote='otro-lote';const rv2=vm.runInContext('revertirArchivoTurnos()',w.ctx);delete w.props.archivo_revertir_lote;
+ t('K22 con la propiedad archivo_revertir_lote solo se revierte ese lote (uno distinto no toca nada)',rv2.revertidos.length===0&&w.estado('UNI').status==='archivado');}
+{// reversión: un turno archivado sin estado previo conocido no se adivina
+ const w=mundo({docs:[doc('X','agente1@pibox.app','archivado',BOG('2026-10-10',8,0))]});const rv=vm.runInContext('revertirArchivoTurnos()',w.ctx);
+ t('K23 un archivado sin estado previo conocido NO se revierte a ciegas (queda como error en el resultado)',rv.revertidos.length===0&&rv.errores.length===1&&w.estado('X').status==='archivado');}
+
+// Los demás módulos ignoran los turnos archivados
+{const arch=doc('AR','agente1@pibox.app','archivado',BOG('2026-11-05',8,0),{endTime:BOG('2026-11-05',9,0)});
+ const w=mundo({now:BOG('2026-11-05',12,0),aud:[arch]});const r=vm.runInContext('leerTurnosHoyRest_(new Date())',w.ctx);
+ t('K24 alertas de ausencia: un turno archivado NO cuenta como «conectado» (leerTurnosHoyRest_ solo acepta active/ended/interrupted)',r.ok===true&&r.emails.length===0,r);}
+{const arch=doc('AR','agente1@pibox.app','archivado',BOG('2026-11-05',8,0)),ok=doc('OK','agente2@pibox.app','ended',BOG('2026-11-05',8,0),{endTime:BOG('2026-11-05',16,0)});
+ const w=mundo({aud:[arch,ok]});const r=vm.runInContext('reg_leerTurnos("2026-11-05",new Date('+JSON.stringify(BOG('2026-11-06',0,0).toISOString())+'))',w.ctx);
+ t('K25 Reglamento: reg_leerTurnos descarta los archivados (no cuentan para tardanzas ni faltas)',r.length===1&&r[0].userEmail==='agente2@pibox.app',r);
+ const asis=vm.runInContext('(function(){return reg_detectarTardanzas([{fecha:"5/11/2026",usuario:"agente1@pibox.app",inicio:"6:00:00",fin:"14:00:00",novedad:""}],reg_leerTurnos("2026-11-05",new Date('+JSON.stringify(BOG('2026-11-06',0,0).toISOString())+')));})()',w.ctx);
+ t('K26 Reglamento: con solo un turno archivado ese día no hay tardanza',asis.length===0,asis);}
+{const f=(id,email,s,e,st)=>({document:{name:'projects/p/databases/(default)/documents/turnos/'+id,fields:{userEmail:{stringValue:email},status:{stringValue:st},startTime:{timestampValue:s.toISOString()},endTime:{timestampValue:e.toISOString()}},createTime:s.toISOString()}});
+ const w=mundo({aud:[f('A1','agente1@pibox.app',BOG('2026-06-02',8,0),BOG('2026-06-04',12,0),'archivado'),f('A2','agente1@pibox.app',BOG('2026-06-10',8,0),BOG('2026-06-12',12,0),'ended')],malla:[]});
+ const r=vm.runInContext('auditoriaTurnosLargos()',w.ctx);
+ t('K27 la auditoría de turnos largos ignora los archivados (solo el cerrado A2)',r.hallazgos.map(h=>h.turnoId).join()==='A2',r.hallazgos.map(h=>h.turnoId));}
+
+const cola=[]; // pruebas asíncronas del cliente: se ejecutan en orden al final
 // ═══ J. Cliente (index.html): strikes y prenómina ═══
 const html=fs.readFileSync(path.join(root,'index.html'),'utf8');
 const slice=(a,b)=>{const i=html.indexOf(a);if(i<0)throw new Error('no encontrado: '+a);const j=html.indexOf(b,i);if(j<0)throw new Error('no encontrado: '+b);return html.slice(i,j);};
@@ -289,15 +389,87 @@ const fn=(sig)=>{const i=html.indexOf(sig);if(i<0)throw new Error('no encontrado
  t('J5 la prenómina destaca la fila con cierre automático (fondo/borde naranja, marca 🤖, botón «Confirmar salida») y avisa cuántas hay por confirmar',/rgba\(251,146,60,0\.14\)/.test(H)&&/🤖 Cierre automático/.test(H)&&/confirmAutoCloseRow\(0,this\)/.test(H)&&/2 turnos con cierre automático/.test(H)&&/1 por confirmar/.test(H),H.slice(0,900));
  t('J6 la fila ya confirmada se ve en verde con «✔ confirmado» y sin botón; la fila normal no cambia',/✔ confirmado/.test(H)&&!/confirmAutoCloseRow\(2,this\)/.test(H)&&!/confirmAutoCloseRow\(1,this\)/.test(H));
  t('J7 la celda de Salida NO lleva la marca (editPayrollCell usa su texto): la marca está en la columna Fecha',(H.match(/<td[^>]*editPayrollCell\(this,0,'checkOut'\)[^>]*>([^<]*)<\/td>/)||[])[1]==='04:00 p. m.',(H.match(/editPayrollCell\(this,0,'checkOut'\)[^>]*>[^<]*/)||[])[0]);
- (async()=>{await X.confirmAutoCloseRow(0,{});
+ cola.push(async()=>{await X.confirmAutoCloseRow(0,{});
   t('J8 «Confirmar salida» escribe quién y cuándo en el turno (sin cambiar horas) y la fila queda confirmada',calls.length===1&&calls[0].id==='T1'&&calls[0].d.cierreAutomaticoConfirmadoPor==='cromero@pibox.app'&&calls[0].d.cierreAutomaticoConfirmadoAt instanceof Date&&Object.keys(calls[0].d).length===2&&win._payrollPreviewRecords[0].autoClose.confirmado===true&&/0 por confirmar|Todos confirmados/.test(body.innerHTML),calls);
-  fin();})();
+  });
 }
+// ═══ L. Cliente v19.4: lectores, strikes, prenómina ═══
+{const mod=slice("const turnosVisibles = ","window.updateOvertimeEvent");
+ const win={};const ts=d=>({toDate:()=>d});
+ const mk=(id,status,d,extra)=>Object.assign({id,userEmail:'agente1@pibox.app',userId:'u1',status,startTime:ts(d)},extra||{});
+ const hoy=new Date();hoy.setHours(9,0,0,0);
+ const docs=[mk('A','archivado',new Date(hoy.getTime()+1000)),mk('B','ended',hoy),mk('C','active',new Date(hoy.getTime()-1000))];
+ const getDocs=async()=>({docs:docs.map(d=>({id:d.id,data:()=>{const{id,...r}=d;return r;}}))});
+ const idem=x=>x;const F=new Function('auth','db','getDocs','query','collection','where','orderBy','limit','window','firestoreOpWithRetry','setDoc','doc','setTimeout',mod+'\nreturn window;');
+ const W=F({currentUser:{uid:'u1'}},{},getDocs,idem,idem,idem,idem,idem,win,async f=>f(),()=>{},()=>{},setTimeout);
+ cola.push(async()=>{
+  const hoyT=await W.getTodayTurno(),u=await W.getUserTurnos('agente1@pibox.app'),r1=await W.getRecentTurnos(),r2=await W.getRecentTurnos(new Date(0),true,new Date(2e12));
+  t('L1 los lectores de turnos del cliente (Mi turno, historial/strikes, Panel/prenómina por defecto y por rango) NO entregan turnos archivados',hoyT.id==='B'&&u.map(x=>x.id).join()==='B,C'&&r1.map(x=>x.id).join()==='B,C'&&r2.map(x=>x.id).join()==='B,C',[hoyT&&hoyT.id,u.map(x=>x.id),r1.map(x=>x.id),r2.map(x=>x.id)]);
+ });
+ const lectores=[...html.matchAll(/getDocs\(query\(collection\(db, 'turnos'\)[^\n]*\n[^\n]*\n?[^\n]*/g)];
+ t('L2 guardia estática: toda lectura de la colección «turnos» pasa por turnosVisibles (4 lectores; si agregas uno nuevo, filtra los archivados)',lectores.length===4&&lectores.every(m=>/turnosVisibles/.test(html.slice(html.indexOf(m[0]),html.indexOf(m[0])+700))),lectores.length);}
+{const ENGINE=slice("const STRIKE_CATS=","// Modelo completo de strikes de UN agente");const REGc=slice("const REGLAMENTO_DESDE=","const regIsoLocal");
+ const E=new Function([REGc,fn("function parseDate(s){"),fn("function parseTime(dateStr,timeStr){"),fn("function strikeWaiverId(email,fecha,cat){"),ENGINE,'return{computeAgentStrikes};'].join('\n'))();
+ const EM='agente1@pibox.app',ts=d=>({toDate:()=>d}),D=(y,m,d,h,mi)=>new Date(y,m-1,d,h,mi||0,0);
+ const calc=turnos=>E.computeAgentStrikes({email:EM,malla:[{fecha:'3/9/2026',usuario:EM,inicio:'8:00:00',fin:'16:00:00',novedad:''}],turnos,waiverMap:new Map(),appealMap:new Map(),cfg:{tardanzaMins:5,nodescHrs:4},now:D(2026,9,10,12)});
+ const arch={userEmail:EM,status:'archivado',startTime:ts(D(2026,9,3,9,30)),endTime:ts(D(2026,9,3,23,0))};
+ t('L3 strikes: un turno archivado (tardío y con salida >4 h) no genera tardanza ni no desconexión',calc([arch]).length===0);
+ const buena={userEmail:EM,status:'ended',startTime:ts(D(2026,9,3,8,0)),endTime:ts(D(2026,9,3,16,0))};
+ t('L4 strikes: con un turno normal y uno archivado el mismo día manda el normal (sin strikes)',calc([arch,buena]).length===0);}
+{// prenómina REAL (loadFreshPayrollData) con datos simulados
+ const code=[fn('function parseDate(s){'),fn('function parseTime(dateStr,timeStr){'),fn('function strikeWaiverId(email,fecha,cat){'),html.split('\n').find(l=>l.startsWith('function parseCSVLine(')),fn('function pickTurnoDelDia(allTurnos,email,d){'),fn('async function loadFreshPayrollData(cyc){')].join('\n');
+ const ts=d=>({toDate:()=>d});
+ async function run(rows,turnos,opts={}){
+  const monday=opts.monday,win={_payrollPreviewMeta:{lastMonday:monday,lastSunday:new Date(monday.getTime()+6*86400000+86399000)},ADMINS:[],getRecentTurnos:async()=>turnos,getApprovedOvertimeEvents:async()=>opts.eventos||[],getStrikeWaivers:async()=>[],_payrollDirty:false};
+  const F=new Function('window','document','console','fetchMallaCSV','panelMalla','ADMINS','SUPER_ADMIN','TOLERANCE_MINS','esNovedadVotaciones','formatDuration','renderPayrollPreviewTable',code+'\nreturn loadFreshPayrollData;');
+  const csv='h\n'+rows.map(r=>['',r.fecha,r.usuario,r.nombre||'X','',r.inicio,r.fin,'','',r.lider||'L',r.novedad||'','',r.almuerzo||''].join(',')).join('\n');
+  await F(win,{querySelector:()=>null},{log(){},error(){}},async()=>csv,async()=>csv,[],'root@pibox.app',5,()=>false,s=>{const h=Math.floor(s/3600),m=Math.floor(s%3600/60);return String(h).padStart(2,'0')+':'+String(m).padStart(2,'0')+':00';},()=>{})();
+  return win._payrollPreviewRecords;}
+ const U='agente1@pibox.app';
+ cola.push(async()=>{
+  // Caso real del 05/08/2026: 9 h programadas, 33,4 h registradas, extras RECHAZADAS
+  const a0=new Date(2026,7,5,8,0),a1=new Date(a0.getTime()+33.4*3600000);
+  const base={id:'T',userEmail:U,status:'ended',startTime:ts(a0),endTime:ts(a1)};
+  let r=await run([{fecha:'5/8/2026',usuario:U,inicio:'8:00:00',fin:'17:00:00'}],[Object.assign({overtimeStatus:'rejected'},base)],{monday:new Date(2026,7,3)});
+  t('M1 05/08/2026 (33,4 h registradas, 9 programadas, extras RECHAZADAS): la prenómina paga las PROGRAMADAS (09:00:00, 8:00→5:00 p. m.)',r.length===1&&r[0].hours==='09:00:00'&&/05:00 p\. m\./.test(r[0].checkOut),r);
+  r=await run([{fecha:'5/8/2026',usuario:U,inicio:'8:00:00',fin:'17:00:00',almuerzo:'1'}],[Object.assign({overtimeStatus:'rejected'},base)],{monday:new Date(2026,7,3)});
+  t('M2 …y con 1 h de almuerzo, 08:00:00 (el almuerzo se descuenta de lo programado, no de lo registrado)',r[0].hours==='08:00:00',r);
+  r=await run([{fecha:'5/8/2026',usuario:U,inicio:'8:00:00',fin:'17:00:00'}],[Object.assign({overtimeStatus:'approved'},base)],{monday:new Date(2026,7,3)});
+  t('M3 solo con extras APROBADAS la prenómina usa la salida real (control: 33,4 h → 33:24:00)',r[0].hours==='33:24:00',r[0].hours);
+  r=await run([{fecha:'5/8/2026',usuario:U,inicio:'8:00:00',fin:'17:00:00'}],[base],{monday:new Date(2026,7,3),eventos:[{agentEmail:U,mallaEntry:{fecha:'5/8/2026'}}]});
+  t('M3b …o con un evento de extras aprobado para ese agente y fecha (control)',r[0].hours==='33:24:00',r[0].hours);
+  // Caso 03/11/2026: dos turnos el mismo día (10:16 y 18:07→10:19 del día siguiente); malla supuesta 10:00–18:00
+  const A={id:'A',userEmail:U,status:'ended',startTime:ts(new Date(2026,10,3,10,16)),endTime:ts(new Date(2026,10,3,18,0))};
+  const B={id:'B',userEmail:U,status:'ended',startTime:ts(new Date(2026,10,3,18,7)),endTime:ts(new Date(2026,10,4,10,19))};
+  const m3=[{fecha:'3/11/2026',usuario:U,inicio:'10:00:00',fin:'18:00:00'}];
+  for(const [n,orden] of [['B primero (como llega de Firestore, del más reciente al más antiguo)',[B,A]],['A primero',[A,B]]]){
+   r=await run(m3,orden,{monday:new Date(2026,10,2)});
+   t('M4 03/11/2026 con dos turnos ('+n+'): el día se paga desde el primer inicio real (10:16 a. m.) hasta la salida programada: 07:44:00 (antes: 23:53:00)',r.length===1&&/10:16 a\. m\./.test(r[0].checkIn)&&r[0].hours==='07:44:00',r);}
+  const huerfano={id:'O',userEmail:U,status:'active',startTime:ts(new Date(2026,10,3,10,1)),endTime:null};
+  const bueno={id:'G',userEmail:U,status:'ended',startTime:ts(new Date(2026,10,3,10,16)),endTime:ts(new Date(2026,10,3,18,0))};
+  r=await run(m3,[huerfano,bueno],{monday:new Date(2026,10,2)});
+  t('M5 un turno huérfano ACTIVO + uno cerrado el mismo día: manda el cerrado (10:16 a. m.), no el huérfano',/10:16 a\. m\./.test(r[0].checkIn)&&r[0].hours==='07:44:00',r[0]);
+  r=await run(m3,[{id:'AR',userEmail:U,status:'archivado',startTime:ts(new Date(2026,10,3,10,40)),endTime:null}],{monday:new Date(2026,10,2)});
+  t('M6 un turno ARCHIVADO se ignora: el día se paga por la malla completa (10:00 a. m.→6:00 p. m., 08:00:00), como si no hubiera turno',/10:00 a\. m\./.test(r[0].checkIn)&&r[0].hours==='08:00:00',r[0]);
+  r=await run(m3,[huerfano,{id:'AR',userEmail:U,status:'archivado',startTime:ts(new Date(2026,10,3,10,5)),endTime:null},bueno],{monday:new Date(2026,10,2)});
+  t('M7 archivado + huérfano + cerrado el mismo día: manda el cerrado',/10:16 a\. m\./.test(r[0].checkIn)&&r[0].hours==='07:44:00');
+  r=await run([{fecha:'3/11/2026',usuario:U,inicio:'8:00:00',fin:'16:00:00'}],[{id:'L',userEmail:U,status:'ended',startTime:ts(new Date(2026,10,3,17,0)),endTime:ts(new Date(2026,10,3,18,0))}],{monday:new Date(2026,10,2)});
+  t('M8 un turno iniciado DESPUÉS de la salida programada (17:00 vs 16:00): 0 h dentro del horario (antes: 23:00:00)',r[0].hours==='00:00:00',r[0].hours);
+  r=await run([{fecha:'3/11/2026',usuario:U,inicio:'22:00:00',fin:'6:00:00'}],[],{monday:new Date(2026,10,2)});
+  t('M9 turno NOCTURNO 22:00→06:00 sin registro: sigue pagando 8 h (el +24 h aplica porque el horario cruza la medianoche)',r[0].hours==='08:00:00',r[0].hours);
+  r=await run([{fecha:'3/11/2026',usuario:U,inicio:'22:00:00',fin:'6:00:00'}],[{id:'N',userEmail:U,status:'ended',startTime:ts(new Date(2026,10,3,22,30)),endTime:ts(new Date(2026,10,4,6,0))}],{monday:new Date(2026,10,2)});
+  t('M10 nocturno con llegada tardía (22:30): 7 h 30 min (22:30→06:00)',r[0].hours==='07:30:00',r[0].hours);
+  r=await run(m3,[{id:'CA',userEmail:U,status:'ended',startTime:ts(new Date(2026,10,3,10,2)),endTime:ts(new Date(2026,10,3,18,0)),cierreAutomatico:true,cierreAutomaticoMotivo:'Salida programada + 4 h (malla)'}],{monday:new Date(2026,10,2)});
+  t('M11 el turno con cierre automático sigue marcándose en la prenómina (v19.3) y paga lo programado',r[0].autoClose&&r[0].turnoId==='CA'&&r[0].hours==='08:00:00',r[0]);
+ });
+}
+
 function fin(){
  // estáticos del cliente
- t('J9 versión 19.3 con el formato exacto que usa la detección de actualizaciones',/const APP_VERSION='19\.3';/.test(html));
+ t('J9 versión 19.4 con el formato exacto que usa la detección de actualizaciones',/const APP_VERSION='19\.4';/.test(html));
  t('J10 el Panel de Control muestra la insignia «Cierre automático» del turno',/🤖 Cierre automático\$\{t\.cierreAutomaticoConfirmadoAt/.test(html));
  const fails=out.filter(l=>l.startsWith('FAIL'));
  console.log(out.join('\n'));console.log('\n'+(out.length-fails.length)+'/'+out.length+' pruebas OK'+(fails.length?'  —  '+fails.length+' FALLAN':''));
  process.exit(fails.length?1:0);
 }
+(async()=>{for(const f of cola)await f();fin();})();
