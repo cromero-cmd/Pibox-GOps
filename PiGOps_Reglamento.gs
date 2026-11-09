@@ -45,7 +45,7 @@
 
 var REG = {
   DESDE: '2026-11-01',          // las tardanzas anteriores siguen en el modelo de strikes
-  TOLERANCIA_MIN: 5,            // tardanza = más de 5 minutos
+  TOLERANCIA_MIN: 5,            // tolerancia: 5 min COMPLETOS. Es tardanza desde el minuto 6 (11:06:00 para un turno de las 11:00; 11:05:59 no). Los minutos se TRUNCAN, nunca se redondean
   PLAZO_DIAS_HABILES: 3,
   VENTANA_MESES: 3,             // mes actual + 2 anteriores completos (igual que la vigencia de strikes)
   COL: 'reglamento_casos',
@@ -102,6 +102,12 @@ function reg_horaAmPm(date) { // Date → «8:14 a. m.» (hora de Bogotá)
   var d = new Date(date.getTime() - 5 * 3600000), h = d.getUTCHours(), mi = d.getUTCMinutes();
   return (h % 12 === 0 ? 12 : h % 12) + ':' + reg_pad(mi) + (h < 12 ? ' a. m.' : ' p. m.');
 }
+function reg_horaAmPmSeg(date) { // Date → «11:06:12 a. m.» (hora de Bogotá, con segundos: es la evidencia que ve el agente)
+  var d = new Date(date.getTime() - 5 * 3600000), h = d.getUTCHours(), mi = d.getUTCMinutes(), se = d.getUTCSeconds();
+  return (h % 12 === 0 ? 12 : h % 12) + ':' + reg_pad(mi) + ':' + reg_pad(se) + (h < 12 ? ' a. m.' : ' p. m.');
+}
+// Minutos de retardo TRUNCADOS (5 min 59 s = 5; 6 min 00 s = 6). Misma cuenta que ve el agente en la hora con segundos; nunca se redondea.
+function reg_minutosRetardo(inicio, prog) { return Math.floor((inicio.getTime() - prog.getTime()) / 60000); }
 function reg_horaProgramada(texto) { // «8:00:00» / «14:00» / «8:00 a. m.» → {h, mi} o null
   var s = String(texto || '').trim();
   if (!s || s === '0') return null;
@@ -151,10 +157,12 @@ function reg_detectarTardanzas(malla, turnos) {
     if (!turno) turno = dia[0] || null;
     if (!turno) return;
     var prog = reg_progADate(iso, hm);
-    var minutos = Math.round((turno.startTime.getTime() - prog.getTime()) / 60000);
+    // v19.5: minutos TRUNCADOS. Antes se redondeaba y la tolerancia quedaba inconsistente (5 min 40 s era tardanza y 5 min 20 s no; el aviso decía
+    // «inicio 11:05 a. m. (6 minutos de retardo)»). Es tardanza solo desde el minuto 6 completo: 11:06:00 sí; 11:05:59 no.
+    var minutos = reg_minutosRetardo(turno.startTime, prog);
     if (minutos <= REG.TOLERANCIA_MIN) return;
     vistos[k] = true;
-    out.push({ email: m.usuario, iso: iso, fecha: m.fecha, prog: prog, progTexto: reg_horaAmPm(prog), inicio: turno.startTime, inicioTexto: reg_horaAmPm(turno.startTime), minutos: minutos });
+    out.push({ email: m.usuario, iso: iso, fecha: m.fecha, prog: prog, progTexto: reg_horaAmPm(prog), inicio: turno.startTime, inicioTexto: reg_horaAmPmSeg(turno.startTime), minutos: minutos });
   });
   return out.sort(function (a, b) { return a.iso < b.iso ? -1 : a.iso > b.iso ? 1 : 0; });
 }
@@ -557,7 +565,7 @@ function reg_leerTurnos(desdeISO, hasta) {
       if (!r || !r.document) return;
       var o = reg_fsDoc(r.document);
       if (o.status === 'archivado') return; // turno archivado en silencio (PiGOps_CierreTurnos.gs): no cuenta para tardanzas ni faltas
-      if (o.userEmail && o.startTime) out.push({ userEmail: o.userEmail, status: o.status || '', startTime: new Date(o.startTime), endTime: o.endTime ? new Date(o.endTime) : null });
+      if (o.userEmail && o.startTime) out.push({ id: o._id, userEmail: o.userEmail, status: o.status || '', startTime: new Date(o.startTime), endTime: o.endTime ? new Date(o.endTime) : null });
     });
     cur = fin;
   }
@@ -905,7 +913,7 @@ function pruebaEnvioReglamento() {
     // Cuatro tardanzas inventadas (noviembre de 2026): 1.ª y 2.ª = falta leve; 3.ª = falta grave; 4.ª = reincidencia
     var datos = [['2026-11-03', 14], ['2026-11-04', 22], ['2026-11-05', 9], ['2026-11-09', 31]].map(function (x) {
       var prog = reg_progADate(x[0], { h: 8, mi: 0 }), ini = new Date(prog.getTime() + x[1] * 60000);
-      return { email: email, iso: x[0], fecha: reg_aDDMMYYYY(x[0]), prog: prog, progTexto: reg_horaAmPm(prog), inicio: ini, inicioTexto: reg_horaAmPm(ini), minutos: x[1] };
+      return { email: email, iso: x[0], fecha: reg_aDDMMYYYY(x[0]), prog: prog, progTexto: reg_horaAmPm(prog), inicio: ini, inicioTexto: reg_horaAmPmSeg(ini), minutos: x[1] };
     });
     var docs = {};
     datos.forEach(function (t, i) {
@@ -1040,4 +1048,122 @@ function promoverRegistrosDePrueba() {
   var texto = out.join('\n');
   Logger.log(texto);
   return texto;
+}
+
+
+// ═══════════════ DIAGNÓSTICO DE LA TOLERANCIA (SOLO LECTURA; v19.5) ═══════════════
+// Desde la v19.5 la tolerancia es de 5 min COMPLETOS y los minutos se TRUNCAN: es tardanza desde el minuto 6 (11:06:00 para un turno de las 11:00;
+// 11:05:59 no). Antes se redondeaba (5 min 40 s = 6 = tardanza; 5 min 20 s = 5 = no) y el aviso decía «inicio 11:05 a. m. (6 minutos de retardo)».
+// Estas dos funciones NO escriben, no cancelan ni envían nada: la decisión sobre cada registro es de quien administra.
+//
+//  diagnosticoToleranciaReglamento()   lista los registros de reglamento_casos (tardanzas) desde el 1-nov-2026 que con la regla nueva dejarían de
+//                                      ser tardanza: agente, fecha, hora de inicio CON SEGUNDOS, minutos (truncados vs. los guardados) y estado actual.
+//                                      También cuenta los que siguen siendo tardanza y los que no se pudieron verificar (sin turno o sin malla).
+//                                      Ojo: si uno de esos registros se cancela, las tardanzas posteriores del mismo agente cambian su número en la
+//                                      ventana (la 3.ª pasa a ser 2.ª, etc.) y un llamado ya ENVIADO no se puede deshacer por el sistema.
+//  diagnosticoInicioTurno()            hora EXACTA (con segundos) del/los turno(s) de un agente en un día: lee las propiedades de script
+//                                      diag_turno_email (obligatoria) y diag_turno_dia (yyyy-MM-dd; por defecto 2026-11-09). Muestra la hora de inicio
+//                                      del cliente con segundos y milisegundos, la hora que fijó el SERVIDOR al crear el documento (createTime), la
+//                                      hora programada, el retardo exacto en segundos, los minutos truncados (regla nueva) y redondeados (regla
+//                                      anterior) y el registro de reglamento_casos de ese día.
+// Docs: {id: documento de reglamento_casos} · malla: [{fecha:'DD/MM/YYYY', usuario, inicio, novedad}] · turnos: [{id, userEmail, status, startTime:Date}].
+// Pura (sin IO). El turno del día se elige igual que en reg_detectarTardanzas (ended > interrupted > el primero, el más temprano; sin archivados).
+function reg_auditarTolerancia(docs, malla, turnos) {
+  var progPorDia = {}, turnosPorDia = {};
+  malla.forEach(function (m) {
+    var iso = reg_isoDesdeDDMMYYYY(m.fecha), hm = reg_horaProgramada(m.inicio);
+    if (!iso || !hm || !m.usuario || m.novedad) return;
+    var k = String(m.usuario).toLowerCase() + '|' + iso;
+    if (!progPorDia[k]) progPorDia[k] = reg_progADate(iso, hm);
+  });
+  turnos.forEach(function (t) {
+    if (!t.userEmail || !t.startTime || t.status === 'archivado') return;
+    var k = String(t.userEmail).toLowerCase() + '|' + reg_isoBogota(t.startTime);
+    (turnosPorDia[k] = turnosPorDia[k] || []).push(t);
+  });
+  var out = [];
+  Object.keys(docs).forEach(function (id) {
+    var d = docs[id];
+    if (d.tipoRegistro !== 'tardanza' || !d.fechaISO || d.fechaISO < REG.DESDE) return;
+    var k = String(d.userEmail || '').toLowerCase() + '|' + d.fechaISO;
+    var dia = (turnosPorDia[k] || []).slice().sort(function (a, b) { return a.startTime - b.startTime; }), turno = null, i;
+    for (i = 0; i < dia.length; i++) if (dia[i].status === 'ended') { turno = dia[i]; break; }
+    if (!turno) for (i = 0; i < dia.length; i++) if (dia[i].status === 'interrupted') { turno = dia[i]; break; }
+    if (!turno) turno = dia[0] || null;
+    var prog = progPorDia[k] || null;
+    var r = { id: id, userEmail: d.userEmail, fechaISO: d.fechaISO, estado: d.estado || '', tipo: d.tipo || '', prueba: !!d.prueba, enviadoISO: d.enviadoISO || '', minutosGuardados: d.minutos,
+      inicioGuardado: d.inicioReal || '', programada: prog ? reg_horaAmPm(prog) : '', veredicto: 'SIN_DATOS', motivo: '' };
+    if (!turno || !prog) { r.motivo = !turno ? 'no se encontró el turno de ese día' : 'no se encontró la hora programada en la malla'; out.push(r); return; }
+    var seg = (turno.startTime.getTime() - prog.getTime()) / 1000;
+    r.inicio = turno.startTime; r.inicioTexto = reg_horaAmPmSeg(turno.startTime); r.turnoId = turno.id || '';
+    r.segundosRetardo = Math.round(seg * 10) / 10; r.minutosNuevos = reg_minutosRetardo(turno.startTime, prog);
+    r.veredicto = r.minutosNuevos > REG.TOLERANCIA_MIN ? 'SIGUE' : 'DEJA_DE_SER_TARDANZA';
+    out.push(r);
+  });
+  return out.sort(function (a, b) { return a.fechaISO < b.fechaISO ? -1 : a.fechaISO > b.fechaISO ? 1 : (a.userEmail < b.userEmail ? -1 : 1); });
+}
+function diagnosticoToleranciaReglamento() {
+  var ahora = new Date();
+  var docs = reg_listarColeccion(REG.COL), malla = reg_leerMalla(REG.DESDE), turnos = reg_leerTurnos(REG.DESDE, ahora); // lanzan ante cualquier lectura fallida
+  var res = reg_auditarTolerancia(docs, malla, turnos);
+  var dejan = res.filter(function (r) { return r.veredicto === 'DEJA_DE_SER_TARDANZA'; }), siguen = res.filter(function (r) { return r.veredicto === 'SIGUE'; }), sinDatos = res.filter(function (r) { return r.veredicto === 'SIN_DATOS'; });
+  Logger.log('TOLERANCIA NUEVA (solo lectura; no se canceló ni se modificó nada): ' + res.length + ' registros de tardanza desde ' + REG.DESDE + ' · seguirían: ' + siguen.length + ' · DEJARÍAN DE SER TARDANZA: ' + dejan.length + ' · sin verificar: ' + sinDatos.length);
+  dejan.forEach(function (r) {
+    Logger.log('DEJA DE SER TARDANZA | ' + r.userEmail + ' | ' + reg_aDDMMYYYY(r.fechaISO) + ' | programada ' + r.programada + ' | inicio ' + r.inicioTexto + ' | retardo ' + r.segundosRetardo + ' s = ' + r.minutosNuevos + ' min (guardado: ' + r.minutosGuardados + ' min, «' + r.inicioGuardado + '») | estado actual: ' + r.estado +
+      (r.tipo ? ' · ' + r.tipo : '') + (r.prueba ? ' · de PRUEBA' : '') + (r.estado === REG.ESTADO_ENVIADO || r.estado === REG.ESTADO_CERRADO ? ' · YA ENVIADO' + (r.enviadoISO ? ' el ' + r.enviadoISO : '') : '') + ' | registro ' + r.id);
+  });
+  sinDatos.forEach(function (r) { Logger.log('SIN VERIFICAR | ' + r.userEmail + ' | ' + reg_aDDMMYYYY(r.fechaISO) + ' | ' + r.motivo + ' | estado actual: ' + r.estado + ' | registro ' + r.id); });
+  siguen.forEach(function (r) { Logger.log('sigue | ' + r.userEmail + ' | ' + reg_aDDMMYYYY(r.fechaISO) + ' | inicio ' + r.inicioTexto + ' | ' + r.minutosNuevos + ' min | ' + r.estado); });
+  if (!dejan.length) Logger.log('Ningún registro dejaría de ser tardanza con la regla nueva.');
+  else Logger.log('Si cancelas alguno, las tardanzas posteriores de ese agente cambian de número en la ventana; un llamado YA ENVIADO no se deshace solo.');
+  return { total: res.length, dejan: dejan, siguen: siguen, sinDatos: sinDatos };
+}
+
+// Turnos de UN agente (consulta por userEmail, un solo campo: sin índice compuesto). Devuelve también el createTime del SERVIDOR. Lanza ante cualquier falla.
+function reg_turnosDeAgente(email) {
+  var body = { structuredQuery: { from: [{ collectionId: 'turnos' }], where: { fieldFilter: { field: { fieldPath: 'userEmail' }, op: 'EQUAL', value: { stringValue: email } } }, limit: 1000 } };
+  var resp = UrlFetchApp.fetch(FIREBASE_REST + ':runQuery', { method: 'post', contentType: 'application/json', headers: { Authorization: 'Bearer ' + reg_token() }, payload: JSON.stringify(body), muteHttpExceptions: true });
+  if (resp.getResponseCode() !== 200) throw new Error('Firestore turnos → HTTP ' + resp.getResponseCode() + ' ' + String(resp.getContentText()).slice(0, 300));
+  var cuerpo = JSON.parse(resp.getContentText()), out = [];
+  if (!Array.isArray(cuerpo)) throw new Error('Firestore turnos → la respuesta no es un arreglo');
+  cuerpo.forEach(function (r) {
+    if (r && r.error) throw new Error('Firestore turnos → error en la respuesta: ' + JSON.stringify(r.error).slice(0, 300));
+    if (!r || !r.document) return;
+    var o = reg_fsDoc(r.document);
+    if (o.startTime) out.push({ id: o._id, userEmail: o.userEmail, status: o.status || '', startTime: new Date(o.startTime), startRaw: o.startTime, endTime: o.endTime ? new Date(o.endTime) : null, createTime: r.document.createTime ? new Date(r.document.createTime) : null, editedBy: o.editedBy || o.forcedClosedBy || '' });
+  });
+  if (out.length >= 1000) throw new Error('el agente tiene 1000 turnos o más: la lectura puede estar incompleta');
+  return out;
+}
+function diagnosticoInicioTurno() {
+  var p = PropertiesService.getScriptProperties();
+  var email = p.getProperty('diag_turno_email'), dia = p.getProperty('diag_turno_dia') || '2026-11-09';
+  if (!email) throw new Error('Define la propiedad de script diag_turno_email (correo del agente) y, si quieres otro día, diag_turno_dia (yyyy-MM-dd).');
+  return diagnosticoInicioTurnoDe_(email, dia);
+}
+function diagnosticoInicioTurnoDe_(email, iso) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(iso))) throw new Error('Fecha inválida; usa yyyy-MM-dd');
+  var mail = String(email).trim().toLowerCase();
+  var turnos = reg_turnosDeAgente(email).filter(function (t) { return reg_isoBogota(t.startTime) === iso; }).sort(function (a, b) { return a.startTime - b.startTime; });
+  var malla = reg_leerMalla(iso).filter(function (m) { return String(m.usuario).toLowerCase() === mail && reg_isoDesdeDDMMYYYY(m.fecha) === iso; });
+  var doc = reg_listarColeccion(REG.COL)[reg_idCaso(email, iso)] || null;
+  var prog = null, hm = malla.length ? reg_horaProgramada(malla[0].inicio) : null;
+  if (hm) prog = reg_progADate(iso, hm);
+  Logger.log('INICIO DE TURNO (solo lectura) — ' + email + ' — ' + reg_aDDMMYYYY(iso) + ': ' + turnos.length + ' turno(s); malla: ' + (malla.length ? malla.map(function (m) { return m.inicio + ' → ' + m.fin + (m.novedad ? ' (novedad: ' + m.novedad + ')' : ''); }).join(' | ') : 'SIN FILA ese día'));
+  var res = { email: email, dia: iso, programada: prog, turnos: [], registro: doc };
+  turnos.forEach(function (t) {
+    var fila = { id: t.id, status: t.status, inicio: t.startTime, inicioTexto: reg_horaAmPmSeg(t.startTime), inicioISO: t.startRaw, creadoServidor: t.createTime, editadoPor: t.editedBy };
+    var linea = 'turno ' + t.id + ' | estado ' + t.status + ' | inicio ' + fila.inicioTexto + ' (' + t.startRaw + ')' +
+      (t.createTime ? ' | creado en el servidor ' + reg_horaAmPmSeg(t.createTime) + ' (' + t.createTime.toISOString() + ')' : '') + (t.editedBy ? ' | EDITADO por ' + t.editedBy : '');
+    if (prog) {
+      var seg = (t.startTime.getTime() - prog.getTime()) / 1000;
+      fila.segundosRetardo = seg; fila.minutosTruncados = reg_minutosRetardo(t.startTime, prog); fila.minutosRedondeados = Math.round(seg / 60);
+      fila.esTardanzaRegla = fila.minutosTruncados > REG.TOLERANCIA_MIN; fila.eraTardanzaAntes = fila.minutosRedondeados > REG.TOLERANCIA_MIN;
+      linea += ' | programada ' + reg_horaAmPm(prog) + ' | retardo ' + Math.round(seg * 10) / 10 + ' s = ' + fila.minutosTruncados + ' min truncados (regla nueva: ' + (fila.esTardanzaRegla ? 'TARDANZA' : 'dentro de la tolerancia') + ') / ' + fila.minutosRedondeados + ' min redondeados (regla anterior: ' + (fila.eraTardanzaAntes ? 'tardanza' : 'no') + ')';
+    }
+    Logger.log(linea); res.turnos.push(fila);
+  });
+  if (!turnos.length) Logger.log('No hay turnos de ese agente ese día.');
+  Logger.log('Registro de reglamento_casos ' + reg_idCaso(email, iso) + ': ' + (doc ? 'estado ' + doc.estado + ' · ' + (doc.tipo || '') + ' · minutos guardados ' + doc.minutos + ' · inicio guardado «' + doc.inicioReal + '»' + (doc.prueba ? ' · de PRUEBA' : '') : 'no existe'));
+  return res;
 }

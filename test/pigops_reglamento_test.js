@@ -71,9 +71,9 @@ const to=m=>String(m.to);
  const w2=world();w2.tardanza('2026-11-04',8,0,14);w2.malla[0].novedad='INCAPACIDAD';
  t('D2 un día con novedad en la malla no genera tardanza',R('reg_detectarTardanzas')(w2.malla,w2.turnos).length===0);
  const w3=world();w3.tardanza('2026-11-04',8,0,14);const t3=R('reg_detectarTardanzas')(w3.malla,w3.turnos)[0];
- t('D3 hora programada 8:00 a. m., inicio 8:14 a. m., 14 minutos (hora de Bogotá)',t3.progTexto==='8:00 a. m.'&&t3.inicioTexto==='8:14 a. m.'&&t3.minutos===14,t3);
+ t('D3 hora programada 8:00 a. m., inicio 8:14 a. m., 14 minutos (hora de Bogotá)',t3.progTexto==='8:00 a. m.'&&t3.inicioTexto==='8:14:00 a. m.'&&t3.minutos===14,t3);
  const w4=world();w4.tardanza('2026-11-04',14,0,30);const t4=R('reg_detectarTardanzas')(w4.malla,w4.turnos)[0];
- t('D4 turno de la tarde: 2:00 p. m. → 2:30 p. m.',t4.progTexto==='2:00 p. m.'&&t4.inicioTexto==='2:30 p. m.');}
+ t('D4 turno de la tarde: 2:00 p. m. → 2:30 p. m.',t4.progTexto==='2:00 p. m.'&&t4.inicioTexto==='2:30:00 p. m.');}
 
 // ═══ Escenarios pedidos ═══
 { // 1.ª tardanza sin justificar → llamado al agente con las copias correctas
@@ -88,7 +88,7 @@ const to=m=>String(m.to);
  w.diario(BOG('2026-11-10',7,0));
  const m=w.sent[1];
  t('E1e vencido el plazo (martes 10-nov 7:00) sale el llamado: para el agente, copia al líder, a TH y a cromero, con el PDF adjunto',w.sent.length===2&&to(m)==='ana@pibox.app'&&m.cc==='jefe@pibox.app,th@pibox.app,cromero@pibox.app'&&m.attachments.length===1&&m.attachments[0].name==='llamado.pdf',m&&{to:m.to,cc:m.cc});
- t('E1f el párrafo de la falta trae fecha, programada, registrada y minutos (texto del ejemplo)',w.pdfs[0].faltas.length===1&&w.pdfs[0].faltas[0]==='El día 4 de noviembre de 2026, su turno estaba programado para iniciar a las 8:00 a. m. y registró su inicio a las 8:14 a. m., con 14 minutos de retardo, sin justificación aprobada dentro del plazo de 3 días hábiles.',w.pdfs[0].faltas);
+ t('E1f el párrafo de la falta trae fecha, programada, registrada y minutos (texto del ejemplo)',w.pdfs[0].faltas.length===1&&w.pdfs[0].faltas[0]==='El día 4 de noviembre de 2026, su turno estaba programado para iniciar a las 8:00 a. m. y registró su inicio a las 8:14:00 a. m., con 14 minutos de retardo, sin justificación aprobada dentro del plazo de 3 días hábiles.',w.pdfs[0].faltas);
  t('E1g el PDF lleva nombre, cargo, firmante y cargo del firmante de la configuración',w.pdfs[0].nombre==='Ana Uno'&&w.pdfs[0].cargo==='Agente de Operaciones'&&w.pdfs[0].firmante==='Camilo Romero'&&w.pdfs[0].cargoFirmante==='Gerente de Operaciones'&&w.pdfs[0].fecha==='10 de noviembre de 2026',w.pdfs[0]);
  const c=w.casos()[0];
  t('E1h el registro queda «Enviado» con fecha de envío y enlace al PDF, tipo llamado n.º 1',c.estado==='Enviado'&&c.tipo==='llamado'&&c.numeroEnVentana===1&&c.pdfUrl==='https://drive/pdf/1'&&!!c.enviadoAt,c);
@@ -562,7 +562,7 @@ const to=m=>String(m.to);
   t('PR8 el log marca cada paso con OK, y lista los enlaces de los PDF/Excel dejados en Drive para revisarlos y borrarlos',/OK     1\/3 llamado de atención con DOS faltas/.test(log)&&/OK     2\/3 notificación de falta grave/.test(log)&&/OK     3\/3 notificación de reincidencia/.test(log)&&/ARCHIVOS GENERADOS EN DRIVE/.test(log)&&/PDF del llamado: https:\/\/drive\.google\.com/.test(log)&&(log.match(/Excel de soporte(?: \(reincidencia\))?: https:\/\/drive\.google\.com/g)||[]).length===2&&/Firestore: no se leyó ni escribió nada/.test(log),log);
   t('PR9 revisión del PDF: marcadores reemplazados, un párrafo por falta, nota amarilla eliminada, causal literal y firma con nombre y cargo',/OK     PDF: marcadores reemplazados/.test(log)&&/OK     PDF: un párrafo por falta \(2 faltas/.test(log)&&/OK     PDF: nota para quien diligencia eliminada/.test(log)&&/OK     PDF: causal literal \(art\. 59 num\. 1\)/.test(log)&&/OK     PDF: firma: Camilo Romero — Gerente de Operaciones/.test(log),log);
   const cuerpo=g.G.body.getText();
-  t('PR10 el documento final: faltas en párrafos separados con fecha, hora programada, hora de inicio y minutos; sin nota; con firma',/El día 3 de noviembre de 2026, su turno estaba programado para iniciar a las 8:00 a\. m\. y registró su inicio a las 8:14 a\. m\., con 14 minutos de retardo/.test(cuerpo)&&/El día 4 de noviembre de 2026.*8:22 a\. m\., con 22 minutos de retardo/.test(cuerpo)&&!/NOTA AMARILLA|\{\{/.test(cuerpo)&&/Camilo Romero\nGerente de Operaciones/.test(cuerpo),cuerpo);
+  t('PR10 el documento final: faltas en párrafos separados con fecha, hora programada, hora de inicio y minutos; sin nota; con firma',/El día 3 de noviembre de 2026, su turno estaba programado para iniciar a las 8:00 a\. m\. y registró su inicio a las 8:14:00 a\. m\., con 14 minutos de retardo/.test(cuerpo)&&/El día 4 de noviembre de 2026.*8:22:00 a\. m\., con 22 minutos de retardo/.test(cuerpo)&&!/NOTA AMARILLA|\{\{/.test(cuerpo)&&/Camilo Romero\nGerente de Operaciones/.test(cuerpo),cuerpo);
   t('PR11 la copia temporal de la plantilla y la hoja temporal del Excel se mandan a la papelera (quedan solo el PDF y los Excel)',g.G.trashed.filter(x=>x==='copia true').length===1&&g.G.creados===2&&g.G.trashed.filter(x=>/^SS\d true$/.test(x)).length===2,g.G.trashed);}
  // 1b) formato, separación y hoja en blanco: nuevas verificaciones del log
  {const g=google();const log=g.correr();

@@ -150,6 +150,12 @@ for(const [nombre,resp] of Object.entries({'HTTP 403':fallos['HTTP 403'],'cuerpo
 t('G getTodayTurnosFromFirebase ya no traga el error en un catch que devuelve []: solo existe como envoltorio de leerTurnosHoyRest_',(GS0.match(/function getTodayTurnosFromFirebase\(/g)||[]).length===1&&!/Firebase REST error/.test(GS0));
 for(const f of ['checkAttendance','sendAttendanceAlert','leerTurnosHoyRest_','avisoTecnicoAsistencia_','horaColombiana_','escHtml_','filaAlerta_','resumenErrorFirestore_']) t(`G ${f} definida una sola vez`,(GS0.match(new RegExp('function '+f+'\\('))||[]).length===1&&(GSR.match(new RegExp('function '+f+'\\('))||[]).length===0);
 
+// ═══ Minutos de retraso TRUNCADOS (v19.5): 9 min 40 s es «9» (no «10»); el primer aviso sale a los 10 min completos ═══
+{const mal=[['', '04/11/2026','ana@pibox.app','ANA','','9:00:00','','','','jefe@pibox.app','']];
+ const w=mundo({now:new Date(BOG('2026-11-04',9,9).getTime()+40000),malla:mal,resp:{code:200,body:[{readTime:'2026-11-04T14:09:40Z'}]}});w.run();
+ t('T1 a las 9:09:40 (9 min 40 s) NO sale el aviso de +10 (antes, redondeado a 10, salía)',ausencias(w).length===0,w.sent.map(m=>m.subject));
+ w.run(new Date(BOG('2026-11-04',9,10).getTime()));
+ t('T2 a las 9:10:00 sí sale el primer aviso, con «10 minutos»',ausencias(w).length===1&&/Primer aviso \(\+10 min\)/.test(ausencias(w)[0].subject)&&/10 minutos/.test(ausencias(w)[0].html),w.sent.map(m=>m.subject));}
 console.log(out.join('\n'));
 const bad=out.filter(l=>l.startsWith('FAIL'));
 console.log(`\n${out.length-bad.length}/${out.length} OK`);

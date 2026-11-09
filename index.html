@@ -1209,7 +1209,7 @@ body.agent-preview-mode header{margin-top:34px;}
  <div class="strikes-wrap" id="reg-wrap" style="display:none;"></div>
  </div>
  <div id="subview-mimalla" style="display:none;">
- <div class="tolerance-note">⏱ Tolerancia de llegada: <strong>5 minutos</strong> — llegadas dentro de este margen se consideran cumplidas</div>
+ <div class="tolerance-note">⏱ Tolerancia de llegada: <strong>5 minutos</strong> — la tardanza cuenta desde el minuto 6 completo (para un turno de las 11:00, desde las 11:06:00); hasta las 11:05:59 se considera cumplido</div>
  <div class="malla-filters">
  <button class="turno-filter-btn active" onclick="setMallaFilter('today',this)">Hoy</button>
  <button class="turno-filter-btn" onclick="setMallaFilter('week',this)">Esta semana</button>
@@ -1553,7 +1553,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
-const APP_VERSION='19.4';
+const APP_VERSION='19.5';
 // Promesas rechazadas sin manejar y errores de script: antes desaparecían sin rastro en consola del agente.
 window.addEventListener('unhandledrejection',e=>console.error('[unhandledrejection]',e.reason&&(e.reason.stack||e.reason.message||e.reason)));
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
@@ -1595,6 +1595,9 @@ const FESTIVOS_CO=[
 const REGLAMENTO_DESDE='2026-11-01';
 const REGLAMENTO_DESDE_DATE=new Date(2026,10,1);
 const REG_TOLERANCIA_MIN=5,REG_PLAZO_DIAS_HABILES=3;
+// Minutos de retardo TRUNCADOS (v19.5): 5 min 59 s = 5, 6 min 00 s = 6. Nunca se redondea: así coinciden con la hora que ve el agente (para un turno de las 11:00
+// la tardanza empieza a las 11:06:00; 11:05:59 está dentro de la tolerancia). Misma regla en PiGOps_Reglamento.gs (reg_minutosRetardo).
+const minsRetraso=(real,prog)=>Math.trunc((real-prog)/60000);
 const regIsoLocal=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 function regEsHabil(iso){const [y,m,d]=iso.split('-').map(Number);const w=new Date(y,m-1,d).getDay();return w!==0&&w!==6&&!FESTIVOS_CO.includes(iso);}
 function regFechaLimite(iso){let [y,m,d]=iso.split('-').map(Number);const c=new Date(y,m-1,d);let k=0;while(k<REG_PLAZO_DIAS_HABILES){c.setDate(c.getDate()+1);if(regEsHabil(regIsoLocal(c)))k++;}return regIsoLocal(c);}
@@ -2063,6 +2066,7 @@ function computeAgentStrikes(o){
  // real no hay no desconexión que medir (antes, v16.8, un turno activo usaba «ahora» y podía mostrar un strike en vivo).
  const re=turno.endTime?.toDate?.();
  const hhmm=x=>x.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'});
+ const hhmmss=x=>x.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit',second:'2-digit'}); // evidencia de la hora de inicio: con segundos
  const mk=(cat,detalle,extra)=>{
  const wid=strikeWaiverId(email,m.fecha,STRIKE_CATS[cat].waiver);
  const w=wid&&waiverMap?waiverMap.get(wid):null;
@@ -2070,12 +2074,12 @@ function computeAgentStrikes(o){
  out.push({date:d,fecha:m.fecha,cat,detalle,wid,waived:w?{motivo:w.motivo||'',por:w.waivedBy||'',porNombre:w.waivedByName||'',at:w.waivedAt?new Date(w.waivedAt):null,appealId:w.appealId||null,appeal:ap||null}:null,appeal:ap||null,...(extra||{})});
  };
  if(rs&&ss){
- const diff=Math.round((rs-ss)/60000);
- const det=`Llegó ${diff} min tarde (${hhmm(rs)}, programado ${m.inicio})`;
+ const diff=minsRetraso(rs,ss);
+ const det=`Llegó ${diff} min tarde (${hhmmss(rs)}, programado ${m.inicio})`;
  // Desde el 1-nov-2026 rige el Reglamento: tolerancia fija de 5 min y SIN strikes (reg:true los separa del modelo de strikes;
  // los muestran «Reglamento» del agente y el módulo «Llamados de atención»).
  const regla=d>=REGLAMENTO_DESDE_DATE;
- const extra=regla?{reg:true,min:diff,prog:m.inicio,real:hhmm(rs)}:null;
+ const extra=regla?{reg:true,min:diff,prog:m.inicio,real:hhmmss(rs)}:null;
  const umbral=regla?REG_TOLERANCIA_MIN:cfg.tardanzaMins;
  if(diff>=60)mk('grave',det,extra);
  else if(diff>=20)mk('moderada',det,extra);
@@ -4457,7 +4461,7 @@ function getStatus(scheduledStart,realStart,novedad,now,absenceStatus,absenceMot
  if(absenceStatus==='not_justified')return{label:'Ausencia injustificada',cls:'ausente_injustificada',icon:'❌'};
  return{label:'Ausente',cls:'ausente',icon:'🔴'};
  }
- const diff=Math.round((realStart-scheduledStart)/60000);
+ const diff=minsRetraso(realStart,scheduledStart);
  // Si aún no ha finalizado → En curso
  if(!hasEnded)return{label:'En curso',cls:'en_curso',icon:'🔵'};
  if(diff<=TOLERANCE_MINS)return{label:'Cumplió',cls:'cumplió',icon:'🟢'};
@@ -5879,7 +5883,7 @@ async function renderPanel2Insights(rows,allTurnos,fromDate,toDate,cyc){
  else if(cls==='en_curso')teamEnCurso++;
  else if(cls==='novedad')teamNovedad++;
  if(cls==='tardanza'&&r.realStart&&r.scheduledStart){
- const mins=Math.round((r.realStart-r.scheduledStart)/60000);
+ const mins=minsRetraso(r.realStart,r.scheduledStart);
  const esVot=esNovedadVotaciones(r.novedad);
  const realStr=r.realStart.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'});
  const progStr=r.scheduledStart.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'});
@@ -6714,7 +6718,7 @@ async function loadFreshPayrollData(cyc){
  const ss=parseTime(m.fecha,m.inicio),se=parseTime(m.fecha,m.fin);
  const rs=turno?turno.startTime.toDate():null,re=turno?.endTime?.toDate?.();
  let reportStart=ss;
- if(rs&&ss){const diffMins=Math.round((rs-ss)/60000);if(diffMins>TOLERANCE_MINS&&!tardanzasJustificadas.has(strikeWaiverId(m.usuario,m.fecha,'tardanza')))reportStart=rs;}
+ if(rs&&ss){const diffMins=minsRetraso(rs,ss);if(diffMins>TOLERANCE_MINS&&!tardanzasJustificadas.has(strikeWaiverId(m.usuario,m.fecha,'tardanza')))reportStart=rs;}
  let reportEnd=se;
  const extrasApproved=turno?.overtimeStatus==='approved'||approvedOvertimeKeys.has(m.usuario+'|'+m.fecha);
  if(re&&se){if(extrasApproved)reportEnd=re;if(turno?.earlyLeave&&turno?.earlyLeaveStatus==='not_justified')reportEnd=re;}
@@ -7088,7 +7092,7 @@ async function sendPayrollReport(){
  // Lógica de entrada para reporte
  let reportStart=ss; // por defecto: programado
  if(rs&&ss){
- const diffMins=Math.round((rs-ss)/60000);
+ const diffMins=minsRetraso(rs,ss);
  if(diffMins>TOLERANCE_MINS&&!tardanzasJustificadas.has(strikeWaiverId(m.usuario,m.fecha,'tardanza'))) reportStart=rs; // tardanza → usar real (salvo justificada)
  // inicio anticipado → usar programado (ya está por defecto)
  }

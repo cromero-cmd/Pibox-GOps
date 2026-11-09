@@ -475,7 +475,8 @@ function checkAttendance() {
     const scheduledStart = parseTimeToDate(entry.inicio, now);
     if (!scheduledStart) return;
 
-    const minsLate = Math.round((now - scheduledStart) / 60000);
+    // Minutos TRUNCADOS (v19.5), igual que el Reglamento: 5 min 59 s = 5 (dentro de la tolerancia); 6 min 00 s = 6.
+    const minsLate = Math.floor((now - scheduledStart) / 60000);
     if (minsLate <= 5) return; // within tolerance, skip
 
     // Check if already connected
@@ -819,7 +820,7 @@ function diagnosticoAsistenciaDe_(diaISO, hhmm) {
   var sel = asistenciaFilasDeDia_(data, hoyISO, retirados.set);
 
   function nivel(inicio) {
-    var prog = parseTimeToDate(inicio, ahora), mins = prog ? Math.round((ahora - prog) / 60000) : 0;
+    var prog = parseTimeToDate(inicio, ahora), mins = prog ? Math.floor((ahora - prog) / 60000) : 0;
     return { mins: mins, nivel: mins <= 5 ? 'sin alerta (a tiempo)' : mins >= 60 ? 'ALERTA nivel 3 (+60)' : mins >= 20 ? 'ALERTA nivel 2 (+20)' : mins >= 10 ? 'ALERTA nivel 1 (+10)' : 'sin alerta (aún no llega a +10)' };
   }
   Logger.log('');

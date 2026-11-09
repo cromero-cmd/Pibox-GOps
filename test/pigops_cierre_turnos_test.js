@@ -417,7 +417,7 @@ const fn=(sig)=>{const i=html.indexOf(sig);if(i<0)throw new Error('no encontrado
  const buena={userEmail:EM,status:'ended',startTime:ts(D(2026,9,3,8,0)),endTime:ts(D(2026,9,3,16,0))};
  t('L4 strikes: con un turno normal y uno archivado el mismo día manda el normal (sin strikes)',calc([arch,buena]).length===0);}
 {// prenómina REAL (loadFreshPayrollData) con datos simulados
- const code=[fn('function parseDate(s){'),fn('function parseTime(dateStr,timeStr){'),fn('function strikeWaiverId(email,fecha,cat){'),html.split('\n').find(l=>l.startsWith('function parseCSVLine(')),fn('function pickTurnoDelDia(allTurnos,email,d){'),fn('async function loadFreshPayrollData(cyc){')].join('\n');
+ const code=['const minsRetraso=(real,prog)=>Math.trunc((real-prog)/60000);',fn('function parseDate(s){'),fn('function parseTime(dateStr,timeStr){'),fn('function strikeWaiverId(email,fecha,cat){'),html.split('\n').find(l=>l.startsWith('function parseCSVLine(')),fn('function pickTurnoDelDia(allTurnos,email,d){'),fn('async function loadFreshPayrollData(cyc){')].join('\n');
  const ts=d=>({toDate:()=>d});
  async function run(rows,turnos,opts={}){
   const monday=opts.monday,win={_payrollPreviewMeta:{lastMonday:monday,lastSunday:new Date(monday.getTime()+6*86400000+86399000)},ADMINS:[],getRecentTurnos:async()=>turnos,getApprovedOvertimeEvents:async()=>opts.eventos||[],getStrikeWaivers:async()=>[],_payrollDirty:false};
@@ -466,7 +466,7 @@ const fn=(sig)=>{const i=html.indexOf(sig);if(i<0)throw new Error('no encontrado
 
 function fin(){
  // estáticos del cliente
- t('J9 versión 19.4 con el formato exacto que usa la detección de actualizaciones',/const APP_VERSION='19\.4';/.test(html));
+ t('J9 la versión mantiene el formato exacto que usa la detección de actualizaciones',/const APP_VERSION='\d+\.\d+';/.test(html));
  t('J10 el Panel de Control muestra la insignia «Cierre automático» del turno',/🤖 Cierre automático\$\{t\.cierreAutomaticoConfirmadoAt/.test(html));
  const fails=out.filter(l=>l.startsWith('FAIL'));
  console.log(out.join('\n'));console.log('\n'+(out.length-fails.length)+'/'+out.length+' pruebas OK'+(fails.length?'  —  '+fails.length+' FALLAN':''));
