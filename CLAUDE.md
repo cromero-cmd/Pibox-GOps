@@ -184,7 +184,22 @@ match /reglamento_casos/{casoId} {
       && request.resource.data.estado == 'Cerrado'
       && request.resource.data.diff(resource.data).affectedKeys()
            .hasOnly(['estado', 'cerradoPor', 'cerradoAt', 'notaCierre']))
+    ||
+    // REVERTIR (v19.6): reabrir un registro cancelado o un caso de TH cerrado por error, dejando quién, cuándo y por qué
+    (((resource.data.estado == 'Cancelado' && request.resource.data.estado == 'En plazo de justificación')
+      || (resource.data.estado == 'Cerrado' && request.resource.data.estado == 'Enviado'))
+      && request.resource.data.diff(resource.data).affectedKeys()
+           .hasOnly(['estado', 'revertidoPor', 'revertidoPorNombre', 'revertidoAt', 'motivoReversion', 'reversiones']))
   );
+}
+
+// Bitácora de reversiones (v19.6): append-only. Solo admins crean, y `por` debe ser el correo de la sesión; nadie edita ni borra.
+match /reversiones/{id} {
+  allow read: if isAdmin();
+  allow create: if isAdmin()
+    && request.resource.data.por == request.auth.token.email
+    && request.resource.data.motivo is string && request.resource.data.motivo.size() >= 5;
+  allow update, delete: if false;
 }
 ```
 
@@ -234,6 +249,14 @@ match /comunicados_lectura/{lecturaId} {
 - **Prenómina**: las filas con cierre automático salen resaltadas (naranja, 🤖, «✓ Confirmar salida»; verde cuando están confirmadas), con un aviso de cuántas faltan por confirmar y una advertencia al enviar con alguna sin confirmar. Confirmar escribe `cierreAutomaticoConfirmadoPor/At` en el turno sin cambiar horas; corregir la Salida de esa fila (cruza medianoche incluida) escribe la hora nueva, `editedBy:'payroll-preview'` y deja la fila confirmada. Solo estas filas llevan `turnoId` (el resto de la prenómina no escribe en Firestore al editar). El Panel de Control muestra «🤖 Cierre automático» en las acciones del turno. Las horas extra se registran como siempre (`editTurnoTimes` pide aprobar las extras).
 - **Solo lectura**: `cierreTurnosPendientes()` lista lo que HOY se cerraría (mismo plan que el cierre real; no cierra ni envía nada) y los retirados excluidos. **Auditoría de nómina**: `auditoriaTurnosLargos()` (`PiGOps_Auditoria.gs`) lista los turnos desde el 1-jun con más de 14 h sin `editedBy`/`forcedClosedBy`, con horas registradas vs. programadas, extras aprobadas y si fue cierre automático.
 - Pruebas: `node test/pigops_cierre_turnos_test.js` (Firestore, malla, BASE 3.0, Gmail y reloj simulados; incluye strikes y prenómina del cliente).
+
+### Reversión de decisiones (v19.6)
+- **Por qué**: un admin canceló por error el llamado de atención de un agente y no había cómo deshacerlo. Ahora TODA decisión de un admin tiene un botón «↩ Revertir»: pide un **motivo obligatorio** (mínimo 5 caracteres), toma el correo de la **sesión de Firebase** (nunca del texto de la página) y deja una entrada en la bitácora **`reversiones`** (append-only: `tipo`, `ref`, `agente`, `antes`, `despues`, `motivo`, `por`, `porNombre`, `at`, `atISO`) ANTES de tocar nada: si la bitácora no se puede escribir, no se revierte. Si el cambio falla, queda una segunda entrada con `fallo:true`. El motor es `revertirDecision` en `index.html`; consulta de la bitácora: botón «↩ Reversiones» del Panel (solo Super Admin, `showReversiones`).
+- **Qué se puede revertir y dónde está el botón**: llamado/registro **cancelado** → «En plazo de justificación» (Llamados de atención y Casos para TH; los cancelados de TH ahora se listan); caso de TH **cerrado** → «Enviado»; **justificado** → restaura el strike (borra el retiro); **apelación** aprobada (borra el retiro y vuelve a «pendiente», con `decisionPrevia`) o rechazada (vuelve a «pendiente») en Insights → Historial de apelaciones; **retiro directo de strike** (Insights, solo Super Admin); **salida anticipada** justificada/no justificada → «pendiente de revisión»; **ausencia** justificada/injustificada → «Ausente» sin revisar; **reanudación autorizada** → revocada (solo mientras el agente no haya reanudado); **horas extras** aprobadas/rechazadas por el Super Admin (sección «Decididas recientes» del modal; vuelve a «pendiente de aprobación final» si ya había pasado por un coordinador, si no a «pendiente de revisión»; actualiza `overtimeStatus` del turno, que es lo que usa la nómina) y la aprobación propia de un coordinador; **cierre forzado** y **edición de tiempos** (Super Admin; `forzadoPrevio` / `edicionPrevia` guardan los valores anteriores desde la v19.6: lo hecho antes NO tiene respaldo y no se puede deshacer).
+- **Dónde queda la huella**: en la bitácora y, cuando el documento sobrevive, en el propio documento (`revertidoPor`, `revertidoPorNombre`, `revertidoAt`, `motivoReversion` y el arreglo `reversiones`; las tarjetas muestran «Revertido por … : motivo»). Los datos de la decisión original (p. ej. `motivoCancelacion`, `canceladoPor`) NO se borran.
+- **Lo que no se puede deshacer**: un correo ya enviado (p. ej. el aviso al coordinador por un rechazo de extras), ni un llamado o notificación a TH que el script ya envió (se puede reabrir el caso, pero el correo salió).
+- **Reglas de Firestore (hay que publicarlas a mano)**: sin la regla de `reversiones` NINGUNA reversión funciona (por diseño: sin bitácora no se revierte), y sin la rama nueva de `reglamento_casos` (arriba) no se pueden reabrir cancelados ni cerrados. Las demás colecciones (`strike_appeals`, `strike_waivers`, `events`, `absences`, `turnos`) usan las reglas que ya permiten esas decisiones a los admins; si una reversión da «permission-denied», el mensaje lo dice y queda registrado como fallo.
+- Pruebas: `node test/pigops_reversiones_test.js` (extrae el motor y la interfaz reales de `index.html`).
 
 ### Nómina
 - **Pre-revisión** (`openPayrollPreview`):

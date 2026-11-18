@@ -379,6 +379,13 @@ window.loadOvertimeEvents = async (strict) => {
  }).map(e=>({...e,_actionable:e.status==='pending_review'||(isSuperAdmin&&e.status==='pending_super_admin')}));
  } catch(e) { if (strict) throw e; return []; }
 };
+window.loadOvertimeDecididas = async () => {
+ // Eventos de horas extras ya APROBADOS/RECHAZADOS (los últimos 100 eventos): solo para ofrecer «↩ Revertir» en el modal de solicitudes.
+ try {
+ const snap = await getDocs(query(collection(db, 'events'), orderBy('timestamp', 'desc'), limit(100)));
+ return snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(e => e.type === 'overtime' && (e.status === 'approved' || e.status === 'rejected'));
+ } catch(e) { console.error('[loadOvertimeDecididas]', e); return []; }
+};
 window.getStrikeWaivers = async (userEmail, strict) => {
  // Strikes retirados por justa causa (colección strike_waivers, un doc por agente+día+categoría).
  // Sin userEmail trae todos (Insights); con userEmail solo los del agente (su panel de strikes).
@@ -444,6 +451,31 @@ window.cerrarReglamentoCaso = async (id, nota, por) => {
  // Un admin cierra un caso de Talento Humano ya enviado (estado «Cerrado»), registrando quién y cuándo.
  try { await setDoc(doc(db, 'reglamento_casos', id), { estado: 'Cerrado', cerradoPor: por, cerradoAt: new Date().toISOString(), notaCierre: nota || '' }, { merge: true }); return { ok: true }; }
  catch(e) { console.error('[cerrarReglamentoCaso]', e); return { ok: false, error: e.message || String(e) }; }
+};
+// ── Reversión de decisiones (v19.6) ──
+// Toda decisión de un admin (cancelar un llamado, justificar, aprobar/rechazar, forzar un cierre…) se puede revertir pidiendo un MOTIVO y dejando
+// constancia de quién lo hizo. El correo sale SIEMPRE de la sesión (nadie puede revertir a nombre de otro) y la bitácora es append-only
+// (colección «reversiones»: solo create para admins, sin update ni delete; ver las reglas de referencia en CLAUDE.md).
+window.sessionEmail = () => (auth.currentUser && auth.currentUser.email) || '';
+window.registrarReversion = async (entry) => {
+ const email = auth.currentUser && auth.currentUser.email;
+ if (!email) return { ok: false, error: 'sin sesión' };
+ try {
+ const limpio = JSON.parse(JSON.stringify(entry)); // sin undefined (Firestore no los acepta)
+ await addDoc(collection(db, 'reversiones'), { ...limpio, por: email, at: serverTimestamp(), atISO: new Date().toISOString() });
+ return { ok: true };
+ } catch(e) { console.error('[registrarReversion]', e); return { ok: false, error: e.message || String(e), code: e.code }; }
+};
+window.getReversiones = async (strict) => {
+ try {
+ const snap = await getDocs(query(collection(db, 'reversiones'), orderBy('atISO', 'desc'), limit(200)));
+ return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+ } catch(e) { console.error('[getReversiones]', e); if (strict) throw e; return []; }
+};
+window.revertirReglamentoCaso = async (id, campos) => {
+ // Un admin reabre un registro cancelado (→ «En plazo de justificación») o un caso de TH cerrado (→ «Enviado»).
+ try { await setDoc(doc(db, 'reglamento_casos', id), campos, { merge: true }); return { ok: true }; }
+ catch(e) { console.error('[revertirReglamentoCaso]', e); return { ok: false, error: e.message || String(e) }; }
 };
 // ── Comunicados anclados (v18.7) ──
 window.getComunicadoLectura = async (comunicadoId, email) => {
@@ -1284,6 +1316,7 @@ body.agent-preview-mode header{margin-top:34px;}
  <button class="turno-filter-btn" onclick="showReglamentoCasos()" style="border-color:rgba(244,114,182,0.4);color:#f472b6;" id="btn-reg-casos">📣 Llamados de atención <span id="reg-casos-badge" style="display:none;background:#f472b6;color:#1a1a1a;border-radius:100px;padding:1px 6px;font-size:10px;margin-left:4px;"></span></button>
  <button class="turno-filter-btn" onclick="showComunicadosPanel()" style="border-color:rgba(123,47,255,0.5);color:#a78bfa;" id="btn-comunicados">📢 Comunicados <span id="comunicados-badge" style="display:none;background:#a78bfa;color:white;border-radius:100px;padding:1px 6px;font-size:10px;margin-left:4px;"></span></button>
  <button class="turno-filter-btn" onclick="showCasosTH()" style="border-color:rgba(248,113,113,0.4);color:#f87171;" id="btn-th-casos">🏛️ Casos para Talento Humano <span id="th-casos-badge" style="display:none;background:#f87171;color:white;border-radius:100px;padding:1px 6px;font-size:10px;margin-left:4px;"></span></button>
+ <button class="turno-filter-btn" onclick="showReversiones()" style="border-color:rgba(96,165,250,0.4);color:#60a5fa;display:none;" id="btn-reversiones" title="Bitácora de decisiones revertidas: quién, cuándo y por qué">↩ Reversiones</button>
  <button class="turno-filter-btn" onclick="showStrikeHistorial()" style="border-color:rgba(156,163,175,0.4);color:#9ca3af;" id="btn-strike-historial">📜 Historial de strikes</button>
  <button class="turno-filter-btn" onclick="openPayrollPreview()" style="border-color:rgba(74,222,128,0.3);color:#4ade80;">📋 Nómina</button>
  <button class="turno-filter-btn" onclick="exportPanel2XLSX()" style="border-color:rgba(74,222,128,0.3);color:#4ade80;">⬇ Excel</button>
@@ -1553,7 +1586,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
-const APP_VERSION='19.5';
+const APP_VERSION='19.6';
 // Promesas rechazadas sin manejar y errores de script: antes desaparecían sin rastro en consola del agente.
 window.addEventListener('unhandledrejection',e=>console.error('[unhandledrejection]',e.reason&&(e.reason.stack||e.reason.message||e.reason)));
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
@@ -2487,7 +2520,7 @@ async function loadReglamentoAgente(model,userEmail){
 const regTag=c=>c.prueba?'<span style="font-size:9px;background:#fef3c7;color:#92400e;border-radius:4px;padding:1px 5px;margin-left:6px;">PRUEBA</span>':'';
 const regQuien=c=>`<div style="font-size:13px;font-weight:700;color:var(--text);">${esc(c.userName||c.userEmail)}${regTag(c)}</div><div style="font-size:11px;color:var(--text-dim);font-family:var(--mono);">${esc(c.userEmail||'')}${c.cargo?' · '+esc(c.cargo):''}</div>`;
 const regSeccion=(tit,items,vacio)=>`<div style="font-size:11px;font-weight:800;color:var(--text-dim);text-transform:uppercase;letter-spacing:.06em;font-family:var(--mono);margin:14px 0 8px;">${tit} (${items.length})</div>${items.length?'':`<div style="font-size:12px;color:var(--text-dim);padding:8px 2px;">${vacio}</div>`}`;
-const regTarjeta=(c,color,titulo,detalle,extra)=>`<div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:8px;">${regQuien(c)}<div style="font-size:12px;color:${color};margin-top:3px;">${titulo}</div>${detalle?`<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">${detalle}</div>`:''}${extra||''}</div>`;
+const regTarjeta=(c,color,titulo,detalle,extra)=>`<div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:8px;">${regQuien(c)}<div style="font-size:12px;color:${color};margin-top:3px;">${titulo}</div>${detalle?`<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">${detalle}</div>`:''}${extra||''}${regRevInfo(c)}</div>`;
 const regSinReglasHTML=()=>window._regCasosSinReglas?'<div style="background:rgba(251,191,36,0.1);border:1px solid rgba(251,191,36,0.4);border-radius:8px;padding:8px 12px;font-size:11px;color:#fbbf24;margin-bottom:8px;">⚠ Firestore no deja leer <code>reglamento_casos</code>: falta publicar la regla (ver CLAUDE.md, «Reglamento»). Mientras tanto el módulo se ve vacío.</div>':'';
 // Descarga directa del Excel de soporte guardado en Drive
 function regLinkDescarga(url){const m=String(url||'').match(/\/d\/([^/?]+)/);return m?`https://drive.google.com/uc?export=download&id=${m[1]}`:url;}
@@ -2507,6 +2540,7 @@ function renderRegCasosList(el,casos){
  const resumen=regResumenAgentes(casos);
  const detalle=c=>`Tardanza del ${esc(c.fecha||'')} · ${c.minutos||''} min (prog. ${esc(c.programada||'')}, inicio ${esc(c.inicioReal||'')})`;
  const btnCancel=c=>puede?`<button onclick="cancelarRegCaso('${esc(c.id)}')" style="margin-top:8px;background:none;border:1px solid rgba(248,113,113,0.4);color:#f87171;padding:3px 10px;border-radius:6px;font-size:11px;cursor:pointer;">✕ Cancelar (con motivo)</button>`:'';
+ const btnReabrir=c=>!puede?'':c.estado==='Cancelado'?revBtn(`revertirCancelacionReg('${esc(c.id)}')`,'↩ Revertir cancelación'):c.estado==='Justificado'?revBtn(`restaurarStrike('${esc(c.userEmail)}_${esc((c.fechaISO||'').replace(/-/g,''))}_tardanza')`,'↩ Revertir justificación'):'';
  const aUnaDeGrave=resumen.filter(r=>r.n===2).length;
  el.innerHTML=regSinReglasHTML()
  +regSeccion('👥 Faltas leves vigentes por agente (ventana de 3 meses)',resumen,'Nadie tiene tardanzas vigentes.')
@@ -2514,7 +2548,7 @@ function renderRegCasosList(el,casos){
  +resumen.map(r=>`<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 10px;border:1px solid var(--border);border-left:4px solid ${regColorContador(r.n)};border-radius:8px;margin-bottom:5px;font-size:12px;"><span><strong>${esc(r.nombre)}</strong> <span style="color:var(--text-dim);font-family:var(--mono);">${esc(r.email)}</span></span><span style="font-weight:800;color:${regColorContador(r.n)};">${r.n} de 3${r.n===2?' · ⚠ a una de falta grave':r.n>=3?' · falta grave':''}</span></div>`).join('')
  +regSeccion('⏳ Llamados en plazo de justificación',plazo,'Ninguno en plazo.')+plazo.map(c=>regTarjeta(c,'#fb923c','Llamado de atención'+(c.numeroEnVentana?' (tardanza n.º '+c.numeroEnVentana+' de la ventana)':''),detalle(c),`<div style="font-size:11px;color:#fbbf24;margin-top:3px;">Fecha límite: ${esc(regDDMMYYYY(c.limiteISO||''))}${c.espera?' · '+esc(c.espera):''}</div>${btnCancel(c)}`)).join('')
  +regSeccion('📨 Llamados enviados',enviados,'Aún no se ha enviado ninguno.')+enviados.map(c=>regTarjeta(c,'#fb923c','Llamado de atención n.º '+(c.llamadoNumero||''),detalle(c),`<div style="font-size:11px;color:var(--text-muted);margin-top:3px;">Enviado el ${esc(regDDMMYYYY(c.enviadoISO||''))}${c.pdfUrl?` · <a href="${esc(c.pdfUrl)}" target="_blank" rel="noopener" style="color:var(--p2);">PDF</a>`:''}</div>`)).join('')
- +(otros.length?regSeccion('Justificados / cancelados',otros,'')+otros.map(c=>regTarjeta(c,'var(--text-dim)',esc(c.estado)+(c.motivoCancelacion?': '+esc(c.motivoCancelacion):''),detalle(c),c.canceladoPor?`<div style="font-size:11px;color:var(--text-dim);margin-top:3px;">por ${esc(c.canceladoPor)}</div>`:'')).join(''):'');
+ +(otros.length?regSeccion('Justificados / cancelados',otros,'')+otros.map(c=>regTarjeta(c,'var(--text-dim)',esc(c.estado)+(c.motivoCancelacion?': '+esc(c.motivoCancelacion):''),detalle(c),(c.canceladoPor?`<div style="font-size:11px;color:var(--text-dim);margin-top:3px;">por ${esc(c.canceladoPor)}</div>`:'')+btnReabrir(c))).join(''):'');
 }
 function renderThCasosList(el,casos){
  const me=document.getElementById('user-email')?.textContent||'';
@@ -2528,11 +2562,14 @@ function renderThCasosList(el,casos){
  const det=c=>(c.tipoRegistro==='art60_13'?'Acumulación de 3 llamados de atención vigentes':`Tardanza del ${esc(c.fecha||'')} · ${c.minutos||''} min (prog. ${esc(c.programada||'')}, inicio ${esc(c.inicioReal||'')})`)+`<br><span style="font-size:10px;color:var(--text-dim);">${esc(causal(c))}</span>`;
  const excel=c=>c.soporteUrl?`<a href="${esc(regLinkDescarga(c.soporteUrl))}" target="_blank" rel="noopener" style="display:inline-block;margin-top:8px;margin-right:8px;background:rgba(74,222,128,0.1);border:1px solid rgba(74,222,128,0.4);color:#4ade80;padding:3px 10px;border-radius:6px;font-size:11px;text-decoration:none;">⬇ Excel de soporte</a>`:'';
  const btnCancel=c=>puede?`<button onclick="cancelarRegCaso('${esc(c.id)}')" style="margin-top:8px;background:none;border:1px solid rgba(248,113,113,0.4);color:#f87171;padding:3px 10px;border-radius:6px;font-size:11px;cursor:pointer;">✕ Cancelar (con motivo)</button>`:'';
+ const otr=th.filter(c=>c.estado==='Cancelado'||c.estado==='Justificado').sort((a,b)=>(b.fechaISO||'').localeCompare(a.fechaISO||''));
+ const btnReabrirTH=c=>!puede?'':c.estado==='Cerrado'?revBtn(`revertirCierreRegTH('${esc(c.id)}')`,'↩ Reabrir caso'):c.estado==='Cancelado'?revBtn(`revertirCancelacionReg('${esc(c.id)}')`,'↩ Revertir cancelación'):c.estado==='Justificado'?revBtn(`restaurarStrike('${esc(c.userEmail)}_${esc((c.fechaISO||'').replace(/-/g,''))}_tardanza')`,'↩ Revertir justificación'):'';
  const btnCerrar=c=>puede?`<button onclick="cerrarRegCaso('${esc(c.id)}')" style="margin-top:8px;background:none;border:1px solid var(--border);color:var(--text-muted);padding:3px 10px;border-radius:6px;font-size:11px;cursor:pointer;">✔ Marcar como cerrado</button>`:'';
  el.innerHTML=regSinReglasHTML()
  +regSeccion('🕓 Pendiente de enviar',pend,'Ningún caso pendiente.')+pend.map(c=>regTarjeta(c,'#fbbf24','Pendiente de enviar'+reinc(c),det(c),`<div style="font-size:11px;color:#fbbf24;margin-top:3px;">Se envía al confirmarse la falta · fecha límite de justificación: ${esc(regDDMMYYYY(c.limiteISO||''))}${c.espera?' · '+esc(c.espera):''}</div>${btnCancel(c)}`)).join('')
  +regSeccion('📨 Enviado a Talento Humano',env,'Ningún caso enviado sin cerrar.')+env.map(c=>regTarjeta(c,'#f87171','Enviado a Talento Humano'+reinc(c),det(c),`<div style="font-size:11px;color:var(--text-muted);margin-top:3px;">Enviado el ${esc(regDDMMYYYY(c.enviadoISO||''))}</div>${excel(c)}${btnCerrar(c)}`)).join('')
- +regSeccion('✅ Cerrado',cer,'Ningún caso cerrado.')+cer.map(c=>regTarjeta(c,'#4ade80','Cerrado'+reinc(c),det(c),`<div style="font-size:11px;color:var(--text-muted);margin-top:3px;">Cerrado por ${esc(c.cerradoPor||'—')} el ${esc(c.cerradoAt?new Date(c.cerradoAt).toLocaleString('es-CO',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}):'—')}${c.notaCierre?' · '+esc(c.notaCierre):''}</div>${excel(c)}`)).join('');
+ +regSeccion('✅ Cerrado',cer,'Ningún caso cerrado.')+cer.map(c=>regTarjeta(c,'#4ade80','Cerrado'+reinc(c),det(c),`<div style="font-size:11px;color:var(--text-muted);margin-top:3px;">Cerrado por ${esc(c.cerradoPor||'—')} el ${esc(c.cerradoAt?new Date(c.cerradoAt).toLocaleString('es-CO',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}):'—')}${c.notaCierre?' · '+esc(c.notaCierre):''}</div>${excel(c)}${btnReabrirTH(c)}`)).join('')
+ +(otr.length?regSeccion('🚫 Cancelados / justificados',otr,'')+otr.map(c=>regTarjeta(c,'var(--text-dim)',esc(c.estado)+(c.motivoCancelacion?': '+esc(c.motivoCancelacion):''),det(c),(c.canceladoPor?`<div style="font-size:11px;color:var(--text-dim);margin-top:3px;">por ${esc(c.canceladoPor)}</div>`:'')+btnReabrirTH(c))).join(''):'');
 }
 async function pmCasos(cyc,modals){
  const casos=await panelGet(cyc,'casos');
@@ -5197,6 +5234,7 @@ function renderPanel2Balance(mallaData,allTurnos,sod,eod){
  }
 }
 async function loadPanel2(opts){
+ { const bR=document.getElementById('btn-reversiones'); if(bR)bR.style.display=isSuperAdminUser(document.getElementById('user-email')?.textContent||'')?'':'none'; }
  // opts (v18.3): {cyc,force,modules,quiet}. Sin argumentos (filtros, cambio de pestaña) se comporta como siempre; el
  // botón ↻ pasa por refreshPanel(), que entrega su propio ciclo de lectura con force:true (ver panelCycleStart).
  opts=(opts&&typeof opts==='object'&&!opts.target)?opts:{};
@@ -5473,15 +5511,20 @@ async function loadPanel2(opts){
  <div style="padding:8px 8px;border-right:1px solid var(--border);font-family:var(--mono);color:var(--text-dim);display:flex;align-items:center;">${durProg}</div>
  <div style="padding:6px 8px;border-right:1px solid var(--border);display:flex;flex-direction:column;gap:4px;align-items:flex-start;">
  ${isSuperAdminUser(userEmailPanel)&&r.turnoId?`<button onclick="editTurnoTimes('${r.turnoId}','${rs24}','${re24}','${r.nombre||r.usuario?.split('@')[0]||''}','${r.fecha||''}')" style="background:rgba(251,146,60,0.08);border:1px solid rgba(251,146,60,0.3);color:#fb923c;padding:3px 8px;border-radius:5px;font-size:9px;font-family:var(--mono);cursor:pointer;white-space:nowrap;">✏️ Editar tiempos</button>`:''}
+ ${r.turnoId&&t?.edicionPrevia&&t?.editedBy&&isSuperAdminUser(userEmailPanel)?revBtnMini(`deshacerEdicionTiempos('${r.turnoId}')`,'↩ Deshacer edición'):''}
+ ${r.turnoId&&t?.forzadoPrevio&&t?.forcedClosedBy&&isSuperAdminUser(userEmailPanel)?revBtnMini(`deshacerCierreForzado('${r.turnoId}')`,'↩ Deshacer cierre forzado'):''}
  ${r.turnoId&&t?.status==='ended'&&!t?.resumeAuthorized?`<button onclick="authorizeResume('${r.turnoId}',this)" style="background:rgba(123,47,255,0.1);border:1px solid rgba(123,47,255,0.3);color:var(--p2);padding:3px 8px;border-radius:5px;font-size:9px;font-family:var(--mono);cursor:pointer;white-space:nowrap;">▶ Autorizar reanudación</button>`:''}
  ${r.turnoId&&t?.resumeAuthorized?'<span style="font-size:9px;color:var(--p2);font-family:var(--mono);">✔ Reanudación autorizada</span>':''}
+ ${r.turnoId&&t?.resumeAuthorized&&t?.status==='interrupted'&&isAdminEmail(userEmailPanel)?revBtnMini(`revocarReanudacion('${r.turnoId}')`,'↩ Revocar'):''}
  ${r.turnoId&&t?.earlyLeave&&t?.earlyLeaveStatus==='pending_review'?`<button onclick="reviewEarlyLeave('${r.turnoId}',true,this)" style="background:rgba(74,222,128,0.08);border:1px solid rgba(74,222,128,0.3);color:#4ade80;padding:3px 8px;border-radius:5px;font-size:9px;font-family:var(--mono);cursor:pointer;white-space:nowrap;">✅ Justificar salida</button><button onclick="reviewEarlyLeave('${r.turnoId}',false,this)" style="background:rgba(248,113,113,0.08);border:1px solid rgba(248,113,113,0.3);color:#f87171;padding:3px 8px;border-radius:5px;font-size:9px;font-family:var(--mono);cursor:pointer;margin-top:2px;white-space:nowrap;">❌ No justificar</button>`:''}
  ${r.turnoId&&t?.earlyLeave&&t?.earlyLeaveStatus==='justified'?'<span style="font-size:9px;color:#4ade80;font-family:var(--mono);">✔ Salida justificada</span>':''}
+ ${r.turnoId&&t?.earlyLeave&&(t?.earlyLeaveStatus==='justified'||t?.earlyLeaveStatus==='not_justified')&&isAdminEmail(userEmailPanel)?revBtnMini(`revertirSalidaAnticipada('${r.turnoId}')`,'↩ Revertir'):''}
  ${r.turnoId&&t?.cierreAutomatico?`<span title="${esc(autoCloseTitle(t))}" style="font-size:9px;color:#fb923c;font-family:var(--mono);cursor:help;">🤖 Cierre automático${t.cierreAutomaticoConfirmadoAt?' · ✔ confirmado':''}</span>`:''}
  ${r.turnoId&&t?.earlyLeave&&t?.earlyLeaveStatus==='not_justified'?'<span style="font-size:9px;color:#f87171;font-family:var(--mono);">✖ Salida no justificada</span>':''}
  ${!r.turnoId&&r.cumplStatus.cls==='ausente'?`<button onclick="reviewAbsence('${r.usuario}','${r.fecha}',this)" style="background:rgba(96,165,250,0.08);border:1px solid rgba(96,165,250,0.3);color:#60a5fa;padding:3px 8px;border-radius:5px;font-size:9px;font-family:var(--mono);cursor:pointer;white-space:nowrap;">📋 Justificar ausencia</button>`:''}
  ${!r.turnoId&&r.cumplStatus.cls==='ausente_justificada'?`<span style="font-size:9px;color:#4ade80;font-family:var(--mono);">✔ Ausencia justificada${r.absenceMotivo?' · '+r.absenceMotivo:''}</span>`:''}
  ${!r.turnoId&&r.cumplStatus.cls==='ausente_injustificada'?'<span style="font-size:9px;color:#f87171;font-family:var(--mono);">✖ Ausencia injustificada</span>':''}
+ ${!r.turnoId&&(r.cumplStatus.cls==='ausente_justificada'||r.cumplStatus.cls==='ausente_injustificada')&&isAdminEmail(userEmailPanel)?revBtnMini(`revertirAusencia('${r.usuario}','${r.fecha}')`,'↩ Revertir'):''}
  ${r.turnoId&&!t?.earlyLeave&&!t?.resumeAuthorized&&t?.status==='ended'&&userEmailPanel!==SUPER_ADMIN?'<span style="font-size:9px;color:var(--text-dim);">—</span>':''}
  ${!r.turnoId&&r.cumplStatus.cls!=='ausente'&&r.cumplStatus.cls!=='ausente_justificada'&&r.cumplStatus.cls!=='ausente_injustificada'?'<span style="font-size:9px;color:var(--text-dim);">—</span>':''}
  </div>
@@ -5816,13 +5859,202 @@ async function retirarStrike(wid){
  toast('✅ Strike retirado');
  if(window._insightsArgs)renderPanel2Insights(...window._insightsArgs);
 }
+// ══════════ REVERSIÓN DE DECISIONES (v19.6) ══════════
+// Cualquier decisión de un admin puede equivocarse. Cada una tiene un botón «↩ Revertir» que: 1) exige un MOTIVO (mínimo 5 caracteres), 2) toma el correo
+// de la SESIÓN, 3) deja una entrada en la bitácora append-only «reversiones» (quién, cuándo, motivo, decisión anterior y resultante) ANTES de tocar nada
+// (si la bitácora no se puede escribir, no se revierte) y 4) aplica el cambio; si falla, deja una segunda entrada con fallo:true. Lo enviado por correo
+// (p. ej. el aviso de un rechazo de extras) no se puede «desenviar».
+const revSesion=()=>(window.sessionEmail&&window.sessionEmail())||document.getElementById('user-email')?.textContent||'';
+const revISO=d=>d&&d.toDate?d.toDate().toISOString():(d||null);
+async function revertirDecision(o){
+ const me=revSesion();
+ if(!me||!o.permitido(me)){toast('No tienes permiso para revertir esta decisión');return false;}
+ const motivo=await askText(o.titulo,`${o.detalle}\n\nQuedará registrado que lo revertiste tú (${me}), con la fecha, la hora y este motivo.`,'Motivo de la reversión (obligatorio, mínimo 5 caracteres)',true);
+ if(motivo===null)return false;
+ if(motivo.trim().length<5){toast('El motivo es obligatorio (mínimo 5 caracteres)');return false;}
+ const nombre=document.getElementById('user-name')?.textContent||me.split('@')[0];
+ const entry={tipo:o.tipo,ref:o.ref,agente:o.agente||'',resumen:o.resumen||o.detalle.split('\n')[0],antes:o.antes||null,despues:o.despues||null,motivo:motivo.trim(),porNombre:nombre};
+ const lg=await window.registrarReversion(entry);
+ if(!lg.ok){toast('❌ No se pudo registrar la reversión, por eso no se hizo (¿falta publicar la regla de Firestore «reversiones»? ver CLAUDE.md): '+lg.error);return false;}
+ const trazo={revertidoPor:me,revertidoPorNombre:nombre,revertidoAt:new Date().toISOString(),motivoReversion:motivo.trim()};
+ try{
+ const r=await o.accion(trazo);
+ if(r&&r.ok===false)throw new Error(r.error||'error');
+ }catch(e){
+ window.registrarReversion({...entry,fallo:true,error:String(e.message||e)});
+ console.error('[revertirDecision]',o.tipo,e);
+ toast('❌ No se pudo revertir: '+(e.message||e));
+ return false;
+ }
+ toast(o.exito||'↩ Decisión revertida');
+ return true;
+}
+const revBtn=(onclick,txt)=>`<button onclick="${onclick}" style="margin-top:8px;margin-right:6px;background:none;border:1px solid rgba(96,165,250,0.45);color:#60a5fa;padding:3px 10px;border-radius:6px;font-size:11px;cursor:pointer;">${txt||'↩ Revertir'}</button>`;
+const revBtnMini=(onclick,txt)=>`<button onclick="${onclick}" style="background:rgba(96,165,250,0.08);border:1px solid rgba(96,165,250,0.35);color:#60a5fa;padding:2px 7px;border-radius:5px;font-size:9px;font-family:var(--mono);cursor:pointer;white-space:nowrap;">${txt||'↩ Revertir'}</button>`;
+// Última reversión registrada en un documento (para mostrarla en su tarjeta)
+const regRevInfo=c=>{const r=(c.reversiones||[]).slice(-1)[0]||(c.revertidoPor?{revertidoPor:c.revertidoPor,revertidoAt:c.revertidoAt,motivoReversion:c.motivoReversion}:null);
+ return r?`<div style="font-size:10.5px;color:#60a5fa;margin-top:4px;">↩ Revertido por ${esc(r.revertidoPor||'—')}${r.revertidoAt?' el '+esc(new Date(r.revertidoAt).toLocaleString('es-CO',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})):''}: ${esc(r.motivoReversion||'')}</div>`:'';};
+const regDe=id=>(window._regCasos||[]).find(x=>x.id===id);
+
+// 1) Reglamento: cancelación → «En plazo de justificación»
+async function revertirCancelacionReg(id){
+ const c=regDe(id);
+ if(!c||c.estado!=='Cancelado')return;
+ const ok=await revertirDecision({tipo:'reglamento_cancelacion',titulo:'Revertir cancelación',
+ detalle:`${c.userName||c.userEmail} · tardanza del ${c.fecha}\n\nSe canceló por ${c.canceladoPor||'—'}: «${c.motivoCancelacion||''}». El registro vuelve a «En plazo de justificación» y la tardanza vuelve a contar: si su plazo ya venció, el llamado o la notificación se envía en la próxima ejecución diaria (7:00, día hábil).`,
+ agente:c.userEmail,ref:'reglamento_casos/'+c.id,antes:{estado:'Cancelado',motivo:c.motivoCancelacion||'',por:c.canceladoPor||'',at:c.canceladoAt||''},despues:{estado:'En plazo de justificación'},
+ permitido:isAdminEmail,exito:'↩ Cancelación revertida — el registro vuelve a contar',
+ accion:t=>window.revertirReglamentoCaso(c.id,{estado:'En plazo de justificación',...t,reversiones:[...(c.reversiones||[]),{...t,de:'Cancelado'}]})});
+ if(ok)refrescarModalesReg();
+}
+// 2) Reglamento: caso de Talento Humano cerrado → «Enviado»
+async function revertirCierreRegTH(id){
+ const c=regDe(id);
+ if(!c||c.estado!=='Cerrado')return;
+ const ok=await revertirDecision({tipo:'reglamento_cierre_th',titulo:'Reabrir caso de Talento Humano',
+ detalle:`${c.userName||c.userEmail}\n\nSe cerró por ${c.cerradoPor||'—'}${c.notaCierre?': «'+c.notaCierre+'»':''}. El caso vuelve a «Enviado a Talento Humano».`,
+ agente:c.userEmail,ref:'reglamento_casos/'+c.id,antes:{estado:'Cerrado',por:c.cerradoPor||'',at:c.cerradoAt||'',nota:c.notaCierre||''},despues:{estado:'Enviado'},
+ permitido:isAdminEmail,exito:'↩ Caso reabierto',
+ accion:t=>window.revertirReglamentoCaso(c.id,{estado:'Enviado',...t,reversiones:[...(c.reversiones||[]),{...t,de:'Cerrado'}]})});
+ if(ok)refrescarModalesReg();
+}
+// 3) Strikes: retiro directo o apelación aprobada → el strike vuelve a contar (el retiro se borra; la apelación queda «pendiente» para decidirla de nuevo)
 async function restaurarStrike(wid){
- if(!isSuperAdminUser(document.getElementById('user-email').textContent))return;
- if(!confirm('¿Restaurar este strike? Volverá a contar como strike (solo informativo).'))return;
- const r=await window.deleteStrikeWaiver(wid);
- if(!r.ok){toast('❌ No se pudo restaurar: '+r.error);return;}
- toast('↩ Strike restaurado');
+ const me=revSesion();
+ if(!isAdminEmail(me))return;
+ const [ws,aps]=await Promise.all([window.getStrikeWaivers(),window.getStrikeAppeals()]);
+ const w=ws.find(x=>x.id===wid),ap=aps.find(x=>x.id===wid)||null;
+ if(!w){toast('Ese retiro ya no existe');return;}
+ const viaApelacion=!!(w.appealId||(ap&&ap.status==='approved'));
+ if(!viaApelacion&&!isSuperAdminUser(me)){toast('Solo el Super Admin puede restaurar un retiro directo de strike');return;}
+ const ok=await revertirDecision({tipo:viaApelacion?'apelacion_aprobada':'strike_retirado',titulo:'Restaurar strike',
+ detalle:`${w.userName||w.userEmail} · ${w.fecha}\n${w.detalle||''}\n\n${viaApelacion?'Aprobó la apelación':'Retiró el strike'} ${w.waivedByName||w.waivedBy||'—'}: «${w.motivo||''}». El strike (o la tardanza) vuelve a contar${viaApelacion?' y la apelación queda «pendiente» para decidirla de nuevo':''}.`,
+ agente:w.userEmail,ref:'strike_waivers/'+wid,antes:{retiro:{motivo:w.motivo||'',por:w.waivedBy||'',at:w.waivedAt||'',apelacion:viaApelacion}},despues:{retiro:null,apelacion:viaApelacion?'pending':null},
+ permitido:e=>viaApelacion?isAdminEmail(e):isSuperAdminUser(e),exito:'↩ Strike restaurado',
+ accion:async t=>{
+ const d=await window.deleteStrikeWaiver(wid);
+ if(!d.ok)throw new Error(d.error);
+ if(ap&&viaApelacion){
+ const r=await window.saveStrikeAppeal(wid,{status:'pending',decisionPrevia:{status:ap.status,respuesta:ap.respuesta||'',decidedBy:ap.decidedBy||'',decidedAt:ap.decidedAt||''},...t,reversiones:[...(ap.reversiones||[]),{...t,de:ap.status}]});
+ if(!r.ok)throw new Error(r.error);
+ }
+ }});
+ if(ok){
  if(window._insightsArgs)renderPanel2Insights(...window._insightsArgs);
+ if(document.getElementById('reg-casos-modal'))refrescarModalesReg();
+ }
+}
+// 4) Apelación rechazada → vuelve a «pendiente» (la aprobada se revierte con restaurarStrike, que también borra el retiro)
+async function revertirApelacion(id){
+ const me=revSesion();
+ const aps=await window.getStrikeAppeals();
+ const a=aps.find(x=>x.id===id);
+ if(!a||!isAdminEmail(me))return;
+ if(a.status==='approved')return restaurarStrike(id);
+ if(a.status!=='rejected')return;
+ const ok=await revertirDecision({tipo:'apelacion_rechazada',titulo:'Revertir rechazo de apelación',
+ detalle:`${a.userName||a.userEmail} · ${a.fecha}\n${a.detalle||''}\n\nSe rechazó por ${a.decidedByName||a.decidedBy||'—'}: «${a.respuesta||''}». La apelación vuelve a «pendiente» para decidirla de nuevo.`,
+ agente:a.userEmail,ref:'strike_appeals/'+id,antes:{status:'rejected',respuesta:a.respuesta||'',por:a.decidedBy||'',at:a.decidedAt||''},despues:{status:'pending'},
+ permitido:isAdminEmail,exito:'↩ Apelación de nuevo pendiente',
+ accion:t=>window.saveStrikeAppeal(id,{status:'pending',decisionPrevia:{status:'rejected',respuesta:a.respuesta||'',decidedBy:a.decidedBy||'',decidedAt:a.decidedAt||''},...t,reversiones:[...(a.reversiones||[]),{...t,de:'rejected'}]})});
+ if(ok){
+ try{renderStrikeAppealsList(await loadStrikeAppealsBadge());}catch(e){}
+ if(window._insightsArgs)renderPanel2Insights(...window._insightsArgs);
+ }
+}
+const panelRowDe=turnoId=>(typeof panel2AllRows!=='undefined'?panel2AllRows:[]).find(r=>r.turnoId===turnoId);
+// 5) Salida anticipada justificada / no justificada → «pendiente de revisión»
+async function revertirSalidaAnticipada(turnoId){
+ const r=panelRowDe(turnoId),t=r?.turno;
+ if(!t||!t.earlyLeave||(t.earlyLeaveStatus!=='justified'&&t.earlyLeaveStatus!=='not_justified'))return;
+ const ok=await revertirDecision({tipo:'salida_anticipada',titulo:'Revertir revisión de salida anticipada',
+ detalle:`${r.nombre||r.usuario} · ${r.fecha}\n\nLa salida se marcó como ${t.earlyLeaveStatus==='justified'?'JUSTIFICADA':'NO JUSTIFICADA'}. Vuelve a «pendiente de revisión».`,
+ agente:r.usuario,ref:'turnos/'+turnoId,antes:{earlyLeaveStatus:t.earlyLeaveStatus},despues:{earlyLeaveStatus:'pending_review'},permitido:isAdminEmail,exito:'↩ Salida anticipada de nuevo pendiente de revisión',
+ accion:()=>window.updateTurnoInFirebase(turnoId,{earlyLeaveStatus:'pending_review'})});
+ if(ok)setTimeout(()=>loadPanel2(),600);
+}
+// 6) Reanudación autorizada → revocada (solo mientras el agente no haya reanudado)
+async function revocarReanudacion(turnoId){
+ const r=panelRowDe(turnoId),t=r?.turno;
+ if(!t||!t.resumeAuthorized||t.status!=='interrupted'){toast('El agente ya reanudó su turno: no se puede revocar');return;}
+ const ok=await revertirDecision({tipo:'reanudacion_autorizada',titulo:'Revocar reanudación',
+ detalle:`${r.nombre||r.usuario} · ${r.fecha}\n\nLa reanudación la autorizó ${t.resumeAuthorizedBy||'—'}. El turno vuelve a quedar finalizado.`,
+ agente:r.usuario,ref:'turnos/'+turnoId,antes:{status:'interrupted',resumeAuthorized:true,por:t.resumeAuthorizedBy||''},despues:{status:'ended',resumeAuthorized:false},permitido:isAdminEmail,exito:'↩ Reanudación revocada',
+ accion:()=>window.updateTurnoInFirebase(turnoId,{resumeAuthorized:false,status:'ended'})});
+ if(ok)setTimeout(()=>loadPanel2(),600);
+}
+// 7) Ausencia justificada / injustificada → «Ausente» sin revisar
+async function revertirAusencia(userEmail,fecha){
+ const r=(typeof panel2AllRows!=='undefined'?panel2AllRows:[]).find(x=>!x.turnoId&&x.usuario===userEmail&&x.fecha===fecha);
+ if(!r||(r.absenceStatus!=='justified'&&r.absenceStatus!=='not_justified'))return;
+ const ok=await revertirDecision({tipo:'ausencia',titulo:'Revertir revisión de ausencia',
+ detalle:`${r.nombre||userEmail} · ${fecha}\n\nLa ausencia se marcó como ${r.absenceStatus==='justified'?'JUSTIFICADA'+(r.absenceMotivo?' ('+r.absenceMotivo+')':''):'INJUSTIFICADA'}. Vuelve a «Ausente» sin revisar.`,
+ agente:userEmail,ref:'absences/'+userEmail.replace('@','_at_')+'_'+fecha.replace(/\//g,'-'),antes:{status:r.absenceStatus,motivo:r.absenceMotivo||''},despues:{status:'pending'},permitido:isAdminEmail,exito:'↩ Ausencia de nuevo sin revisar',
+ accion:t=>window.saveAbsenceToFirebase({userEmail,fecha,status:'pending',motivo:'',reviewedBy:'',reviewedAt:'',decisionPrevia:{status:r.absenceStatus,motivo:r.absenceMotivo||''},...t})});
+ if(ok)setTimeout(()=>loadPanel2(),600);
+}
+// 8) Horas extras: aprobada/rechazada por el Super Admin → vuelve a su estado anterior; aprobación del coordinador → «pendiente de revisión»
+async function revertirHorasExtra(eventId){
+ const e=window._overtimeEventsCache?.[eventId];
+ const me=revSesion(),sup=isSuperAdminUser(me);
+ if(!e)return;
+ const finalDecidida=sup&&(e.status==='approved'||e.status==='rejected');
+ const aprobCoord=e.status==='pending_super_admin'&&e.decidedBy===me;
+ if(!finalDecidida&&!aprobCoord)return;
+ const prev=aprobCoord?'pending_review':(e.firstDecidedBy?'pending_super_admin':'pending_review');
+ const upd={status:prev,decidedBy:prev==='pending_super_admin'?e.firstDecidedBy:null,decidedAt:prev==='pending_super_admin'?(e.firstDecidedAt||null):null,firstDecidedBy:null,firstDecidedAt:null,rejectReason:null};
+ const ok=await revertirDecision({tipo:'horas_extra',titulo:'Revertir decisión de horas extras',
+ detalle:`${e.agentName||e.userName||e.agentEmail||'—'} · ${e.date||''} · ${e.extraMins||0} min extras\n\nEstado actual: ${e.status}. Volverá a «${prev==='pending_super_admin'?'pendiente de aprobación final':'pendiente de revisión del coordinador'}».${e.status==='rejected'&&e.firstDecidedBy?' (El aviso por correo al coordinador por el rechazo ya salió y no se puede deshacer.)':''}`,
+ agente:e.agentEmail||e.user||'',ref:'events/'+eventId,antes:{status:e.status,decidedBy:e.decidedBy||'',decidedAt:e.decidedAt||'',firstDecidedBy:e.firstDecidedBy||''},despues:{status:prev},
+ permitido:()=>finalDecidida||aprobCoord,exito:'↩ Decisión de horas extras revertida',
+ accion:async t=>{
+ await window.updateOvertimeEvent(eventId,{...upd,...t,reversiones:[...(e.reversiones||[]),{...t,de:e.status}]});
+ if(e.turnoId)await window.updateTurnoInFirebase(e.turnoId,{overtimeStatus:prev,overtimeApprovedBy:null,overtimeDecidedAt:null});
+ }});
+ if(ok){
+ const listEl=document.getElementById('overtime-list');
+ if(listEl)loadOvertimeList(listEl);
+ setTimeout(()=>loadTurnoHistory(),600);
+ if(window.loadOvertimeEvents)window.loadOvertimeEvents().then(ev=>{const b=document.getElementById('overtime-badge');const n=ev.filter(x=>x._actionable).length;if(b){b.style.display=n>0?'inline':'none';b.textContent=n;}});
+ }
+}
+// 9) Cierre forzado / edición de tiempos → se restauran los valores anteriores (solo si se guardaron: los hechos antes de la v19.6 no tienen respaldo)
+const turnoSnap=t=>({status:t.status||null,startTime:revISO(t.startTime),endTime:revISO(t.endTime),accumulatedSeconds:typeof t.accumulatedSeconds==='number'?t.accumulatedSeconds:null,
+ editedBy:t.editedBy||null,editedAt:t.editedAt||null,editReason:t.editReason||null,overtimeStatus:t.overtimeStatus||null,overtimeMinutes:typeof t.overtimeMinutes==='number'?t.overtimeMinutes:null,
+ overtimeApprovedBy:t.overtimeApprovedBy||null,overtimeDecidedAt:t.overtimeDecidedAt||null});
+const snapAUpdate=s=>({status:s.status,startTime:s.startTime?new Date(s.startTime):null,endTime:s.endTime?new Date(s.endTime):null,accumulatedSeconds:s.accumulatedSeconds,editedBy:s.editedBy,editedAt:s.editedAt,editReason:s.editReason,
+ overtimeStatus:s.overtimeStatus,overtimeMinutes:s.overtimeMinutes,overtimeApprovedBy:s.overtimeApprovedBy,overtimeDecidedAt:s.overtimeDecidedAt});
+async function deshacerCierreForzado(turnoId){
+ const r=panelRowDe(turnoId),t=r?.turno;
+ if(!t||!t.forcedClosedBy||!t.forzadoPrevio){toast('Este cierre forzado no tiene respaldo para deshacerlo (se hizo antes de la v19.6)');return;}
+ const s=t.forzadoPrevio;
+ const ok=await revertirDecision({tipo:'cierre_forzado',titulo:'Deshacer cierre forzado',
+ detalle:`${r.nombre||r.usuario} · ${r.fecha}\n\nLo forzó ${t.forcedClosedBy}. El turno vuelve a como estaba: ${s.status||'—'}${s.endTime?' con fin '+new Date(s.endTime).toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):' sin hora de fin'}.`,
+ agente:r.usuario,ref:'turnos/'+turnoId,antes:{status:t.status,endTime:revISO(t.endTime),forcedClosedBy:t.forcedClosedBy},despues:{status:s.status,endTime:s.endTime},permitido:isAdminEmail,exito:'↩ Cierre forzado deshecho',
+ accion:()=>window.updateTurnoInFirebase(turnoId,{...snapAUpdate({...turnoSnap({}),...s}),forcedClosedBy:null,forcedClosedAt:null,forzadoPrevio:null})});
+ if(ok)setTimeout(()=>loadPanel2(),600);
+}
+async function deshacerEdicionTiempos(turnoId){
+ const r=panelRowDe(turnoId),t=r?.turno;
+ if(!t||!t.edicionPrevia){toast('Esta edición no tiene respaldo para deshacerla (se hizo antes de la v19.6)');return;}
+ const s=t.edicionPrevia;
+ const ok=await revertirDecision({tipo:'edicion_tiempos',titulo:'Deshacer edición de tiempos',
+ detalle:`${r.nombre||r.usuario} · ${r.fecha}\n\nLa editó ${t.editedBy||'—'}${t.editReason?' («'+t.editReason+'»)':''}. El turno vuelve a sus horas anteriores${s.endTime?' (fin '+new Date(s.endTime).toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'})+')':''}.`,
+ agente:r.usuario,ref:'turnos/'+turnoId,antes:{startTime:revISO(t.startTime),endTime:revISO(t.endTime),editedBy:t.editedBy||''},despues:{startTime:s.startTime,endTime:s.endTime},permitido:isAdminEmail,exito:'↩ Edición de tiempos deshecha',
+ accion:()=>window.updateTurnoInFirebase(turnoId,{...snapAUpdate({...turnoSnap({}),...s}),edicionPrevia:null})});
+ if(ok)setTimeout(()=>loadPanel2(),600);
+}
+// Bitácora de reversiones (solo Super Admin): quién revirtió qué, cuándo y por qué
+async function showReversiones(){
+ if(!isSuperAdminUser(revSesion()))return;
+ document.getElementById('reversiones-modal')?.remove();
+ const m=document.createElement('div');m.id='reversiones-modal';m.className='abs-overlay';
+ m.style.cssText='position:fixed;inset:0;background:rgba(13,11,20,0.88);backdrop-filter:blur(8px);z-index:700;display:flex;align-items:center;justify-content:center;';
+ m.innerHTML=`<div style="background:var(--surface);border:1px solid rgba(96,165,250,0.35);border-radius:20px;padding:24px;width:min(760px,94vw);max-height:84vh;overflow-y:auto;"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;"><div style="font-size:17px;font-weight:800;">↩ Bitácora de reversiones</div><button onclick="document.getElementById('reversiones-modal').remove()" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:20px;">×</button></div><div style="font-size:11px;color:var(--text-dim);margin-bottom:10px;">Últimas 200. Solo se pueden agregar entradas: nadie las edita ni las borra.</div><div id="reversiones-list" style="font-size:12px;color:var(--text-dim);">Cargando…</div></div>`;
+ document.body.appendChild(m);
+ const l=await window.getReversiones();
+ const el=document.getElementById('reversiones-list');if(!el)return;
+ el.innerHTML=l.length?l.map(x=>`<div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:8px;"><div style="font-size:12px;font-weight:700;color:var(--text);">${esc(x.tipo||'')}${x.fallo?' <span style="color:#f87171;">· FALLÓ</span>':''} · ${esc(x.agente||'')}</div><div style="font-size:11px;color:var(--text-muted);margin-top:2px;">${esc(x.resumen||'')}</div><div style="font-size:11px;color:#60a5fa;margin-top:3px;">por ${esc(x.por||'—')} · ${esc(x.atISO?new Date(x.atISO).toLocaleString('es-CO',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}):'')}</div><div style="font-size:11px;margin-top:3px;"><b>Motivo:</b> ${esc(x.motivo||'')}</div><div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);margin-top:3px;">${esc(x.ref||'')}${x.error?' · '+esc(x.error):''}</div></div>`).join(''):'Aún no hay reversiones.';
 }
 async function renderPanel2Insights(rows,allTurnos,fromDate,toDate,cyc){
  // cyc (v18.3, solo desde loadPanel2/refreshPanel): comparte las lecturas del ciclo; los re-render por filtro o por
@@ -6095,7 +6327,7 @@ async function renderPanel2Insights(rows,allTurnos,fromDate,toDate,cyc){
  const apelacionesHTMLcard=insightCard('apelaciones','📨 Historial de apelaciones de strikes','#fbbf24',apEntries,'Sin apelaciones en este período',
  v=>['pending','approved','rejected'].map(st=>{const n=v.items.filter(a=>a.status===st).length;return n?`<span style="font-size:10px;color:${apEstado[st][1]};font-family:var(--mono);">${apEstado[st][0]} ${n}</span>`:'';}).join(''),
  v=>v.items.sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||'')).map(a=>{const [lbl,col]=apEstado[a.status]||['—','#9ca3af'];
- return detailRow(a.fecha,`${esc(a.detalle)}<br/><b>Motivo del agente:</b> ${esc(a.motivo)}<br/><span style="color:${col};font-weight:700;">${lbl}</span>${a.status!=='pending'?` · por <b>${esc(a.decidedByName||a.decidedBy||'—')}</b>${a.decidedAt?' el '+esc(fmtDT(a.decidedAt)):''}${a.respuesta?`<br/><b>Respuesta:</b> ${esc(a.respuesta)}`:''}`:''}`);}).join(''));
+ return detailRow(a.fecha,`${esc(a.detalle)}<br/><b>Motivo del agente:</b> ${esc(a.motivo)}<br/><span style="color:${col};font-weight:700;">${lbl}</span>${a.status!=='pending'?` · por <b>${esc(a.decidedByName||a.decidedBy||'—')}</b>${a.decidedAt?' el '+esc(fmtDT(a.decidedAt)):''}${a.respuesta?`<br/><b>Respuesta:</b> ${esc(a.respuesta)}`:''}`:''}${a.status!=='pending'&&canWaive?'<br/>'+revBtnMini(`revertirApelacion('${a.id}')`,'↩ Revertir decisión'):''}${(a.reversiones||[]).length?'<br/><span style="font-size:10px;color:#60a5fa;">↩ Revertida '+(a.reversiones||[]).length+' vez(ces); última por '+esc((a.reversiones||[]).slice(-1)[0].revertidoPor||'—')+': '+esc((a.reversiones||[]).slice(-1)[0].motivoReversion||'')+'</span>':''}`);}).join(''));
  // Resumen del equipo
  const pctCumplimiento=teamTotalRows?Math.round(((teamCumplio+teamEnCurso+teamNovedad)/teamTotalRows)*100):0;
  let totalExtrasAprobadasMins=0,totalNocturnoSecs=0,totalAusencias=0;
@@ -6252,7 +6484,8 @@ async function loadOvertimeList(el){
  el.innerHTML=`<div style="font-size:12px;color:var(--text-dim);text-align:center;padding:20px;font-family:var(--mono);">Cargando solicitudes...</div>`;
  if(window.loadOvertimeEvents){
  const events=await window.loadOvertimeEvents();
- renderOvertimeList(el,events);
+ const decididas=isSuperAdminUser(document.getElementById('user-email').textContent)&&window.loadOvertimeDecididas?await window.loadOvertimeDecididas():[];
+ renderOvertimeList(el,events,decididas);
  }else{
  el.innerHTML=`<div style="font-size:12px;color:var(--text-dim);text-align:center;padding:20px;font-family:var(--mono);">Sin solicitudes pendientes ✓</div>`;
  }
@@ -6317,18 +6550,21 @@ function overtimeRowHTML(e,isSuperAdmin){
  <button onclick="approveOvertime('${e.id}',false,this)" style="padding:7px 14px;border-radius:8px;border:1px solid rgba(248,113,113,0.4);background:rgba(248,113,113,0.08);color:#f87171;font-family:var(--font);font-weight:600;font-size:12px;cursor:pointer;">Rechazar</button>
  <button onclick="approveOvertime('${e.id}',true,this)" style="padding:7px 14px;border-radius:8px;border:1px solid rgba(74,222,128,0.4);background:rgba(74,222,128,0.08);color:#4ade80;font-family:var(--font);font-weight:600;font-size:12px;cursor:pointer;">Aprobar</button>
  </div>`:''}
+ ${(isSuperAdmin&&(e.status==='approved'||e.status==='rejected'))||(e.status==='pending_super_admin'&&e.decidedBy===document.getElementById('user-email').textContent)?`<div>${revBtnMini(`revertirHorasExtra('${e.id}')`,e.status==='pending_super_admin'?'↩ Retirar mi aprobación':'↩ Revertir decisión')}</div>`:''}
  </div>
  </div>`;
 }
-function renderOvertimeList(el,events){
+function renderOvertimeList(el,events,decididas){
  const rows=events.filter(e=>e.type==='overtime'&&(e.status==='pending_review'||e.status==='pending_super_admin'||e.status==='rejected'));
  // Cachear por id para que approveOvertime pueda leer turnoId/decidedBy/agentName/etc. sin tener
  // que interpolarlos (con posibles comillas/apóstrofes) dentro del atributo onclick.
  window._overtimeEventsCache=window._overtimeEventsCache||{};
  rows.forEach(e=>{window._overtimeEventsCache[e.id]=e;});
- if(!rows.length){el.innerHTML='<div style="font-size:12px;color:var(--text-dim);text-align:center;padding:20px;font-family:var(--mono);">Sin solicitudes pendientes ✓</div>';return;}
+ (decididas||[]).forEach(e=>{window._overtimeEventsCache[e.id]=e;});
  const userEmail=document.getElementById('user-email').textContent;
  const isSuperAdmin=isSuperAdminUser(userEmail);
+ const decHTML=isSuperAdmin&&(decididas||[]).length?`<div style="font-size:12px;font-weight:800;color:var(--text-dim);margin:18px 0 8px;">↩ Decididas recientes (${decididas.length}) — puedes revertir una decisión equivocada</div>${decididas.slice(0,20).map(e=>overtimeRowHTML(e,true)).join('')}`:'';
+ if(!rows.length){el.innerHTML='<div style="font-size:12px;color:var(--text-dim);text-align:center;padding:20px;font-family:var(--mono);">Sin solicitudes pendientes ✓</div>'+decHTML;return;}
  if(!isSuperAdmin){
  // Coordinador: primero lo accionable (pending_review), luego el seguimiento de sus propias
  // solicitudes (pending_super_admin/rejected) — ya diferenciadas por color/texto/opacidad.
@@ -6346,6 +6582,7 @@ function renderOvertimeList(el,events){
  el.innerHTML=`
  ${pendingFinal.length?`<div style="font-size:12px;font-weight:800;color:#60a5fa;margin-bottom:8px;">🔵 Pendientes de tu aprobación final (${pendingFinal.length})</div>${pendingFinal.map(e=>overtimeRowHTML(e,true)).join('')}`:''}
  ${pendingReview.length?`<div style="font-size:12px;font-weight:800;color:#fbbf24;margin-bottom:8px;${pendingFinal.length?'margin-top:18px;':''}">🟡 Pendientes de coordinador (${pendingReview.length})</div>${pendingReview.map(e=>overtimeRowHTML(e,true)).join('')}`:''}
+ ${decHTML}
  `;
 }
 // Texto explicativo de un turno cerrado automáticamente (PiGOps_CierreTurnos.gs): motivo, hora real del cierre y valores anteriores.
@@ -6385,11 +6622,14 @@ async function forceCloseTurno(turnoId,btn){
  }
  }
  }
+ const turnoPrevio=panelRowDe(turnoId)?.turno;
  await window.updateTurnoInFirebase(turnoId,{
  status:'ended',
  endTime:endTime,
  forcedClosedBy:adminEmail,
- forcedClosedAt:now.toISOString()
+ forcedClosedAt:now.toISOString(),
+ // respaldo para «↩ Deshacer cierre forzado» (v19.6)
+ forzadoPrevio:turnoPrevio?turnoSnap(turnoPrevio):null
  });
  toast('✅ Turno cerrado — hora de fin: '+endTime.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}));
  setTimeout(()=>loadPanel2(),800);
@@ -6482,6 +6722,8 @@ async function saveTurnoTimeEdit(turnoId, fecha, btn){
  updates.overtimeApprovedBy=adminEmail;
  updates.overtimeDecidedAt=new Date().toISOString();
  }
+ // respaldo para «↩ Deshacer edición» (v19.6): los valores que tenía el turno antes de esta corrección
+ if(panelRow?.turno)updates.edicionPrevia=turnoSnap(panelRow.turno);
  await window.updateTurnoInFirebase(turnoId,updates);
  toast(btn._approveExtras?`✅ Tiempos corregidos — ${btn._extraMins}min de extras aprobadas`:'✅ Tiempos corregidos correctamente');
  document.querySelector('.abs-overlay')?.remove();
