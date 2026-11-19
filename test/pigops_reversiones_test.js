@@ -153,7 +153,7 @@ t('G2 forzar el cierre y editar tiempos guardan el respaldo (forzadoPrevio / edi
 t('G3 la bitácora es append-only desde el cliente (solo addDoc; por = correo de la sesión; sin setDoc/updateDoc/deleteDoc sobre «reversiones»)',/addDoc\(collection\(db, 'reversiones'\), \{ \.\.\.limpio, por: email, at: serverTimestamp\(\), atISO/.test(html)&&!/doc\(db, 'reversiones'/.test(html));
 t('G4 la bitácora se consulta desde un botón solo para el Super Admin',/id="btn-reversiones"/.test(html)&&/bR\.style\.display=isSuperAdminUser/.test(html)&&/async function showReversiones\(\)\{\n if\(!isSuperAdminUser/.test(html));
 t('G5 las horas extras decididas se cargan con una consulta aparte: loadOvertimeEvents (que alimenta el resumen de Extras) NO cambia',/window\.loadOvertimeDecididas = async/.test(html)&&/if\(isSuperAdmin\) return e\.status==='pending_review'\|\|e\.status==='pending_super_admin';/.test(html));
-t('G6 versión 19.6 con el formato que usa la detección de actualizaciones',/const APP_VERSION='19\.6';/.test(html));
+t('G6 la versión mantiene el formato exacto que usa la detección de actualizaciones',/const APP_VERSION='\d+\.\d+';/.test(html));
 
 const fails=out.filter(l=>l.startsWith('FAIL'));console.log(out.join('\n'));console.log('\n'+(out.length-fails.length)+'/'+out.length+' pruebas OK'+(fails.length?'  —  '+fails.length+' FALLAN':''));process.exit(fails.length?1:0);
 })();

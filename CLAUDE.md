@@ -258,6 +258,12 @@ match /comunicados_lectura/{lecturaId} {
 - **Reglas de Firestore (hay que publicarlas a mano)**: sin la regla de `reversiones` NINGUNA reversión funciona (por diseño: sin bitácora no se revierte), y sin la rama nueva de `reglamento_casos` (arriba) no se pueden reabrir cancelados ni cerrados. Las demás colecciones (`strike_appeals`, `strike_waivers`, `events`, `absences`, `turnos`) usan las reglas que ya permiten esas decisiones a los admins; si una reversión da «permission-denied», el mensaje lo dice y queda registrado como fallo.
 - Pruebas: `node test/pigops_reversiones_test.js` (extrae el motor y la interfaz reales de `index.html`).
 
+### Agentes simultáneos por hora (Insights, v19.7)
+- **Qué es**: tarjeta «📈 Agentes simultáneos por hora del día» al inicio de Insights (Panel de Control). Barras = agentes **programados** (malla) y línea = agentes **reales** (turnos iniciados), por cada hora 00–23, sobre la misma escala. Respeta el período, la línea, el líder y los agentes seleccionados. Controles: Todos los días / Lun–Vie / Sábados / Domingos, Promedio / Pico y «Ver tabla» (vista accesible).
+- **Cómo se cuenta** (`agentesPorHora` en `index.html`, pura y probada): **Promedio** = minutos de agentes en turno durante esa hora ÷ 60, promediado sobre los días del período; **Pico** = máximo simultáneo en esa hora en cualquier día. Programados: entrada → salida de la malla (nocturno: +24 h; se excluyen admins, filas con novedad salvo votaciones y filas sin horario). Reales: inicio real → fin real; un turno activo de HOY cuenta hasta ahora; se descartan los turnos sin cierre de días pasados y los de más de 14 h (casi siempre un turno olvidado). El día de HOY no se cuenta si hay más días (está incompleto). El almuerzo no se descuenta. Un turno nocturno del primer día del período no aparece en las primeras horas de ese día (empezó el día anterior).
+- **Diseño**: SVG en línea (sin dependencias), colores azul/naranja de la paleta validada con `validate_palette.js` sobre las superficies de la app (oscuro y claro), variables `--hc-prog` / `--hc-real` en `.hc-root`; etiquetas de valor solo en el pico de cada serie y en tinta de texto; tooltip por hora (también con el teclado, armado con `textContent`). No hace lecturas nuevas a Firestore (usa las filas que Insights ya tiene).
+- Pruebas: `node test/pigops_simultaneos_test.js`.
+
 ### Nómina
 - **Pre-revisión** (`openPayrollPreview`):
   - Edición en línea con recálculo en tiempo real. Las horas se muestran en formato colombiano "hh:mm a. m./p. m.".
