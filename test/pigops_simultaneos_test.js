@@ -59,9 +59,15 @@ const r1=(a)=>a.map(x=>Math.round(x*100)/100);
  const ahora=D(20,11,30);
  const rows=[{...fila('a',20,8,16),realStart:D(20,8,0),realEnd:null,turno:{status:'active'}}];
  const r=calc(rows,{now:ahora}),V=4;
- t('C4 solo HOY (viernes): el turno activo cuenta hasta ahora (11:30): 1 a las 08–10, 0,5 a las 11, 0 después; los programados llegan a las 15',r.dias[V].real[10]===1&&Math.abs(r.dias[V].real[11]-0.5)<1e-9&&r.dias[V].real[12]===0&&r.dias[V].prog[15]===1&&!r.hoyExcluido,r1(r.dias[V].real));
+ t('C4 solo HOY (viernes, 11:30): el turno activo cuenta hasta ahora: 1 a las 08–10 y 1 a las 11 (promedio sobre los 30 min transcurridos, no 0,5); los programados completos llegan a las 15',r.dias[V].real[10]===1&&Math.abs(r.dias[V].real[11]-1)<1e-9&&r.dias[V].prog[15]===1&&r.hoyParcial===true&&r.ahoraTxt==='11:30',r1(r.dias[V].real));
+ t('C4b las horas de hoy que aún no llegan NO son «0 agentes»: en reales y brecha salen null (sin dato), y los programados sí se ven',E.simulMatriz(r,'real','promedio')[V][12]===null&&E.simulMatriz(r,'brecha','promedio')[V][12]===null&&E.simulMatriz(r,'prog','promedio')[V][12]===1&&E.simulMatriz(r,'real','promedio')[V][11]===1);
  const r2=calc([...rows,fila('b',9,8,16,{realStart:D(9,8),realEnd:D(9,16)})],{now:ahora});
- t('C5 con más días, el día de HOY se excluye (está incompleto) y se avisa: solo cuenta el lunes 9',r2.hoyExcluido===true&&r2.fechas===1&&r2.dias[V].n===0&&r2.dias[LUN].prog[10]===1);}
+ t('C5 con más días, los programados de HOY (viernes) SÍ aparecen en su columna junto con los del lunes 9; antes se excluía todo el día y la columna quedaba vacía («Esta semana»)',r2.fechas===2&&r2.dias[V].n===1&&r2.dias[V].prog[10]===1&&r2.dias[LUN].prog[10]===1&&r2.hoyParcial===true);
+ // el viernes 13 completo + hoy parcial: los reales de hoy no diluyen el promedio de las horas que aún no llegan
+ const r3=calc([fila('a',13,8,16,{realStart:D(13,8),realEnd:D(13,16)}),fila('a',20,8,16,{realStart:D(20,8),realEnd:null,turno:{status:'active'}}),fila('b',20,8,16,{realStart:D(20,8),realEnd:null,turno:{status:'active'}})],{now:ahora});
+ t('C6 dos viernes (13 completo con 1 agente, hoy con 2 hasta las 11:30): a las 10 el promedio real es 1,5; a las 14 solo cuenta el viernes 13 (1), no se diluye con el 0 de hoy',Math.abs(r3.dias[V].real[10]-1.5)<1e-9&&Math.abs(r3.dias[V].real[14]-1)<1e-9&&Math.abs(r3.dias[V].prog[14]-1.5)<1e-9,{r10:r3.dias[V].real[10],r14:r3.dias[V].real[14],p14:r3.dias[V].prog[14]});
+ const hh=E.simulChartHTML(r,'todo','promedio',false,false);
+ t('C7 el HTML avisa que hoy es parcial (hasta las 11:30) y las celdas sin dato llevan «–» y su aria-label',/Hoy los reales cuentan solo hasta las 11:30/.test(hh)&&/aún sin dato real/.test(hh)&&!/NaN|undefined|null/.test(hh));}
 
 // ═══ D. Pico vs promedio ═══
 {const r=calc([fila('a',9,8,16),fila('b',9,8,16),fila('a',16,8,16),fila('b',16,8,16),fila('c',16,8,16),fila('d',16,8,16)]),x=r.dias[LUN];
@@ -100,7 +106,7 @@ const r1=(a)=>a.map(x=>Math.round(x*100)/100);
 
 // ═══ G. Integración en Insights, colores y accesibilidad de color ═══
 t('G1 la tarjeta se inserta en Insights (primera de la columna), con falla aislada (try/catch) y enlazando el tooltip después de pintar',/simulHTML=simulCardHTML\(rows,\{excluir:new Set\(\[\.\.\.\(window\.ADMINS\|\|ADMINS\),SUPER_ADMIN\]\)\}\)/.test(html)&&/\$\{simulHTML\}\n \$\{tardanzaHTML\}/.test(html)&&/if\(simulHTML\)simulEnlazar\(\);/.test(html));
-t('G2 versión 19.8 y colores definidos para modo oscuro (por defecto) y claro',/const APP_VERSION='19\.8';/.test(html)&&/\.hc-root\{--hc-prog:#3987e5;--hc-real:#d95926;--hc-b-lo:#1a3a66;/.test(html)&&/body\.light-mode \.hc-root\{--hc-prog:#2a78d6;--hc-real:#eb6834;--hc-b-lo:#dcebfc;/.test(html));
+t('G2 versión 19.9 y colores definidos para modo oscuro (por defecto) y claro',/const APP_VERSION='19\.9';/.test(html)&&/\.hc-root\{--hc-prog:#3987e5;--hc-real:#d95926;--hc-b-lo:#1a3a66;/.test(html)&&/body\.light-mode \.hc-root\{--hc-prog:#2a78d6;--hc-real:#eb6834;--hc-b-lo:#dcebfc;/.test(html));
 t('G3 el tooltip se arma con textContent (nada de innerHTML con datos)',!/tip\.innerHTML/.test(html));
 {// Contraste de la etiqueta de cada celda contra su relleno (WCAG ≥ 4,5) en todo el recorrido de cada rampa y en ambos temas (el texto NO cambia de color: la rampa no cruza el punto medio)
  const hex=h=>[1,3,5].map(i=>parseInt(h.slice(i,i+2),16)/255),lin=c=>c<=0.04045?c/12.92:((c+0.055)/1.055)**2.4;
