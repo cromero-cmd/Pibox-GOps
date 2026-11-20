@@ -1600,7 +1600,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
-const APP_VERSION='19.9';
+const APP_VERSION='19.10';
 // Promesas rechazadas sin manejar y errores de script: antes desaparecían sin rastro en consola del agente.
 window.addEventListener('unhandledrejection',e=>console.error('[unhandledrejection]',e.reason&&(e.reason.stack||e.reason.message||e.reason)));
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
@@ -6082,15 +6082,21 @@ async function showReversiones(){
 // de cada minuto (el tramo después de medianoche cae en el día siguiente); el de la primera fecha del período no aparece en las primeras horas de ese día (empezó el día anterior).
 const SIMUL_DIAS=[['Lun','Lunes','lunes'],['Mar','Martes','martes'],['Mié','Miércoles','miércoles'],['Jue','Jueves','jueves'],['Vie','Viernes','viernes'],['Sáb','Sábado','sábados'],['Dom','Domingo','domingos']];
 const SIMUL_VISTAS=[['todo','Comparar'],['prog','Programados'],['real','Reales'],['brecha','Brecha']];
+// Personal de Storage (bodega): la malla lo marca en la LÍNEA o en el ROL; se busca «storage» sin distinguir mayúsculas ni tildes
+function simulEsStorage(r){
+ const n=s=>String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+ return /storage/.test(n(r.linea))||/storage/.test(n(r.rol));
+}
 function agentesPorHora(rows,opts){
  opts=opts||{};
  const now=opts.now||new Date();
  const dk=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
- const base=[];
+ const base=[],storage=new Set();
  rows.forEach(r=>{
  if(!r.usuario||(opts.excluir&&opts.excluir.has(r.usuario)))return;
  if(!(r.scheduledStart instanceof Date)||!(r.scheduledEnd instanceof Date))return;
  if(r.novedad&&!esNovedadVotaciones(r.novedad))return;
+ if(simulEsStorage(r)){storage.add(r.usuario);if(opts.sinStorage)return;}
  base.push(r);
  });
  const fechas=new Set(base.map(r=>dk(r.scheduledStart)));
@@ -6138,7 +6144,7 @@ function agentesPorHora(rows,opts){
  });
  });
  dias.forEach(o=>{if(o.n)for(let h=0;h<24;h++){o.prog[h]/=60*o.n;o.real[h]=o.realObs[h]?o.real[h]/o.realObs[h]:0;}});
- return{dias,fechas:fechas.size,hoyParcial,ahoraTxt:String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0'),agentes:new Set(base.map(r=>r.usuario)).size,filas:base.length,conReal};
+ return{dias,fechas:fechas.size,storageN:storage.size,sinStorage:!!opts.sinStorage,hoyParcial,ahoraTxt:String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0'),agentes:new Set(base.map(r=>r.usuario)).size,filas:base.length,conReal};
 }
 // Matriz 7×24 de una lectura (null = ese día de la semana no tiene fechas en el período)
 function simulMatriz(datos,campo,metrica){
@@ -6207,7 +6213,7 @@ function simulChartHTML(datos,vista,metrica,tabla,h24){
  let resumen=`Pico programado: <b>${simulFmt(ep.v)}</b> · ${lug(ep)}`;
  if(er)resumen+=` · Pico real: <b>${simulFmt(er.v)}</b> · ${lug(er)}`;
  if(eb&&eb.v<0)resumen+=` · Mayor faltante: <b>${simulFmtS(eb.v)}</b> · ${lug(eb)}`;
- resumen+=` · ${datos.fechas} fecha${datos.fechas!==1?'s':''} · ${datos.agentes} agente${datos.agentes!==1?'s':''}`;
+ resumen+=` · ${datos.fechas} fecha${datos.fechas!==1?'s':''} · ${datos.agentes} agente${datos.agentes!==1?'s':''}${datos.sinStorage?' (sin Storage)':''}`;
  const nota=`${metrica==='pico'?'Pico = máximo de agentes simultáneos en esa hora en cualquiera de las fechas de ese día de la semana.':'Promedio = minutos de agentes en turno en esa hora ÷ 60, promediado sobre las fechas de ese día de la semana (×N bajo cada día).'} Reales: turnos iniciados (se descartan los sin cierre de días pasados y los de más de 14 h). Brecha negativa: hubo menos agentes de los programados (ausencias, llegadas tarde o turnos sin iniciar). El almuerzo no se descuenta.${datos.hoyParcial?` Hoy los reales cuentan solo hasta las ${datos.ahoraTxt} (las horas que faltan salen con «–»).`:''}${(h0>0||h1<23)?' Se ocultan las horas sin actividad.':''}`;
  if(tabla){
  const th='padding:4px 8px;border-bottom:1px solid var(--border);';
@@ -6223,9 +6229,9 @@ function simulChartHTML(datos,vista,metrica,tabla,h24){
  <div style="font-size:10px;color:var(--text-dim);margin-top:10px;line-height:1.5;">${nota}</div>`;
 }
 function simulCardHTML(rows,opts){
- const datos=agentesPorHora(rows,opts);
  const prev=window._simul||{};
- window._simul={datos,vista:prev.vista||'todo',metrica:prev.metrica||'promedio',tabla:!!prev.tabla,h24:!!prev.h24,abierto:prev.abierto!==false};
+ const datos=agentesPorHora(rows,Object.assign({},opts,{sinStorage:!!prev.sinStorage}));
+ window._simul={datos,rows,opts,sinStorage:!!prev.sinStorage,vista:prev.vista||'todo',metrica:prev.metrica||'promedio',tabla:!!prev.tabla,h24:!!prev.h24,abierto:prev.abierto!==false};
  if(!datos.fechas)return'';
  const s=window._simul;
  return`<div id="simul-card" class="hc-root" style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;overflow:hidden;">
@@ -6235,7 +6241,7 @@ function simulCardHTML(rows,opts){
 function simulControlesHTML(){
  const s=window._simul,b=(act)=>`background:${act?'var(--p1)':'var(--surface)'};border:1px solid ${act?'var(--p1)':'var(--border)'};color:${act?'#fff':'var(--text-muted)'};padding:3px 10px;border-radius:8px;font-size:11px;cursor:pointer;font-family:inherit;`;
  const sep='<span style="width:1px;height:16px;background:var(--border);margin:0 4px;"></span>';
- return`<div id="simul-ctl" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">${SIMUL_VISTAS.map(([k,n])=>`<button onclick="setSimul('vista','${k}')" aria-pressed="${s.vista===k}" style="${b(s.vista===k)}">${n}</button>`).join('')}${sep}${[['promedio','Promedio'],['pico','Pico']].map(([k,n])=>`<button onclick="setSimul('metrica','${k}')" aria-pressed="${s.metrica===k}" style="${b(s.metrica===k)}">${n}</button>`).join('')}${sep}<button onclick="setSimul('h24',${!s.h24})" aria-pressed="${s.h24}" style="${b(s.h24)}">24 h</button><button onclick="setSimul('tabla',${!s.tabla})" aria-pressed="${s.tabla}" style="${b(s.tabla)}">Ver tabla</button></div>`;
+ return`<div id="simul-ctl" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">${SIMUL_VISTAS.map(([k,n])=>`<button onclick="setSimul('vista','${k}')" aria-pressed="${s.vista===k}" style="${b(s.vista===k)}">${n}</button>`).join('')}${sep}${[['promedio','Promedio'],['pico','Pico']].map(([k,n])=>`<button onclick="setSimul('metrica','${k}')" aria-pressed="${s.metrica===k}" style="${b(s.metrica===k)}">${n}</button>`).join('')}${sep}${s.datos.storageN?`<button onclick="setSimul('sinStorage',${!s.sinStorage})" aria-pressed="${s.sinStorage}" title="Excluye a quienes tienen «Storage» en la línea o el rol de la malla" style="${b(s.sinStorage)}">Sin Storage (${s.datos.storageN})</button>`:`<button disabled title="No hay personal de Storage en el período (se busca «storage» en la línea o el rol de la malla)" style="${b(false)}opacity:.5;cursor:not-allowed;">Sin Storage</button>`}<button onclick="setSimul('h24',${!s.h24})" aria-pressed="${s.h24}" style="${b(s.h24)}">24 h</button><button onclick="setSimul('tabla',${!s.tabla})" aria-pressed="${s.tabla}" style="${b(s.tabla)}">Ver tabla</button></div>`;
 }
 function toggleSimul(){
  const s=window._simul;if(!s)return;
@@ -6247,6 +6253,7 @@ function toggleSimul(){
 function setSimul(campo,valor){
  const s=window._simul;if(!s)return;
  s[campo]=valor;
+ if(campo==='sinStorage')s.datos=agentesPorHora(s.rows,Object.assign({},s.opts,{sinStorage:valor}));
  const ctl=document.getElementById('simul-ctl'),ch=document.getElementById('simul-chart');
  if(ctl)ctl.outerHTML=simulControlesHTML();
  if(ch){ch.innerHTML=simulChartHTML(s.datos,s.vista,s.metrica,s.tabla,s.h24);simulEnlazar();}

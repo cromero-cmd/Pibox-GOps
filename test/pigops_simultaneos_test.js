@@ -7,9 +7,9 @@ const html=fs.readFileSync(path.join(__dirname,'..','index.html'),'utf8');
 const fn=(sig)=>{const i=html.indexOf(sig);if(i<0)throw new Error('no encontrado: '+sig);const j=html.indexOf('\n}\n',i);return html.slice(i,j+3);};
 const line=(pref)=>{const i=html.indexOf(pref);if(i<0)throw new Error('no encontrado: '+pref);return html.slice(i,html.indexOf('\n',i));};
 const out=[];const t=(n,c,x)=>out.push((c?'PASS ':'FAIL ')+n+(c?'':'  '+(x===undefined?'':JSON.stringify(x))));
-const CODE=[fn('function esNovedadVotaciones(novedad){'),line('const SIMUL_DIAS='),line('const SIMUL_VISTAS='),fn('function agentesPorHora(rows,opts){'),fn('function simulMatriz(datos,campo,metrica){'),fn('function simulExtremo(m,modo){'),fn('function simulRango(datos,h24){'),
+const CODE=[fn('function esNovedadVotaciones(novedad){'),line('const SIMUL_DIAS='),line('const SIMUL_VISTAS='),fn('function simulEsStorage(r){'),fn('function agentesPorHora(rows,opts){'),fn('function simulMatriz(datos,campo,metrica){'),fn('function simulExtremo(m,modo){'),fn('function simulRango(datos,h24){'),
  line('const simulFmt='),line('const simulFmtS='),line('const simulHora='),fn('function simulPanelHTML(datos,campo,metrica,h0,h1,max,grande){'),fn('function simulChartHTML(datos,vista,metrica,tabla,h24){'),
- 'return{agentesPorHora,simulMatriz,simulExtremo,simulRango,simulChartHTML,simulFmt,simulFmtS,SIMUL_DIAS};'].join('\n');
+ 'return{simulEsStorage,agentesPorHora,simulMatriz,simulExtremo,simulRango,simulChartHTML,simulFmt,simulFmtS,SIMUL_DIAS};'].join('\n');
 const E=new Function(CODE)();
 
 // Días: lun 9-nov-2026, mar 10, sáb 14, dom 15, lun 16 (festivo, pero cuenta como lunes)
@@ -104,9 +104,21 @@ const r1=(a)=>a.map(x=>Math.round(x*100)/100);
  t('F12 un período sin programación muestra un mensaje',/Sin turnos programados en el período/.test(E.simulChartHTML(calc([]),'todo','promedio',false,false)));
  t('F13 el HTML no contiene datos de agentes (nombres ni correos): solo conteos',!/pibox\.app/.test(h));}
 
+// ═══ H. Filtro «Sin Storage» ═══
+{const S=(u,d,h1,h2,o={})=>fila(u,d,h1,h2,o);
+ t('H1 detecta Storage en la línea o en el rol, sin distinguir mayúsculas ni tildes («STORAGE», «Storage Pibox», «Línea Storage»); no confunde otras líneas',E.simulEsStorage({linea:'STORAGE'})&&E.simulEsStorage({rol:'Operador storage'})&&E.simulEsStorage({linea:'Línea Storage',rol:''})&&!E.simulEsStorage({linea:'Soporte',rol:'Agente'})&&!E.simulEsStorage({})&&!E.simulEsStorage({linea:null,rol:undefined}));
+ const rows=[S('a',9,8,16),S('b',9,8,16),S('s1',9,8,16,{linea:'Storage'}),S('s2',9,8,16,{rol:'Auxiliar Storage'})];
+ const con=calc(rows),sin=calc(rows,{sinStorage:true});
+ t('H2 sin el filtro cuentan los 4 (programados 4); con «Sin Storage» solo 2; el filtro cuenta a las 2 personas de Storage para el botón en ambos casos',con.dias[LUN].prog[10]===4&&sin.dias[LUN].prog[10]===2&&con.storageN===2&&sin.storageN===2&&con.sinStorage===false&&sin.sinStorage===true&&con.agentes===4&&sin.agentes===2,{c:con.dias[LUN].prog[10],s:sin.dias[LUN].prog[10],n:sin.storageN});
+ const reales=rows.map(r=>({...r,realStart:D(9,8),realEnd:D(9,16)})),rs=calc(reales,{sinStorage:true});
+ t('H3 también quita sus turnos REALES y la brecha (no solo la malla): reales 2 y brecha 0 a las 10',rs.dias[LUN].real[10]===2&&E.simulMatriz(rs,'brecha','promedio')[LUN][10]===0);
+ t('H4 Storage que ya estaba fuera por novedad o por ser admin no se cuenta en el botón (solo cuenta a quien aportaría al gráfico)',calc([S('s1',9,8,16,{linea:'Storage',novedad:'Vacaciones'}),S('a',9,8,16)]).storageN===0&&calc([S('s1',9,8,16,{linea:'Storage'}),S('a',9,8,16)],{excluir:new Set(['s1@pibox.app'])}).storageN===0);
+ t('H5 el resumen lo anuncia («sin Storage») y sin Storage en el período el botón queda deshabilitado con su explicación',/\(sin Storage\)/.test(E.simulChartHTML(sin,'todo','promedio',false,false))&&!/\(sin Storage\)/.test(E.simulChartHTML(con,'todo','promedio',false,false))&&/setSimul\('sinStorage',\$\{!s\.sinStorage\}\)/.test(html)&&/<button disabled title="No hay personal de Storage/.test(html));
+ t('H6 el filtro se conserva al repintar Insights (estado en window._simul) y al activarlo se recalculan los datos desde las filas guardadas',/sinStorage:!!prev\.sinStorage/.test(html)&&/if\(campo==='sinStorage'\)s\.datos=agentesPorHora\(s\.rows,/.test(html));}
+
 // ═══ G. Integración en Insights, colores y accesibilidad de color ═══
 t('G1 la tarjeta se inserta en Insights (primera de la columna), con falla aislada (try/catch) y enlazando el tooltip después de pintar',/simulHTML=simulCardHTML\(rows,\{excluir:new Set\(\[\.\.\.\(window\.ADMINS\|\|ADMINS\),SUPER_ADMIN\]\)\}\)/.test(html)&&/\$\{simulHTML\}\n \$\{tardanzaHTML\}/.test(html)&&/if\(simulHTML\)simulEnlazar\(\);/.test(html));
-t('G2 versión 19.9 y colores definidos para modo oscuro (por defecto) y claro',/const APP_VERSION='19\.9';/.test(html)&&/\.hc-root\{--hc-prog:#3987e5;--hc-real:#d95926;--hc-b-lo:#1a3a66;/.test(html)&&/body\.light-mode \.hc-root\{--hc-prog:#2a78d6;--hc-real:#eb6834;--hc-b-lo:#dcebfc;/.test(html));
+t('G2 versión 19.10 y colores definidos para modo oscuro (por defecto) y claro',/const APP_VERSION='19\.10';/.test(html)&&/\.hc-root\{--hc-prog:#3987e5;--hc-real:#d95926;--hc-b-lo:#1a3a66;/.test(html)&&/body\.light-mode \.hc-root\{--hc-prog:#2a78d6;--hc-real:#eb6834;--hc-b-lo:#dcebfc;/.test(html));
 t('G3 el tooltip se arma con textContent (nada de innerHTML con datos)',!/tip\.innerHTML/.test(html));
 {// Contraste de la etiqueta de cada celda contra su relleno (WCAG ≥ 4,5) en todo el recorrido de cada rampa y en ambos temas (el texto NO cambia de color: la rampa no cruza el punto medio)
  const hex=h=>[1,3,5].map(i=>parseInt(h.slice(i,i+2),16)/255),lin=c=>c<=0.04045?c/12.92:((c+0.055)/1.055)**2.4;
