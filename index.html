@@ -570,9 +570,19 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;bac
 #login-error{color:#f87171;font-size:12px;margin-top:12px;display:none;}
 .login-note{font-size:11px;color:var(--text-dim);margin-top:16px;font-family:var(--mono);}
 /* Gráfico de agentes simultáneos (v19.7): azul/naranja de la paleta validada (CVD ΔE 24–27, contraste ≥ 3:1 sobre var(--surface)) */
-.hc-root{--hc-prog:#3987e5;--hc-real:#d95926;}
-body.light-mode .hc-root{--hc-prog:#2a78d6;--hc-real:#eb6834;}
-.hc-col:focus{outline:2px solid var(--p2);outline-offset:-2px;}
+.hc-root{--hc-prog:#3987e5;--hc-real:#d95926;--hc-b-lo:#1a3a66;--hc-b-hi:#266fc8;--hc-o-lo:#5a2a12;--hc-o-hi:#c24a1b;--hc-neg:#c23a3a;--hc-pos:#266fc8;--hc-mid:#383835;--hc-ink:#ffffff;}
+body.light-mode .hc-root{--hc-prog:#2a78d6;--hc-real:#eb6834;--hc-b-lo:#dcebfc;--hc-b-hi:#3987e5;--hc-o-lo:#fde4d6;--hc-o-hi:#eb6834;--hc-neg:#e34948;--hc-pos:#3987e5;--hc-mid:#f0efec;--hc-ink:#0b0b0b;}
+.hc-g{font-family:var(--mono);}
+.hc-c{border-radius:4px;text-align:center;font-size:10.5px;font-weight:600;color:var(--hc-ink);cursor:default;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;}
+.hc-c.hc-z{background:transparent;color:var(--text-dim);font-weight:400;box-shadow:inset 0 0 0 1px var(--border);}
+.hc-c.hc-pk{box-shadow:inset 0 0 0 2px var(--text);}
+.hc-c:hover,.hc-c:focus{outline:2px solid var(--p2);outline-offset:-2px;}
+.hc-dh{display:flex;flex-direction:column;align-items:center;line-height:1.15;font-size:11px;color:var(--text);padding-bottom:3px;}
+.hc-dh span{font-size:9px;color:var(--text-dim);}
+.hc-hl{font-size:10px;color:var(--text-dim);text-align:right;padding-right:6px;}
+.hc-pt{display:flex;align-items:center;gap:7px;font-size:11px;color:var(--text);margin-bottom:6px;}
+.hc-leg{display:flex;align-items:center;gap:8px;margin-top:8px;font-size:10px;color:var(--text-dim);}
+.hc-leg i{flex:0 1 140px;height:8px;border-radius:4px;display:inline-block;}
 /* App */
 #app{display:none;flex-direction:column;height:100dvh;position:relative;z-index:1;overflow:hidden;}
 /* Header */
@@ -1590,7 +1600,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
-const APP_VERSION='19.7';
+const APP_VERSION='19.8';
 // Promesas rechazadas sin manejar y errores de script: antes desaparecían sin rastro en consola del agente.
 window.addEventListener('unhandledrejection',e=>console.error('[unhandledrejection]',e.reason&&(e.reason.stack||e.reason.message||e.reason)));
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
@@ -6060,15 +6070,18 @@ async function showReversiones(){
  const el=document.getElementById('reversiones-list');if(!el)return;
  el.innerHTML=l.length?l.map(x=>`<div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:8px;"><div style="font-size:12px;font-weight:700;color:var(--text);">${esc(x.tipo||'')}${x.fallo?' <span style="color:#f87171;">· FALLÓ</span>':''} · ${esc(x.agente||'')}</div><div style="font-size:11px;color:var(--text-muted);margin-top:2px;">${esc(x.resumen||'')}</div><div style="font-size:11px;color:#60a5fa;margin-top:3px;">por ${esc(x.por||'—')} · ${esc(x.atISO?new Date(x.atISO).toLocaleString('es-CO',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}):'')}</div><div style="font-size:11px;margin-top:3px;"><b>Motivo:</b> ${esc(x.motivo||'')}</div><div style="font-size:10px;color:var(--text-dim);font-family:var(--mono);margin-top:3px;">${esc(x.ref||'')}${x.error?' · '+esc(x.error):''}</div></div>`).join(''):'Aún no hay reversiones.';
 }
-// ══════════ AGENTES SIMULTÁNEOS POR HORA (v19.7) ══════════
-// Cuántos agentes hay en turno al mismo tiempo en cada hora del día, para decidir la dotación. Dos series sobre la MISMA escala:
+// ══════════ AGENTES SIMULTÁNEOS POR DÍA Y HORA (v19.7; mapa de calor desde la v19.8) ══════════
+// Mapa de calor: horas en el eje Y, días de la semana en el eje X, el número escrito en CADA celda. Tres lecturas sobre la MISMA escala:
 //  · Programados: la malla (entrada → salida programadas; turno nocturno: +24 h; sin filas con novedad salvo votaciones).
 //  · Reales: los turnos iniciados (inicio real → fin real; un turno activo de hoy cuenta hasta ahora; se descartan los sin cierre de días pasados y los de más de 14 h,
 //    que casi siempre son un turno olvidado y no horas trabajadas).
-// «Promedio» = minutos de agentes en turno durante esa hora ÷ 60, promediado sobre los días del período (lun–vie, sábados o domingos por separado si se pide).
-// «Pico» = el máximo de agentes simultáneos que hubo en esa hora en cualquier día. El día de HOY no se cuenta si hay más días (está incompleto). El almuerzo no se
-// descuenta (la malla no dice a qué hora es). Un turno nocturno del primer día del período no aparece en las primeras horas de ese día (empezó el día anterior).
-const SIMUL_TIPOS=[['todos','Todos los días'],['semana','Lun–Vie'],['sabado','Sábados'],['domingo','Domingos']];
+//  · Brecha: reales − programados (negativa = hubo menos gente de la programada: ausencias, llegadas tarde o turnos sin iniciar).
+// Cada columna es un día de la semana y reúne TODAS las fechas del período que caen en ese día (los lunes de un mes, p. ej.).
+// «Promedio» = minutos de agentes en turno durante esa hora ÷ 60, promediado sobre esas fechas. «Pico» = el máximo de agentes simultáneos que hubo en esa hora en cualquiera de ellas.
+// El día de HOY no se cuenta si hay más días (está incompleto). El almuerzo no se descuenta (la malla no dice a qué hora es). Un turno nocturno se cuenta en el día calendario
+// de cada minuto (el tramo después de medianoche cae en el día siguiente); el de la primera fecha del período no aparece en las primeras horas de ese día (empezó el día anterior).
+const SIMUL_DIAS=[['Lun','Lunes','lunes'],['Mar','Martes','martes'],['Mié','Miércoles','miércoles'],['Jue','Jueves','jueves'],['Vie','Viernes','viernes'],['Sáb','Sábado','sábados'],['Dom','Domingo','domingos']];
+const SIMUL_VISTAS=[['todo','Comparar'],['prog','Programados'],['real','Reales'],['brecha','Brecha']];
 function agentesPorHora(rows,opts){
  opts=opts||{};
  const now=opts.now||new Date();
@@ -6080,12 +6093,12 @@ function agentesPorHora(rows,opts){
  if(r.novedad&&!esNovedadVotaciones(r.novedad))return;
  base.push(r);
  });
- const dias=new Set(base.map(r=>dk(r.scheduledStart)));
+ const fechas=new Set(base.map(r=>dk(r.scheduledStart)));
  const hoy=dk(now);
  let hoyExcluido=false;
- if(dias.size>1&&dias.has(hoy)){dias.delete(hoy);hoyExcluido=true;}
+ if(fechas.size>1&&fechas.has(hoy)){fechas.delete(hoy);hoyExcluido=true;}
  const acum=new Map();
- dias.forEach(k=>acum.set(k,{prog:new Int16Array(1440),real:new Int16Array(1440)}));
+ fechas.forEach(k=>acum.set(k,{prog:new Int16Array(1440),real:new Int16Array(1440)}));
  // suma 1 agente en cada minuto de [s,e), repartiendo entre los días calendario que cruce el intervalo (los días fuera del período se descartan)
  const llenar=(campo,s,e)=>{
  let cur=s.getTime();const fin=e.getTime();
@@ -6106,13 +6119,12 @@ function agentesPorHora(rows,opts){
  if(rs&&!re&&dk(rs)===hoy&&r.turno&&r.turno.status==='active'&&now>rs)re=now;
  if(rs&&re&&re>rs&&(re-rs)<=14*3600000){llenar('real',rs,re);conReal++;}
  });
- const tipoDe=k=>{const g=new Date(k+'T00:00:00').getDay();return g===0?'domingo':g===6?'sabado':'semana';};
- const tipos={};
- SIMUL_TIPOS.forEach(([tipo])=>{
- const ks=[...dias].filter(k=>tipo==='todos'||tipoDe(k)===tipo);
- const o={dias:ks.length,prog:Array(24).fill(0),real:Array(24).fill(0),progPico:Array(24).fill(0),realPico:Array(24).fill(0)};
- ks.forEach(k=>{
- const a=acum.get(k);
+ // 0 = lunes … 6 = domingo
+ const dow=k=>{const g=new Date(k+'T00:00:00').getDay();return g===0?6:g-1;};
+ const dias=Array.from({length:7},()=>({n:0,prog:Array(24).fill(0),real:Array(24).fill(0),progPico:Array(24).fill(0),realPico:Array(24).fill(0)}));
+ fechas.forEach(k=>{
+ const o=dias[dow(k)],a=acum.get(k);
+ o.n++;
  ['prog','real'].forEach(c=>{
  for(let h=0;h<24;h++){
  let sum=0,mx=0;
@@ -6122,71 +6134,102 @@ function agentesPorHora(rows,opts){
  }
  });
  });
- if(ks.length)for(let h=0;h<24;h++){o.prog[h]/=ks.length;o.real[h]/=ks.length;}
- tipos[tipo]=o;
- });
- return{tipos,hoyExcluido,agentes:new Set(base.map(r=>r.usuario)).size,filas:base.length,conReal};
+ dias.forEach(o=>{if(o.n)for(let h=0;h<24;h++){o.prog[h]/=o.n;o.real[h]/=o.n;}});
+ return{dias,fechas:fechas.size,hoyExcluido,agentes:new Set(base.map(r=>r.usuario)).size,filas:base.length,conReal};
 }
-// Escala «bonita» del eje: el menor múltiplo de 1, 2, 5, 10, 20… que cubra el máximo con ≤ 6 marcas
-function simulEscala(max){
- const pasos=[1,2,5,10,20,50,100,200,500];
- let paso=pasos.find(p=>Math.ceil(max/p)<=6)||1000;
- return{paso,tope:Math.max(paso,Math.ceil(max/paso)*paso)};
+// Matriz 7×24 de una lectura (null = ese día de la semana no tiene fechas en el período)
+function simulMatriz(datos,campo,metrica){
+ const pico=metrica==='pico';
+ return datos.dias.map(d=>!d.n?Array(24).fill(null):Array.from({length:24},(_,h)=>campo==='brecha'?(pico?d.realPico[h]-d.progPico[h]:d.real[h]-d.prog[h]):(pico?d[campo+'Pico'][h]:d[campo][h])));
+}
+// Celda extrema: modo 'max' (la más alta) o 'min' (la más baja); la primera si hay empate
+function simulExtremo(m,modo){
+ let best=null;
+ m.forEach((fila,d)=>fila.forEach((v,h)=>{if(v===null)return;if(best===null||(modo==='min'?v<best.v:v>best.v))best={v,d,h};}));
+ return best;
+}
+// Rango de horas con actividad (en programados o reales); con h24 siempre 00–23
+function simulRango(datos,h24){
+ if(h24)return[0,23];
+ let lo=24,hi=-1;
+ datos.dias.forEach(d=>{for(let h=0;h<24;h++)if(d.prog[h]>0||d.real[h]>0||d.progPico[h]>0||d.realPico[h]>0){if(h<lo)lo=h;if(h>hi)hi=h;}});
+ return hi<0?[0,23]:[lo,hi];
 }
 const simulFmt=n=>(Math.round(n*10)/10).toLocaleString('es-CO',{minimumFractionDigits:0,maximumFractionDigits:1});
+const simulFmtS=n=>{const r=Math.round(n*10)/10;return r===0?'0':(r>0?'+':'−')+Math.abs(r).toLocaleString('es-CO',{minimumFractionDigits:0,maximumFractionDigits:1});};
 const simulHora=h=>String(h).padStart(2,'0')+':00';
-// HTML del gráfico y la tabla (puro: sin DOM). tipo: todos|semana|sabado|domingo · metrica: promedio|pico · tabla: true muestra la tabla en vez del gráfico
-function simulChartHTML(datos,tipo,metrica,tabla){
- const d=datos.tipos[tipo]||datos.tipos.todos;
- if(!d.dias)return'<div style="padding:22px 8px;text-align:center;font-size:12px;color:var(--text-dim);">Sin turnos programados de este tipo de día en el período.</div>';
- const P=metrica==='pico'?d.progPico:d.prog,Rr=metrica==='pico'?d.realPico:d.real;
- const maxV=Math.max(...P,...Rr,1),{paso,tope}=simulEscala(maxV);
- const pico=a=>{let h=0;for(let i=1;i<24;i++)if(a[i]>a[h])h=i;return h;};
- const hp=pico(P),hr=pico(Rr);
- const nomTipo=(SIMUL_TIPOS.find(t=>t[0]===tipo)||[])[1]||'';
- const resumen=`Pico programado: <b>${simulFmt(P[hp])}</b> a las ${simulHora(hp)} · Pico real: <b>${simulFmt(Rr[hr])}</b> a las ${simulHora(hr)} · ${d.dias} día${d.dias!==1?'s':''} (${nomTipo.toLowerCase()}) · ${datos.agentes} agente${datos.agentes!==1?'s':''}`;
- const nota=`${metrica==='pico'?'Pico = máximo de agentes simultáneos en esa hora en cualquier día del período.':'Promedio = minutos de agentes en turno en esa hora ÷ 60, promediado sobre los días del período.'} Reales: turnos iniciados (se descartan los sin cierre de días pasados y los de más de 14 h). El almuerzo no se descuenta.${datos.hoyExcluido?' No incluye el día de hoy (incompleto).':''}`;
- if(tabla){
- return`<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:11px;font-family:var(--mono);"><thead><tr style="color:var(--text-dim);text-align:right;"><th style="text-align:left;padding:4px 8px;border-bottom:1px solid var(--border);">Hora</th><th style="padding:4px 8px;border-bottom:1px solid var(--border);">Programados · prom.</th><th style="padding:4px 8px;border-bottom:1px solid var(--border);">Programados · pico</th><th style="padding:4px 8px;border-bottom:1px solid var(--border);">Reales · prom.</th><th style="padding:4px 8px;border-bottom:1px solid var(--border);">Reales · pico</th></tr></thead><tbody>${d.prog.map((_,h)=>`<tr style="text-align:right;color:var(--text);"><td style="text-align:left;padding:3px 8px;border-bottom:1px solid var(--border);">${simulHora(h)}–${String(h).padStart(2,'0')}:59</td><td style="padding:3px 8px;border-bottom:1px solid var(--border);">${simulFmt(d.prog[h])}</td><td style="padding:3px 8px;border-bottom:1px solid var(--border);">${d.progPico[h]}</td><td style="padding:3px 8px;border-bottom:1px solid var(--border);">${simulFmt(d.real[h])}</td><td style="padding:3px 8px;border-bottom:1px solid var(--border);">${d.realPico[h]}</td></tr>`).join('')}</tbody></table></div><div style="font-size:10px;color:var(--text-dim);margin-top:8px;line-height:1.5;">${nota}</div>`;
+// HTML de UN mapa de calor. campo: prog|real|brecha. max = tope de la escala compartida (programados y reales usan el mismo)
+function simulPanelHTML(datos,campo,metrica,h0,h1,max,grande){
+ const m=simulMatriz(datos,campo,metrica),brecha=campo==='brecha';
+ const ext=brecha?simulExtremo(m,'min'):simulExtremo(m,'max');
+ const rampa=campo==='real'?'o':'b';
+ const nom=brecha?'Brecha (reales − programados)':campo==='real'?'Reales (turnos iniciados)':'Programados (malla)';
+ const sw=brecha?'<span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:linear-gradient(90deg,var(--hc-neg) 50%,var(--hc-pos) 50%);"></span>':`<span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:var(${campo==='real'?'--hc-real':'--hc-prog'});"></span>`;
+ const alto=grande?28:22;
+ let g=`<div class="hc-g" style="display:grid;grid-template-columns:36px repeat(7,minmax(0,1fr));gap:2px;">`;
+ g+='<div></div>'+datos.dias.map((d,i)=>`<div class="hc-dh"><b>${SIMUL_DIAS[i][0]}</b><span>${d.n?'×'+d.n:'—'}</span></div>`).join('');
+ for(let h=h0;h<=h1;h++){
+ g+=`<div class="hc-hl" style="line-height:${alto}px;">${simulHora(h)}</div>`;
+ for(let d=0;d<7;d++){
+ const v=m[d][h],esExt=ext&&ext.d===d&&ext.h===h;
+ const tab=(d===0&&h===h0)?'0':'-1';
+ if(v===null){g+=`<div class="hc-c hc-z" data-d="${d}" data-h="${h}" tabindex="${tab}" aria-label="${SIMUL_DIAS[d][1]} ${simulHora(h)}: sin fechas en el período" style="height:${alto}px;line-height:${alto}px;">–</div>`;continue;}
+ let fill='',cls='hc-c';
+ if(Math.round(v*10)===0)cls+=' hc-z';
+ else if(brecha){const t=Math.min(1,Math.abs(v)/max);fill=`background:color-mix(in oklab,var(${v<0?'--hc-neg':'--hc-pos'}) ${Math.round(t*100)}%,var(--hc-mid));`;}
+ else{const t=Math.min(1,v/max);fill=`background:color-mix(in oklab,var(--hc-${rampa}-hi) ${Math.round(t*100)}%,var(--hc-${rampa}-lo));`;}
+ if(esExt)cls+=' hc-pk';
+ const txt=brecha?simulFmtS(v):simulFmt(v);
+ g+=`<div class="${cls}" data-d="${d}" data-h="${h}" tabindex="${tab}" aria-label="${SIMUL_DIAS[d][1]} ${simulHora(h)}: ${nom.split(' (')[0].toLowerCase()} ${txt}" style="${fill}height:${alto}px;line-height:${alto}px;">${txt}</div>`;
  }
- const W=720,H=270,L=34,Rm=10,T=20,B=30,pw=W-L-Rm,ph=H-T-B,slot=pw/24,bw=Math.min(16,slot*0.6);
- const y=v=>T+ph-(v/tope)*ph,cx=i=>L+slot*i+slot/2;
- let svg=`<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Agentes simultáneos por hora del día: programados y reales" style="display:block;max-width:100%;height:auto;">`;
- for(let v=0;v<=tope;v+=paso)svg+=`<line x1="${L}" x2="${W-Rm}" y1="${y(v)}" y2="${y(v)}" stroke="var(--border)" stroke-width="1"/><text x="${L-6}" y="${y(v)+3}" text-anchor="end" font-size="10" fill="var(--text-dim)">${v}</text>`;
- P.forEach((v,i)=>{
- const h=(v/tope)*ph;
- if(h<=0)return;
- const x=cx(i)-bw/2,yy=y(v),r=Math.min(4,h,bw/2);
- svg+=`<path d="M${x},${yy+h} V${yy+r} Q${x},${yy} ${x+r},${yy} H${x+bw-r} Q${x+bw},${yy} ${x+bw},${yy+r} V${yy+h} Z" fill="var(--hc-prog)"/>`;
- });
- const pts=Rr.map((v,i)=>`${cx(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
- svg+=`<polyline points="${pts}" fill="none" stroke="var(--hc-real)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
- Rr.forEach((v,i)=>{svg+=`<circle cx="${cx(i).toFixed(1)}" cy="${y(v).toFixed(1)}" r="4" fill="var(--hc-real)" stroke="var(--surface)" stroke-width="2"/>`;});
- // etiquetas directas SOLO en el pico de cada serie (texto en tinta de texto, nunca en el color de la serie)
- const misma=hp===hr;
- svg+=`<text x="${(cx(hp)-(misma?5:0)).toFixed(1)}" y="${(y(P[hp])-8).toFixed(1)}" text-anchor="${misma?'end':'middle'}" font-size="11" font-weight="700" fill="var(--text)">${simulFmt(P[hp])}</text>`;
- svg+=`<text x="${(cx(hr)+(misma?5:0)).toFixed(1)}" y="${(y(Rr[hr])-8).toFixed(1)}" text-anchor="${misma?'start':'middle'}" font-size="11" font-weight="700" fill="var(--text)">${simulFmt(Rr[hr])}</text>`;
- for(let i=0;i<24;i++)svg+=`<text x="${cx(i).toFixed(1)}" y="${H-10}" text-anchor="middle" font-size="9.5" fill="var(--text-dim)">${String(i).padStart(2,'0')}</text>`;
- // zonas de interacción (más grandes que la marca): una columna por hora, enfocable con el teclado
- for(let i=0;i<24;i++)svg+=`<rect class="hc-col" data-h="${i}" x="${(L+slot*i).toFixed(1)}" y="${T}" width="${slot.toFixed(1)}" height="${ph}" fill="transparent" tabindex="0" aria-label="${simulHora(i)}: programados ${simulFmt(P[i])}, reales ${simulFmt(Rr[i])}"/>`;
- svg+='</svg>';
- return`<div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;line-height:1.5;">${resumen}</div>
- <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:6px;font-size:11px;color:var(--text-muted);"><span style="display:inline-flex;align-items:center;gap:6px;"><span style="width:10px;height:10px;border-radius:3px;background:var(--hc-prog);display:inline-block;"></span>Programados (malla)</span><span style="display:inline-flex;align-items:center;gap:6px;"><span style="width:16px;height:0;border-top:2px solid var(--hc-real);display:inline-block;position:relative;"><span style="position:absolute;left:4px;top:-5px;width:8px;height:8px;border-radius:50%;background:var(--hc-real);"></span></span>Reales (turnos iniciados)</span><span style="color:var(--text-dim);">· ${metrica==='pico'?'pico simultáneo':'promedio'} por hora, agentes</span></div>
- <div id="simul-wrap" style="position:relative;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:8px 6px 2px;">${svg}<div id="simul-tip" role="status" style="display:none;position:absolute;pointer-events:none;z-index:5;background:var(--surface3);border:1px solid var(--border-p);border-radius:8px;padding:8px 10px;font-size:11px;box-shadow:var(--shadow);min-width:150px;"></div></div>
- <div style="font-size:10px;color:var(--text-dim);margin-top:8px;line-height:1.5;">${nota}</div>`;
+ }
+ g+='</div>';
+ const leg=brecha
+ ?`<div class="hc-leg"><span>−${simulFmt(max)} faltan</span><i style="background:linear-gradient(90deg in oklab,var(--hc-neg),var(--hc-mid),var(--hc-pos));"></i><span>+${simulFmt(max)} sobran</span></div>`
+ :`<div class="hc-leg"><span>0</span><i style="background:linear-gradient(90deg in oklab,var(--hc-${rampa}-lo),var(--hc-${rampa}-hi));"></i><span>${simulFmt(max)} agentes</span></div>`;
+ return`<div class="hc-p" data-campo="${campo}" style="flex:1 1 ${grande?'100%':'300px'};min-width:0;"><div class="hc-pt">${sw}<b>${nom}</b></div>${g}${leg}</div>`;
+}
+// HTML completo del gráfico y de la tabla (puro: sin DOM). vista: todo|prog|real|brecha · metrica: promedio|pico · tabla: true muestra la tabla · h24: true muestra las 24 horas
+function simulChartHTML(datos,vista,metrica,tabla,h24){
+ if(!datos.fechas)return'<div style="padding:22px 8px;text-align:center;font-size:12px;color:var(--text-dim);">Sin turnos programados en el período.</div>';
+ const [h0,h1]=simulRango(datos,h24);
+ const mp=simulMatriz(datos,'prog',metrica),mr=simulMatriz(datos,'real',metrica),mb=simulMatriz(datos,'brecha',metrica);
+ const max=Math.max(1,simulExtremo(mp,'max').v,datos.conReal?simulExtremo(mr,'max').v:0);
+ const maxB=Math.max(1,...mb.flat().filter(v=>v!==null).map(Math.abs));
+ const ep=simulExtremo(mp,'max'),er=datos.conReal?simulExtremo(mr,'max'):null,eb=datos.conReal?simulExtremo(mb,'min'):null;
+ const lug=e=>SIMUL_DIAS[e.d][0]+' '+simulHora(e.h);
+ let resumen=`Pico programado: <b>${simulFmt(ep.v)}</b> · ${lug(ep)}`;
+ if(er)resumen+=` · Pico real: <b>${simulFmt(er.v)}</b> · ${lug(er)}`;
+ if(eb&&eb.v<0)resumen+=` · Mayor faltante: <b>${simulFmtS(eb.v)}</b> · ${lug(eb)}`;
+ resumen+=` · ${datos.fechas} fecha${datos.fechas!==1?'s':''} · ${datos.agentes} agente${datos.agentes!==1?'s':''}`;
+ const nota=`${metrica==='pico'?'Pico = máximo de agentes simultáneos en esa hora en cualquiera de las fechas de ese día de la semana.':'Promedio = minutos de agentes en turno en esa hora ÷ 60, promediado sobre las fechas de ese día de la semana (×N bajo cada día).'} Reales: turnos iniciados (se descartan los sin cierre de días pasados y los de más de 14 h). Brecha negativa: hubo menos agentes de los programados (ausencias, llegadas tarde o turnos sin iniciar). El almuerzo no se descuenta.${datos.hoyExcluido?' No incluye el día de hoy (incompleto).':''}${(h0>0||h1<23)?' Se ocultan las horas sin actividad.':''}`;
+ if(tabla){
+ const th='padding:4px 8px;border-bottom:1px solid var(--border);';
+ let t=`<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:11px;font-family:var(--mono);"><caption style="text-align:left;font-size:10px;color:var(--text-dim);padding-bottom:6px;">Programados / reales · ${metrica==='pico'?'pico':'promedio'} de agentes</caption><thead><tr style="color:var(--text-dim);text-align:right;"><th style="text-align:left;${th}">Hora</th>${datos.dias.map((d,i)=>`<th style="${th}">${SIMUL_DIAS[i][0]}${d.n?' ×'+d.n:''}</th>`).join('')}</tr></thead><tbody>`;
+ for(let h=h0;h<=h1;h++)t+=`<tr style="text-align:right;color:var(--text);"><td style="text-align:left;padding:3px 8px;border-bottom:1px solid var(--border);">${simulHora(h)}–${String(h).padStart(2,'0')}:59</td>${datos.dias.map((d,i)=>`<td style="padding:3px 8px;border-bottom:1px solid var(--border);">${mp[i][h]===null?'–':simulFmt(mp[i][h])+' / '+simulFmt(mr[i][h])}</td>`).join('')}</tr>`;
+ return t+`</tbody></table></div><div style="font-size:10px;color:var(--text-dim);margin-top:8px;line-height:1.5;">${nota}</div>`;
+ }
+ const campos=vista==='todo'?(datos.conReal?['prog','real','brecha']:['prog']):[vista];
+ const sinReal=(vista==='real'||vista==='brecha')&&!datos.conReal;
+ const paneles=sinReal?'<div style="padding:22px 8px;text-align:center;font-size:12px;color:var(--text-dim);">Aún no hay turnos reales cerrados en el período.</div>':campos.map(c=>simulPanelHTML(datos,c,metrica,h0,h1,c==='brecha'?maxB:max,campos.length===1)).join('');
+ return`<div style="font-size:11px;color:var(--text-muted);margin-bottom:10px;line-height:1.5;">${resumen}</div>
+ <div id="simul-wrap" style="position:relative;"><div style="display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start;">${paneles}</div><div id="simul-tip" role="status" style="display:none;position:absolute;pointer-events:none;z-index:5;background:var(--surface3);border:1px solid var(--border-p);border-radius:8px;padding:8px 10px;font-size:11px;box-shadow:var(--shadow);min-width:170px;"></div></div>
+ <div style="font-size:10px;color:var(--text-dim);margin-top:10px;line-height:1.5;">${nota}</div>`;
 }
 function simulCardHTML(rows,opts){
  const datos=agentesPorHora(rows,opts);
  const prev=window._simul||{};
- window._simul={datos,tipo:prev.tipo||'todos',metrica:prev.metrica||'promedio',tabla:!!prev.tabla,abierto:prev.abierto!==false};
- if(!datos.tipos.todos.dias)return'';
+ window._simul={datos,vista:prev.vista||'todo',metrica:prev.metrica||'promedio',tabla:!!prev.tabla,h24:!!prev.h24,abierto:prev.abierto!==false};
+ if(!datos.fechas)return'';
+ const s=window._simul;
  return`<div id="simul-card" class="hc-root" style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;overflow:hidden;">
- <div onclick="toggleSimul()" style="padding:14px;cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between;"><span style="font-size:11px;font-weight:700;color:var(--p2);">📈 Agentes simultáneos por hora del día</span><span id="simul-flecha" style="font-size:10px;color:var(--text-dim);">${window._simul.abierto?'▾':'▸'}</span></div>
- <div id="simul-body" style="display:${window._simul.abierto?'block':'none'};padding:0 14px 14px 14px;">${simulControlesHTML()}<div id="simul-chart">${simulChartHTML(datos,window._simul.tipo,window._simul.metrica,window._simul.tabla)}</div></div></div>`;
+ <div onclick="toggleSimul()" style="padding:14px;cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:space-between;"><span style="font-size:11px;font-weight:700;color:var(--p2);">📈 Agentes simultáneos por día y hora</span><span id="simul-flecha" style="font-size:10px;color:var(--text-dim);">${s.abierto?'▾':'▸'}</span></div>
+ <div id="simul-body" style="display:${s.abierto?'block':'none'};padding:0 14px 14px 14px;">${simulControlesHTML()}<div id="simul-chart">${simulChartHTML(datos,s.vista,s.metrica,s.tabla,s.h24)}</div></div></div>`;
 }
 function simulControlesHTML(){
  const s=window._simul,b=(act)=>`background:${act?'var(--p1)':'var(--surface)'};border:1px solid ${act?'var(--p1)':'var(--border)'};color:${act?'#fff':'var(--text-muted)'};padding:3px 10px;border-radius:8px;font-size:11px;cursor:pointer;font-family:inherit;`;
- return`<div id="simul-ctl" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">${SIMUL_TIPOS.map(([k,n])=>`<button onclick="setSimul('tipo','${k}')" aria-pressed="${s.tipo===k}" style="${b(s.tipo===k)}">${n}</button>`).join('')}<span style="width:1px;height:16px;background:var(--border);margin:0 4px;"></span>${[['promedio','Promedio'],['pico','Pico']].map(([k,n])=>`<button onclick="setSimul('metrica','${k}')" aria-pressed="${s.metrica===k}" style="${b(s.metrica===k)}">${n}</button>`).join('')}<span style="width:1px;height:16px;background:var(--border);margin:0 4px;"></span><button onclick="setSimul('tabla',${!s.tabla})" aria-pressed="${s.tabla}" style="${b(s.tabla)}">Ver tabla</button></div>`;
+ const sep='<span style="width:1px;height:16px;background:var(--border);margin:0 4px;"></span>';
+ return`<div id="simul-ctl" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">${SIMUL_VISTAS.map(([k,n])=>`<button onclick="setSimul('vista','${k}')" aria-pressed="${s.vista===k}" style="${b(s.vista===k)}">${n}</button>`).join('')}${sep}${[['promedio','Promedio'],['pico','Pico']].map(([k,n])=>`<button onclick="setSimul('metrica','${k}')" aria-pressed="${s.metrica===k}" style="${b(s.metrica===k)}">${n}</button>`).join('')}${sep}<button onclick="setSimul('h24',${!s.h24})" aria-pressed="${s.h24}" style="${b(s.h24)}">24 h</button><button onclick="setSimul('tabla',${!s.tabla})" aria-pressed="${s.tabla}" style="${b(s.tabla)}">Ver tabla</button></div>`;
 }
 function toggleSimul(){
  const s=window._simul;if(!s)return;
@@ -6200,30 +6243,43 @@ function setSimul(campo,valor){
  s[campo]=valor;
  const ctl=document.getElementById('simul-ctl'),ch=document.getElementById('simul-chart');
  if(ctl)ctl.outerHTML=simulControlesHTML();
- if(ch){ch.innerHTML=simulChartHTML(s.datos,s.tipo,s.metrica,s.tabla);simulEnlazar();}
+ if(ch){ch.innerHTML=simulChartHTML(s.datos,s.vista,s.metrica,s.tabla,s.h24);simulEnlazar();}
 }
-// Tooltip: una columna por hora (el hit target es la columna entera, no la barra); mismo contenido con el teclado (foco)
+// Tooltip por celda (la celda es el objetivo de la interacción); mismo contenido con el teclado: una sola parada de tabulador por mapa y flechas para moverse
 function simulEnlazar(){
  const wrap=document.getElementById('simul-wrap');if(!wrap)return;
- const tip=document.getElementById('simul-tip'),s=window._simul,d=s.datos.tipos[s.tipo]||s.datos.tipos.todos;
- const mostrar=(el,ev)=>{
- const h=+el.getAttribute('data-h');
+ const tip=document.getElementById('simul-tip'),s=window._simul;
+ const nada=()=>{tip.style.display='none';};
+ const mostrar=c=>{
+ const d=+c.getAttribute('data-d'),h=+c.getAttribute('data-h'),o=s.datos.dias[d];
+ if(!o||!o.n){nada();return;}
+ const dn=SIMUL_DIAS[d];
  const fila=(color,txt,val)=>{const r=document.createElement('div');r.style.cssText='display:flex;align-items:center;gap:8px;margin-top:3px;';const k=document.createElement('span');k.style.cssText=`width:12px;border-top:2px solid ${color};display:inline-block;`;const v=document.createElement('b');v.style.cssText='color:var(--text);font-size:12px;margin-left:auto;';v.textContent=val;const t=document.createElement('span');t.style.color='var(--text-muted)';t.textContent=txt;r.append(k,t,v);return r;};
  tip.textContent='';
- const t0=document.createElement('div');t0.style.cssText='font-weight:700;color:var(--text);';t0.textContent=simulHora(h)+' – '+String(h).padStart(2,'0')+':59';tip.appendChild(t0);
- tip.appendChild(fila('var(--hc-prog)','Programados',simulFmt(d.prog[h])+'  (pico '+d.progPico[h]+')'));
- tip.appendChild(fila('var(--hc-real)','Reales',simulFmt(d.real[h])+'  (pico '+d.realPico[h]+')'));
- const dif=d.real[h]-d.prog[h],df=document.createElement('div');df.style.cssText='margin-top:5px;color:var(--text-dim);font-size:10px;';df.textContent='Real − programados: '+(dif>0?'+':'')+simulFmt(dif);tip.appendChild(df);
+ const t0=document.createElement('div');t0.style.cssText='font-weight:700;color:var(--text);';t0.textContent=dn[1]+' '+simulHora(h)+' – '+String(h).padStart(2,'0')+':59';tip.appendChild(t0);
+ const t1=document.createElement('div');t1.style.cssText='color:var(--text-dim);font-size:10px;';t1.textContent=(s.metrica==='pico'?'Máximo entre ':'Promedio de ')+o.n+' '+(o.n===1?dn[1].toLowerCase():dn[2]);tip.appendChild(t1);
+ tip.appendChild(fila('var(--hc-prog)','Programados',simulFmt(o.prog[h])+'  (pico '+o.progPico[h]+')'));
+ if(s.datos.conReal){
+ tip.appendChild(fila('var(--hc-real)','Reales',simulFmt(o.real[h])+'  (pico '+o.realPico[h]+')'));
+ const dif=o.real[h]-o.prog[h],df=document.createElement('div');df.style.cssText='margin-top:5px;color:var(--text-dim);font-size:10px;';df.textContent='Brecha (reales − programados): '+simulFmtS(dif);tip.appendChild(df);
+ }
  tip.style.display='block';
- const wr=wrap.getBoundingClientRect(),er=el.getBoundingClientRect();
+ const wr=wrap.getBoundingClientRect(),er=c.getBoundingClientRect();
  let left=er.left-wr.left+er.width/2+12;if(left+tip.offsetWidth>wr.width-4)left=er.left-wr.left+er.width/2-tip.offsetWidth-12;
- tip.style.left=Math.max(4,left)+'px';tip.style.top='12px';
+ let top=er.top-wr.top-tip.offsetHeight-6;if(top<0)top=er.bottom-wr.top+6;
+ tip.style.left=Math.max(4,left)+'px';tip.style.top=top+'px';
  };
- wrap.querySelectorAll('.hc-col').forEach(el=>{
- el.addEventListener('pointermove',ev=>mostrar(el,ev));
- el.addEventListener('focus',ev=>mostrar(el,ev));
- el.addEventListener('pointerleave',()=>{tip.style.display='none';});
- el.addEventListener('blur',()=>{tip.style.display='none';});
+ const celda=ev=>ev.target&&ev.target.closest?ev.target.closest('.hc-c'):null;
+ wrap.addEventListener('pointerover',ev=>{const c=celda(ev);if(c)mostrar(c);else nada();});
+ wrap.addEventListener('pointerleave',nada);
+ wrap.addEventListener('focusin',ev=>{const c=celda(ev);if(c)mostrar(c);});
+ wrap.addEventListener('focusout',nada);
+ wrap.addEventListener('keydown',ev=>{
+ const c=celda(ev);if(!c)return;
+ const dd={ArrowLeft:[-1,0],ArrowRight:[1,0],ArrowUp:[0,-1],ArrowDown:[0,1]}[ev.key];if(!dd)return;
+ const p=c.closest('.hc-p'),n=p&&p.querySelector(`.hc-c[data-d="${+c.getAttribute('data-d')+dd[0]}"][data-h="${+c.getAttribute('data-h')+dd[1]}"]`);
+ if(!n)return;
+ ev.preventDefault();c.setAttribute('tabindex','-1');n.setAttribute('tabindex','0');n.focus();
  });
 }
 async function renderPanel2Insights(rows,allTurnos,fromDate,toDate,cyc){
