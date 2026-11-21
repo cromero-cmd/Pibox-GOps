@@ -67,7 +67,7 @@ const r1=(a)=>a.map(x=>Math.round(x*100)/100);
  const r3=calc([fila('a',13,8,16,{realStart:D(13,8),realEnd:D(13,16)}),fila('a',20,8,16,{realStart:D(20,8),realEnd:null,turno:{status:'active'}}),fila('b',20,8,16,{realStart:D(20,8),realEnd:null,turno:{status:'active'}})],{now:ahora});
  t('C6 dos viernes (13 completo con 1 agente, hoy con 2 hasta las 11:30): a las 10 el promedio real es 1,5; a las 14 solo cuenta el viernes 13 (1), no se diluye con el 0 de hoy',Math.abs(r3.dias[V].real[10]-1.5)<1e-9&&Math.abs(r3.dias[V].real[14]-1)<1e-9&&Math.abs(r3.dias[V].prog[14]-1.5)<1e-9,{r10:r3.dias[V].real[10],r14:r3.dias[V].real[14],p14:r3.dias[V].prog[14]});
  const hh=E.simulChartHTML(r,'todo','promedio',false,false);
- t('C7 el HTML avisa que hoy es parcial (hasta las 11:30) y las celdas sin dato llevan «–» y su aria-label',/Hoy los reales cuentan solo hasta las 11:30/.test(hh)&&/aún sin dato real/.test(hh)&&!/NaN|undefined|null/.test(hh));}
+ t('C7 el HTML avisa que hoy es parcial (hasta las 11:30) y las celdas sin dato llevan «–» y su aria-label',/\(hoy cuenta hasta las 11:30\)/.test(hh)&&/aún sin dato real/.test(hh)&&!/NaN|undefined|null/.test(hh));}
 
 // ═══ D. Pico vs promedio ═══
 {const r=calc([fila('a',9,8,16),fila('b',9,8,16),fila('a',16,8,16),fila('b',16,8,16),fila('c',16,8,16),fila('d',16,8,16)]),x=r.dias[LUN];
@@ -116,9 +116,37 @@ const r1=(a)=>a.map(x=>Math.round(x*100)/100);
  t('H5 el resumen lo anuncia («sin Storage») y sin Storage en el período el botón queda deshabilitado con su explicación',/\(sin Storage\)/.test(E.simulChartHTML(sin,'todo','promedio',false,false))&&!/\(sin Storage\)/.test(E.simulChartHTML(con,'todo','promedio',false,false))&&/setSimul\('sinStorage',\$\{!s\.sinStorage\}\)/.test(html)&&/<button disabled title="No hay personal de Storage/.test(html));
  t('H6 el filtro se conserva al repintar Insights (estado en window._simul) y al activarlo se recalculan los datos desde las filas guardadas',/sinStorage:!!prev\.sinStorage/.test(html)&&/if\(campo==='sinStorage'\)s\.datos=agentesPorHora\(s\.rows,/.test(html));}
 
+// ═══ I. Fechas futuras (filtro «Esta semana»): sin dato real, fuera de los promedios y del resumen ═══
+{// semana: lun 9 y mar 10 pasadas, mié 11 es HOY a las 10:30, jue 12 y vie 13 futuras. Todos con 2 agentes programados de 08 a 16; los reales solo existen hasta ahora
+ const AHORA=D(11,10,30),MIE=2,JUE=3,VIE=4;
+ const prog2=(d,o1={},o2={})=>[fila('a',d,8,16,o1),fila('b',d,8,16,o2)];
+ const real=(d)=>({realStart:D(d,8),realEnd:D(d,16)});
+ const rows=[...prog2(9,real(9),real(9)),...prog2(10,real(10),{}), // martes: solo 1 de 2 trabajó → faltó 1
+  ...prog2(11,{realStart:D(11,8),realEnd:null,turno:{status:'active'}},{realStart:D(11,8),realEnd:null,turno:{status:'active'}}),...prog2(12),...prog2(13)];
+ const r=calc(rows,{now:AHORA}),mr=E.simulMatriz(r,'real','promedio'),mb=E.simulMatriz(r,'brecha','promedio'),mp=E.simulMatriz(r,'prog','promedio');
+ t('I1 los días futuros (jue y vie) salen null en Reales y Brecha, en TODAS las horas, y no «0»',mr[JUE].every(v=>v===null)&&mr[VIE].every(v=>v===null)&&mb[JUE].every(v=>v===null)&&mb[VIE].every(v=>v===null));
+ t('I2 Programados NO cambia: la malla de los días futuros sí se muestra (2 agentes a las 10 el jueves y el viernes)',mp[JUE][10]===2&&mp[VIE][10]===2&&r.dias[JUE].n===1&&r.dias[VIE].n===1);
+ t('I3 el ×N de Reales/Brecha cuenta solo fechas ya ocurridas o en curso: jue y vie 0, mié (hoy) 1, lun 1; el de Programados sigue contando las futuras (jue 1)',r.dias[JUE].nReal===0&&r.dias[VIE].nReal===0&&r.dias[MIE].nReal===1&&r.dias[LUN].nReal===1&&r.futuras===2);
+ const h=E.simulChartHTML(r,'todo','promedio',false,false);
+ const paneles=h.split('class="hc-p"').slice(1);
+ const x=(i)=>[...paneles[i].matchAll(/<b>(Lun|Mar|Mié|Jue|Vie|Sáb|Dom)<\/b><span>([^<]*)<\/span>/g)].map(m=>m[1]+m[2]);
+ t('I4 en el encabezado, Programados muestra Jue ×1 y Vie ×1; Reales y Brecha muestran Jue — y Vie —',x(0).includes('Jue×1')&&x(0).includes('Vie×1')&&x(1).includes('Jue—')&&x(1).includes('Vie—')&&x(2).includes('Jue—')&&x(2).includes('Vie—')&&x(1).includes('Mié×1'),[x(0),x(1)]);
+ // brecha comparable: el martes faltó 1 de 2 → −1 (no se diluye con otras fechas); hoy a las 10 hay 2 de 2 → 0; hoy a las 12 (aún no llega) → null
+ t('I5 la brecha de las fechas ocurridas es real (martes −1 a las 10; hoy 0 a las 10) y la hora de hoy que no ha llegado es null',mb[1][10]===-1&&mb[MIE][10]===0&&mb[MIE][12]===null&&mr[MIE][12]===null,{mar:mb[1][10],mie:mb[MIE][10]});
+ // un mismo día de la semana con una fecha pasada y otra futura: la brecha compara solo contra la malla de la pasada
+ const rows2=[fila('a',9,8,16,real(9)),fila('b',9,8,16,real(9)),fila('a',16,8,16),fila('b',16,8,16),fila('c',16,8,16),fila('d',16,8,16)]; // lun 9 pasado (2 prog, 2 reales) · lun 16 futuro (4 prog)
+ const r2=calc(rows2,{now:D(11,10,30)});
+ t('I6 lunes con una fecha pasada (2 prog, 2 reales) y una futura (4 prog): programados promedia 3, reales 2 y brecha 0 — la malla del lunes futuro NO aparece como faltante',Math.abs(r2.dias[LUN].prog[10]-3)<1e-9&&r2.dias[LUN].real[10]===2&&E.simulMatriz(r2,'brecha','promedio')[LUN][10]===0&&E.simulMatriz(r2,'brecha','pico')[LUN][10]===0&&E.simulMatriz(r2,'prog','pico')[LUN][10]===4,{p:r2.dias[LUN].prog[10],b:E.simulMatriz(r2,'brecha','promedio')[LUN][10]});
+ // resumen: pico real y mayor faltante sin fechas futuras
+ t('I7 el resumen no apunta a un día futuro: el pico real y el mayor faltante caen en lun/mar/mié; «Mayor faltante» es −1 el martes (nunca jue ni vie)',/Pico real: <b>[^<]+<\/b> · (Lun|Mar|Mié) /.test(h)&&/Mayor faltante: <b>−1<\/b> · Mar /.test(h)&&!/Mayor faltante: <b>[^<]+<\/b> · (Jue|Vie)/.test(h),h.slice(0,400));
+ const todoFuturo=calc([...prog2(12),...prog2(13),...prog2(9,real(9),real(9))],{now:D(11,10,30)});
+ t('I8 la nota al pie dice que los días y horas que aún no ocurren salen con «–» (y que Programados muestra la malla futura); sin fechas futuras ni hoy en curso no aparece',/Los días y horas que aún no ocurren salen con «–» en Reales y Brecha \(hoy cuenta hasta las 10:30\)/.test(h)&&/Programados sí muestra la malla de los días que faltan/.test(h)&&!/aún no ocurren/.test(E.simulChartHTML(calc([fila('a',9,8,16,real(9))]),'todo','promedio',false,false)));
+ t('I9 las celdas sin dato llevan «–» y su aria-label; el tooltip lo explica y el HTML no trae NaN/undefined',/aria-label="Jueves 10:00: aún sin dato real"/.test(h)&&!/NaN|undefined/.test(h)&&/Reales: aún sin dato \(todavía no ocurre\)/.test(html)&&/reales: '\+o\.nReal\+' ya ocurrida'/.test(html));
+ t('I10 la tabla muestra «–» en reales de los días futuros',/10:00–10:59<\/td>[^]*?<td[^>]*>2 \/ –<\/td>/.test(E.simulChartHTML(r,'todo','promedio',true,false)));}
+
 // ═══ G. Integración en Insights, colores y accesibilidad de color ═══
 t('G1 la tarjeta se inserta en Insights (primera de la columna), con falla aislada (try/catch) y enlazando el tooltip después de pintar',/simulHTML=simulCardHTML\(rows,\{excluir:new Set\(\[\.\.\.\(window\.ADMINS\|\|ADMINS\),SUPER_ADMIN\]\)\}\)/.test(html)&&/\$\{simulHTML\}\n \$\{tardanzaHTML\}/.test(html)&&/if\(simulHTML\)simulEnlazar\(\);/.test(html));
-t('G2 versión 19.10 y colores definidos para modo oscuro (por defecto) y claro',/const APP_VERSION='19\.10';/.test(html)&&/\.hc-root\{--hc-prog:#3987e5;--hc-real:#d95926;--hc-b-lo:#1a3a66;/.test(html)&&/body\.light-mode \.hc-root\{--hc-prog:#2a78d6;--hc-real:#eb6834;--hc-b-lo:#dcebfc;/.test(html));
+t('G2 versión 19.11 y colores definidos para modo oscuro (por defecto) y claro',/const APP_VERSION='19\.11';/.test(html)&&/\.hc-root\{--hc-prog:#3987e5;--hc-real:#d95926;--hc-b-lo:#1a3a66;/.test(html)&&/body\.light-mode \.hc-root\{--hc-prog:#2a78d6;--hc-real:#eb6834;--hc-b-lo:#dcebfc;/.test(html));
 t('G3 el tooltip se arma con textContent (nada de innerHTML con datos)',!/tip\.innerHTML/.test(html));
 {// Contraste de la etiqueta de cada celda contra su relleno (WCAG ≥ 4,5) en todo el recorrido de cada rampa y en ambos temas (el texto NO cambia de color: la rampa no cruza el punto medio)
  const hex=h=>[1,3,5].map(i=>parseInt(h.slice(i,i+2),16)/255),lin=c=>c<=0.04045?c/12.92:((c+0.055)/1.055)**2.4;

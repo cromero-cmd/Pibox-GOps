@@ -1600,7 +1600,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
-const APP_VERSION='19.10';
+const APP_VERSION='19.11';
 // Promesas rechazadas sin manejar y errores de script: antes desaparecían sin rastro en consola del agente.
 window.addEventListener('unhandledrejection',e=>console.error('[unhandledrejection]',e.reason&&(e.reason.stack||e.reason.message||e.reason)));
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
@@ -6127,31 +6127,37 @@ function agentesPorHora(rows,opts){
  });
  // 0 = lunes … 6 = domingo
  const dow=k=>{const g=new Date(k+'T00:00:00').getDay();return g===0?6:g-1;};
- const dias=Array.from({length:7},()=>({n:0,prog:Array(24).fill(0),real:Array(24).fill(0),realObs:Array(24).fill(0),progPico:Array(24).fill(0),realPico:Array(24).fill(0)}));
+ const dias=Array.from({length:7},()=>({n:0,nReal:0,prog:Array(24).fill(0),real:Array(24).fill(0),realObs:Array(24).fill(0),progC:Array(24).fill(0),progPico:Array(24).fill(0),progPicoC:Array(24).fill(0),realPico:Array(24).fill(0)}));
  fechas.forEach(k=>{
- const o=dias[dow(k)],a=acum.get(k);
+ const o=dias[dow(k)],a=acum.get(k),futura=k>hoy;
  o.n++;
- ['prog','real'].forEach(c=>{
+ if(!futura)o.nReal++;
  for(let h=0;h<24;h++){
- // los programados de hoy están completos; los reales de hoy solo existen hasta ahora (se promedian sobre los minutos YA transcurridos)
- const lim=(c==='real'&&k===hoy)?Math.max(0,Math.min(60,ahoraMin-h*60)):60;
- let sum=0,mx=0;
- for(let m=h*60;m<h*60+lim;m++){const v=a[c][m];sum+=v;if(v>mx)mx=v;}
- o[c][h]+=sum;
- if(c==='real')o.realObs[h]+=lim;
- if(mx>o[c+'Pico'][h])o[c+'Pico'][h]=mx;
+ // Programados: la malla completa de la hora, también de fechas futuras.
+ let sp=0,mp=0;
+ for(let m=h*60;m<h*60+60;m++){const v=a.prog[m];sp+=v;if(v>mp)mp=v;}
+ o.prog[h]+=sp;
+ if(mp>o.progPico[h])o.progPico[h]=mp;
+ // Reales: solo existen los minutos que YA ocurrieron (una fecha futura no aporta ninguno; hoy, hasta ahora). Un minuto sin ocurrir no es «0 agentes».
+ const lim=futura?0:(k===hoy?Math.max(0,Math.min(60,ahoraMin-h*60)):60);
+ let sr=0,mr=0,spc=0,mpc=0;
+ for(let m=h*60;m<h*60+lim;m++){const v=a.real[m],w=a.prog[m];sr+=v;if(v>mr)mr=v;spc+=w;if(w>mpc)mpc=w;}
+ o.real[h]+=sr;o.realObs[h]+=lim;
+ if(mr>o.realPico[h])o.realPico[h]=mr;
+ // Programados SOLO de esos mismos minutos: la brecha compara contra lo que ya pudo ocurrir, no contra la malla de días que faltan
+ o.progC[h]+=spc;
+ if(mpc>o.progPicoC[h])o.progPicoC[h]=mpc;
  }
  });
- });
- dias.forEach(o=>{if(o.n)for(let h=0;h<24;h++){o.prog[h]/=60*o.n;o.real[h]=o.realObs[h]?o.real[h]/o.realObs[h]:0;}});
- return{dias,fechas:fechas.size,storageN:storage.size,sinStorage:!!opts.sinStorage,hoyParcial,ahoraTxt:String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0'),agentes:new Set(base.map(r=>r.usuario)).size,filas:base.length,conReal};
+ dias.forEach(o=>{if(o.n)for(let h=0;h<24;h++){o.prog[h]/=60*o.n;o.real[h]=o.realObs[h]?o.real[h]/o.realObs[h]:0;o.progC[h]=o.realObs[h]?o.progC[h]/o.realObs[h]:0;}});
+ return{dias,fechas:fechas.size,futuras:[...fechas].filter(k=>k>hoy).length,storageN:storage.size,sinStorage:!!opts.sinStorage,hoyParcial,ahoraTxt:String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0'),agentes:new Set(base.map(r=>r.usuario)).size,filas:base.length,conReal};
 }
 // Matriz 7×24 de una lectura (null = ese día de la semana no tiene fechas en el período)
 function simulMatriz(datos,campo,metrica){
  const pico=metrica==='pico';
  return datos.dias.map(d=>!d.n?Array(24).fill(null):Array.from({length:24},(_,h)=>{
  if(campo!=='prog'&&!d.realObs[h])return null; // hora de hoy que aún no llega: sin dato real (no es «0 agentes»)
- return campo==='brecha'?(pico?d.realPico[h]-d.progPico[h]:d.real[h]-d.prog[h]):(pico?d[campo+'Pico'][h]:d[campo][h]);
+ return campo==='brecha'?(pico?d.realPico[h]-d.progPicoC[h]:d.real[h]-d.progC[h]):(pico?d[campo+'Pico'][h]:d[campo][h]);
  }));
 }
 // Celda extrema: modo 'max' (la más alta) o 'min' (la más baja); la primera si hay empate
@@ -6172,6 +6178,7 @@ const simulFmtS=n=>{const r=Math.round(n*10)/10;return r===0?'0':(r>0?'+':'−')
 const simulHora=h=>String(h).padStart(2,'0')+':00';
 // HTML de UN mapa de calor. campo: prog|real|brecha. max = tope de la escala compartida (programados y reales usan el mismo)
 function simulPanelHTML(datos,campo,metrica,h0,h1,max,grande){
+ const nDe=d=>campo==='prog'?d.n:d.nReal; // en Reales y Brecha el ×N solo cuenta las fechas ya ocurridas o en curso
  const m=simulMatriz(datos,campo,metrica),brecha=campo==='brecha';
  const ext=brecha?simulExtremo(m,'min'):simulExtremo(m,'max');
  const rampa=campo==='real'?'o':'b';
@@ -6179,7 +6186,7 @@ function simulPanelHTML(datos,campo,metrica,h0,h1,max,grande){
  const sw=brecha?'<span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:linear-gradient(90deg,var(--hc-neg) 50%,var(--hc-pos) 50%);"></span>':`<span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:var(${campo==='real'?'--hc-real':'--hc-prog'});"></span>`;
  const alto=grande?28:22;
  let g=`<div class="hc-g" style="display:grid;grid-template-columns:36px repeat(7,minmax(0,1fr));gap:2px;">`;
- g+='<div></div>'+datos.dias.map((d,i)=>`<div class="hc-dh"><b>${SIMUL_DIAS[i][0]}</b><span>${d.n?'×'+d.n:'—'}</span></div>`).join('');
+ g+='<div></div>'+datos.dias.map((d,i)=>`<div class="hc-dh"><b>${SIMUL_DIAS[i][0]}</b><span>${nDe(d)?'×'+nDe(d):'—'}</span></div>`).join('');
  for(let h=h0;h<=h1;h++){
  g+=`<div class="hc-hl" style="line-height:${alto}px;">${simulHora(h)}</div>`;
  for(let d=0;d<7;d++){
@@ -6214,7 +6221,7 @@ function simulChartHTML(datos,vista,metrica,tabla,h24){
  if(er)resumen+=` · Pico real: <b>${simulFmt(er.v)}</b> · ${lug(er)}`;
  if(eb&&eb.v<0)resumen+=` · Mayor faltante: <b>${simulFmtS(eb.v)}</b> · ${lug(eb)}`;
  resumen+=` · ${datos.fechas} fecha${datos.fechas!==1?'s':''} · ${datos.agentes} agente${datos.agentes!==1?'s':''}${datos.sinStorage?' (sin Storage)':''}`;
- const nota=`${metrica==='pico'?'Pico = máximo de agentes simultáneos en esa hora en cualquiera de las fechas de ese día de la semana.':'Promedio = minutos de agentes en turno en esa hora ÷ 60, promediado sobre las fechas de ese día de la semana (×N bajo cada día).'} Reales: turnos iniciados (se descartan los sin cierre de días pasados y los de más de 14 h). Brecha negativa: hubo menos agentes de los programados (ausencias, llegadas tarde o turnos sin iniciar). El almuerzo no se descuenta.${datos.hoyParcial?` Hoy los reales cuentan solo hasta las ${datos.ahoraTxt} (las horas que faltan salen con «–»).`:''}${(h0>0||h1<23)?' Se ocultan las horas sin actividad.':''}`;
+ const nota=`${metrica==='pico'?'Pico = máximo de agentes simultáneos en esa hora en cualquiera de las fechas de ese día de la semana.':'Promedio = minutos de agentes en turno en esa hora ÷ 60, promediado sobre las fechas de ese día de la semana (×N bajo cada día).'} Reales: turnos iniciados (se descartan los sin cierre de días pasados y los de más de 14 h). Brecha negativa: hubo menos agentes de los programados (ausencias, llegadas tarde o turnos sin iniciar). El almuerzo no se descuenta.${(datos.hoyParcial||datos.futuras)?` Los días y horas que aún no ocurren salen con «–» en Reales y Brecha${datos.hoyParcial?` (hoy cuenta hasta las ${datos.ahoraTxt})`:''}: no entran en sus promedios y el ×N de esos mapas cuenta solo las fechas ya ocurridas o en curso. Programados sí muestra la malla de los días que faltan.`:''}${(h0>0||h1<23)?' Se ocultan las horas sin actividad.':''}`;
  if(tabla){
  const th='padding:4px 8px;border-bottom:1px solid var(--border);';
  let t=`<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:11px;font-family:var(--mono);"><caption style="text-align:left;font-size:10px;color:var(--text-dim);padding-bottom:6px;">Programados / reales · ${metrica==='pico'?'pico':'promedio'} de agentes</caption><thead><tr style="color:var(--text-dim);text-align:right;"><th style="text-align:left;${th}">Hora</th>${datos.dias.map((d,i)=>`<th style="${th}">${SIMUL_DIAS[i][0]}${d.n?' ×'+d.n:''}</th>`).join('')}</tr></thead><tbody>`;
@@ -6270,13 +6277,13 @@ function simulEnlazar(){
  const fila=(color,txt,val)=>{const r=document.createElement('div');r.style.cssText='display:flex;align-items:center;gap:8px;margin-top:3px;';const k=document.createElement('span');k.style.cssText=`width:12px;border-top:2px solid ${color};display:inline-block;`;const v=document.createElement('b');v.style.cssText='color:var(--text);font-size:12px;margin-left:auto;';v.textContent=val;const t=document.createElement('span');t.style.color='var(--text-muted)';t.textContent=txt;r.append(k,t,v);return r;};
  tip.textContent='';
  const t0=document.createElement('div');t0.style.cssText='font-weight:700;color:var(--text);';t0.textContent=dn[1]+' '+simulHora(h)+' – '+String(h).padStart(2,'0')+':59';tip.appendChild(t0);
- const t1=document.createElement('div');t1.style.cssText='color:var(--text-dim);font-size:10px;';t1.textContent=(s.metrica==='pico'?'Máximo entre ':'Promedio de ')+o.n+' '+(o.n===1?dn[1].toLowerCase():dn[2]);tip.appendChild(t1);
+ const t1=document.createElement('div');t1.style.cssText='color:var(--text-dim);font-size:10px;';t1.textContent=(s.metrica==='pico'?'Máximo entre ':'Promedio de ')+o.n+' '+(o.n===1?dn[1].toLowerCase():dn[2])+(s.datos.conReal&&o.nReal!==o.n?' · reales: '+o.nReal+' ya ocurrida'+(o.nReal===1?'':'s'):'');tip.appendChild(t1);
  tip.appendChild(fila('var(--hc-prog)','Programados',simulFmt(o.prog[h])+'  (pico '+o.progPico[h]+')'));
  if(s.datos.conReal&&!o.realObs[h]){
- const df=document.createElement('div');df.style.cssText='margin-top:5px;color:var(--text-dim);font-size:10px;';df.textContent='Reales: aún sin dato (la hora no ha llegado)';tip.appendChild(df);
+ const df=document.createElement('div');df.style.cssText='margin-top:5px;color:var(--text-dim);font-size:10px;';df.textContent='Reales: aún sin dato (todavía no ocurre)';tip.appendChild(df);
  }else if(s.datos.conReal){
  tip.appendChild(fila('var(--hc-real)','Reales',simulFmt(o.real[h])+'  (pico '+o.realPico[h]+')'));
- const dif=o.real[h]-o.prog[h],df=document.createElement('div');df.style.cssText='margin-top:5px;color:var(--text-dim);font-size:10px;';df.textContent='Brecha (reales − programados): '+simulFmtS(dif);tip.appendChild(df);
+ const dif=o.real[h]-o.progC[h],df=document.createElement('div');df.style.cssText='margin-top:5px;color:var(--text-dim);font-size:10px;';df.textContent='Brecha (reales − programados): '+simulFmtS(dif);tip.appendChild(df);
  }
  tip.style.display='block';
  const wr=wrap.getBoundingClientRect(),er=c.getBoundingClientRect();
