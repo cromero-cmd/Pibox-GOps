@@ -1,5 +1,5 @@
 // ═════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
-// PiGOps_Dashboard.gs — Conteos de agentes por fecha × hora × línea para el dashboard de operaciones (v19.12)
+// PiGOps_Dashboard.gs — Conteos de agentes por fecha × hora × línea para el dashboard de operaciones (v19.13)
 //
 // QUINTO archivo del mismo proyecto de Apps Script que PiGOps_Notificaciones_v5.gs, PiGOps_Reglamento.gs, PiGOps_Auditoria.gs y
 // PiGOps_CierreTurnos.gs (copiar a mano, igual que ellos). Reutiliza: FIREBASE_REST, MALLA_SHEET_NAME, getMallaSheetId() y mallaFechaISO_()
@@ -14,6 +14,7 @@
 // ── COLUMNAS DE LA HOJA «conteos» ──
 //   fecha (AAAA-MM-DD, Bogotá) · hora (0–23) · pais (fijo «Colombia») · linea (la de la malla, tal cual; vacía → «(sin línea)»; TODAS = total)
 //   agentes_programados · agentes_reales · actualizado_at (AAAA-MM-DDTHH:MM:SS-05:00) · estado (provisional | cerrado)
+//   agentes_almuerzo (v19.13: agentes PROGRAMADOS en su franja de almuerzo, promedio de la hora; va al final para no mover las demás columnas)
 // Una fila por fecha × hora × línea; las horas sin agentes van con 0. Una línea aparece en una fecha si alguna fila de la malla la toca ese día
 // (incluido el tramo posterior a la medianoche de un turno nocturno del día anterior); TODAS aparece siempre.
 //
@@ -22,8 +23,14 @@
 // • Programados: entrada → salida de la malla (si la salida es menor o igual a la entrada se suma un día: turno nocturno). Se ignoran: admins,
 //   filas con novedad (salvo la media jornada de votaciones), filas sin horario y filas con entrada = salida SIN novedad.
 // • Reales: el turno del agente ese día (ended > interrupted > el más reciente), de su inicio real a su fin real; un turno activo de HOY cuenta
-//   hasta ahora; se descartan los turnos de más de 14 h y los sin cierre de días pasados (casi siempre un turno olvidado). Ni el almuerzo ni las
-//   pausas se descuentan.
+//   hasta ahora; se descartan los turnos de más de 14 h y los sin cierre de días pasados (casi siempre un turno olvidado).
+// • Almuerzo (v19.13): se publica APARTE en agentes_almuerzo; agentes_programados y agentes_reales NO lo descuentan (no hay almuerzo real
+//   registrado: los turnos solo tienen inicio y fin). Sale de la franja de la malla (columna H, «HH:MM - HH:MM»), solo para las filas que cuentan
+//   como programadas, con la misma regla: minutos ÷ 60 y cada agente una sola vez por línea y en TODAS. Vacía o «0:00:00» = sin almuerzo; mal
+//   escrita = se ignora y se cuenta en el log. En un turno nocturno, si la franja cae antes de la entrada es del día siguiente (+1 día); una
+//   franja que cruza la medianoche (23:30 - 00:30) también. Solo cuenta lo que queda dentro del turno (lo de afuera se recorta; si queda todo
+//   afuera, se cuenta en el log). Los «disponibles» se calculan en el dashboard: programados − almuerzo.
+// • Las pausas activas (10–15 min por turno) siguen SIN descontarse y no se publican: la malla no dice a qué hora son.
 // • Cada MINUTO se asigna a la fecha y hora de Bogotá en que ocurre (zona fija America/Bogota, nunca la del navegador ni la del script): un turno
 //   22:00–06:00 del día D pone las horas 22 y 23 en D y las 0 a 5 en D+1. El cálculo arranca UN DÍA ANTES del rango para que la madrugada del
 //   primer día no quede vacía.
@@ -34,6 +41,11 @@
 // • EXCLUIDO el personal de Storage, con la MISMA regla del botón «Sin Storage» de Insights: «storage» (sin distinguir mayúsculas ni tildes) en la
 //   línea o el rol de la fila. Por eso no hay ninguna línea «Storage» en la hoja. Si algún día hay contaminación, se pasa a una lista explícita.
 // • Una fecha sin NINGUNA fila en la malla no se escribe (no se sabe si no había nadie o la malla no llega ahí): se informa en el log.
+//
+// ── CAMBIO DE ENCABEZADO (v19.13) ──
+// dash_hoja exige el encabezado EXACTO de las 9 columnas. Antes de pegar esta versión, escribe «agentes_almuerzo» en la celda I1 de la pestaña
+// «conteos» (la v19.12 solo revisa A1:H1, así que sigue escribiendo bien mientras tanto). Si se pega sin I1, no se escribe nada y llega el aviso
+// técnico. Después, dashboardCargaInicial() rellena agentes_almuerzo en las 12 semanas (la ejecución horaria solo recalcula 14 días).
 //
 // ── ESTADO Y CORRECCIONES ──
 // Cada ejecución recalcula y SOBRESCRIBE los últimos 14 días (una fecha ya escrita se reemplaza entera). «provisional» = la fecha tiene menos de 7
@@ -61,7 +73,7 @@ var DASH = {
   TODAS: 'TODAS',
   SIN_LINEA: '(sin línea)',
   HOJA: 'conteos',
-  ENCABEZADOS: ['fecha', 'hora', 'pais', 'linea', 'agentes_programados', 'agentes_reales', 'actualizado_at', 'estado'],
+  ENCABEZADOS: ['fecha', 'hora', 'pais', 'linea', 'agentes_programados', 'agentes_reales', 'actualizado_at', 'estado', 'agentes_almuerzo'],
   DIAS_RECALCULO: 14,        // ventana que se recalcula y sobrescribe en cada ejecución (hoy incluido)
   SEMANAS_INICIAL: 12,
   DIAS_PROVISIONAL: 7,       // una fecha con menos de 7 días es «provisional»
@@ -97,9 +109,21 @@ function dash_ordenFila(a, b) {
   var l = dash_ordenLinea(String(a[3]), String(b[3]));
   return l !== 0 ? l : a[1] - b[1];
 }
+// Minutos de un agente en una fecha y línea: p = programado, r = real, a = en su franja de almuerzo programada (v19.13).
 function dash_slot(pres, iso, clave, u) {
   var d = pres[iso] || (pres[iso] = {}), c = d[clave] || (d[clave] = {});
-  return c[u] || (c[u] = { p: new Uint8Array(1440), r: new Uint8Array(1440) });
+  return c[u] || (c[u] = { p: new Uint8Array(1440), r: new Uint8Array(1440), a: new Uint8Array(1440) });
+}
+// Franja de almuerzo de la malla (columna H, texto «HH:MM - HH:MM»; acepta segundos y guion largo). Vacía o «0:00:00» = sin almuerzo. Lo que no
+// sea una franja válida (horas 0–23, minutos 0–59, fin distinto del inicio) = mal escrita. → {estado:'sin'|'ok'|'mala', ini:{h,mi}, fin:{h,mi}}
+function dash_franjaAlmuerzo(texto) {
+  var s = String(texto || '').trim();
+  if (!s || /^0{1,2}:00(:00)?$/.test(s)) return { estado: 'sin' };
+  var m = s.match(/^(\d{1,2}):(\d{2})(?::\d{2})?\s*[-–]\s*(\d{1,2}):(\d{2})(?::\d{2})?$/);
+  if (!m) return { estado: 'mala' };
+  var a = { h: +m[1], mi: +m[2] }, b = { h: +m[3], mi: +m[4] };
+  if (a.h > 23 || b.h > 23 || a.mi > 59 || b.mi > 59 || (a.h === b.h && a.mi === b.mi)) return { estado: 'mala' };
+  return { estado: 'ok', ini: a, fin: b };
 }
 // Marca presencia minuto a minuto en la fecha y hora de Bogotá en que ocurre cada minuto (los días fuera del rango de salida se descartan).
 // Misma fórmula que llenar() de agentesPorHora: arranca en el minuto del inicio y cubre ceil(duración) minutos.
@@ -114,13 +138,14 @@ function dash_llenar(pres, salida, campo, u, claves, sMs, eMs) {
     cur = hasta;
   }
 }
-// e: {now:Date, desdeISO, hastaISO, malla:[{iso,usuario(minúsculas),rol,inicio,fin,linea,novedad}], turnos:[{userEmail,status,startTime:Date,endTime:Date|null}] (del más reciente al más antiguo),
+// e: {now:Date, desdeISO, hastaISO, malla:[{iso,usuario(minúsculas),rol,inicio,fin,linea,novedad,almuerzo}], turnos:[{userEmail,status,startTime:Date,endTime:Date|null}] (del más reciente al más antiguo),
 //     admins:{correoMinúsculas:true}, sinDiaPrevio:bool (solo para comparar con Insights, que no mira el día anterior)}
-// Devuelve {filas:[[fecha,hora,pais,linea,programados,reales,actualizado_at,estado]], escritas:[fechas], resumen}. Solo números y etiquetas de línea.
+// Devuelve {filas:[[fecha,hora,pais,linea,programados,reales,actualizado_at,estado,almuerzo]], escritas:[fechas], resumen}. Solo números y etiquetas de línea.
 function dash_calcular(e) {
   var now = e.now, hoy = reg_isoBogota(now), desde = e.desdeISO, hasta = e.hastaISO;
   var ini = e.sinDiaPrevio ? desde : dash_isoMas(desde, -1), admins = e.admins || {};
-  var res = { ignoradasEntradaIgualSalida: 0, turnosLargosDescartados: 0, agentesConFilaDuplicada: 0, storageExcluidos: 0, filasMalla: 0, filasConTurno: 0 };
+  var res = { ignoradasEntradaIgualSalida: 0, turnosLargosDescartados: 0, agentesConFilaDuplicada: 0, storageExcluidos: 0, filasMalla: 0, filasConTurno: 0,
+    filasConAlmuerzo: 0, filasSinAlmuerzo: 0, almuerzoMalEscrito: 0, almuerzoMalEscritoEjemplos: [], almuerzoFueraDelTurno: 0, almuerzoRecortado: 0 };
   var salida = {}, fechasConMalla = {}, iso;
   for (iso = desde; iso <= hasta; iso = dash_isoMas(iso, 1)) salida[iso] = true;
   e.malla.forEach(function (m) { if (salida[m.iso]) fechasConMalla[m.iso] = true; });
@@ -143,6 +168,24 @@ function dash_calcular(e) {
     if (vistas[kd]) duplicados[kd] = true; vistas[kd] = true;
     var linea = m.linea ? String(m.linea) : DASH.SIN_LINEA, claves = [linea, DASH.TODAS];
     dash_llenar(pres, salida, 'p', u, claves, s, f);
+    // Almuerzo programado (v19.13): solo lo que cae dentro del turno [s, f).
+    var alm = dash_franjaAlmuerzo(m.almuerzo);
+    if (alm.estado === 'sin') res.filasSinAlmuerzo++;
+    else if (alm.estado === 'mala') {
+      res.almuerzoMalEscrito++;
+      var txt = String(m.almuerzo).trim().slice(0, 40);
+      if (res.almuerzoMalEscritoEjemplos.length < 5 && res.almuerzoMalEscritoEjemplos.indexOf(txt) === -1) res.almuerzoMalEscritoEjemplos.push(txt);
+    } else {
+      var as = reg_progADate(m.iso, alm.ini).getTime(), af = reg_progADate(m.iso, alm.fin).getTime();
+      if (af <= as) af += 86400000;                          // franja que cruza la medianoche (23:30 - 00:30)
+      if (as < s) { as += 86400000; af += 86400000; }        // turno nocturno: la franja cae antes de la entrada → es del día siguiente
+      var a0 = Math.max(as, s), a1 = Math.min(af, f);
+      if (a1 > a0) {
+        res.filasConAlmuerzo++;
+        if (a0 !== as || a1 !== af) res.almuerzoRecortado++;
+        dash_llenar(pres, salida, 'a', u, claves, a0, a1);
+      } else res.almuerzoFueraDelTurno++;
+    }
     var t = dash_elegirTurno(porDia[kd]);
     if (!t || !t.startTime) return;
     var rs = t.startTime.getTime(), re = t.endTime ? t.endTime.getTime() : null;
@@ -164,13 +207,14 @@ function dash_calcular(e) {
     for (var c = 0; c < claves.length; c++) {
       var usuarios = ((pres[iso] || {})[claves[c]]) || {}, us = Object.keys(usuarios);
       for (var h = 0; h < 24; h++) {
-        var obs = iso > hoy ? 0 : iso === hoy ? Math.max(0, Math.min(60, ahoraMin - h * 60)) : 60, sp = 0, sr = 0, m;
+        var obs = iso > hoy ? 0 : iso === hoy ? Math.max(0, Math.min(60, ahoraMin - h * 60)) : 60, sp = 0, sr = 0, sa = 0, m;
         for (var k = 0; k < us.length; k++) {
           var a = usuarios[us[k]];
-          for (m = h * 60; m < h * 60 + 60; m++) sp += a.p[m];
+          for (m = h * 60; m < h * 60 + 60; m++) { sp += a.p[m]; sa += a.a[m]; }
           for (m = h * 60; m < h * 60 + obs; m++) sr += a.r[m];
         }
-        filas.push([iso, h, DASH.PAIS, claves[c], dash_redondear(sp / 60), obs ? dash_redondear(sr / obs) : '', act, estado]);
+        // El almuerzo es programado (como agentes_programados): va completo también en horas y fechas que aún no ocurren.
+        filas.push([iso, h, DASH.PAIS, claves[c], dash_redondear(sp / 60), obs ? dash_redondear(sr / obs) : '', act, estado, dash_redondear(sa / 60)]);
       }
     }
   }
@@ -198,7 +242,8 @@ function dash_correr(deps, opts) {
 }
 
 // ═══════════════ PRODUCCIÓN: Firestore REST, Sheets ═══════════════
-// Malla: B fecha (día/mes/año), C usuario, E rol, F inicio, G fin, I línea, K novedad. NO se leen nombres. Devuelve también hasta dónde llega la malla.
+// Malla: B fecha (día/mes/año), C usuario, E rol, F inicio, G fin, H almuerzo (v19.13), I línea, K novedad. NO se leen nombres. Devuelve también hasta
+// dónde llega la malla.
 function dash_leerMalla(desdeISO) {
   var sheet = SpreadsheetApp.openById(getMallaSheetId()).getSheetByName(MALLA_SHEET_NAME);
   if (!sheet) throw new Error('No se encontró la hoja Malla');
@@ -210,7 +255,7 @@ function dash_leerMalla(desdeISO) {
     if (!minIso || iso < minIso) minIso = iso;
     if (!maxIso || iso > maxIso) maxIso = iso;
     if (iso < desdeISO) continue;
-    rows.push({ iso: iso, usuario: String(r[2] || '').trim().toLowerCase(), rol: String(r[4] || '').trim(), inicio: String(r[5] || '').trim(), fin: String(r[6] || '').trim(), linea: String(r[8] || '').trim(), novedad: String(r[10] || '').trim() });
+    rows.push({ iso: iso, usuario: String(r[2] || '').trim().toLowerCase(), rol: String(r[4] || '').trim(), inicio: String(r[5] || '').trim(), fin: String(r[6] || '').trim(), linea: String(r[8] || '').trim(), novedad: String(r[10] || '').trim(), almuerzo: String(r[7] || '').trim() });
   }
   return { rows: rows, minIso: minIso, maxIso: maxIso };
 }
@@ -322,6 +367,9 @@ function dash_logResumen_(res) {
     ' · fechas escritas: ' + r.fechasEscritas + ' · filas: ' + r.filas);
   Logger.log('Storage excluidos (agentes distintos, sin nombres): ' + r.storageExcluidos + ' · filas con entrada = salida y sin novedad ignoradas: ' + r.ignoradasEntradaIgualSalida +
     ' · turnos de más de ' + DASH.HORAS_TURNO_MAX + ' h descartados: ' + r.turnosLargosDescartados + ' · agentes con dos filas el mismo día: ' + r.agentesConFilaDuplicada);
+  Logger.log('Almuerzo (columna H): ' + r.filasConAlmuerzo + ' filas con franja (' + r.almuerzoRecortado + ' recortadas al turno) · ' + r.filasSinAlmuerzo + ' sin almuerzo (vacía o 0:00:00) · ' +
+    r.almuerzoFueraDelTurno + ' con la franja fuera del turno (ignoradas) · ' + r.almuerzoMalEscrito + ' MAL ESCRITAS (ignoradas)' +
+    (r.almuerzoMalEscritoEjemplos.length ? ': «' + r.almuerzoMalEscritoEjemplos.join('», «') + '»' : ''));
   if (r.fechasSinMalla.length) Logger.log('SIN FILAS EN LA MALLA (no se escribieron): ' + r.fechasSinMalla.length + ' fechas — de ' + r.fechasSinMalla[0] + ' a ' + r.fechasSinMalla[r.fechasSinMalla.length - 1] + ': ' + r.fechasSinMalla.join(', '));
   if (res.escrito) Logger.log('Hoja: ' + res.escrito.filasEscritas + ' filas escritas, ' + res.escrito.filasConservadas + ' conservadas (fechas fuera de la ventana dentro de la cola), hasta la fila ' + res.escrito.ultimaFila);
 }

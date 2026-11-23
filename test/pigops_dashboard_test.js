@@ -1,9 +1,10 @@
 // Uso: node test/pigops_dashboard_test.js   (sin red, sin Google, sin Firestore: todo simulado; no escribe nada en producción)
-// Conteos por fecha × hora × línea para el dashboard (PiGOps_Dashboard.gs, v19.12). La prueba central compara el cálculo del servidor con el
+// Conteos por fecha × hora × línea para el dashboard (PiGOps_Dashboard.gs, v19.13: + agentes_almuerzo). La prueba central compara el cálculo del servidor con el
 // agentesPorHora REAL del cliente (index.html, el mapa de Insights) sobre los mismos datos: si los dos no coinciden, el dashboard y el mapa mostrarían
 // números distintos. Las demás cubren: líneas y TODAS, un agente una sola vez, madrugada (turnos nocturnos y día previo), Storage, entrada = salida,
 // horas que aún no ocurren (vacías, no cero), estado provisional/cerrado, zona horaria fija, solo conteos (sin nombres ni correos), lecturas de Firestore y de la
-// malla con falla segura, escritura que sobrescribe solo la ventana y carga inicial con cobertura de la malla.
+// malla con falla segura, escritura que sobrescribe solo la ventana y carga inicial con cobertura de la malla; v19.13: almuerzo (turno normal,
+// nocturno, franja vacía, mal escrita, fuera del turno, un agente una vez) y encabezado de 9 columnas.
 process.env.TZ='America/Bogota';
 const fs=require('fs'),path=require('path'),vm=require('vm');
 const root=path.join(__dirname,'..');
@@ -53,8 +54,9 @@ function mundo(o={}){
  w.ctx=ctx;w.call=(f,...a)=>ctx[f](...a);
  return w;
 }
+const ENC=['fecha','hora','pais','linea','agentes_programados','agentes_reales','actualizado_at','estado','agentes_almuerzo'];
 function hojaFalsa(){
- const st={filas:[['fecha','hora','pais','linea','agentes_programados','agentes_reales','actualizado_at','estado']],maxRows:50,formatos:[]};
+ const st={filas:[ENC.slice()],maxRows:50,formatos:[]};
  const ultima=()=>{for(let i=st.filas.length;i>0;i--){const r=st.filas[i-1];if(r&&r.some(x=>x!==''&&x!==undefined))return i;}return 0;};
  return{st,getLastRow:ultima,getMaxRows:()=>st.maxRows,insertRowsAfter:(n,k)=>{st.maxRows+=k;},setName(){},setFrozenRows(){},
   getRange:(r,c,nr=1,nc=1)=>{const r0=r;return{
@@ -84,7 +86,7 @@ const DEF=[ // [usuario, línea, rol, inicio, fin, novedad]
  ['s2@x.co','Asignación','Auxiliar Storage','7:00:00','15:00:00',''],
  ['u11@x.co','Asignación','Operador','','','']];
 const fmtDDMM=iso=>iso.slice(8)+'/'+iso.slice(5,7)+'/'+iso.slice(0,4);
-const mallaDe=(fechas,def=DEF)=>{const r=[];fechas.forEach(iso=>def.forEach(d=>r.push(['',fmtDDMM(iso),d[0],'Nombre '+d[0],d[2],d[3],d[4],'',d[1],'LIDER',d[5]])));return r;};
+const mallaDe=(fechas,def=DEF)=>{const r=[];fechas.forEach(iso=>def.forEach(d=>r.push(['',fmtDDMM(iso),d[0],'Nombre '+d[0],d[2],d[3],d[4],d[6]||'',d[1],'LIDER',d[5]])));return r;};
 const mallaObj=(fechas,def=DEF)=>{const r=[];fechas.forEach(iso=>def.forEach(d=>r.push({iso,usuario:d[0],rol:d[2],inicio:d[3],fin:d[4],linea:d[1],novedad:d[5]})));return r;};
 const hm=s=>{const m=String(s).toLowerCase().replace(/\./g,'').match(/(\d{1,2}):(\d{2})/);if(!m)return null;let h=+m[1];const mi=+m[2];if(/p ?m/.test(String(s).toLowerCase().replace(/\./g,''))&&h!==12)h+=12;if(/a ?m/.test(String(s).toLowerCase().replace(/\./g,''))&&h===12)h=0;return{h,mi};};
 const T=(u,status,ini,fin)=>({userEmail:u,status,startTime:ini,endTime:fin||null});
@@ -160,7 +162,7 @@ const cliente=(soloLinea)=>CL.agentesPorHora(clienteDeMalla(malla,turnos,NOW,sol
 // ═══ B. Forma de la hoja ═══
 {
  const f=calc.filas;
- t('B1 columnas en orden: fecha AAAA-MM-DD, hora 0–23, pais «Colombia», linea, programados, reales, actualizado_at con -05:00 y estado',f.every(x=>x.length===8&&/^\d{4}-\d{2}-\d{2}$/.test(x[0])&&Number.isInteger(x[1])&&x[1]>=0&&x[1]<=23&&x[2]==='Colombia'&&/^2026-11-21T15:30:00-05:00$/.test(x[6])&&(x[7]==='provisional'||x[7]==='cerrado')));
+ t('B1 columnas en orden: fecha AAAA-MM-DD, hora 0–23, pais «Colombia», linea, programados, reales, actualizado_at con -05:00, estado y almuerzo (número ≥ 0)',f.every(x=>x.length===9&&typeof x[8]==='number'&&x[8]>=0&&/^\d{4}-\d{2}-\d{2}$/.test(x[0])&&Number.isInteger(x[1])&&x[1]>=0&&x[1]<=23&&x[2]==='Colombia'&&/^2026-11-21T15:30:00-05:00$/.test(x[6])&&(x[7]==='provisional'||x[7]==='cerrado')));
  const claves={};f.forEach(x=>{const k=x[0]+'|'+x[3];(claves[k]=claves[k]||new Set()).add(x[1]);});
  t('B2 por cada fecha × línea hay exactamente 24 horas (las horas sin agentes van con 0, no faltan)',Object.values(claves).every(s=>s.size===24)&&f.length===Object.values(claves).length*24&&f.some(x=>x[4]===0));
  t('B3 TODAS aparece SIEMPRE para cada fecha con malla y primero entre las líneas; la tabla sale ordenada por fecha, línea y hora',SEMANA.every(d=>claves[d+'|TODAS'])&&f.every((x,i)=>i===0||(()=>{const p=f[i-1];return p[0]<x[0]||(p[0]===x[0]&&(p[3]===x[3]?p[1]<x[1]:(p[3]==='TODAS'||(x[3]!=='TODAS'&&p[3]<x[3]))));})()));
@@ -294,7 +296,7 @@ function depsDe(w,hoja,opts={}){
  const wc=mundo({props:{malla_sheet_id:'SHEET',dash_lector_email:'cuenta@servicio.example'}});
  const id=wc.call('dashboardCrearHoja');
  const nueva=wc.hojas['NUEVA|conteos'];
- t('H2 dashboardCrearHoja crea la hoja con el encabezado exacto, guarda su ID en dash_sheet_id y la comparte SOLO como lector con dash_lector_email',id==='NUEVA'&&wc.props.dash_sheet_id==='NUEVA'&&JSON.stringify(nueva.st.filas[0])===JSON.stringify(['fecha','hora','pais','linea','agentes_programados','agentes_reales','actualizado_at','estado'])&&wc.compartido&&wc.compartido.email==='cuenta@servicio.example'&&wc.logs.some(l=>/ID: NUEVA/.test(l)));
+ t('H2 dashboardCrearHoja crea la hoja con el encabezado exacto, guarda su ID en dash_sheet_id y la comparte SOLO como lector con dash_lector_email',id==='NUEVA'&&wc.props.dash_sheet_id==='NUEVA'&&JSON.stringify(nueva.st.filas[0])===JSON.stringify(ENC)&&wc.compartido&&wc.compartido.email==='cuenta@servicio.example'&&wc.logs.some(l=>/ID: NUEVA/.test(l)));
  const wd=mundo({props:{malla_sheet_id:'SHEET',dash_sheet_id:'X'}});wd.hojas['X|conteos']=Object.assign(hojaFalsa(),{});wd.hojas['X|conteos'].st.filas[0][2]='otra';
  let e7='';try{wd.call('dash_hoja');}catch(e){e7=e.message;}
  t('H3 si la hoja destino NO tiene el encabezado esperado, no se escribe en ella',/encabezado/.test(e7),e7);
@@ -310,7 +312,60 @@ function depsDe(w,hoja,opts={}){
  t('I1 la hoja no recibe nada que identifique personas: la malla se lee SIN la columna de nombres y los turnos sin nombre ni correo en la salida',!/r\[3\]/.test(gs.slice(gs.indexOf('function dash_leerMalla'),gs.indexOf('function dash_validarRespuesta_')))&&!/userName/.test(gs));
  t('I2 el código no contiene correos ni nombres reales (repositorio público) y la zona es fija (sin Utilities.formatDate con la zona del script para decidir fechas)',!/[A-Za-z0-9._-]+@(?!x\.co|pibox)[A-Za-z0-9.-]+\.[a-z]{2,}/i.test(gs.replace(/cuenta@servicio\.example/g,''))&&!/Session\.getScriptTimeZone/.test(gs));
  t('I3 el cliente aplica la misma regla de «entrada = salida sin novedad» que el servidor',/if\(!r\.novedad&&r\.scheduledStart\.getTime\(\)===r\.scheduledEnd\.getTime\(\)\)return;/.test(html)&&/s === f\) \{ res\.ignoradasEntradaIgualSalida/.test(gs));
- t('I4 versión 19.12 en index.html',/const APP_VERSION='19\.12';/.test(html));
+ t('I4 versión 19.13 en index.html',/const APP_VERSION='19\.13';/.test(html));
+}
+
+// ═══ J. Almuerzo (v19.13): agentes_almuerzo = agentes programados en su franja de almuerzo, aparte ═══
+{
+ const F=(u,ini,fin,alm,linea='L1',iso='2026-11-17',novedad='')=>({iso,usuario:u,rol:'Op',inicio:ini,fin,linea,novedad,almuerzo:alm});
+ const C=(malla,desde='2026-11-17',hasta='2026-11-17')=>w.call('dash_calcular',{now:NOW,desdeISO:desde,hastaISO:hasta,malla,turnos:[],admins:{}});
+ const v=(c,L,h,col=8,d='2026-11-17')=>{const f=c.filas.filter(x=>x[0]===d&&x[3]===L&&x[1]===h)[0];return f?f[col]:undefined;};
+ // J1 turno normal
+ const n=C([F('a@x.co','8:00:00','16:00:00','12:00 - 13:00'),F('b@x.co','8:00:00','16:00:00','11:30 - 12:30')]);
+ t('J1 turno normal 8–16 con almuerzo 12:00 - 13:00 (a) y 11:30 - 12:30 (b): a las 11 → 0,5; a las 12 → 1,5; a las 13 → 0; en la línea igual que en TODAS',
+  v(n,'TODAS',11)===0.5&&v(n,'TODAS',12)===1.5&&v(n,'TODAS',13)===0&&v(n,'TODAS',10)===0&&v(n,'L1',12)===1.5&&n.resumen.filasConAlmuerzo===2,[v(n,'TODAS',11),v(n,'TODAS',12),v(n,'TODAS',13)]);
+ const sinAlm=C([F('a@x.co','8:00:00','16:00:00',''),F('b@x.co','8:00:00','16:00:00','')]);
+ t('J2 agentes_programados y agentes_reales NO cambian con el almuerzo (a las 12 siguen 2 programados): la hoja sin franjas y con franjas solo difiere en la columna de almuerzo',
+  v(n,'TODAS',12,4)===2&&JSON.stringify(n.filas.map(x=>x.slice(0,8)))===JSON.stringify(sinAlm.filas.map(x=>x.slice(0,8)))&&sinAlm.filas.every(x=>x[8]===0));
+ // J3 turno nocturno
+ const nn=C([F('n@x.co','22:00:00','6:00:00','2:00 - 3:00','L1','2026-11-16'),F('m@x.co','20:00:00','4:00:00','23:30 - 0:30','L1','2026-11-16'),F('z@x.co','','','','L1','2026-11-17','Vacaciones')],'2026-11-16','2026-11-17'); // el 17 necesita una fila en la malla para escribirse (como D1)
+ t('J3 turno nocturno 22–06 del lunes 16 con almuerzo 2:00 - 3:00: la franja cae antes de la entrada → es del martes 17 a las 2 (no del lunes)',v(nn,'TODAS',2,8,'2026-11-17')===1&&v(nn,'TODAS',2,8,'2026-11-16')===0&&v(nn,'TODAS',3,8,'2026-11-17')===0);
+ t('J4 franja que cruza la medianoche (23:30 - 0:30) en un turno 20–04: 0,5 a las 23 del lunes y 0,5 a las 0 del martes',v(nn,'TODAS',23,8,'2026-11-16')===0.5&&v(nn,'TODAS',0,8,'2026-11-17')===0.5);
+ // J5 franja vacía / 0:00:00
+ const vac=C([F('a@x.co','8:00:00','16:00:00',''),F('b@x.co','8:00:00','16:00:00','0:00:00'),F('c@x.co','8:00:00','16:00:00','  ')]);
+ t('J5 franja vacía, «0:00:00» o solo espacios = sin almuerzo: 0 en todas las horas, contadas como «sin almuerzo» y no como mal escritas',vac.filas.every(x=>x[8]===0)&&vac.resumen.filasSinAlmuerzo===3&&vac.resumen.almuerzoMalEscrito===0);
+ // J6 mal escrita
+ const mal=C([F('a@x.co','8:00:00','16:00:00','12-13'),F('b@x.co','8:00:00','16:00:00','12:00 a 13:00'),F('c@x.co','8:00:00','16:00:00','25:00 - 26:00'),F('d@x.co','8:00:00','16:00:00','12:00 - 12:00'),F('e@x.co','8:00:00','16:00:00','12:00:00 – 13:00:00')]);
+ t('J6 mal escritas («12-13», «12:00 a 13:00», «25:00 - 26:00», «12:00 - 12:00») se ignoran y se cuentan; con segundos y guion largo sí vale',mal.resumen.almuerzoMalEscrito===4&&mal.resumen.filasConAlmuerzo===1&&v(mal,'TODAS',12)===1&&mal.resumen.almuerzoMalEscritoEjemplos.length===4,mal.resumen);
+ const wl=mundo();wl.call('dash_logResumen_',{desde:'2026-11-17',hasta:'2026-11-17',malla:{minIso:'x',maxIso:'y'},turnosLeidos:0,resumen:mal.resumen,escrito:null});
+ t('J7 el log dice cuántas franjas están mal escritas (y ejemplos del texto, sin nombres)',wl.logs.some(l=>/4 MAL ESCRITAS \(ignoradas\): «12-13»/.test(l))&&!wl.logs.some(l=>/@/.test(l)),wl.logs.filter(l=>/Almuerzo/.test(l)));
+ // J8 dentro del turno
+ const fu=C([F('a@x.co','8:00:00','12:00:00','14:00 - 15:00'),F('b@x.co','8:00:00','12:00:00','11:30 - 12:30'),F('c@x.co','8:00:00','16:00:00','7:00 - 7:30')]);
+ t('J8 solo cuenta lo que queda dentro del turno: 14–15 en un turno 8–12 no cuenta (fuera); 11:30–12:30 se recorta a 11:30–12:00; 7:00 antes de la entrada pasa al día siguiente y queda fuera',
+  v(fu,'TODAS',14)===0&&v(fu,'TODAS',11)===0.5&&v(fu,'TODAS',12)===0&&v(fu,'TODAS',7)===0&&fu.resumen.almuerzoFueraDelTurno===2&&fu.resumen.almuerzoRecortado===1,fu.resumen);
+ // J9 una sola vez por agente, en la línea y en TODAS
+ const un=C([F('a@x.co','8:00:00','16:00:00','12:00 - 13:00','L1'),F('a@x.co','10:00:00','14:00:00','12:00 - 13:00','L1'),F('b@x.co','8:00:00','16:00:00','12:00 - 13:00','L1'),F('b@x.co','9:00:00','15:00:00','12:00 - 13:00','L2')]);
+ t('J9 cada agente cuenta UNA vez: a con dos filas solapadas en L1 → 1; b en L1 y L2 → 1 en cada línea; TODAS = 2 (no 4)',v(un,'L1',12)===2&&v(un,'L2',12)===1&&v(un,'TODAS',12)===2);
+ // J10 filas que no cuentan como programadas no aportan almuerzo; las futuras sí (es programado)
+ const nv=w.call('dash_calcular',{now:NOW,desdeISO:'2026-11-21',hastaISO:'2026-11-22',admins:{'adm@x.co':true},turnos:[],malla:[
+  F('v@x.co','8:00:00','16:00:00','12:00 - 13:00','L1','2026-11-21','Vacaciones'),F('adm@x.co','8:00:00','16:00:00','12:00 - 13:00','L1','2026-11-21'),
+  F('s@x.co','8:00:00','16:00:00','12:00 - 13:00','Storage','2026-11-21'),F('f@x.co','8:00:00','16:00:00','17:00 - 18:00','L1','2026-11-22'),F('h@x.co','8:00:00','16:00:00','12:00 - 13:00','L1','2026-11-21')]});
+ t('J10 novedad, admins y Storage no aportan almuerzo (solo h a las 12 del sábado = 1); el domingo futuro sí lleva el almuerzo programado (como los programados), aunque reales quede vacío',
+  v(nv,'TODAS',12,8,'2026-11-21')===1&&v(nv,'TODAS',15,8,'2026-11-22')===0&&nv.filas.filter(x=>x[0]==='2026-11-22'&&x[3]==='TODAS').every(x=>x[5]==='')&&v(nv,'TODAS',12,8,'2026-11-22')===0&&(()=>{const c=C([F('f@x.co','8:00:00','16:00:00','12:00 - 13:00','L1','2026-11-22')],'2026-11-22','2026-11-22');return c.filas.filter(x=>x[0]==='2026-11-22'&&x[3]==='TODAS'&&x[1]===12)[0][8]===1;})());
+ // J11 lectura de la malla: columna H
+ const wm=mundo({mallaFilas:mallaDe(['2026-11-17'],[['a@x.co','L1','Op','8:00:00','16:00:00','','12:00 - 13:00']])});
+ const ml=wm.call('dash_leerMalla','2026-11-17');
+ t('J11 dash_leerMalla lee la franja de la columna H (sin nombres)',ml.rows[0].almuerzo==='12:00 - 13:00'&&!('nombre' in ml.rows[0]));
+ // J12 encabezado
+ t('J12 agentes_almuerzo va al FINAL, después de estado (las 8 columnas de antes no se mueven)',JSON.stringify(w.ctx.DASH.ENCABEZADOS)===JSON.stringify(ENC));
+ const wv=mundo({props:{malla_sheet_id:'SHEET',dash_sheet_id:'X'}});const hv=hojaFalsa();hv.st.filas[0]=ENC.slice(0,8);wv.hojas['X|conteos']=hv;
+ let e8='';try{wv.call('dash_hoja');}catch(e){e8=e.message;}
+ const wv2=mundo({props:{malla_sheet_id:'SHEET',dash_sheet_id:'X'},mallaFilas:mallaDe(SEMANA.slice(0,6),DEF.slice(0,2)),now:BOG('2026-11-21',15,30)});wv2.hojas['X|conteos']=hv;
+ const fotoV=JSON.stringify(hv.st.filas);wv2.call('dashboardActualizar');
+ t('J13 con la hoja vieja (sin «agentes_almuerzo» en I1) la v19.13 NO escribe nada y avisa: dice qué columna falta',/columna 9: «» en vez de «agentes_almuerzo»/.test(e8)&&JSON.stringify(hv.st.filas)===fotoV&&wv2.sent.length===1,e8);
+ const hn=hojaFalsa();wv2.hojas['X|conteos']=hn;wv2.props.dash_fail_notified_at='0';wv2.call('dashboardActualizar');
+ const dn=datosHoja(hn);
+ t('J14 con I1 = «agentes_almuerzo» escribe las 9 columnas',dn.length>0&&dn.every(x=>x.length===9&&typeof x[8]==='number'));
 }
 
 const fails=out.filter(l=>l.startsWith('FAIL'));console.log(out.join('\n'));console.log('\n'+(out.length-fails.length)+'/'+out.length+' pruebas OK'+(fails.length?'  —  '+fails.length+' FALLAN':''));process.exit(fails.length?1:0);

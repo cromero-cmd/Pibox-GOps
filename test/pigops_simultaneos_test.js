@@ -151,7 +151,7 @@ const r1=(a)=>a.map(x=>Math.round(x*100)/100);
 
 // ═══ G. Integración en Insights, colores y accesibilidad de color ═══
 t('G1 la tarjeta se inserta en Insights (primera de la columna), con falla aislada (try/catch) y enlazando el tooltip después de pintar',/simulHTML=simulCardHTML\(rows,\{excluir:new Set\(\[\.\.\.\(window\.ADMINS\|\|ADMINS\),SUPER_ADMIN\]\)\}\)/.test(html)&&/\$\{simulHTML\}\n \$\{tardanzaHTML\}/.test(html)&&/if\(simulHTML\)simulEnlazar\(\);/.test(html));
-t('G2 versión 19.12 y colores definidos para modo oscuro (por defecto) y claro',/const APP_VERSION='19\.12';/.test(html)&&/\.hc-root\{--hc-prog:#3987e5;--hc-real:#d95926;--hc-b-lo:#1a3a66;/.test(html)&&/body\.light-mode \.hc-root\{--hc-prog:#2a78d6;--hc-real:#eb6834;--hc-b-lo:#dcebfc;/.test(html));
+t('G2 versión 19.13 y colores definidos para modo oscuro (por defecto) y claro',/const APP_VERSION='19\.13';/.test(html)&&/\.hc-root\{--hc-prog:#3987e5;--hc-real:#d95926;--hc-b-lo:#1a3a66;/.test(html)&&/body\.light-mode \.hc-root\{--hc-prog:#2a78d6;--hc-real:#eb6834;--hc-b-lo:#dcebfc;/.test(html));
 t('G3 el tooltip se arma con textContent (nada de innerHTML con datos)',!/tip\.innerHTML/.test(html));
 {// Contraste de la etiqueta de cada celda contra su relleno (WCAG ≥ 4,5) en todo el recorrido de cada rampa y en ambos temas (el texto NO cambia de color: la rampa no cruza el punto medio)
  const hex=h=>[1,3,5].map(i=>parseInt(h.slice(i,i+2),16)/255),lin=c=>c<=0.04045?c/12.92:((c+0.055)/1.055)**2.4;
