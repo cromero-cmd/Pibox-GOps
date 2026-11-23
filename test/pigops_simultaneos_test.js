@@ -144,9 +144,14 @@ const r1=(a)=>a.map(x=>Math.round(x*100)/100);
  t('I9 las celdas sin dato llevan «–» y su aria-label; el tooltip lo explica y el HTML no trae NaN/undefined',/aria-label="Jueves 10:00: aún sin dato real"/.test(h)&&!/NaN|undefined/.test(h)&&/Reales: aún sin dato \(todavía no ocurre\)/.test(html)&&/reales: '\+o\.nReal\+' ya ocurrida'/.test(html));
  t('I10 la tabla muestra «–» en reales de los días futuros',/10:00–10:59<\/td>[^]*?<td[^>]*>2 \/ –<\/td>/.test(E.simulChartHTML(r,'todo','promedio',true,false)));}
 
+// ═══ J. Filas con entrada = salida y sin novedad (v19.12): no son un turno de 24 h ═══
+{const vacia=fila('a',9,8,8),ok=fila('b',9,8,16),conNov=fila('c',9,8,8,{novedad:'Vacaciones'}),votos=fila('d',9,8,16,{novedad:'1/2 Día de Votaciones'});
+ const r=calc([vacia,ok,conNov,votos]);
+ t('J1 una fila con entrada = salida y sin novedad se ignora (antes sumaba 24 h seguidas); con novedad ya se ignoraba; la media jornada de votaciones sigue trabajando',r.dias[LUN].prog[3]===0&&r.dias[LUN].prog[10]===2&&r.agentes===2&&r.filas===2,{p3:r.dias[LUN].prog[3],p10:r.dias[LUN].prog[10],ag:r.agentes});}
+
 // ═══ G. Integración en Insights, colores y accesibilidad de color ═══
 t('G1 la tarjeta se inserta en Insights (primera de la columna), con falla aislada (try/catch) y enlazando el tooltip después de pintar',/simulHTML=simulCardHTML\(rows,\{excluir:new Set\(\[\.\.\.\(window\.ADMINS\|\|ADMINS\),SUPER_ADMIN\]\)\}\)/.test(html)&&/\$\{simulHTML\}\n \$\{tardanzaHTML\}/.test(html)&&/if\(simulHTML\)simulEnlazar\(\);/.test(html));
-t('G2 versión 19.11 y colores definidos para modo oscuro (por defecto) y claro',/const APP_VERSION='19\.11';/.test(html)&&/\.hc-root\{--hc-prog:#3987e5;--hc-real:#d95926;--hc-b-lo:#1a3a66;/.test(html)&&/body\.light-mode \.hc-root\{--hc-prog:#2a78d6;--hc-real:#eb6834;--hc-b-lo:#dcebfc;/.test(html));
+t('G2 versión 19.12 y colores definidos para modo oscuro (por defecto) y claro',/const APP_VERSION='19\.12';/.test(html)&&/\.hc-root\{--hc-prog:#3987e5;--hc-real:#d95926;--hc-b-lo:#1a3a66;/.test(html)&&/body\.light-mode \.hc-root\{--hc-prog:#2a78d6;--hc-real:#eb6834;--hc-b-lo:#dcebfc;/.test(html));
 t('G3 el tooltip se arma con textContent (nada de innerHTML con datos)',!/tip\.innerHTML/.test(html));
 {// Contraste de la etiqueta de cada celda contra su relleno (WCAG ≥ 4,5) en todo el recorrido de cada rampa y en ambos temas (el texto NO cambia de color: la rampa no cruza el punto medio)
  const hex=h=>[1,3,5].map(i=>parseInt(h.slice(i,i+2),16)/255),lin=c=>c<=0.04045?c/12.92:((c+0.055)/1.055)**2.4;

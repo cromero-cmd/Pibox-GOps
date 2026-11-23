@@ -1600,7 +1600,7 @@ body.agent-preview-mode header{margin-top:34px;}
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
-const APP_VERSION='19.11';
+const APP_VERSION='19.12';
 // Promesas rechazadas sin manejar y errores de script: antes desaparecían sin rastro en consola del agente.
 window.addEventListener('unhandledrejection',e=>console.error('[unhandledrejection]',e.reason&&(e.reason.stack||e.reason.message||e.reason)));
 const APP_CHANGELOG='Mejoras de rendimiento y correcciones generales.';
@@ -6096,6 +6096,7 @@ function agentesPorHora(rows,opts){
  if(!r.usuario||(opts.excluir&&opts.excluir.has(r.usuario)))return;
  if(!(r.scheduledStart instanceof Date)||!(r.scheduledEnd instanceof Date))return;
  if(r.novedad&&!esNovedadVotaciones(r.novedad))return;
+ if(!r.novedad&&r.scheduledStart.getTime()===r.scheduledEnd.getTime())return; // entrada = salida y sin novedad: fila vacía de la malla, no un turno de 24 h
  if(simulEsStorage(r)){storage.add(r.usuario);if(opts.sinStorage)return;}
  base.push(r);
  });
